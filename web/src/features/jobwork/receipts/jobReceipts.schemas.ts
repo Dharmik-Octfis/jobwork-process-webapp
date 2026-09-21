@@ -151,6 +151,7 @@ export const jobReceiptSchema = z.object({
     .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
     .nullable()
     .optional(),
+  _count: z.object({ billItems: z.number() }).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -218,8 +219,11 @@ export const receivePrefillSchema = z.object({
       batchReference: z.string().nullable(),
       /** What is still out on this line. */
       issuedQty: z.string(),
-      /** The batch's cost per unit at the processor — the preview's material price. */
+      /** The line's average cost per unit at the processor. */
       unitCost: z.string().default('0'),
+      /** The line's FIFO layers at the processor, oldest first — the preview walks
+       * these, so it prices exactly what the receipt will post. */
+      layers: z.array(z.object({ qty: z.string(), unitCost: z.string() })).default([]),
     }),
   ),
   /**

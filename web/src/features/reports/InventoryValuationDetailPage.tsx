@@ -12,10 +12,10 @@ export function InventoryValuationDetailPage() {
   const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
   const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
   const [toDate, setToDate] = useState<Date>(new Date());
-  
+
   const [appliedFilters, setAppliedFilters] = useState({
     fromDate: startOfMonth(new Date()),
-    toDate: new Date()
+    toDate: new Date(),
   });
 
   const [data, setData] = useState<ItemLedgerResponse | null>(null);
@@ -28,7 +28,7 @@ export function InventoryValuationDetailPage() {
       try {
         const response = await reportsApi.getItemLedger(orgId, itemId, {
           fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
-          toDate: endOfDay(appliedFilters.toDate).toISOString()
+          toDate: endOfDay(appliedFilters.toDate).toISOString(),
         });
         setData(response);
       } catch (error) {
@@ -64,7 +64,16 @@ export function InventoryValuationDetailPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f5f7', fontFamily: '"Open Sans", "WebFont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: '#f4f5f7',
+        fontFamily:
+          '"Open Sans", "WebFont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      }}
+    >
       {/* Top Header */}
       <div
         style={{
@@ -94,8 +103,18 @@ export function InventoryValuationDetailPage() {
             <Menu size={18} color="#4b5563" />
           </button>
           <div>
-            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Inventory Valuation</div>
-            <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>
+              Inventory Valuation
+            </div>
+            <div
+              style={{
+                fontSize: '16px',
+                fontWeight: 500,
+                color: '#111827',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
               Item Detail Report
             </div>
           </div>
@@ -130,7 +149,16 @@ export function InventoryValuationDetailPage() {
           gap: '16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4b5563', fontSize: '13px', fontWeight: 500 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#4b5563',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
           <Filter size={14} color="#6b7280" />
           Filters :
         </div>
@@ -182,10 +210,21 @@ export function InventoryValuationDetailPage() {
         >
           {/* Report Header Text */}
           <div style={{ textAlign: 'center', padding: '56px 0 40px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 500 }}>
+            <div
+              style={{
+                fontSize: '12px',
+                color: '#6b7280',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                marginBottom: '8px',
+                fontWeight: 500,
+              }}
+            >
               OCTFIS TECHNO llp
             </div>
-            <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
+            <h2
+              style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+            >
               Inventory Valuation for {data?.itemInfo?.itemName} ( {data?.itemInfo?.sku || 'N/A'} )
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
@@ -209,11 +248,15 @@ export function InventoryValuationDetailPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>Loading...</td>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
+                    Loading...
+                  </td>
                 </tr>
               ) : !data || data.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>No data found</td>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
+                    No data found
+                  </td>
                 </tr>
               ) : (
                 data.rows.map((row, idx, arr) => {
@@ -230,11 +273,14 @@ export function InventoryValuationDetailPage() {
 
                   const isSpecial = row.isOpeningStock || row.isClosingStock;
                   const docLink = getDocLink(row);
-                  
+
                   return (
                     <tr key={idx} className="table-row-hover">
                       {rowSpan > 0 && (
-                        <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }} rowSpan={rowSpan}>
+                        <td
+                          style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }}
+                          rowSpan={rowSpan}
+                        >
                           {row.date
                             ? format(new Date(row.date), 'dd-MM-yyyy')
                             : row.isOpeningStock
@@ -252,27 +298,47 @@ export function InventoryValuationDetailPage() {
                             </span>
                           ) : docLink ? (
                             <Link to={docLink} style={{ color: '#2563eb', textDecoration: 'none' }}>
-                              {row.transactionDetails} {row.sourceDocNumber ? '# ' + row.sourceDocNumber : (row.sourceDocId ? '# ' + row.sourceDocId.substring(0,8) : '')}
+                              {row.transactionDetails}{' '}
+                              {row.sourceDocNumber
+                                ? '# ' + row.sourceDocNumber
+                                : row.sourceDocId
+                                  ? '# ' + row.sourceDocId.substring(0, 8)
+                                  : ''}
                             </Link>
                           ) : (
                             <span>{row.transactionDetails}</span>
                           )}
                         </td>
                       )}
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500, color: row.quantity < 0 ? '#ef4444' : '#222' }}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: 'right',
+                          fontWeight: 500,
+                          color: row.quantity < 0 ? '#ef4444' : '#222',
+                        }}
+                      >
                         {row.quantity !== 0 ? row.quantity.toFixed(2) : ''}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.unitCost !== null ? row.unitCost.toFixed(2) : ''}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                        {row.totalCost !== 0 ? row.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}
+                        {row.totalCost !== 0
+                          ? row.totalCost.toLocaleString('en-IN', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          : ''}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                         {row.stockOnHand.toFixed(2)}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                        {row.inventoryAssetValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {row.inventoryAssetValue.toLocaleString('en-IN', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
                     </tr>
                   );

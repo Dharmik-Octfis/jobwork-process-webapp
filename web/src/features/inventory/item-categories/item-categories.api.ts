@@ -20,20 +20,30 @@ export interface CreateItemCategoryDto {
   isActive?: boolean;
 }
 
-export interface UpdateItemCategoryDto extends Partial<CreateItemCategoryDto> {}
+export type UpdateItemCategoryDto = Partial<CreateItemCategoryDto>;
 
 export async function fetchItemCategories(orgId: string): Promise<ItemCategory[]> {
   const { data } = await apiClient.get(`/organizations/${orgId}/inventory/item-categories`);
   return data;
 }
 
-export async function createItemCategory(orgId: string, data: CreateItemCategoryDto): Promise<ItemCategory> {
+export async function createItemCategory(
+  orgId: string,
+  data: CreateItemCategoryDto,
+): Promise<ItemCategory> {
   const response = await apiClient.post(`/organizations/${orgId}/inventory/item-categories`, data);
   return response.data;
 }
 
-export async function updateItemCategory(orgId: string, id: string, data: UpdateItemCategoryDto): Promise<ItemCategory> {
-  const response = await apiClient.put(`/organizations/${orgId}/inventory/item-categories/${id}`, data);
+export async function updateItemCategory(
+  orgId: string,
+  id: string,
+  data: UpdateItemCategoryDto,
+): Promise<ItemCategory> {
+  const response = await apiClient.put(
+    `/organizations/${orgId}/inventory/item-categories/${id}`,
+    data,
+  );
   return response.data;
 }
 

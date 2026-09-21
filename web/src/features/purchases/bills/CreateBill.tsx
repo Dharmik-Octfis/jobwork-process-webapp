@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../../api/client';
 import {
   Plus,
+  Search,
   Trash2,
   Mail,
   Phone,
@@ -30,6 +33,7 @@ import {
   updateBill,
   fetchLocations,
   uploadBillAttachments,
+  fetchOpenJobReceipts,
   type BillAttachment,
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
@@ -44,6 +48,7 @@ import { CreateVendorModal } from '../vendors/CreateVendorModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
 import { AddBillBatchesModal } from './AddBillBatchesModal';
+import { AddJobReceiptsModal } from './AddJobReceiptsModal';
 import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopover';
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
@@ -116,6 +121,8 @@ export function CreateBill() {
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
+  const jobReceiptId = searchParams.get('jobReceiptId');
+  const initialVendorId = searchParams.get('vendorId');
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
 
@@ -129,6 +136,8 @@ export function CreateBill() {
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
   const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
+  const [isJobReceiptModalOpen, setIsJobReceiptModalOpen] = useState(false);
+  const [hasAutoFilledJobReceipt, setHasAutoFilledJobReceipt] = useState(false);
 
   // Stock Popover State
   const [stockPopoverAnchor, setStockPopoverAnchor] = useState<{
@@ -186,11 +195,13 @@ export function CreateBill() {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     reset,
     trigger,
     formState: { errors },
   } = useForm<CreateBillData>({
     defaultValues: {
+      vendorId: initialVendorId || '',
       status: 'Draft',
       billDate: new Date().toISOString().split('T')[0],
       deliveryType: 'Location',
@@ -209,6 +220,58 @@ export function CreateBill() {
     },
   });
 
+  const watchVendorId = watch('vendorId');
+  const { data: openJobReceipts = [] } = useQuery({
+    queryKey: ['openJobReceipts', orgId, watchVendorId],
+    queryFn: () => fetchOpenJobReceipts(orgId!, watchVendorId!),
+    enabled: Boolean(orgId && watchVendorId),
+  });
+
+  useEffect(() => {
+    if (jobReceiptId && openJobReceipts.length > 0 && !hasAutoFilledJobReceipt) {
+      const receipt = openJobReceipts.find(r => r.id === jobReceiptId);
+      if (receipt) {
+        const currentItems = getValues('lineItems') ?? [];
+        let startIndex = currentItems.findIndex((item) => !item.itemId);
+
+        if (startIndex === -1) {
+          startIndex = currentItems.length;
+        }
+
+        const newItems = [...currentItems];
+
+        receipt.outputs.forEach((output) => {
+          const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
+          const qty = Number(output.acceptedQty) || 1;
+          const itemData = {
+            itemId: output.itemId,
+            item: output.item,
+            quantity: qty,
+            rate: totalCost / qty,
+            amount: totalCost,
+            itemTotal: totalCost,
+            jobReceiptId: receipt.id,
+            description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
+            batches: output.outputBatchId ? [{
+              batchId: output.outputBatchId,
+              quantity: qty,
+            }] : undefined,
+          };
+
+          if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+            newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+          } else {
+            newItems.push({ ...itemData } as BillItem);
+          }
+          startIndex++;
+        });
+
+        setValue('lineItems', newItems, { shouldValidate: true });
+        setHasAutoFilledJobReceipt(true);
+      }
+    }
+  }, [jobReceiptId, openJobReceipts, hasAutoFilledJobReceipt, getValues, setValue]);
+
   useEffect(() => {
     if (existingPo) {
       const formattedLineItems = (existingPo.lineItems || []).map((item) => {
@@ -224,17 +287,8 @@ export function CreateBill() {
           discountValue: discountVal || ('' as unknown as number),
           discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           amount: item.amount || 0,
-          /**
-           * 🔴 THE BATCH AND TAKA BREAKDOWN RIDES ALONG ON EDIT. This mapper built
-           * a fresh object and left it behind, so reopening a bill showed "+ Add
-           * Takas" on a line that already had three — and saving then re-posted it
-           * with none. The server has always sent it; nothing here read it.
-           *
-           * 🔴 NEVER ON A CLONE. These rows carry the ORIGINAL bill's `batchId`
-           * and `batchUnitId`, so copying them would make the new bill top up the
-           * old one's packages instead of receiving its own. A clone starts with
-           * the batch dialog empty, exactly as it does today.
-           */
+          jobReceiptId: item.jobReceiptId,
+          description: (item.customFields as Record<string, unknown>)?.description as string || '',
           batches: isClone ? undefined : item.batches,
         };
       });
@@ -485,12 +539,10 @@ export function CreateBill() {
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
+    // The server's refusal says exactly why ("…already been used by challan JI-…"),
+    // and until this toast it only reached the console.
     onError: (error: AxiosError<{ message?: string }>) => {
-      console.error(
-        error.response?.data?.message ||
-          error.message ||
-          `Failed to ${isEdit ? 'update' : 'create'} Bill`,
-      );
+      toast.error(toApiErrorMessage(error));
     },
   });
 
@@ -512,6 +564,10 @@ export function CreateBill() {
         itemTotal: itemTotal,
         discountAmount: discountAmount,
         discountPercentage: discType === 'percentage' ? discountVal : null,
+        customFields: {
+          ...(item.customFields || {}),
+          ...(item.description ? { description: item.description } : {}),
+        },
       };
     });
 
@@ -634,7 +690,25 @@ export function CreateBill() {
                 <SearchableSelect
                   options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
-                  onChange={(val) => setValue('vendorId', val, { shouldValidate: true })}
+                  onChange={(val) => {
+                    setValue('vendorId', val, { shouldValidate: true });
+                    const currentItems = getValues('lineItems') || [];
+                    const hasJobReceipts = currentItems.some((item) => item.jobReceiptId);
+                    if (hasJobReceipts) {
+                      const filteredItems = currentItems.filter((item) => !item.jobReceiptId);
+                      if (filteredItems.length === 0) {
+                        filteredItems.push({
+                          itemId: '',
+                          quantity: '' as unknown as number,
+                          rate: '' as unknown as number,
+                          discountValue: '' as unknown as number,
+                          discountType: 'percentage',
+                          amount: 0,
+                        } as BillItem);
+                      }
+                      setValue('lineItems', filteredItems, { shouldValidate: true });
+                    }
+                  }}
                   placeholder="Select a Vendor"
                   renderOption={(option, isSelected) => {
                     const vendor = vendors.find((v) => v.id === option.value);
@@ -1338,6 +1412,9 @@ export function CreateBill() {
                 borderBottomRightRadius: '8px',
                 position: 'relative',
                 zIndex: 1,
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
               }}
             >
               <button
@@ -1371,6 +1448,28 @@ export function CreateBill() {
               >
                 <Plus size={15} /> Add another line
               </button>
+
+              {openJobReceipts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsJobReceiptModalOpen(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                  }}
+                >
+                  <Search size={15} /> Include {openJobReceipts.length} Open Job Receives
+                </button>
+              )}
             </div>
           </div>
 
@@ -1851,6 +1950,53 @@ export function CreateBill() {
         locations={locations}
         stockRows={stockPopoverAnchor?.stockRows || []}
         selectedLocationId={watchLocationId || watchDeliveryLocationId || undefined}
+      />
+
+      <AddJobReceiptsModal
+        isOpen={isJobReceiptModalOpen}
+        onClose={() => setIsJobReceiptModalOpen(false)}
+        jobReceipts={openJobReceipts}
+        onAdd={(selectedReceipts) => {
+          const currentItems = getValues('lineItems') ?? [];
+          let startIndex = currentItems.findIndex((item) => !item.itemId);
+
+          if (startIndex === -1) {
+            startIndex = currentItems.length;
+          }
+
+          const newItems = [...currentItems];
+
+          selectedReceipts.forEach((receipt) => {
+            receipt.outputs.forEach((output) => {
+              // If the targeted row is empty, overwrite it, else push new
+              const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
+              const qty = Number(output.acceptedQty) || 1;
+              const itemData = {
+                itemId: output.itemId,
+                item: output.item,
+                quantity: qty,
+                rate: totalCost / qty,
+                amount: totalCost,
+                itemTotal: totalCost,
+                jobReceiptId: receipt.id,
+                description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
+                batches: output.outputBatchId ? [{
+                  batchId: output.outputBatchId,
+                  quantity: qty,
+                }] : undefined,
+              };
+
+              if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+                newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+              } else {
+                newItems.push({ ...itemData } as BillItem);
+              }
+              startIndex++;
+            });
+          });
+
+          setValue('lineItems', newItems, { shouldValidate: true });
+        }}
       />
     </div>
   );

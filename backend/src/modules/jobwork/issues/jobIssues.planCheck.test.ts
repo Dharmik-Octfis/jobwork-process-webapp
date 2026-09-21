@@ -68,7 +68,7 @@ async function seedStock(itemId: string, qty: number) {
   });
 }
 
-type Row = { itemId: string; plannedQty?: number; expectedQty?: number };
+type Row = { itemId: string; plannedQty?: number; expectedQty?: number; sharePct?: number };
 
 const order = (inputs: Row[], outputs: Row[]) =>
   createNewJobOrder(orgId, {
@@ -170,7 +170,10 @@ describe('issue — the plan check', { timeout: 60_000 }, () => {
     // Two outputs, so nothing defaults the Expected boxes.
     const jo = await order(
       [{ itemId: fabricId, plannedQty: 100 }],
-      [{ itemId: dyedId }, { itemId: dyedTwoId }],
+      [
+        { itemId: dyedId, sharePct: 50 },
+        { itemId: dyedTwoId, sharePct: 50 },
+      ],
     );
 
     await expect(
@@ -206,6 +209,53 @@ describe('issue — the plan check', { timeout: 60_000 }, () => {
 
     const challan = await issue(jo.steps[0]!.id, { itemId: fabricId, batchId: batch.id, qty: 100 });
     expect(challan.status).toBe('issued');
+  });
+
+  it('R1b: refuses a share-split step whose shares were lost after it was saved', async () => {
+    const batch = await seedStock(fabricId, 100);
+    const jo = await order(
+      [{ itemId: fabricId, plannedQty: 100 }],
+      [
+        { itemId: dyedId, expectedQty: 91, sharePct: 91 },
+        { itemId: dyedTwoId, expectedQty: 1, sharePct: 9 },
+      ],
+    );
+    const stepId = jo.steps[0]!.id;
+    // Save refuses a blank share; this is the net under it, for a row changed by hand.
+    await runAsTenant(orgId, (tx) =>
+      tx.jobOrderStepOutput.updateMany({
+        where: { organizationId: orgId, jobOrderStepId: stepId, itemId: dyedTwoId },
+        data: { sharePct: null },
+      }),
+    );
+
+    await expect(
+      issue(stepId, { itemId: fabricId, batchId: batch.id, qty: 100 }),
+    ).rejects.toMatchObject(planRefused);
+  });
+
+  it('R1b: lets a step that sent material before shares existed keep sending', async () => {
+    const batch = await seedStock(fabricId, 200);
+    const jo = await order(
+      [{ itemId: fabricId, plannedQty: 200 }],
+      [
+        { itemId: dyedId, expectedQty: 91, sharePct: 91 },
+        { itemId: dyedTwoId, expectedQty: 1, sharePct: 9 },
+      ],
+    );
+    const stepId = jo.steps[0]!.id;
+    await issue(stepId, { itemId: fabricId, batchId: batch.id, qty: 100 });
+
+    // What a step planned before the column existed looks like.
+    await runAsTenant(orgId, (tx) =>
+      tx.jobOrderStepOutput.updateMany({
+        where: { organizationId: orgId, jobOrderStepId: stepId },
+        data: { sharePct: null },
+      }),
+    );
+
+    const second = await issue(stepId, { itemId: fabricId, batchId: batch.id, qty: 100 });
+    expect(second.status).toBe('issued');
   });
 
   it('does not ask a rework challan for the plan', async () => {

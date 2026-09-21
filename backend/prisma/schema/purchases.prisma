@@ -282,6 +282,9 @@ model BillItem {
   bill               Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
   updatedByUser      User?    @relation("BillItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  jobReceiptId       String?  @map("job_receipt_id") @db.Uuid
+  jobReceipt         JobReceipt? @relation(fields: [jobReceiptId], references: [id])
+
   /// What this line says it received, broken down. See `BillItemBatch`.
   batchLines BillItemBatch[]
 

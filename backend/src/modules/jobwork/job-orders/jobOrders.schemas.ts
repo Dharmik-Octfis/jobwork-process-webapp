@@ -95,6 +95,11 @@ export const stepOutputRowSchema = z.object({
   /** Charge per ACCEPTED unit of this output (landed-cost plan D1–D2). Null = not
    * agreed yet; 0 = done free. */
   rate: z.coerce.number().min(0).nullable().optional(),
+  /** Share of the input's material this output takes, in % (landed-cost plan R1b).
+   * Only read on a step with ONE input and two or more outputs made from it; the
+   * service clears it everywhere else. Required there before the first challan
+   * (V4), never defaulted — the user states the split. */
+  sharePct: z.coerce.number().min(0).max(100).nullable().optional(),
 });
 
 export type StepOutputRow = z.infer<typeof stepOutputRowSchema>;

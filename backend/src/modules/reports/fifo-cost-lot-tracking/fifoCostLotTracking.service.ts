@@ -1,4 +1,4 @@
-import { runAsTenant } from '../../../db/prisma.ts';
+import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import type {
   FifoCostLotTrackingQuery,
@@ -6,6 +6,56 @@ import type {
   PaginatedFifoCostLotTrackingResponse,
 } from './fifoCostLotTracking.schemas.ts';
 import { format, differenceInDays } from 'date-fns';
+
+/**
+ * 🔴 THE LOTS ARE THE COST LAYERS (docs/FIFO_COSTING_PLAN.md §5.2).
+ *
+ * This report used to pair inward and outward quantities by replaying FIFO in
+ * JavaScript, and never priced an outflow at all. Now every row is fact: a lot is
+ * one `stock_cost_layers` row, and what it dispersed is exactly the draws the
+ * postings made on it — at the lot's real cost.
+ *
+ * Only own stock at our own places has layers, so customer-owned and physical-only
+ * movements no longer appear (valuation never counted them either). A document's
+ * corrections of itself — an edited bill taking its old layer back, a cancelled
+ * receipt withdrawing its output — are netted out rather than listed as dispersals.
+ */
+
+interface LayerRow {
+  id: string;
+  itemId: string;
+  itemName: string;
+  uomName: string | null;
+  inDate: Date;
+  qty: Prisma.Decimal;
+  value: Prisma.Decimal;
+  remainingQty: Prisma.Decimal;
+  isLegacy: boolean;
+  inDocType: string | null;
+  inDocId: string | null;
+  billId: string | null;
+  unitDiscount: Prisma.Decimal | null;
+}
+
+interface DrawRow {
+  layerId: string;
+  qty: Prisma.Decimal;
+  outDocType: string;
+  outDocId: string | null;
+  outDate: Date;
+}
+
+const DOC_LABELS: Record<string, string> = {
+  bill: 'Bill',
+  invoice: 'Invoice',
+  job_receipt: 'Job Receipt',
+  job_issue: 'Job Issue',
+  job_order_step: 'Job Order Write-off',
+  purchase_order: 'Purchase Order',
+  item_opening_stock: 'Opening Balance',
+  inventory_adjustment: 'Inventory Adjustment By Quantity',
+  item_assembly: 'Assemblies',
+};
 
 export async function getFifoCostLotTracking(
   organizationId: string,
@@ -15,478 +65,178 @@ export async function getFifoCostLotTracking(
     const { fromDate, toDate, itemName, locationName, reportBasis } = _query;
     const isProductOut = reportBasis === 'product_out';
 
-    let validItemsQ = Prisma.sql`
-      SELECT "itemId"
-      FROM doc_nets
-      WHERE 1=1
-    `;
-
-    if (isProductOut) {
-      validItemsQ = Prisma.sql`${validItemsQ} AND "netQty" < 0`;
-    } else {
-      validItemsQ = Prisma.sql`${validItemsQ} AND "netQty" > 0`;
-    }
-
-    if (fromDate) {
-      validItemsQ = Prisma.sql`${validItemsQ} AND real_date >= ${new Date(fromDate)}::timestamptz`;
-    }
-    if (toDate) {
-      validItemsQ = Prisma.sql`${validItemsQ} AND real_date <= ${new Date(toDate)}::timestamptz`;
-    }
-
-    let q = Prisma.sql`
-      WITH doc_nets AS (
-        SELECT
-          l.item_id AS "itemId",
-          l.batch_id AS "batchId",
-          l.source_doc_type AS "sourceDocType",
-          l.source_doc_id AS "sourceDocId",
-          SUM(l.qty_in - l.qty_out) AS "netQty",
-          SUM(l.value_in - l.value_out) AS "netValue",
-          l.owner_party_id AS "ownerPartyId",
-          COALESCE(c.display_name, v.display_name) AS "partyName",
-          i.name AS "itemName",
-          u.unit_name AS "uomName",
-          l.location_id AS "locationId",
-          loc.name AS "locationName",
-          CASE
-            WHEN l.source_doc_type = 'item_opening_stock' THEN COALESCE((
-              SELECT migration_date FROM organizations WHERE id = ${organizationId}::uuid
-            ), '1970-01-01'::timestamptz)
-            ELSE COALESCE((
-              SELECT sl.posted_at
-              FROM stock_ledger sl
-              WHERE sl.source_doc_id = l.source_doc_id
-              ORDER BY sl.created_at DESC
-              LIMIT 1
-            ), MIN(l.created_at))
-          END AS real_date,
-          MIN(l.created_at) AS min_created_at
-        FROM stock_ledger l
-        JOIN items i ON l.item_id = i.id
-        LEFT JOIN units_of_measurement u ON i.stocking_uom_id = u.id
-        LEFT JOIN locations loc ON l.location_id = loc.id
-        LEFT JOIN customers c ON l.owner_party_id = c.id
-        LEFT JOIN vendors v ON l.owner_party_id = v.id
-        WHERE l.organization_id = ${organizationId}::uuid
-          AND l.stock_effect IN ('both', 'accounting', 'physical')
-          AND l.source_doc_type != 'job_receipt'
-          AND (l.batch_id IS NOT NULL OR l.source_doc_type = 'item_opening_stock')
-          AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-        GROUP BY
-          l.item_id,
-          l.batch_id,
-          l.source_doc_type,
-          l.source_doc_id,
-          l.owner_party_id,
-          c.display_name,
-          v.display_name,
-          i.name,
-          u.unit_name,
-          l.location_id,
-          loc.name
-      )
+    const layers = await tx.$queryRaw<LayerRow[]>`
       SELECT
-        "itemId",
-        "batchId",
-        real_date AS "date",
-        "sourceDocType",
-        "sourceDocId",
-        "netQty",
-        "netValue",
-        "ownerPartyId",
-        "partyName",
-        "itemName",
-        "uomName",
-        "locationId",
-        "locationName",
-        min_created_at AS "createdAt"
-      FROM doc_nets
-      WHERE "netQty" != 0
-        AND "itemId" IN (${validItemsQ})
-    `;
+        l.id,
+        l.item_id AS "itemId",
+        i.name AS "itemName",
+        u.unit_name AS "uomName",
+        l.in_date AS "inDate",
+        l.qty,
+        l.value,
+        l.remaining_qty AS "remainingQty",
+        l.is_legacy AS "isLegacy",
+        e.source_doc_type AS "inDocType",
+        e.source_doc_id AS "inDocId",
+        billed.bill_id AS "billId",
+        billed.unit_discount AS "unitDiscount"
+      FROM stock_cost_layers l
+      JOIN items i ON i.id = l.item_id
+      LEFT JOIN units_of_measurement u ON u.id = i.stocking_uom_id
+      JOIN locations loc ON loc.id = l.location_id
+      LEFT JOIN stock_ledger e ON e.id = l.in_ledger_entry_id
+      -- a bill line raised from a job receipt posts no stock; the receipt's lot is the
+      -- bill's, at the receipt's cost less the bill's discount per unit
+      LEFT JOIN LATERAL (
+        SELECT
+          (MIN(bi.bill_id::text))::uuid AS bill_id,
+          SUM(COALESCE(bi.discount_amount, 0)) / NULLIF(SUM(bi.quantity), 0) AS unit_discount
+        FROM bill_items bi
+        JOIN bills b ON b.id = bi.bill_id
+        WHERE e.source_doc_type = 'job_receipt'
+          AND bi.job_receipt_id = e.source_doc_id
+          AND bi.item_id = l.item_id
+          AND bi.is_deleted = false
+          AND b.is_deleted = false
+          AND LOWER(b.status) = 'open'
+      ) billed ON true
+      WHERE l.organization_id = ${organizationId}::uuid
+        AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
+        -- lots come IN from opening stock and bills only; a receipt counts once billed on an Open bill
+        AND (e.source_doc_type IS DISTINCT FROM 'job_receipt' OR billed.bill_id IS NOT NULL)
+        ${itemName ? Prisma.sql`AND i.name ILIKE ${'%' + itemName + '%'}` : Prisma.empty}
+        ${locationName ? Prisma.sql`AND loc.name ILIKE ${'%' + locationName + '%'}` : Prisma.empty}
+      ORDER BY i.name ASC, l.in_date ASC, l.in_seq ASC`;
 
-    if (itemName) {
-      q = Prisma.sql`${q} AND "itemName" ILIKE ${'%' + itemName + '%'}`;
+    const draws = layers.length
+      ? await tx.$queryRaw<DrawRow[]>`
+          SELECT
+            d.layer_id AS "layerId",
+            d.qty,
+            o.source_doc_type AS "outDocType",
+            o.source_doc_id AS "outDocId",
+            o.posted_at AS "outDate"
+          FROM stock_layer_draws d
+          JOIN stock_ledger o ON o.id = d.out_ledger_entry_id
+          WHERE d.organization_id = ${organizationId}::uuid
+            AND d.reversed_at IS NULL
+            AND d.layer_id = ANY(${layers.map((layer) => layer.id)}::uuid[])
+          ORDER BY o.posted_at ASC, d.created_at ASC`
+      : [];
+
+    const drawsByLayer = new Map<string, DrawRow[]>();
+    for (const draw of draws) {
+      drawsByLayer.set(draw.layerId, [...(drawsByLayer.get(draw.layerId) ?? []), draw]);
     }
 
-    if (locationName) {
-      q = Prisma.sql`${q} AND "locationName" ILIKE ${'%' + locationName + '%'}`;
-    }
+    // A billed receipt's lot reads as its bill; netting below still keys on the receipt.
+    const shownInDoc = (layer: LayerRow) =>
+      layer.billId
+        ? { type: 'bill', id: layer.billId }
+        : { type: layer.inDocType, id: layer.inDocId };
 
-    if (toDate) {
-      q = Prisma.sql`${q} AND real_date <= ${new Date(toDate)}::timestamptz`;
-    }
+    const docInfo = await describeParties(tx, [
+      ...layers.flatMap((layer) => {
+        const doc = shownInDoc(layer);
+        return doc.type && doc.id ? [{ type: doc.type, id: doc.id }] : [];
+      }),
+      ...draws.flatMap((draw) =>
+        draw.outDocId ? [{ type: draw.outDocType, id: draw.outDocId }] : [],
+      ),
+    ]);
 
-    q = Prisma.sql`${q} ORDER BY real_date ASC, min_created_at ASC`;
-
-    const rawEntries = await tx.$queryRaw<
-      {
-        itemId: string;
-        batchId: string;
-        date: Date;
-        createdAt: Date;
-        sourceDocType: string;
-        sourceDocId: string;
-        netQty: number | string;
-        netValue: number | string;
-        ownerPartyId: string | null;
-        partyName: string | null;
-        itemName: string;
-        uomName: string | null;
-        locationName: string | null;
-      }[]
-    >`${q}`;
-
-    // Resolve document numbers
-    const docIdsByType = {
-      job_issue: new Set<string>(),
-      job_receipt: new Set<string>(),
-      bill: new Set<string>(),
-      purchase_order: new Set<string>(),
-      invoice: new Set<string>(),
-      item_opening_stock: new Set<string>(),
-      inventory_adjustment: new Set<string>(),
+    const describe = (type: string | null, id: string | null) => {
+      const label = type ? (DOC_LABELS[type] ?? type) : 'FIFO Cut-over Balance';
+      const info = id ? docInfo.get(id) : undefined;
+      return {
+        transaction: info ? `${label} # ${info.number}` : label,
+        partyName: info?.partyName ?? '',
+        partyId: info?.partyId ?? null,
+        partyType: info?.partyId ? info.partyType : null,
+      };
     };
 
-    for (const entry of rawEntries) {
-      const docType = entry.sourceDocType as keyof typeof docIdsByType;
-      if (entry.sourceDocId && docIdsByType[docType]) {
-        docIdsByType[docType].add(entry.sourceDocId);
-      }
-    }
-
-    const docInfo = new Map<
-      string,
-      {
-        number: string;
-        partyName: string | null;
-        partyId: string | null;
-        partyType: 'vendor' | 'customer' | null;
-      }
-    >();
-
-    if (docIdsByType.job_issue.size > 0) {
-      const docs = await tx.jobIssue.findMany({
-        where: { id: { in: Array.from(docIdsByType.job_issue) } },
-        select: { id: true, challanNumber: true, processorNameSnapshot: true, processorId: true },
-      });
-      docs.forEach((d) =>
-        docInfo.set(d.id, {
-          number: d.challanNumber,
-          partyName: d.processorNameSnapshot,
-          partyId: d.processorId,
-          partyType: 'customer',
-        }),
-      );
-    }
-    if (docIdsByType.job_receipt.size > 0) {
-      const docs = await tx.jobReceipt.findMany({
-        where: { id: { in: Array.from(docIdsByType.job_receipt) } },
-        select: { id: true, receiptNumber: true, processorNameSnapshot: true, processorId: true },
-      });
-      docs.forEach((d) =>
-        docInfo.set(d.id, {
-          number: d.receiptNumber,
-          partyName: d.processorNameSnapshot,
-          partyId: d.processorId,
-          partyType: 'customer',
-        }),
-      );
-    }
-    if (docIdsByType.bill.size > 0) {
-      const docs = await tx.bill.findMany({
-        where: { id: { in: Array.from(docIdsByType.bill) } },
-        select: {
-          id: true,
-          billNumber: true,
-          vendorId: true,
-          vendor: { select: { contactName: true } },
-        },
-      });
-      docs.forEach((d) =>
-        docInfo.set(d.id, {
-          number: d.billNumber,
-          partyName: d.vendor?.contactName || null,
-          partyId: d.vendorId,
-          partyType: 'vendor',
-        }),
-      );
-    }
-    if (docIdsByType.purchase_order.size > 0) {
-      const docs = await tx.purchaseOrder.findMany({
-        where: { id: { in: Array.from(docIdsByType.purchase_order) } },
-        select: {
-          id: true,
-          poNumber: true,
-          vendorId: true,
-          vendor: { select: { contactName: true } },
-        },
-      });
-      docs.forEach((d) =>
-        docInfo.set(d.id, {
-          number: d.poNumber,
-          partyName: d.vendor?.contactName || null,
-          partyId: d.vendorId,
-          partyType: 'vendor',
-        }),
-      );
-    }
-
-    type LedgerEvent = {
-      date: Date;
-      createdAt: Date;
-      transaction: string;
-      partyName: string;
-      qty: number;
-      uom: string;
-      cost: number;
-      total: number;
-      docType: string;
-      docId: string;
-      partyId: string | null;
-      partyType: 'vendor' | 'customer' | null;
-    };
-
-    type ItemLedger = {
-      itemName: string;
-      itemId: string;
-      inEvents: LedgerEvent[];
-      outEvents: LedgerEvent[];
-    };
-
-    const items = new Map<string, ItemLedger>();
-
-    for (const entry of rawEntries) {
-      const netQty = Number(entry.netQty);
-      const netValue = Number(entry.netValue);
-
-      const qIn = netQty > 0 ? netQty : 0;
-      const vIn = netValue > 0 ? netValue : 0;
-
-      const qOut = netQty < 0 ? Math.abs(netQty) : 0;
-
-      const itemId = entry.itemId;
-
-      if (!items.has(itemId)) {
-        items.set(itemId, {
-          itemName: entry.itemName || 'Unknown Item',
-          itemId: entry.itemId,
-          inEvents: [],
-          outEvents: [],
-        });
-      }
-
-      const item = items.get(itemId)!;
-
-      let docLabel = entry.sourceDocType;
-      if (docLabel === 'bill') docLabel = 'Bill';
-      if (docLabel === 'invoice') docLabel = 'Invoice';
-      if (docLabel === 'job_receipt') docLabel = 'Job Receipt';
-      if (docLabel === 'job_issue') docLabel = 'Job Issue';
-      if (docLabel === 'purchase_order') docLabel = 'Purchase Order';
-      if (docLabel === 'item_opening_stock') docLabel = 'Opening Balance';
-      if (docLabel === 'inventory_adjustment') docLabel = 'Inventory Adjustment By Quantity';
-      if (docLabel === 'assembly') docLabel = 'Assemblies';
-
-      const info = entry.sourceDocId ? docInfo.get(entry.sourceDocId) : null;
-      const transactionStr = info ? `${docLabel} # ${info.number}` : docLabel;
-      const finalPartyName = info?.partyName || entry.partyName || '';
-
-      const isVendor = entry.sourceDocType === 'bill' || entry.sourceDocType === 'purchase_order';
-      const defaultPartyType = isVendor ? 'vendor' : 'customer';
-
-      const partyId = entry.ownerPartyId || info?.partyId || null;
-      const partyType = partyId ? info?.partyType || defaultPartyType : null;
-
-      if (qIn > 0) {
-        const existingIn = item.inEvents.find(
-          (e) =>
-            e.docId === entry.sourceDocId &&
-            e.docType === entry.sourceDocType &&
-            Math.abs(e.cost - vIn / qIn) < 0.001,
-        );
-        if (existingIn) {
-          existingIn.qty += qIn;
-          existingIn.total += vIn;
-          existingIn.cost = Math.abs(existingIn.total / existingIn.qty);
-        } else {
-          item.inEvents.push({
-            date: entry.date,
-            createdAt: entry.createdAt,
-            transaction: transactionStr,
-            partyName: finalPartyName,
-            qty: qIn,
-            uom: entry.uomName || 'unit',
-            cost: Math.abs(vIn / qIn),
-            total: vIn,
-            docType: entry.sourceDocType,
-            docId: entry.sourceDocId || '',
-            partyId,
-            partyType,
-          });
-        }
-      }
-
-      if (qOut > 0) {
-        const existingOut = item.outEvents.find(
-          (e) => e.docId === entry.sourceDocId && e.docType === entry.sourceDocType,
-        );
-        if (existingOut) {
-          existingOut.qty += qOut;
-        } else {
-          item.outEvents.push({
-            date: entry.date,
-            createdAt: entry.createdAt,
-            transaction: transactionStr,
-            partyName: finalPartyName,
-            qty: qOut,
-            uom: entry.uomName || 'unit',
-            cost: 0,
-            total: 0,
-            docType: entry.sourceDocType,
-            docId: entry.sourceDocId || '',
-            partyId,
-            partyType,
-          });
-        }
-      }
-    }
+    const from = fromDate ? new Date(fromDate).getTime() : -Infinity;
+    const to = toDate ? new Date(toDate).getTime() : Infinity;
+    const inRange = (date: Date) => date.getTime() >= from && date.getTime() <= to;
+    const qty = (value: Prisma.Decimal) => Number(value.toDecimalPlaces(4));
 
     const rows: FifoCostLotTrackingRow[] = [];
-    const sortedItems = Array.from(items.values()).sort((a, b) =>
-      a.itemName.localeCompare(b.itemName),
-    );
+    let currentItemId = '';
 
-    let currentItemName = '';
+    for (const layer of layers) {
+      // A document taking back its own layer is a correction of itself, not a
+      // dispersal: an edited bill's old lot, a cancelled receipt's output.
+      const own = (draw: DrawRow) =>
+        draw.outDocType === layer.inDocType && draw.outDocId === layer.inDocId;
+      const layerDraws = drawsByLayer.get(layer.id) ?? [];
+      const selfTaken = layerDraws
+        .filter(own)
+        .reduce((sum, draw) => sum.plus(draw.qty), new Prisma.Decimal(0));
+      const lotQty = layer.qty.minus(selfTaken);
+      if (!lotQty.greaterThan(0)) continue;
+      const dispersals = layerDraws.filter((draw) => !own(draw));
 
-    for (const item of sortedItems) {
-      item.inEvents.sort((a, b) => {
-        const timeDiff = a.date.getTime() - b.date.getTime();
-        return timeDiff !== 0 ? timeDiff : a.createdAt.getTime() - b.createdAt.getTime();
-      });
-      item.outEvents.sort((a, b) => {
-        const timeDiff = a.date.getTime() - b.date.getTime();
-        return timeDiff !== 0 ? timeDiff : a.createdAt.getTime() - b.createdAt.getTime();
-      });
+      const shown = shownInDoc(layer);
+      const inDoc = describe(shown.type, shown.id);
+      const unitCost = layer.qty.isZero()
+        ? new Prisma.Decimal(0)
+        : layer.value.dividedBy(layer.qty).minus(layer.unitDiscount ?? 0);
+      const age = differenceInDays(new Date(), layer.inDate);
+      const inCols = {
+        inDate: format(layer.inDate, 'dd-MM-yyyy'),
+        inTransaction: inDoc.transaction,
+        inReceivedFrom: inDoc.partyName,
+        inQty: qty(lotQty),
+        inQtyUnit: layer.uomName ?? 'unit',
+        inQtyRemaining: qty(layer.remainingQty),
+        inAge: age > 0 ? `${age} Days` : '',
+        inCost: unitCost.toFixed(2),
+        inTotal: unitCost.times(lotQty).toFixed(2),
+        inDocType: shown.type ?? '',
+        inDocId: shown.id ?? '',
+        inPartyId: inDoc.partyId,
+        inPartyType: inDoc.partyType,
+      };
+      const noOut = {
+        outDate: null,
+        outTransaction: '',
+        outDispersedTo: '',
+        outQty: null,
+        outQtyUnit: '',
+        outDocType: '',
+        outDocId: '',
+        outPartyId: null,
+        outPartyType: null,
+      };
+      const outCols = (draw: DrawRow) => {
+        const outDoc = describe(draw.outDocType, draw.outDocId);
+        return {
+          outDate: format(draw.outDate, 'dd-MM-yyyy'),
+          outTransaction: outDoc.transaction,
+          outDispersedTo: outDoc.partyName,
+          outQty: qty(draw.qty),
+          outQtyUnit: layer.uomName ?? 'unit',
+          outDocType: draw.outDocType,
+          outDocId: draw.outDocId ?? '',
+          outPartyId: outDoc.partyId,
+          outPartyType: outDoc.partyType,
+        };
+      };
 
-      let isFirstItemRow = false;
+      const printed = isProductOut
+        ? dispersals
+            .filter((draw) => inRange(draw.outDate))
+            .map((draw) => ({ ...inCols, ...outCols(draw) }))
+        : inRange(layer.inDate)
+          ? dispersals.length
+            ? dispersals.map((draw) => ({ ...inCols, ...outCols(draw) }))
+            : [{ ...inCols, ...noOut }]
+          : [];
 
-      if (item.itemName !== currentItemName) {
-        isFirstItemRow = true;
-        currentItemName = item.itemName;
-      }
-
-      // Pre-calculate remaining quantities for each IN lot
-      let totalOutForItem = item.outEvents.reduce((sum, e) => sum + e.qty, 0);
-      const originalInQty = new Map<LedgerEvent, number>();
-      const inQtyRemainingMap = new Map<LedgerEvent, number>();
-      for (const inEv of item.inEvents) {
-        originalInQty.set(inEv, inEv.qty);
-        const consumed = Math.min(inEv.qty, totalOutForItem);
-        inQtyRemainingMap.set(inEv, inEv.qty - consumed);
-        totalOutForItem -= consumed;
-      }
-
-      const filterFromDate = fromDate ? new Date(fromDate).getTime() : 0;
-      const filterToDate = toDate ? new Date(toDate).getTime() : Infinity;
-
-      let inIndex = 0;
-      let outIndex = 0;
-      const inEvPrinted = new Set<LedgerEvent>();
-
-      while (inIndex < item.inEvents.length || outIndex < item.outEvents.length) {
-        const inEv = item.inEvents[inIndex];
-        const outEv = item.outEvents[outIndex];
-
-        let outQtyToPrint = 0;
-        let matchQty = 0;
-
-        if (inEv && outEv) {
-          matchQty = Math.min(inEv.qty, outEv.qty);
-          outQtyToPrint = matchQty;
-        } else if (outEv) {
-          outQtyToPrint = outEv.qty;
-        }
-
-        let shouldPrintPair = false;
-
-        if (isProductOut) {
-          if (outEv) {
-            const outTime = outEv.date.getTime();
-            if (outTime >= filterFromDate && outTime <= filterToDate) {
-              shouldPrintPair = true;
-            }
-          }
-        } else {
-          if (inEv) {
-            const inTime = inEv.date.getTime();
-            if (inTime >= filterFromDate && inTime <= filterToDate) {
-              if (outEv && matchQty > 0) {
-                shouldPrintPair = true;
-                inEvPrinted.add(inEv);
-              } else {
-                if (!inEvPrinted.has(inEv)) {
-                  shouldPrintPair = true;
-                  inEvPrinted.add(inEv);
-                }
-              }
-            }
-          }
-        }
-
-        if (shouldPrintPair) {
-          const ageStr =
-            inEv && differenceInDays(new Date(), inEv.date) > 0
-              ? `${differenceInDays(new Date(), inEv.date)} Days`
-              : '';
-          const origQty = inEv ? originalInQty.get(inEv) || inEv.qty : 0;
-          const remaining = inEv ? inQtyRemainingMap.get(inEv) || 0 : 0;
-
-          // If we print an untouched lot in Product In mode, outEv might be defined but not matching (or outEv is null).
-          // Actually, if matchQty == 0, we should treat outEv as null for printing purposes.
-          const printOutEv = outEv && (isProductOut || matchQty > 0) ? outEv : null;
-
-          rows.push({
-            itemName: isFirstItemRow ? item.itemName : '',
-
-            inDate: inEv ? format(inEv.date, 'dd-MM-yyyy') : null,
-            inTransaction: inEv ? inEv.transaction : '',
-            inReceivedFrom: inEv ? inEv.partyName : '',
-            inQty: inEv ? Number(origQty.toFixed(4)) : null,
-            inQtyUnit: inEv ? inEv.uom : '',
-            inQtyRemaining: inEv ? Number(remaining.toFixed(4)) : 0,
-            inAge: ageStr,
-            inCost: inEv ? inEv.cost.toFixed(2) : '',
-            inTotal: inEv ? (origQty * inEv.cost).toFixed(2) : '',
-            inDocType: inEv ? inEv.docType : '',
-            inDocId: inEv ? inEv.docId : '',
-            inPartyId: inEv ? inEv.partyId : null,
-            inPartyType: inEv ? inEv.partyType : null,
-
-            outDate: printOutEv ? format(printOutEv.date, 'dd-MM-yyyy') : null,
-            outTransaction: printOutEv ? printOutEv.transaction : '',
-            outDispersedTo: printOutEv ? printOutEv.partyName : '',
-            outQty: printOutEv ? Number(outQtyToPrint.toFixed(4)) : null,
-            outQtyUnit: printOutEv ? printOutEv.uom : '',
-            outDocType: printOutEv ? printOutEv.docType : '',
-            outDocId: printOutEv ? printOutEv.docId : '',
-            outPartyId: printOutEv ? printOutEv.partyId : null,
-            outPartyType: printOutEv ? printOutEv.partyType : null,
-          });
-          isFirstItemRow = false;
-        }
-
-        if (inEv && outEv) {
-          inEv.qty -= matchQty;
-          outEv.qty -= matchQty;
-          if (inEv.qty <= 0.0001) inIndex++;
-          if (outEv.qty <= 0.0001) outIndex++;
-        } else if (inEv) {
-          inIndex++;
-        } else if (outEv) {
-          outIndex++;
-        }
+      for (const row of printed) {
+        rows.push({ ...row, itemName: layer.itemId !== currentItemId ? layer.itemName : '' });
+        currentItemId = layer.itemId;
       }
     }
 
@@ -504,4 +254,84 @@ export async function getFifoCostLotTracking(
       totalPages,
     };
   });
+}
+
+type PartyInfo = {
+  number: string;
+  partyName: string | null;
+  partyId: string | null;
+  partyType: 'vendor' | 'customer' | null;
+};
+
+/** Document numbers and parties, one query per document type that appears. */
+async function describeParties(
+  tx: TenantClient,
+  refs: readonly { type: string; id: string }[],
+): Promise<Map<string, PartyInfo>> {
+  const idsOf = (type: string) => [
+    ...new Set(refs.filter((ref) => ref.type === type).map((ref) => ref.id)),
+  ];
+  const info = new Map<string, PartyInfo>();
+
+  const issueIds = idsOf('job_issue');
+  if (issueIds.length) {
+    const docs = await tx.jobIssue.findMany({
+      where: { id: { in: issueIds } },
+      select: { id: true, challanNumber: true, processorNameSnapshot: true, processorId: true },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, {
+        number: d.challanNumber,
+        partyName: d.processorNameSnapshot,
+        partyId: d.processorId,
+        partyType: 'customer',
+      }),
+    );
+  }
+  const receiptIds = idsOf('job_receipt');
+  if (receiptIds.length) {
+    const docs = await tx.jobReceipt.findMany({
+      where: { id: { in: receiptIds } },
+      select: { id: true, receiptNumber: true, processorNameSnapshot: true, processorId: true },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, {
+        number: d.receiptNumber,
+        partyName: d.processorNameSnapshot,
+        partyId: d.processorId,
+        partyType: 'customer',
+      }),
+    );
+  }
+  const billIds = idsOf('bill');
+  if (billIds.length) {
+    const docs = await tx.bill.findMany({
+      where: { id: { in: billIds } },
+      select: {
+        id: true,
+        billNumber: true,
+        vendorId: true,
+        vendor: { select: { contactName: true } },
+      },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, {
+        number: d.billNumber,
+        partyName: d.vendor?.contactName || null,
+        partyId: d.vendorId,
+        partyType: 'vendor',
+      }),
+    );
+  }
+  const assemblyIds = idsOf('item_assembly');
+  if (assemblyIds.length) {
+    const docs = await tx.itemAssembly.findMany({
+      where: { id: { in: assemblyIds } },
+      select: { id: true, assemblyNumber: true },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, { number: d.assemblyNumber, partyName: null, partyId: null, partyType: null }),
+    );
+  }
+  return info;
 }

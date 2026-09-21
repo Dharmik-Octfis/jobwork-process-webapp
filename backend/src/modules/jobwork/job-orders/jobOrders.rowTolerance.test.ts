@@ -73,9 +73,9 @@ const orderFor = (inputs: { itemId: string; plannedQty: number; tolerancePct?: n
         processorType: 'vendor',
         processorId: dyerId,
         inputs,
-        // The first input passes through — the output is beside the point here, and
-        // a pass-through is exempt from the several-inputs rule (landed-cost plan V1).
-        outputs: [{ itemId: inputs[0]!.itemId, isPrimary: true }],
+        // Every input passes through — the outputs are beside the point here, and a
+        // pass-through is exempt from V1 while still drawing on its input (V5).
+        outputs: inputs.map((row, index) => ({ itemId: row.itemId, isPrimary: index === 0 })),
       },
     ],
   });

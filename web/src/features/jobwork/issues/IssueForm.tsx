@@ -1078,8 +1078,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
     uomId: row.uomId,
     expectedQty:
       row.expectedQty === null || row.expectedQty === undefined ? null : toNumber(row.expectedQty),
+    sharePct: row.sharePct === null || row.sharePct === undefined ? null : toNumber(row.sharePct),
   }));
-  const gaps = planGaps(planRowsIn, planRowsOut);
+  // Anything but `pending` means material already moved against this step.
+  const gaps = planGaps(planRowsIn, planRowsOut, step.status !== 'pending');
   const planItemName = (itemId: string) =>
     [...step.inputs, ...step.outputs].find((row) => row.itemId === itemId)?.item?.name ?? 'an item';
   const planProblems = [
@@ -1089,6 +1091,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       : []),
     ...(gaps.noExpected.length
       ? [`no expected quantity for ${gaps.noExpected.map(planItemName).join(', ')}`]
+      : []),
+    ...(gaps.noShare.length ? [`no share % for ${gaps.noShare.map(planItemName).join(', ')}`] : []),
+    ...(gaps.shareTotalOff !== null
+      ? [`the output shares add up to ${gaps.shareTotalOff}%, not 100%`]
       : []),
   ];
   // Off the saved recipe snapshot: a composite output carries its rows, a plain one none.

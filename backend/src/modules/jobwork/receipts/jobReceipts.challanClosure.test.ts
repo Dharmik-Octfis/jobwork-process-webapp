@@ -99,7 +99,13 @@ async function seedStock(itemId: string, qty: number, valuePerUnit: number, owne
   });
 }
 
-type PlanRow = { itemId: string; plannedQty?: number; expectedQty?: number; rate?: number };
+type PlanRow = {
+  itemId: string;
+  plannedQty?: number;
+  expectedQty?: number;
+  rate?: number;
+  sharePct?: number;
+};
 
 async function planStep(inputs: PlanRow[], outputs: PlanRow[], owner?: string) {
   const jo = await createNewJobOrder(orgId, {
@@ -417,8 +423,8 @@ describe('closing a challan — cost', { timeout: 120_000 }, () => {
     const { stepId } = await planStep(
       [{ itemId: cotton, plannedQty: 1000 }],
       [
-        { itemId: red, expectedQty: 500, rate: 3 },
-        { itemId: green, expectedQty: 450, rate: 4 },
+        { itemId: red, expectedQty: 500, rate: 3, sharePct: 55 },
+        { itemId: green, expectedQty: 450, rate: 4, sharePct: 45 },
       ],
     );
     const challan = await issue(stepId, [{ itemId: cotton, batchId: batch.id, qty: 1000 }]);
@@ -503,6 +509,12 @@ describe('closing a challan — reopening and refusals', { timeout: 120_000 }, (
     const buttons = await makeItem('Buttons', { pieces: true });
     const redCotton = await makeItem('Red Cotton', { composite: true });
     await recipe(redCotton, [[cotton, 1]]);
+    // Only the shirts draw on buttons (V5), and this receipt brings back none of them.
+    const shirt = await makeItem('Shirt', { composite: true, pieces: true });
+    await recipe(shirt, [
+      [cotton, 1],
+      [buttons, 5],
+    ]);
     const cottonBatch = await seedStock(cotton, 100, 10);
     const buttonBatch = await seedStock(buttons, 50, 1);
     const { stepId } = await planStep(
@@ -510,7 +522,10 @@ describe('closing a challan — reopening and refusals', { timeout: 120_000 }, (
         { itemId: cotton, plannedQty: 100 },
         { itemId: buttons, plannedQty: 50 },
       ],
-      [{ itemId: redCotton, expectedQty: 95, rate: 5 }],
+      [
+        { itemId: redCotton, expectedQty: 85, rate: 5 },
+        { itemId: shirt, expectedQty: 10, rate: 5 },
+      ],
     );
     const fabricChallan = await issue(stepId, [
       { itemId: cotton, batchId: cottonBatch.id, qty: 100 },

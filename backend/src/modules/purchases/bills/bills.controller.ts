@@ -44,6 +44,12 @@ export async function getBill(req: Request, res: Response) {
   sendSuccess(res, item);
 }
 
+export async function getOpenJobReceipts(req: Request, res: Response) {
+  const orgId = req.tenantId!;
+  const data = await billService.getOpenJobReceiptsForVendor(orgId, req.params.vendorId as string);
+  sendSuccess(res, data);
+}
+
 export async function createBill(req: Request, res: Response) {
   const orgId = req.tenantId!;
   const data = createBillSchema.parse(req.body);

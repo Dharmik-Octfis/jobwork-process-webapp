@@ -333,6 +333,8 @@ model Organization {
   batches                Batch[]
   batchUnits             BatchUnit[]
   stockLedgerEntries     StockLedgerEntry[]
+  stockCostLayers        StockCostLayer[]
+  stockLayerDraws        StockLayerDraw[]
   routes                 Route[]
   routeSteps             RouteStep[]
   jobOrders              JobOrder[]

@@ -88,10 +88,11 @@ export async function getBatchById(organizationId: string, id: string) {
     if (!batch) return null;
 
     const balance = await getBalance(tx, { organizationId, batchId: id });
+    // No batch value: cost is FIFO per item per location, so a batch's own value
+    // means nothing (docs/FIFO_COSTING_PLAN.md §3.3).
     return {
       ...batch,
       availableQty: balance.qty.toString(),
-      accumulatedValue: balance.value.toString(),
     };
   });
 }
@@ -272,12 +273,8 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       ownership: batch.ownership,
       ownerPartyId: batch.ownerPartyId,
       availableQty: batch.availableQty.toString(),
-      accumulatedValue: batch.value.toString(),
-      // Cost per unit of what is LEFT, not of what was received. Derived every
-      // time; there is no stored cost column (plan §3, decision 1).
-      costPerUnit: batch.availableQty.greaterThan(0)
-        ? batch.value.dividedBy(batch.availableQty).toDecimalPlaces(4).toString()
-        : null,
+      // No batch value or cost per unit: under FIFO a batch is traceability, not
+      // a cost bucket (docs/FIFO_COSTING_PLAN.md §3.3).
       inventoryTracking: trackingByItem.get(batch.itemId) ?? 'none',
 
       /**

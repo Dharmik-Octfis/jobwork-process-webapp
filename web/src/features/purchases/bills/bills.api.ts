@@ -11,6 +11,7 @@ import {
   billActivitySchema,
   billsPageSchema,
 } from './bills.schemas';
+import type { OpenJobReceipt } from './AddJobReceiptsModal';
 
 export async function fetchBills(orgId: string, params: PageParams = {}): Promise<BillsPage> {
   const response = await apiClient.get(endpoints.purchases.bills(orgId), { params });
@@ -20,6 +21,11 @@ export async function fetchBills(orgId: string, params: PageParams = {}): Promis
 export async function fetchBillCount(orgId: string, params: PageParams = {}): Promise<number> {
   const response = await apiClient.get(`${endpoints.purchases.bills(orgId)}/count`, { params });
   return (response.data as { total: number }).total;
+}
+
+export async function fetchOpenJobReceipts(orgId: string, vendorId: string): Promise<OpenJobReceipt[]> {
+  const response = await apiClient.get(`${endpoints.purchases.bills(orgId)}/open-job-receipts/${vendorId}`);
+  return response.data;
 }
 
 export async function createBill(orgId: string, data: CreateBillData): Promise<Bill> {

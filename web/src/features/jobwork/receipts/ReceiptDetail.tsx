@@ -369,22 +369,44 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
           {/* A cancellation reverses ledger rows, so it only applies to a receipt
               that posted some. A draft is deleted above. */}
           {receipt.status !== 'cancelled' && receipt.status !== 'draft' && (
-            <button
-              className="action-btn"
-              type="button"
-              onClick={() => setCancelOpen(true)}
-              style={{
-                padding: '6px 12px',
-                fontSize: 13,
-                border: '1px solid #fecaca',
-                borderRadius: 4,
-                background: '#fff',
-                cursor: 'pointer',
-                color: '#b91c1c',
-              }}
-            >
-              <span className="action-btn-text">Cancel</span>
-            </button>
+            <>
+              {!((receipt._count?.billItems ?? 0) > 0) && (
+                <button
+                  className="action-btn"
+                  type="button"
+                  onClick={() => {
+                    navigate(`/organizations/${orgId}/purchases/bills/new?jobReceiptId=${receipt.id}&vendorId=${receipt.processorId}`);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 13,
+                    border: '1px solid #d1d5db',
+                    borderRadius: 4,
+                    background: '#fff',
+                    cursor: 'pointer',
+                    color: '#333',
+                  }}
+                >
+                  <span className="action-btn-text">Convert to Bill</span>
+                </button>
+              )}
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => setCancelOpen(true)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #fecaca',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#b91c1c',
+                }}
+              >
+                <span className="action-btn-text">Cancel</span>
+              </button>
+            </>
           )}
           <button
             type="button"
