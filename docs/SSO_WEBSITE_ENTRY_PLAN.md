@@ -36,18 +36,18 @@ checking the real site:
    _"Access Restricted"_), and its content is still the Zoho Sites template. §5.2's bounce and §5.6's
    post-logout both land there, so the page must be public before either ships.
 
-| Section                            | Site                  | State                                                                                                                                                   |
-| ---------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                       |
-| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                      |
-| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                       |
-| §4 the identity provider           | `accounts.octfis.com` | ⚠️ §4.1, §4.2, §4.4 built 2026-09-21, **not deployed** (`session/status.routes.ts`, `SESSION_STATUS_ORIGINS`, `oidc/firstPartyGrant.ts`); §4.3, §4.5 ❌ |
-| §5 the app                         | `jobwork.octfis.com`  | ⚠️ §5.1–§5.5 built 2026-09-21, **not deployed** (`/home`, `/no-access`, silent sign-in + loop guard, `SSO_WEBSITE_URL`); §5.6 values and §5.7 ❌        |
-| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                                 |
-| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                             |
-| §8 build order                     | —                     | ❌                                                                                                                                                      |
-| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy drafted, awaiting review                                                                  |
-| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                             |
+| Section                            | Site                  | State                                                                                                                                                                |
+| ---------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                                    |
+| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                                   |
+| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                                    |
+| §4 the identity provider           | `accounts.octfis.com` | ✅ §4.1, §4.2, §4.4 **deployed to production 2026-09-21**; ⚠️ §4.3 (`ROOT_REDIRECT_URL`) and noindex built, not deployed; §4.5 registry change prepared, not applied |
+| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 **deployed to production 2026-09-21** (SSO on); ⚠️ §5.7 noindex built, not deployed; §5.6 values wait for the website page to be public                 |
+| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                                              |
+| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                                          |
+| §8 build order                     | —                     | ❌                                                                                                                                                                   |
+| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy drafted, awaiting review                                                                               |
+| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                                          |
 
 _Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
 assumed `octfis.com/jobwork` throughout; build-order steps 1–4 are in code, not deployed._
@@ -363,7 +363,18 @@ Each step is independently deployable and leaves the estate working.
      the website bounce need the real hostnames.
      🔴 **Blocked until `www.octfis.com/job-work-1` is public** — it is where the bounce lands.
 5. **Repoint the roots** (§4.3, §4.5, §5.6, §5.7) — config and registry. Same blocker as step 4 for
-   the post-logout half.
+   the post-logout half. Code built 2026-09-21, in two phases so nothing waits on the website:
+   - **A — safe now.** `DEFAULT_APP_SIGNIN_URL` renamed to `ROOT_REDIRECT_URL` (accounts `/` →
+     `https://www.octfis.com`, the public home page; `deploy/services.json` requires the new name);
+     `X-Robots-Tag: noindex, nofollow` on every response of both services. Registry: add
+     `https://www.octfis.com/job-work-1` to `jobwork-production`'s post-logout URIs, KEEPING
+     `https://jobwork.octfis.com/` so either value of the jobwork variable works and rollback needs
+     no registry change:
+     `npm run register:client -- --id jobwork-production --name Jobwork --redirect https://jobwork.octfis.com/api/auth/sso/callback --post-logout https://jobwork.octfis.com/ --post-logout https://www.octfis.com/job-work-1 --backchannel https://jobwork.octfis.com/api/auth/sso/backchannel-logout --apply`
+     then deploy accounts (the registry and CSP `form-action` are read at boot), then the api.
+   - **B — once `www.octfis.com/job-work-1` is public.** In `backend/.env.production` set
+     `SSO_POST_LOGOUT_REDIRECT_URI` and `SSO_WEBSITE_URL` to `https://www.octfis.com/job-work-1`,
+     then redeploy the api. Before that, both would land visitors on "Access Restricted".
 
 ⚠️ **Step 4 cannot be fully verified on localhost.** `SSO_AND_IDENTITY.md` §10.3 already records that
 `oidc-provider` refuses to POST logout tokens to `127.0.0.0/8`; the three-host cookie and CSP

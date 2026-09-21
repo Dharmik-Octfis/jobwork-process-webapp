@@ -40,6 +40,13 @@ export function createApp(): express.Express {
     }),
   );
 
+  // Keep the whole app out of search results — docs/SSO_WEBSITE_ENTRY_PLAN.md §5.7.
+  // A search for "octfis jobwork" should find the product website, not this login.
+  app.use((_req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    next();
+  });
+
   app.use(
     cors({
       origin: env.corsOrigins,

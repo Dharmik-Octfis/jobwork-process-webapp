@@ -42,6 +42,17 @@ export async function createApp(): Promise<Express> {
   app.use(pinPublicOrigin(env.oidcIssuer));
 
   /**
+   * Keep every page of this service out of search results — §5.7 of
+   * docs/SSO_WEBSITE_ENTRY_PLAN.md. Otherwise a search for "octfis jobwork" can surface
+   * this sign-in form, which is the result the product website exists to own.
+   * Before everything else, so the provider's own pages carry it too.
+   */
+  app.use((_req, res, next) => {
+    res.set('X-Robots-Tag', 'noindex, nofollow');
+    next();
+  });
+
+  /**
    * Read once at boot, like the client registry itself — see the note on
    * `form-action` below for what these are for and why `'self'` alone is not enough.
    * ⚠️ Same restart-to-pick-up-a-new-client caveat as `loadClients()`.
@@ -137,20 +148,19 @@ export async function createApp(): Promise<Express> {
   }
 
   /**
-   * The root — see the note on `DEFAULT_APP_SIGNIN_URL`.
+   * The root — see the note on `ROOT_REDIRECT_URL`.
    *
    * 🔴 Not a landing page, because this service cannot host one: a session is only
    * ever created by finishing an interaction, and only `/authorize` starts one. So
-   * `/` hands the visitor to the default app's sign-in entry point, which starts a
-   * real authorization request and comes straight back — to the app if they already
-   * have a session here, to this service's own sign-in page if they do not.
+   * `/` hands the visitor to the product website, where each app's sign-in button
+   * lives.
    *
-   * 302, not 301: the default app is configuration and will change. A 301 is cached
-   * by the browser more or less forever, so getting this wrong once would outlive
-   * the fix.
+   * 302, not 301: the target is configuration and will change. A 301 is cached by
+   * the browser more or less forever, so getting this wrong once would outlive the
+   * fix.
    */
   app.get('/', (_req, res) => {
-    res.set('X-Robots-Tag', 'noindex').redirect(302, env.defaultAppSigninUrl);
+    res.redirect(302, env.rootRedirectUrl);
   });
 
   /**
