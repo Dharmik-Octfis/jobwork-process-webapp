@@ -302,13 +302,14 @@ input[type='number'] {
 }
 
 .sidebar-nav-link:hover {
-  background-color: #f0f7fd !important;
-  color: #0284c7 !important;
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: #ffffff !important;
 }
 .sidebar-nav-link.active,
 .sidebar-nav-link.active:hover {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  background: linear-gradient(135deg, #00b4d8 0%, #0284c7 100%) !important;
   color: #ffffff !important;
+  box-shadow: 0 2px 10px rgba(0, 180, 216, 0.35) !important;
 }
 
 .app-sidebar nav::-webkit-scrollbar {
@@ -318,11 +319,11 @@ input[type='number'] {
   background: transparent;
 }
 .app-sidebar nav::-webkit-scrollbar-thumb {
-  background: #e2e8f0;
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
 .app-sidebar nav::-webkit-scrollbar-thumb:hover {
-  background: #cbd5e1;
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Responsive Sidebar & AppLayout Styles */
