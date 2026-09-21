@@ -104,6 +104,12 @@ Unauthenticated. Return **only** this flag — never the issuer URL or client id
 
 ### 5.2 `GET /api/auth/sso/login` — start sign-in
 
+**Two URLs appear in this section — you build only the first.** `/api/auth/sso/login` is your
+route; the browser reaches it by full page navigation (never `fetch`). It returns **no JSON** —
+only a `302` whose `Location` header is the `accounts.octfis.com/auth?...` URL in step 3, which
+already exists on accounts. Your library builds that URL (`openid-client`'s
+`buildAuthorizationUrl`); accounts later sends the browser back to your §5.3 callback.
+
 | Query                    | Meaning                                                                                                                                               |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `returnTo` (optional)    | A path inside your app to land on afterwards, e.g. `/invite/accept?token=…`. Must start with `/` and not `//` (else ignore it — open-redirect guard). |
@@ -183,9 +189,13 @@ grant_type=authorization_code&code=<code>&redirect_uri=<SSO_REDIRECT_URI>&code_v
 ```
 
 🔴 The token is **identity only** — no organizations, roles or permissions, ever. Your app
-decides those on every request from its own database. 6. Find or create the local user (§6). Refused → **302 to `/no-access`** (not a JSON 403 — this
-is a page load). 7. Create **your own** session (refresh cookie + access token) and store `sid` →
-`idp_session_id`, `sub` → `idp_subject`. 8. 302 to `APP_URL + (returnTo ?? '/home')`. Do **not** put any token in the URL.
+decides those on every request from its own database.
+
+6. Find or create the local user (§6). Refused → **302 to `/no-access`** (not a JSON 403 — this
+   is a page load).
+7. Create **your own** session (refresh cookie + access token) and store `sid` →
+   `idp_session_id`, `sub` → `idp_subject`.
+8. 302 to `APP_URL + (returnTo ?? '/home')`. Do **not** put any token in the URL.
 
 ### 5.4 `GET /api/auth/sso/logout` — sign out everywhere
 
