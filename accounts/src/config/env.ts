@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { isExactOrigin } from '../lib/exactOrigin.ts';
 
 /**
  * Validate every environment variable at boot and fail fast, exactly as the app
@@ -72,6 +73,33 @@ const envSchema = z.object({
     }),
 
   /**
+   * Origins allowed to ask `GET /session/status` with credentials — the product
+   * website's "Sign In" / "Access Jobwork" label. Comma-separated.
+   *
+   * 🔴 Exact origins only, e.g. `https://www.octfis.com`. `www` is part of the origin:
+   * bare `https://octfis.com` is a different one, and listing it instead blocks every
+   * probe from the real site — silently, because the website treats a failed probe as
+   * "not signed in". No wildcard, no path, no trailing slash.
+   *
+   * Optional: unset, the endpoint answers same-origin only and the website's button
+   * stays on "Sign In", which still works.
+   */
+  SESSION_STATUS_ORIGINS: z
+    .string()
+    .default('')
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    )
+    .refine((origins) => origins.every(isExactOrigin), {
+      message:
+        'SESSION_STATUS_ORIGINS must be exact origins like https://www.octfis.com — https ' +
+        '(except localhost), no path, no trailing slash, no wildcard',
+    }),
+
+  /**
    * 🔴 Encrypts `signing_keys.private_jwk` at rest, and lives OUTSIDE the database
    * it protects. Storing it alongside the ciphertext would make a database dump a
    * licence to mint tokens for anyone, for any app, forever.
@@ -131,6 +159,7 @@ export const env = {
   databaseSslCaPath: raw.DATABASE_SSL_CA_PATH,
   oidcIssuer: raw.OIDC_ISSUER,
   defaultAppSigninUrl: raw.DEFAULT_APP_SIGNIN_URL,
+  sessionStatusOrigins: raw.SESSION_STATUS_ORIGINS,
   signingKeySecret: raw.SIGNING_KEY_SECRET,
   cookieSecrets: raw.COOKIE_SECRETS,
   zepto: {

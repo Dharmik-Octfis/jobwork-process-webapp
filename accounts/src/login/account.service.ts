@@ -1,6 +1,7 @@
 import argon2 from 'argon2';
 import { randomInt } from 'node:crypto';
 import { prisma } from '../db/prisma.ts';
+import { ACTIVE_USER } from '../lib/activeUser.ts';
 import { sendOtpEmail } from '../lib/mailer.ts';
 
 /**
@@ -17,9 +18,6 @@ import { sendOtpEmail } from '../lib/mailer.ts';
 const OTP_TTL_MS = 10 * 60 * 1000;
 const PURPOSE_RESET = 'password_reset';
 const PURPOSE_VERIFY = 'email_verify';
-
-/** Same predicate as the app's ACTIVE_USER. One definition of "usable account". */
-const ACTIVE_USER = { isActive: true, isDeleted: false } as const;
 
 /**
  * 🔴 `randomInt`, not `Math.random()`. This code is a credential — it is the entire

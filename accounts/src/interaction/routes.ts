@@ -2,6 +2,7 @@ import { Router, urlencoded, type Request, type Response } from 'express';
 import argon2 from 'argon2';
 import type Provider from 'oidc-provider';
 import { prisma } from '../db/prisma.ts';
+import { ACTIVE_USER } from '../lib/activeUser.ts';
 import { loginPage, errorPage } from './views.ts';
 
 /**
@@ -13,9 +14,6 @@ import { loginPage, errorPage } from './views.ts';
  * a parser above it leaves the token endpoint with an empty body and every code
  * exchange fails with an error that blames the client.
  */
-
-/** Same predicate as the app's ACTIVE_USER. One definition of "usable account". */
-const ACTIVE_USER = { isActive: true, isDeleted: false } as const;
 
 /**
  * 🔴 Answer a bad email and a bad password identically, and spend the same work on

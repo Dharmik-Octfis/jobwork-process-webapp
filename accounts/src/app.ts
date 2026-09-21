@@ -9,15 +9,21 @@ import { createOidcProvider } from './oidc/provider.ts';
 import { clientOrigins } from './oidc/clients.ts';
 import { interactionRouter } from './interaction/routes.ts';
 import { accountRouter } from './login/account.routes.ts';
+import { sessionStatusRouter } from './session/status.routes.ts';
 
 /**
  * The accounts service's HTTP surface.
  *
- * 🔴 No CORS, deliberately. Every exchange with this service is either a top-level
- * browser redirect (`/authorize`, `/login`, logout) or a server-to-server call from
- * an app's backend (`/token`, `/jwks`). Nothing legitimate makes a cross-origin XHR
- * here, so an `Access-Control-Allow-Origin` header would only ever widen what a
+ * 🔴 No CORS, deliberately — with ONE exception. Every exchange with this service is
+ * either a top-level browser redirect (`/authorize`, `/login`, logout) or a
+ * server-to-server call from an app's backend (`/token`, `/jwks`), so an
+ * `Access-Control-Allow-Origin` header anywhere else would only ever widen what a
  * hostile page can do with a logged-in user's cookie.
+ *
+ * The exception is `GET /session/status` (session/status.routes.ts): a boolean the
+ * product website reads to label its sign-in button, allowed for the exact origins in
+ * `SESSION_STATUS_ORIGINS` and nothing else. Keep it that narrow — no app-wide CORS
+ * middleware, no second route, no wildcard.
  */
 export async function createApp(): Promise<Express> {
   const app = express();
@@ -172,6 +178,9 @@ export async function createApp(): Promise<Express> {
 
   /** Signup, email verification and password reset — also before the catch-all. */
   app.use(accountRouter());
+
+  /** The website's sign-in label — before the catch-all, beside the library's `/session/end`. */
+  app.use(sessionStatusRouter(provider));
 
   /**
    * 🔴 Mounted LAST, at the root, and with no body parser in front of it.
