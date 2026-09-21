@@ -9,8 +9,8 @@
 > `docs/SSO_WALKTHROUGH.md`. **Neither is superseded.** This changes where a sign-in _starts_ and
 > where an unauthenticated visitor is _sent_ — the entry and the exit, not the flow between them.
 
-_Status: **⚠️ partly built, nothing deployed.** Accounts has §4.1, §4.2 and §4.4 in code on
-`feat/singleSignOn`; jobwork (§5) and the rest of §4 are design only. The website page is owned by a different developer;
+_Status: **⚠️ partly built, nothing deployed.** On `feat/singleSignOn`: accounts has §4.1, §4.2 and
+§4.4; jobwork has §5.1 and §5.4. The rest is design only. The website page is owned by a different developer;
 what they need from us is a link and one endpoint, and that contract is already handed over (§3).
 Sections below are marked with the site they belong to._
 
@@ -42,15 +42,15 @@ checking the real site:
 | §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                      |
 | §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                       |
 | §4 the identity provider           | `accounts.octfis.com` | ⚠️ §4.1, §4.2, §4.4 built 2026-09-21, **not deployed** (`session/status.routes.ts`, `SESSION_STATUS_ORIGINS`, `oidc/firstPartyGrant.ts`); §4.3, §4.5 ❌ |
-| §5 the app                         | `jobwork.octfis.com`  | ❌ the bulk of the work                                                                                                                                 |
+| §5 the app                         | `jobwork.octfis.com`  | ⚠️ §5.1 and §5.4 built 2026-09-21, **not deployed** (`/home`, `/no-access`, callback 403 → `/no-access`); §5.2, §5.3, §5.5–§5.7 ❌                      |
 | §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                                 |
 | §7 traps                           | —                     | 🔴 read before implementing                                                                                                                             |
 | §8 build order                     | —                     | ❌                                                                                                                                                      |
-| §9 open decisions                  | —                     | 🔴 four, unanswered                                                                                                                                     |
+| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy drafted, awaiting review                                                                  |
 | §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                             |
 
 _Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
-assumed `octfis.com/jobwork` throughout; build-order steps 1 and 2 (accounts) are in code, not deployed._
+assumed `octfis.com/jobwork` throughout; build-order steps 1–3 are in code, not deployed._
 
 ---
 
@@ -345,7 +345,9 @@ Each step is independently deployable and leaves the estate working.
 1. **`/session/status` on accounts** (§4.1, §4.2) — nothing depends on it; the website's `.catch()`
    already treats its absence as "not signed in". Ship first so the website team can verify.
 2. **`loadExistingGrant`** (§4.4) — must precede §5.2, or silent auth looks broken for first-time users.
-3. **`/home`, `/no-access`, `/` → `/home`** (§5.1, §5.4) — routes only, no behaviour change yet.
+3. **`/home`, `/no-access`, `/` → `/home`** (§5.1, §5.4) — routes, plus the callback's refusal
+   (a 403 from `linkOrCreateLocalUser`) redirecting to `/no-access` instead of showing the JSON
+   envelope. ✅ Built 2026-09-21 (`redirectRefusedSignIn` in `sso.controller.ts`), not deployed.
 4. **`prompt=none` + error branch + loop guard + invite carve-out** (§5.2, §5.3, §5.5) — the change
    that alters what an unauthenticated visitor sees. One deploy, tested across real hostnames.
    🔴 **Blocked until `www.octfis.com/job-work-1` is public** — it is where the bounce lands.
@@ -362,10 +364,14 @@ front of this, not part of it.
 
 ## 9. Open decisions
 
-1. **`/home`** — confirm it is `OrgRedirect` renamed, not a new landing page (§5.1).
+1. ~~**`/home`**~~ — decided 2026-09-21: `/home` renders `OrgRedirect`, and `/` forwards to it
+   (§5.1). Not a new landing page.
 2. ~~**`loadExistingGrant`**~~ — decided 2026-09-21: first-party auto-grant, built in
    `oidc/firstPartyGrant.ts` (§4.4).
-3. **`/no-access` copy** — what it says, and whether it offers "sign out and try another account".
+3. **`/no-access` copy** — drafted 2026-09-21, awaiting review: title _"No access to Jobwork"_,
+   _"This account doesn't have access to Jobwork. If it should, ask your administrator to invite
+   you."_, and one button, _"Sign out and use another account"_. One wording for every refusal
+   (not invited, unverified, disabled), so the page cannot tell anyone which it was.
 4. **The status endpoint's answer** — boolean only, now and later? (§4.1)
 
 _Decided:_ **the website URL** — `https://www.octfis.com/job-work-1`, kept as is for now

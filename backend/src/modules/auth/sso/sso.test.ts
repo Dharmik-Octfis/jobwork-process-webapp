@@ -1,6 +1,10 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import type { Request, Response } from 'express';
+import { describe, it, expect, afterAll, vi } from 'vitest';
+import { env } from '../../../config/env.ts';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
+import { redirectRefusedSignIn } from './sso.controller.ts';
 import { landingPathFor, linkOrCreateLocalUser, safeReturnTo } from './sso.service.ts';
 
 /**
@@ -315,5 +319,48 @@ describe('§9.4 — landing', () => {
     // Inventing a tenant here would hand every new identity its own empty company.
     expect(await prisma.organization.count()).toBe(orgsBefore);
     expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(0);
+  });
+});
+
+describe('§5.4 — a refused sign-in lands on /no-access', () => {
+  /**
+   * The callback is a top-level navigation. Without this the refusal is a raw JSON
+   * 403 in the address bar of `/api/auth/sso/callback`, which reads as sign-in being
+   * broken — and once the website's "Access Jobwork" button exists, any signed-in
+   * identity can reach it.
+   */
+  function run(err: unknown) {
+    const redirect = vi.fn();
+    const next = vi.fn();
+    redirectRefusedSignIn(err, {} as Request, { redirect } as unknown as Response, next);
+    return { redirect, next };
+  }
+
+  it('redirects a not-invited refusal to the app page', async () => {
+    // The real refusal, from the real function: unverified email, nothing to link.
+    const refusal = await linkOrCreateLocalUser({ sub: randomUUID(), emailVerified: false }).catch(
+      (e: unknown) => e,
+    );
+
+    const { redirect, next } = run(refusal);
+
+    expect(redirect).toHaveBeenCalledWith(`${env.appUrl}/no-access`);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('redirects a disabled-account refusal to the same page', () => {
+    const { redirect } = run(new ApiError(403, 'This account has been disabled.'));
+
+    expect(redirect).toHaveBeenCalledWith(`${env.appUrl}/no-access`);
+  });
+
+  it.each([
+    ['an expired flow cookie', ApiError.badRequest('Sign-in expired. Please try again.')],
+    ['a failed code exchange', new Error('invalid_grant')],
+  ])('leaves %s to the ordinary error handler', (_label, err) => {
+    const { redirect, next } = run(err);
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith(err);
   });
 });

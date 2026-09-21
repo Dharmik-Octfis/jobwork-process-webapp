@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginPage } from '../features/auth/LoginPage';
 import { SignupPage } from '../features/auth/SignupPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
+import { NoAccessPage } from '../features/auth/NoAccessPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
 import { RequireOrganization } from '../routes/RequireOrganization';
 import { OrgRedirect } from '../routes/OrgRedirect';
@@ -327,7 +328,8 @@ const EditLocation = lazyPage(
  * returns 403 rather than someone else's data.
  *
  * Not org-scoped, deliberately: auth, `/profile`, `/organizations` (you pick one
- * *before* you have one), and `/invite/accept` (the invitee may have no account).
+ * *before* you have one), `/invite/accept` (the invitee may have no account), and
+ * `/no-access` (a signed-in identity jobwork refused).
  *
  * 🔴 Every lazy element below renders inside `AppLayout` or `SettingsLayout`,
  * which is where the `<Suspense>` boundary lives — around each layout's
@@ -351,22 +353,42 @@ export const router = createBrowserRouter([
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       // Public — the invitee may not have an account yet.
       { path: '/invite/accept', element: <AcceptInvitePage /> },
+      // Public — reached from a REFUSED sign-in, so there is no jobwork session to protect it with.
+      { path: '/no-access', element: <NoAccessPage /> },
       {
         element: <ProtectedRoute />,
         children: [
           {
             element: <AppLayout />,
             children: [
-              // No organization in the URL yet — send them to their last one.
-              { path: '/', element: <OrgRedirect /> },
+              /**
+               * No organization in the URL yet — send them to their last one.
+               *
+               * 🔴 `/home` IS `OrgRedirect`, not a dashboard of its own. It is the app's
+               * one "home" answer, and every entry point — a sign-in with no
+               * `returnTo`, the website's button, `/`, a bookmark — must reach this same
+               * component, or one account ends up with two homes depending on how it
+               * arrived (docs/SSO_WALKTHROUGH.md step 10). `/` only forwards here.
+               */
+              { path: '/home', element: <OrgRedirect /> },
+              { path: '/', element: <Navigate to="/home" replace /> },
               {
                 element: <RequireOrganization />,
                 children: [
                   { path: '/organizations/:orgId', element: <DashboardPage /> },
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
-                  { path: '/organizations/:orgId/reports/fifo-cost-lot-tracking', element: <FifoCostLotTrackingPage /> },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation-summary',
+                    element: <InventoryValuationSummaryPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation/:itemId',
+                    element: <InventoryValuationDetailPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/fifo-cost-lot-tracking',
+                    element: <FifoCostLotTrackingPage />,
+                  },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {
@@ -526,7 +548,7 @@ export const router = createBrowserRouter([
           { path: '/organizations/new', element: <CreateOrganizationForm /> },
         ],
       },
-      { path: '*', element: <Navigate to="/" replace /> },
+      { path: '*', element: <Navigate to="/home" replace /> },
     ],
   },
 ]);

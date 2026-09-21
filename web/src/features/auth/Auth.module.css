@@ -120,6 +120,14 @@
   margin-bottom: 4px;
 }
 
+/* A short explanation above the one action on a no-form page (NoAccessPage). */
+.notice {
+  margin: 0 0 16px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /*
   A labelled rule between the two ways in. The password form stays visible
   underneath on purpose: it is the rollback path during the cutover, so the

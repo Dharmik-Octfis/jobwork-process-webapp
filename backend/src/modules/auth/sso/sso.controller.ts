@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import * as client from 'openid-client';
 import { env } from '../../../config/env.ts';
 import { ApiError } from '../../../lib/apiError.ts';
@@ -193,6 +193,34 @@ export async function callback(req: Request, res: Response): Promise<void> {
    * was going to happen anyway and keeps exactly one way in.
    */
   res.redirect(`${env.appUrl}${landingPathFor(flow.returnTo)}`);
+}
+
+/**
+ * Error handler for `/callback` ONLY: a refused sign-in lands on the app's
+ * `/no-access` page instead of the envelope. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.4.
+ *
+ * The callback is a top-level navigation, not an XHR, so the normal `errorHandler`
+ * shows the browser a raw JSON 403 with the address bar stuck on the callback URL —
+ * which reads as sign-in being broken, not as "you are not invited". Once the website's
+ * "Access Jobwork" button exists, any signed-in identity can press it, so an
+ * unentitled visitor is an ordinary path rather than an edge case.
+ *
+ * 🔴 403 only, and every 403 here is a refusal from `linkOrCreateLocalUser` (not
+ * invited, unverified email, or disabled in jobwork). All three go to the same page
+ * with the same words, so this adds no way to tell them apart. Anything else — an
+ * expired flow cookie (400), a failed code exchange — is still the ordinary error.
+ */
+export function redirectRefusedSignIn(
+  err: unknown,
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (err instanceof ApiError && err.status === 403) {
+    res.redirect(`${env.appUrl}/no-access`);
+    return;
+  }
+  next(err);
 }
 
 /**
