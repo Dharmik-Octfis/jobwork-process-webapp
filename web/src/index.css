@@ -165,7 +165,9 @@ select:not(.no-global-focus),
 textarea:not(.no-global-focus),
 button[aria-haspopup='listbox']:not(.no-global-focus),
 button[role='combobox']:not(.no-global-focus) {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 input:not(.no-global-focus):hover:not(:disabled),
@@ -299,8 +301,29 @@ input[type='number'] {
   }
 }
 
-.sidebar-nav-link:hover { background-color: rgba(255,255,255,0.08) !important; }
-.sidebar-nav-link.active:hover { background-color: #186337 !important; }
+.sidebar-nav-link:hover {
+  background-color: #f0f7fd !important;
+  color: #0284c7 !important;
+}
+.sidebar-nav-link.active,
+.sidebar-nav-link.active:hover {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  color: #ffffff !important;
+}
+
+.app-sidebar nav::-webkit-scrollbar {
+  width: 4px;
+}
+.app-sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.app-sidebar nav::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 4px;
+}
+.app-sidebar nav::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
 
 /* Responsive Sidebar & AppLayout Styles */
 .mobile-header-menu-btn {
@@ -393,7 +416,7 @@ input[type='number'] {
   .master-detail-container.has-selection > .master-pane {
     display: none !important;
   }
-  
+
   /* When no selection on mobile, hide the detail pane */
   .master-detail-container:not(.has-selection) > .detail-pane {
     display: none !important;
@@ -405,7 +428,7 @@ input[type='number'] {
     border-right: none !important;
     min-width: 0;
   }
-  
+
   .master-pane header {
     flex-wrap: wrap !important;
     gap: 12px;
@@ -480,7 +503,7 @@ input[type='number'] {
   display: flex;
   gap: 0px;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   border-radius: 8px;
   border: 1px solid #eef0f3;
 }
@@ -535,7 +558,7 @@ input[type='number'] {
     grid-template-columns: 1fr !important;
     align-items: start !important;
   }
-  
+
   .pagination-bar {
     height: auto !important;
     padding: 12px 16px !important;
@@ -543,7 +566,7 @@ input[type='number'] {
     gap: 12px !important;
     justify-content: space-between !important;
   }
-  
+
   .pagination-per-page {
     display: none !important;
   }
@@ -558,32 +581,32 @@ input[type='number'] {
     width: max-content !important;
     min-width: 600px !important;
   }
-  
+
   .responsive-table-wrapper th,
   .responsive-table-wrapper td {
     white-space: nowrap !important;
   }
-  
+
   .detail-title {
     font-size: 16px !important;
   }
-  
+
   .action-btn-text {
     display: none !important;
   }
-  
+
   .action-btn {
     padding: 6px 8px !important;
   }
-  
+
   .detail-overview-grid {
     zoom: 0.9;
   }
-  
+
   .detail-content-layout {
     flex-direction: column !important;
   }
-  
+
   .detail-content-layout > div {
     flex: 1 1 auto !important;
     border-right: none !important;
@@ -599,12 +622,12 @@ input[type='number'] {
     flex-direction: column !important;
     gap: 16px !important;
   }
-  
+
   .detail-status-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 12px !important;
   }
-  
+
   .step-movement-grid {
     grid-template-columns: 1fr !important;
     gap: 16px !important;
@@ -614,24 +637,24 @@ input[type='number'] {
     height: 1px !important;
     margin: 8px 0;
   }
-  
+
   .app-topbar {
     padding: 0 12px !important;
   }
-  
+
   .topbar-search-area {
     margin-right: 8px;
   }
-  
+
   .global-search-container {
     width: 100% !important;
     max-width: 180px !important;
   }
-  
+
   .topbar-right-controls {
     gap: 8px !important;
   }
-  
+
   .topbar-org-dropdown {
     max-width: 100px;
   }
@@ -690,7 +713,7 @@ input[type='number'] {
     -webkit-overflow-scrolling: touch;
     width: 100%;
   }
-  
+
   /* 3. Ensure tables are wide enough to not squish columns, which triggers the scroll */
   .detail-pane table {
     min-width: 800px !important;
@@ -706,7 +729,7 @@ input[type='number'] {
   .action-btn {
     padding: 6px !important;
   }
-  
+
   .master-detail-container.has-selection > .master-pane {
     display: none !important;
   }
@@ -780,5 +803,6 @@ input[type='number'] {
   overflow-x: visible !important;
 }
 
-.table-row-hover:hover { background-color: #f8fafc !important; }
-
+.table-row-hover:hover {
+  background-color: #f8fafc !important;
+}

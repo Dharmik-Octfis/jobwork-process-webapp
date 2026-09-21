@@ -513,23 +513,25 @@ export function AppLayout() {
         style={{
           width: isSidebarCollapsed ? 72 : 220,
           transition: 'width 0.3s ease',
-          background: 'var(--navy-900)',
-          color: 'white',
+          background: '#ffffff',
+          color: '#1e293b',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: 'var(--shadow-md)',
+          borderRight: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.04)',
           zIndex: 20,
         }}
       >
+        {/* Organization Brand Header */}
         <div
           style={{
             height: '50px',
             boxSizing: 'border-box',
             padding: '0 var(--space-4)',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            borderBottom: '1px solid #e2e8f0',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
             overflow: 'hidden',
           }}
         >
@@ -539,8 +541,8 @@ export function AppLayout() {
               alt={activeOrg.name}
               onError={() => setLogoError(true)}
               style={{
-                maxWidth: isSidebarCollapsed ? 40 : 190,
-                maxHeight: 40,
+                maxWidth: isSidebarCollapsed ? 40 : 180,
+                maxHeight: 36,
                 width: 'auto',
                 height: 'auto',
                 objectFit: 'contain',
@@ -549,29 +551,60 @@ export function AppLayout() {
               }}
             />
           ) : activeOrg?.name ? (
-            <span
+            <div
               style={{
-                color: '#ffffff',
-                fontWeight: 600,
-                fontSize: 16,
-                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: isSidebarCollapsed ? 'none' : 'block',
               }}
             >
-              {isSidebarCollapsed ? activeOrg.name.charAt(0) : activeOrg.name}
-            </span>
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                  flexShrink: 0,
+                }}
+              >
+                {activeOrg.name.charAt(0).toUpperCase()}
+              </div>
+              {!isSidebarCollapsed && (
+                <span
+                  style={{
+                    color: '#0f172a',
+                    fontWeight: 700,
+                    fontSize: 15,
+                    letterSpacing: '-0.01em',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {activeOrg.name}
+                </span>
+              )}
+            </div>
           ) : null}
         </div>
 
+        {/* Navigation Links */}
         <nav
           style={{
             flex: 1,
-            padding: 'var(--space-4) var(--space-3)',
+            padding: '12px 10px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 'var(--space-2)',
+            gap: '3px',
             overflowY: 'auto',
             overflowX: 'hidden',
           }}
@@ -587,16 +620,18 @@ export function AppLayout() {
           ))}
         </nav>
 
+        {/* Bottom Settings Link */}
         {effectiveOrgId && (
           <div
             style={{
-              height: isSidebarCollapsed ? '50px' : '44px',
+              height: isSidebarCollapsed ? '52px' : '48px',
               boxSizing: 'border-box',
-              padding: isSidebarCollapsed ? '0 8px' : '0 var(--space-3)',
-              borderTop: '1px solid rgba(255,255,255,0.1)',
+              padding: isSidebarCollapsed ? '0 8px' : '0 10px',
+              borderTop: '1px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
               justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+              background: '#f8fafc',
             }}
           >
             <NavLink
@@ -608,18 +643,29 @@ export function AppLayout() {
                 flexDirection: isSidebarCollapsed ? 'column' : 'row',
                 alignItems: 'center',
                 justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
-                gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
-                padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
-                borderRadius: 'var(--radius-md)',
+                gap: isSidebarCollapsed ? '4px' : '8px',
+                padding: isSidebarCollapsed ? '6px 4px' : '7px 10px',
+                borderRadius: '8px',
                 textDecoration: 'none',
-                color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-                background: isActive ? '#186337' : 'transparent',
+                color: isActive ? '#ffffff' : '#475569',
+                background: isActive
+                  ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                  : 'transparent',
                 fontWeight: isActive ? 600 : 500,
-                transition: 'all 0.2s ease',
+                fontSize: 13.5,
+                transition: 'all 0.15s ease',
+                boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
               })}
             >
-              <Settings size={isSidebarCollapsed ? 22 : 18} />
-              {!isSidebarCollapsed && <span style={{ fontSize: 13 }}>Settings</span>}
+              {({ isActive }) => (
+                <>
+                  <Settings
+                    size={isSidebarCollapsed ? 20 : 17}
+                    color={isActive ? '#ffffff' : '#64748b'}
+                  />
+                  {!isSidebarCollapsed && <span>Settings</span>}
+                </>
+              )}
             </NavLink>
           </div>
         )}
@@ -704,7 +750,10 @@ export function AppLayout() {
   );
 }
 
-const ToteBagIcon = ({ size = 24, ...props }: SVGProps<SVGSVGElement> & { size?: number | string }) => (
+const ToteBagIcon = ({
+  size = 24,
+  ...props
+}: SVGProps<SVGSVGElement> & { size?: number | string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width={size}
@@ -735,7 +784,12 @@ function ModuleNavGroup({
   onToggle?: (id: string) => void;
   isSidebarCollapsed?: boolean;
 }) {
-  const Icon = module.code === 'INVENTORY' ? ToteBagIcon : (module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText);
+  const Icon =
+    module.code === 'INVENTORY'
+      ? ToteBagIcon
+      : module.icon && ICON_MAP[module.icon]
+        ? ICON_MAP[module.icon]
+        : FileText;
   const { orgId } = useParams<{ orgId: string }>();
   const effectiveOrgId = orgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
   const to = navPath(module.code, effectiveOrgId);
@@ -789,35 +843,42 @@ function ModuleNavGroup({
   }
 
   if (!isSidebarCollapsed) {
-    // --- OLD ACCORDION STYLE ---
+    // --- MODERN ACCORDION STYLE ---
     if (isParent) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <button
             onClick={handleToggle}
             className="sidebar-nav-link"
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '8px 4px',
-              paddingLeft: 4,
-              borderRadius: 'var(--radius-md)',
-              background: 'transparent',
+              padding: '7px 8px',
+              borderRadius: '8px',
+              background: isExpanded ? '#f1f5f9' : 'transparent',
               border: 'none',
-              color: 'rgba(255,255,255,0.7)',
-              fontWeight: 500,
+              color: isChildActive || isExpanded ? '#0f172a' : '#475569',
+              fontWeight: isChildActive || isExpanded ? 600 : 500,
               cursor: 'pointer',
               width: '100%',
               textAlign: 'left',
-              transition: 'background-color 0.2s ease',
+              transition: 'all 0.15s ease',
               whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => {
+              if (!isExpanded) e.currentTarget.style.background = '#f8fafc';
+              e.currentTarget.style.color = '#0f172a';
+            }}
+            onMouseLeave={(e) => {
+              if (!isExpanded) e.currentTarget.style.background = 'transparent';
+              if (!isChildActive && !isExpanded) e.currentTarget.style.color = '#475569';
             }}
           >
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
+                gap: 6,
                 width: '100%',
               }}
             >
@@ -826,16 +887,17 @@ function ModuleNavGroup({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 14,
-                  marginLeft: depth * 20,
+                  width: 16,
+                  marginLeft: depth * 14,
                   transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s ease',
+                  color: isExpanded ? '#0284c7' : '#94a3b8',
                 }}
               >
                 <ChevronRight size={14} />
               </div>
-              {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
+              {depth === 0 && <Icon size={17} color={isChildActive ? '#0284c7' : '#64748b'} />}
+              <span style={{ fontSize: 13.5, marginLeft: 2, flex: 1 }}>{module.name}</span>
             </div>
           </button>
 
@@ -851,7 +913,12 @@ function ModuleNavGroup({
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 'var(--space-1)',
+                gap: '2px',
+                marginLeft: '19px',
+                paddingLeft: '10px',
+                borderLeft: '1.5px solid #e2e8f0',
+                marginTop: '2px',
+                marginBottom: '2px',
               }}
             >
               {module.children?.map((child) => (
@@ -888,19 +955,24 @@ function ModuleNavGroup({
         style={({ isActive }) => ({
           display: 'flex',
           alignItems: 'center',
-          padding: '8px 4px',
-          paddingLeft: 4,
-          paddingRight: '36px',
+          padding: '7px 8px',
+          paddingRight: '34px',
           justifyContent: 'space-between',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: '8px',
           textDecoration: 'none',
-          color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-          background: isActive ? '#186337' : 'transparent',
+          color: isActive ? '#ffffff' : '#475569',
+          background: isActive
+            ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+            : isHovered
+              ? '#f0f7fd'
+              : 'transparent',
           fontWeight: isActive ? 600 : 500,
-          transition: 'all 0.2s ease',
+          fontSize: 13.5,
+          transition: 'all 0.15s ease',
           whiteSpace: 'nowrap',
           position: 'relative',
           overflow: 'hidden',
+          boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
         })}
       >
         {({ isActive }) => (
@@ -909,13 +981,26 @@ function ModuleNavGroup({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
+                gap: 8,
                 justifyContent: 'flex-start',
               }}
             >
-              <div style={{ width: 14 + depth * 20 }}></div>
-              {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
+              {depth === 0 ? (
+                <Icon size={17} color={isActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b'} />
+              ) : (
+                <div
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: '50%',
+                    backgroundColor: isActive ? '#ffffff' : isHovered ? '#0284c7' : '#cbd5e1',
+                    marginRight: 2,
+                    marginLeft: 2,
+                    transition: 'background-color 0.15s ease',
+                  }}
+                />
+              )}
+              <span style={{ fontSize: 13.5 }}>{module.name}</span>
             </div>
 
             {(isHovered || isActive) &&
@@ -926,27 +1011,32 @@ function ModuleNavGroup({
                   title={`Create new ${module.name.toLowerCase()}`}
                   style={{
                     position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: '32px',
-                    background: 'rgba(255, 255, 255, 0.1)',
+                    right: 4,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: '24px',
+                    height: '24px',
+                    background: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(2, 132, 199, 0.1)',
+                    borderRadius: '6px',
                     border: 'none',
-                    borderTopRightRadius: 'var(--radius-md)',
-                    borderBottomRightRadius: 'var(--radius-md)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                    (e.currentTarget.style.background = isActive
+                      ? 'rgba(255, 255, 255, 0.3)'
+                      : 'rgba(2, 132, 199, 0.2)')
                   }
                   onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                    (e.currentTarget.style.background = isActive
+                      ? 'rgba(255, 255, 255, 0.2)'
+                      : 'rgba(2, 132, 199, 0.1)')
                   }
                 >
-                  <Plus size={16} color="#fff" strokeWidth={2.5} />
+                  <Plus size={14} color={isActive ? '#ffffff' : '#0284c7'} strokeWidth={2.5} />
                 </button>
               )}
           </>
@@ -955,7 +1045,7 @@ function ModuleNavGroup({
     );
   }
 
-  // --- NEW ZOHO-STYLE COMPACT FLYOUT (when isSidebarCollapsed is true) ---
+  // --- COMPACT FLYOUT (when isSidebarCollapsed is true) ---
   if (depth > 0) {
     const handlePlusClick = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -973,27 +1063,32 @@ function ModuleNavGroup({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '10px 16px',
-          paddingRight: '36px',
+          padding: '8px 14px',
+          paddingRight: '34px',
           textDecoration: 'none',
-          color: isActive ? '#fff' : '#cbd5e1',
-          background: isActive ? '#186337' : 'transparent',
+          color: isActive ? '#ffffff' : '#475569',
+          background: isActive
+            ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+            : 'transparent',
           fontSize: '13px',
-          fontWeight: 500,
-          transition: 'all 0.2s ease',
-          borderRadius: '4px',
-          margin: '0 8px 4px 8px',
+          fontWeight: isActive ? 600 : 500,
+          transition: 'all 0.15s ease',
+          borderRadius: '6px',
+          margin: '0 6px 2px 6px',
           position: 'relative',
           overflow: 'hidden',
+          boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
         })}
         onMouseEnter={(e) => {
-          if (e.currentTarget.style.background !== '#186337') {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+          if (!e.currentTarget.style.background.includes('gradient')) {
+            e.currentTarget.style.background = '#f0f7fd';
+            e.currentTarget.style.color = '#0284c7';
           }
         }}
         onMouseLeave={(e) => {
-          if (e.currentTarget.style.background !== '#186337') {
+          if (!e.currentTarget.style.background.includes('gradient')) {
             e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = '#475569';
           }
         }}
       >
@@ -1008,27 +1103,31 @@ function ModuleNavGroup({
                   title={`Create new ${module.name.toLowerCase()}`}
                   style={{
                     position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: '32px',
-                    background: 'rgba(255, 255, 255, 0.1)',
+                    right: 4,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: '22px',
+                    height: '22px',
+                    background: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(2, 132, 199, 0.1)',
                     border: 'none',
-                    borderTopRightRadius: '4px',
-                    borderBottomRightRadius: '4px',
+                    borderRadius: '4px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                   onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                    (e.currentTarget.style.background = isActive
+                      ? 'rgba(255, 255, 255, 0.3)'
+                      : 'rgba(2, 132, 199, 0.2)')
                   }
                   onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                    (e.currentTarget.style.background = isActive
+                      ? 'rgba(255, 255, 255, 0.2)'
+                      : 'rgba(2, 132, 199, 0.1)')
                   }
                 >
-                  <Plus size={16} color="#fff" strokeWidth={2.5} />
+                  <Plus size={14} color={isActive ? '#ffffff' : '#0284c7'} strokeWidth={2.5} />
                 </button>
               )}
           </>
@@ -1058,22 +1157,40 @@ function ModuleNavGroup({
             justifyContent: 'center',
             padding: '10px 4px',
             gap: '4px',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: '8px',
             textDecoration: 'none',
-            color: reallyActive || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
+            color: reallyActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b',
             background: reallyActive
-              ? '#186337'
+              ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
               : isHovered
-                ? 'rgba(255,255,255,0.08)'
+                ? '#f0f7fd'
                 : 'transparent',
-            transition: 'all 0.2s ease',
+            boxShadow: reallyActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+            transition: 'all 0.15s ease',
           };
         }}
       >
-        <Icon size={20} />
-        <span style={{ fontSize: '11px', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>
-          {module.name}
-        </span>
+        {({ isActive }) => {
+          const reallyActive = (!isParent && isActive) || isChildActive;
+          return (
+            <>
+              <Icon
+                size={20}
+                color={reallyActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b'}
+              />
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: reallyActive ? 600 : 500,
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                }}
+              >
+                {module.name}
+              </span>
+            </>
+          );
+        }}
       </NavLink>
 
       {isParent &&
@@ -1087,34 +1204,35 @@ function ModuleNavGroup({
               position: 'fixed',
               top: Math.max(
                 10,
-                Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 40)),
+                Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 50)),
               ),
-              left: rect.right,
-              paddingLeft: '16px',
+              left: rect.right + 6,
+              paddingLeft: '4px',
               zIndex: 9999,
             }}
           >
             <div
               style={{
-                width: '200px',
-                background: '#1e293b',
-                borderRadius: '6px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                width: '210px',
+                background: '#ffffff',
+                borderRadius: '8px',
+                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.12), 0 4px 6px -2px rgba(0,0,0,0.05)',
                 padding: '8px 0',
                 display: 'flex',
                 flexDirection: 'column',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid #e2e8f0',
               }}
             >
               <div
                 style={{
-                  padding: '4px 16px 8px',
+                  padding: '6px 16px 8px',
                   fontSize: '11px',
                   fontWeight: 700,
                   color: '#94a3b8',
                   textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  marginBottom: '4px',
+                  letterSpacing: '0.6px',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '6px',
                 }}
               >
                 {module.name}
