@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import { env } from '../config/env.ts';
 import { prisma } from '../db/prisma.ts';
 import { createPrismaAdapter } from './adapter.ts';
+import { loadFirstPartyGrant } from './firstPartyGrant.ts';
 import { loadClients } from './clients.ts';
 import { ensureSigningKey, loadSigningJwks } from './keys.ts';
 import { installSessionMirror } from './sessionMirror.ts';
@@ -48,6 +49,9 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
   return {
     adapter: createPrismaAdapter(),
     findAccount,
+
+    /** First-party apps get consent without the interaction hop — see firstPartyGrant.ts. */
+    loadExistingGrant: loadFirstPartyGrant,
 
     claims: {
       openid: ['sub'],

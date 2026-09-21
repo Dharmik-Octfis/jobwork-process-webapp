@@ -77,6 +77,10 @@ export function interactionRouter(provider: Provider): Router {
        * The moment a third-party client is registered, this branch must become a
        * real screen. That is a decision about the registry, not about this code, so
        * it is written here rather than in a ticket.
+       *
+       * ⚠️ Rarely reached now: `loadFirstPartyGrant` (oidc/firstPartyGrant.ts) issues
+       * the same grant before the prompt is evaluated, so consent is normally already
+       * satisfied. A third-party client has to be stopped in BOTH places.
        */
       await approveConsent(provider, req, res, details);
       return;

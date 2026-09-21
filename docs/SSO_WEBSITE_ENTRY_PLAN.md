@@ -9,7 +9,8 @@
 > `docs/SSO_WALKTHROUGH.md`. **Neither is superseded.** This changes where a sign-in _starts_ and
 > where an unauthenticated visitor is _sent_ — the entry and the exit, not the flow between them.
 
-_Status: **❌ design. Nothing here is built.** The website page is owned by a different developer;
+_Status: **⚠️ partly built, nothing deployed.** Accounts has §4.1, §4.2 and §4.4 in code on
+`feat/singleSignOn`; jobwork (§5) and the rest of §4 are design only. The website page is owned by a different developer;
 what they need from us is a link and one endpoint, and that contract is already handed over (§3).
 Sections below are marked with the site they belong to._
 
@@ -35,21 +36,21 @@ checking the real site:
    _"Access Restricted"_), and its content is still the Zoho Sites template. §5.2's bounce and §5.6's
    post-logout both land there, so the page must be public before either ships.
 
-| Section                            | Site                  | State                                                                                                              |
-| ---------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                  |
-| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                 |
-| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                  |
-| §4 the identity provider           | `accounts.octfis.com` | ⚠️ §4.1–4.2 built 2026-09-21, **not deployed** (`session/status.routes.ts`, `SESSION_STATUS_ORIGINS`); §4.3–4.5 ❌ |
-| §5 the app                         | `jobwork.octfis.com`  | ❌ the bulk of the work                                                                                            |
-| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                            |
-| §7 traps                           | —                     | 🔴 read before implementing                                                                                        |
-| §8 build order                     | —                     | ❌                                                                                                                 |
-| §9 open decisions                  | —                     | 🔴 four, unanswered                                                                                                |
-| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                        |
+| Section                            | Site                  | State                                                                                                                                                   |
+| ---------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                       |
+| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                      |
+| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                       |
+| §4 the identity provider           | `accounts.octfis.com` | ⚠️ §4.1, §4.2, §4.4 built 2026-09-21, **not deployed** (`session/status.routes.ts`, `SESSION_STATUS_ORIGINS`, `oidc/firstPartyGrant.ts`); §4.3, §4.5 ❌ |
+| §5 the app                         | `jobwork.octfis.com`  | ❌ the bulk of the work                                                                                                                                 |
+| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                                 |
+| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                             |
+| §8 build order                     | —                     | ❌                                                                                                                                                      |
+| §9 open decisions                  | —                     | 🔴 four, unanswered                                                                                                                                     |
+| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                             |
 
 _Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
-assumed `octfis.com/jobwork` throughout; no code has been changed._
+assumed `octfis.com/jobwork` throughout; build-order steps 1 and 2 (accounts) are in code, not deployed._
 
 ---
 
@@ -362,8 +363,8 @@ front of this, not part of it.
 ## 9. Open decisions
 
 1. **`/home`** — confirm it is `OrgRedirect` renamed, not a new landing page (§5.1).
-2. **`loadExistingGrant`** — first-party auto-grant, or accept that the first jobwork visit always
-   routes via the website (§4.4)?
+2. ~~**`loadExistingGrant`**~~ — decided 2026-09-21: first-party auto-grant, built in
+   `oidc/firstPartyGrant.ts` (§4.4).
 3. **`/no-access` copy** — what it says, and whether it offers "sign out and try another account".
 4. **The status endpoint's answer** — boolean only, now and later? (§4.1)
 
