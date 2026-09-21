@@ -36,10 +36,12 @@ const FLOW_COOKIE = 'sso_flow';
  * top-level GET, which Lax allows and Strict would drop — dropping it makes every
  * login fail with "sign-in expired", which reads as the design being broken.
  *
- * Ten minutes: long enough to type a password, short enough that an abandoned tab
- * does not leave a usable verifier lying around.
+ * Thirty minutes, matching accounts' interaction TTL: an invitee may create an account
+ * mid-sign-in and wait for an emailed code before coming back here, and if this
+ * cookie dies first the callback answers "Sign-in expired" after everything else
+ * worked. Short enough that an abandoned tab does not keep a verifier for long.
  */
-const FLOW_COOKIE_MAX_AGE_MS = 10 * 60 * 1000;
+const FLOW_COOKIE_MAX_AGE_MS = 30 * 60 * 1000;
 
 function flowCookieOptions() {
   return {

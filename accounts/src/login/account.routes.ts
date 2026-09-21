@@ -1,6 +1,8 @@
 import { Router, urlencoded, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { env } from '../config/env.ts';
 import * as service from './account.service.ts';
+import { bindingOf, bindThisBrowser, clearBinding } from './binding.ts';
 import {
   checkInboxPage,
   donePage,
@@ -28,15 +30,17 @@ const otp = z
   .trim()
   .regex(/^\d{6}$/, 'The code is 6 digits.');
 
-const signupSchema = z.object({
+export const signupSchema = z.object({
   email,
   password,
   firstName: z.string().trim().min(1, 'First name is required.').max(40),
   lastName: z.string().trim().min(1, 'Last name is required.').max(40),
 });
 
+export const verifySchema = z.object({ email, otp });
+
 /** First error message, or undefined. The forms show one thing at a time. */
-function firstError(error: z.ZodError): string {
+export function firstError(error: z.ZodError): string {
   return error.issues[0]?.message ?? 'Please check the form.';
 }
 
@@ -77,14 +81,20 @@ export function accountRouter(): Router {
       return;
     }
 
-    await service.signup(parsed.data);
+    await service.signup(parsed.data, bindThisBrowser(res));
 
     /**
      * The same page whether or not the address was already registered. Signup is
      * otherwise a way to ask "does this person have an account here"; the honest
-     * answer goes to the inbox, not to the screen.
+     * answer goes to the inbox, not to the screen. Straight to the code form, with
+     * the address filled in, rather than a page with a link to it.
      */
-    res.type('html').send(checkInboxPage(parsed.data.email, '/verify-email'));
+    res.type('html').send(
+      verifyEmailPage({
+        email: parsed.data.email,
+        notice: `If ${parsed.data.email} can receive mail, a 6-digit code is on its way.`,
+      }),
+    );
   });
 
   router.get('/verify-email', (req: Request, res: Response) => {
@@ -95,7 +105,7 @@ export function accountRouter(): Router {
   });
 
   router.post('/verify-email', form, async (req: Request, res: Response) => {
-    const parsed = z.object({ email, otp }).safeParse(req.body);
+    const parsed = verifySchema.safeParse(req.body);
 
     if (!parsed.success) {
       res
@@ -105,9 +115,9 @@ export function accountRouter(): Router {
       return;
     }
 
-    const ok = await service.verifyEmail(parsed.data.email, parsed.data.otp);
+    const accountId = await service.verifyEmail(parsed.data.email, parsed.data.otp, bindingOf(req));
 
-    if (!ok) {
+    if (!accountId) {
       res
         .status(400)
         .type('html')
@@ -117,7 +127,23 @@ export function accountRouter(): Router {
       return;
     }
 
-    res.type('html').send(donePage('Email verified', 'You can sign in now.'));
+    clearBinding(res);
+
+    /**
+     * This page is only for someone who opened accounts directly. Anyone sent here by
+     * an app signs up inside that app's interaction (interaction/routes.ts) and is
+     * signed in and returned automatically, never shown this.
+     */
+    res.type('html').send(
+      donePage(
+        'Email verified',
+        'Your account is ready. Open the app you want to use to sign in.',
+        {
+          href: env.rootRedirectUrl,
+          label: 'Continue to octfis.com',
+        },
+      ),
+    );
   });
 
   router.get('/forgot-password', (_req: Request, res: Response) => {

@@ -129,6 +129,26 @@ model VerificationToken {
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  /// Wrong guesses so far. 🔴 Without a cap a 6-digit code falls to a million
+  /// requests inside its 10 minutes — and a forged `email_verified` is what lets an
+  /// identity claim someone's existing jobwork account by email. At the cap the row
+  /// is deleted and a new code must be requested.
+  attempts Int @default(0)
+
+  /// SHA-256 of a random value held in an HttpOnly cookie by the browser that asked
+  /// for this code. When set, only that browser can redeem it — so the owner of an
+  /// inbox cannot be tricked into confirming a signup someone else started. Null on
+  /// codes that need no binding (password reset) and on rows from before it existed.
+  bindingHash String? @map("binding_hash") @db.VarChar(64)
+
+  /// The password (argon2) and name chosen at signup, applied only when THIS code is
+  /// confirmed. 🔴 Until then the account has no usable password: writing it at
+  /// signup let whoever registered an address first keep their password on it after
+  /// the real owner verified — an account pre-takeover.
+  pendingPasswordHash String? @map("pending_password_hash")
+  pendingFirstName    String? @map("pending_first_name") @db.VarChar(40)
+  pendingLastName     String? @map("pending_last_name") @db.VarChar(40)
+
   /// The lookup every verification does, and the sweep's index.
   @@index([email, purpose])
   @@index([expiresAt])

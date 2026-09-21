@@ -23,6 +23,14 @@ export function NoAccessPage() {
         you.
       </p>
       {/*
+        The one refusal a person can fix alone: signing in with a different address from
+        the one invited. Said for everyone, so it reveals nothing about who is invited.
+      */}
+      <p className={styles.notice}>
+        Were you invited? Sign out, open the invitation email again, and sign in with the address it
+        was sent to.
+      </p>
+      {/*
         A full navigation, not `navigate()`: it has to reach the provider to end the
         SSO session there, exactly as `useLogout` does.
       */}

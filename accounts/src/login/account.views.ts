@@ -18,14 +18,26 @@ function messages({ error, notice }: FormOptions): string {
   );
 }
 
-export function signupPage(options: FormOptions = {}): string {
+/**
+ * Where a signup or verification form posts, and where its links lead. Inside an
+ * interaction these are the `/interaction/:uid/...` routes, so finishing lands the
+ * person back in the app that sent them; outside one, the standalone routes.
+ */
+interface FlowOptions extends FormOptions {
+  action?: string | undefined;
+  signInHref?: string | undefined;
+  restartHref?: string | undefined;
+}
+
+export function signupPage(options: FlowOptions = {}): string {
+  const { action = '/signup', signInHref = '/' } = options;
   return shell(
     'Create an account',
     `
     <h1>Create an account</h1>
     <p class="sub">One account for every Octfis app</p>
     ${messages(options)}
-    <form method="post" action="/signup" autocomplete="on">
+    <form method="post" action="${escapeHtml(action)}" autocomplete="on">
       <label for="firstName">First name</label>
       <input id="firstName" name="firstName" placeholder="First name"
              autocomplete="given-name" required autofocus>
@@ -38,7 +50,7 @@ export function signupPage(options: FormOptions = {}): string {
       ${passwordField({ id: 'password', name: 'password', label: 'Password', autocomplete: 'new-password', minlength: 8 })}
       <button type="submit">Create Account</button>
     </form>
-    <p class="switch">Already have an account? <a href="/">Sign in</a></p>
+    <p class="switch">Already have an account? <a href="${escapeHtml(signInHref)}">Sign in</a></p>
   `,
     { script: PASSWORD_TOGGLE_SCRIPT },
   );
@@ -56,14 +68,15 @@ export function checkInboxPage(email: string, next: string): string {
   );
 }
 
-export function verifyEmailPage(options: FormOptions = {}): string {
+export function verifyEmailPage(options: FlowOptions = {}): string {
+  const { action = '/verify-email', restartHref } = options;
   return shell(
     'Verify your email',
     `
     <h1>Verify your email</h1>
     <p class="sub">Enter the 6-digit code we sent you</p>
     ${messages(options)}
-    <form method="post" action="/verify-email" autocomplete="off">
+    <form method="post" action="${escapeHtml(action)}" autocomplete="off">
       <label for="email">Email address</label>
       <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
              placeholder="Email address" required>
@@ -72,6 +85,7 @@ export function verifyEmailPage(options: FormOptions = {}): string {
              pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
       <button type="submit">Verify</button>
     </form>
+    ${restartHref ? `<p class="switch">No code, or it expired? <a href="${escapeHtml(restartHref)}">Start again</a></p>` : ''}
   `,
   );
 }
@@ -116,12 +130,17 @@ export function resetPasswordPage(options: FormOptions = {}): string {
   );
 }
 
-export function donePage(title: string, message: string): string {
+export function donePage(
+  title: string,
+  message: string,
+  next?: { href: string; label: string },
+): string {
   return shell(
     title,
     `
     <h1>${escapeHtml(title)}</h1>
     <p class="sub">${escapeHtml(message)}</p>
+    ${next ? `<p><a href="${escapeHtml(next.href)}">${escapeHtml(next.label)}</a></p>` : ''}
   `,
   );
 }

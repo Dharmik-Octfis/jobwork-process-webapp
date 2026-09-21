@@ -162,7 +162,10 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
       AuthorizationCode: 60,
       IdToken: 300,
       AccessToken: 3600,
-      Interaction: 600,
+      // 30 min, not 10: an invitee creating an account waits on an emailed code inside
+      // this interaction, and it has to still exist when they come back. Matches the
+      // app's `sso_flow` cookie, which must outlive it (jobwork sso.controller.ts).
+      Interaction: 1800,
       Session: 14 * 24 * 3600,
       Grant: 14 * 24 * 3600,
     },

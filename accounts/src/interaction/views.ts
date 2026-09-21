@@ -317,12 +317,16 @@ export function loginPage(options: {
   const { uid, clientName, email = '', error } = options;
 
   /**
-   * The address is carried through to signup, so someone who arrived from an
-   * invitation and has no account yet registers the address they were invited AT.
-   * Register a different one and the app refuses them after everything else
-   * succeeded — see the note on the `/signup` route.
+   * 🔴 Signup stays INSIDE this interaction (`/interaction/:uid/signup`). The old link
+   * went to a standalone `/signup` carrying only the email, which dropped the uid —
+   * so an invitee who created an account ended on "You can sign in now" with no way
+   * back to the app that sent them. Under this path the `_interaction` cookie (scoped
+   * to `/interaction/:uid`) rides along, and a confirmed code finishes the sign-in.
+   *
+   * The address is not in the URL: the signup route reads it from this interaction's
+   * `login_hint`, so an invitee still registers the address they were invited AT.
    */
-  const signupHref = email ? `/signup?email=${encodeURIComponent(email)}` : '/signup';
+  const signupHref = `/interaction/${encodeURIComponent(uid)}/signup`;
 
   return shell(
     'Sign in',

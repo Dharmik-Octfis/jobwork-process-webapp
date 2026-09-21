@@ -11,6 +11,7 @@ import { Input } from '../../components/ui/Input';
 import { AuthShell } from '../auth/AuthShell';
 import { FormErrorBanner } from '../auth/FormErrorBanner';
 import { useAuthConfig } from '../auth/useAuthConfig';
+import { useLogout } from '../auth/useLogout';
 import { invitationsApi, type AcceptInvitationBody } from './invitations.api';
 import styles from '../auth/Auth.module.css';
 
@@ -41,6 +42,7 @@ export function AcceptInvitePage() {
   const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
   const authConfig = useAuthConfig();
   const ssoEnabled = authConfig.data?.ssoEnabled === true;
+  const logoutMutation = useLogout();
   const autoAcceptStarted = useRef(false);
 
   const lookup = useQuery({
@@ -160,6 +162,32 @@ export function AcceptInvitePage() {
     const emailMatches = user.email.toLowerCase() === inviteEmail.toLowerCase();
 
     if (!emailMatches) {
+      /**
+       * 🔴 Under SSO, never bounce to `/login` here. Sign-in goes to accounts, which
+       * already has a session for THIS other identity and returns it at once — back to
+       * this page, still mismatched, back to `/login`: an endless redirect loop. The
+       * way out is to sign out of the identity provider, which is a person's decision,
+       * so it is a button. The link has to be reopened afterwards: signing out leaves
+       * this app, and the token does not survive the round trip.
+       */
+      if (ssoEnabled) {
+        return (
+          <Shell title="Different account" subtitle={`This invitation is for ${inviteEmail}.`}>
+            <p className={styles.notice}>
+              You're signed in as {user.email}. Sign out, then open the invitation link from your
+              email again and sign in as {inviteEmail}.
+            </p>
+            <Button
+              fullWidth
+              className={styles.submit}
+              isLoading={logoutMutation.isPending}
+              onClick={() => logoutMutation.mutate()}
+            >
+              Sign out
+            </Button>
+          </Shell>
+        );
+      }
       return <Navigate to={invite.accountExists ? loginPath : signupPath} replace />;
     }
 

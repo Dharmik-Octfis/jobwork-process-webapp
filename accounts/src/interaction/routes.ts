@@ -3,6 +3,10 @@ import argon2 from 'argon2';
 import type Provider from 'oidc-provider';
 import { prisma } from '../db/prisma.ts';
 import { ACTIVE_USER } from '../lib/activeUser.ts';
+import * as service from '../login/account.service.ts';
+import { firstError, signupSchema, verifySchema } from '../login/account.routes.ts';
+import { signupPage, verifyEmailPage } from '../login/account.views.ts';
+import { bindingOf, bindThisBrowser, clearBinding } from '../login/binding.ts';
 import { loginPage, errorPage } from './views.ts';
 
 /**
@@ -122,6 +126,25 @@ export function interactionRouter(provider: Provider): Router {
     }
 
     /**
+     * Password right, address never confirmed: verify it HERE, then continue — rather
+     * than signing them in and letting the app refuse an unverified email with no
+     * explanation. Reached only after the password matched, so it reveals nothing
+     * about which addresses exist.
+     */
+    if (!user.emailVerified) {
+      await service.startVerification(user.email, bindThisBrowser(res));
+      res.type('html').send(
+        verifyEmailPage({
+          email: user.email,
+          action: `/interaction/${encodeURIComponent(details.uid)}/verify`,
+          notice: `Confirm your email to continue. We sent a 6-digit code to ${user.email}.`,
+          restartHref: `/interaction/${encodeURIComponent(details.uid)}`,
+        }),
+      );
+      return;
+    }
+
+    /**
      * `mergeWithLastSubmission: false` — this is a fresh sign-in, so nothing from a
      * previous attempt at this interaction should survive into the session.
      */
@@ -133,7 +156,126 @@ export function interactionRouter(provider: Provider): Router {
     );
   });
 
+  /**
+   * 🔴 Signup INSIDE the interaction — the fix for an invitee stranded on "You can
+   * sign in now". Under `/interaction/:uid/` the `_interaction` cookie rides along, so
+   * `interactionDetails` proves this is the same browser and sign-in; a confirmed code
+   * then finishes it and the browser carries on to the app that sent them, signed in,
+   * without typing the password a second time.
+   *
+   * The address comes from the interaction's `login_hint` — an invitation's address —
+   * never from the URL.
+   */
+  router.get('/interaction/:uid/signup', async (req: Request, res: Response) => {
+    const details = await detailsOrNull(provider, req, res);
+    if (!details) return expired(res);
+
+    const hint = details.params['login_hint'];
+    res.type('html').send(
+      signupPage({
+        email: typeof hint === 'string' ? hint : undefined,
+        ...interactionLinks(details.uid, 'signup'),
+      }),
+    );
+  });
+
+  router.post('/interaction/:uid/signup', form, async (req: Request, res: Response) => {
+    const details = await detailsOrNull(provider, req, res);
+    if (!details) return expired(res);
+
+    const parsed = signupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res
+        .status(400)
+        .type('html')
+        .send(
+          signupPage({
+            email: typeof req.body?.['email'] === 'string' ? req.body['email'] : undefined,
+            error: firstError(parsed.error),
+            ...interactionLinks(details.uid, 'signup'),
+          }),
+        );
+      return;
+    }
+
+    await service.signup(parsed.data, bindThisBrowser(res));
+
+    // Same answer for a new and an existing address — see the service.
+    res.type('html').send(
+      verifyEmailPage({
+        email: parsed.data.email,
+        notice: `If ${parsed.data.email} can receive mail, a 6-digit code is on its way.`,
+        ...interactionLinks(details.uid, 'verify'),
+      }),
+    );
+  });
+
+  /** The code form's target, for both a new signup and an unverified sign-in. */
+  router.post('/interaction/:uid/verify', form, async (req: Request, res: Response) => {
+    const details = await detailsOrNull(provider, req, res);
+    if (!details) return expired(res);
+
+    const parsed = verifySchema.safeParse(req.body);
+    const accountId = parsed.success
+      ? await service.verifyEmail(parsed.data.email, parsed.data.otp, bindingOf(req))
+      : null;
+
+    if (!accountId) {
+      res
+        .status(400)
+        .type('html')
+        .send(
+          verifyEmailPage({
+            email: typeof req.body?.['email'] === 'string' ? req.body['email'] : undefined,
+            error: parsed.success ? 'That code is invalid or expired.' : firstError(parsed.error),
+            ...interactionLinks(details.uid, 'verify'),
+          }),
+        );
+      return;
+    }
+
+    clearBinding(res);
+
+    // The code proved the inbox and applied the password chosen with it: sign in.
+    await provider.interactionFinished(
+      req,
+      res,
+      { login: { accountId } },
+      { mergeWithLastSubmission: false },
+    );
+  });
+
   return router;
+}
+
+/**
+ * The interaction behind this request, or null once it has expired or this browser
+ * does not hold its cookie. `interactionDetails` throws in both cases, which would
+ * surface as a bare 500 to someone who only waited too long for their email.
+ */
+async function detailsOrNull(provider: Provider, req: Request, res: Response) {
+  try {
+    return await provider.interactionDetails(req, res);
+  } catch {
+    return null;
+  }
+}
+
+function expired(res: Response): void {
+  res
+    .status(400)
+    .type('html')
+    .send(errorPage('This sign-in has expired. Go back to the app and sign in again.'));
+}
+
+/** Form target and links that keep a signup inside interaction `uid`. */
+function interactionLinks(uid: string, form: 'signup' | 'verify') {
+  const base = `/interaction/${encodeURIComponent(uid)}`;
+  return {
+    action: `${base}/${form}`,
+    signInHref: base,
+    restartHref: `${base}/signup`,
+  };
 }
 
 /**
