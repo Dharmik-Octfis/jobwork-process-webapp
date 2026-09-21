@@ -1431,24 +1431,26 @@ apps a person ever opened.
 ### 6.1b Someone types `accounts.octfis.com` straight into the address bar
 
 §4 starts at jobwork's login screen, but people also open the identity provider directly. A
-bare visit to `/` is answered with one redirect:
+bare visit to `/` is answered with one redirect — to the product website, where every app's
+sign-in button lives:
 
 ```
 GET https://accounts.octfis.com/
-  → 302 https://jobwork.octfis.com/api/auth/sso/login
+  → 302 https://www.octfis.com
 ```
 
-That is step 1 again, so the rest of the walkthrough continues unchanged: already signed in
-here → straight into jobwork; not signed in → the accounts sign-in page.
+_Changed 2026-09-21 (`docs/SSO_WEBSITE_ENTRY_PLAN.md` §4.3). It used to go to
+`https://jobwork.octfis.com/api/auth/sso/login` and sign the visitor straight into jobwork; with a
+product directory in front of the estate, dropping someone into one arbitrary app was wrong._
 
 🔴 **accounts cannot serve a sign-in form at `/`, and this is why.** A session is only ever
 created by finishing an interaction, and only `/authorize` starts one. A form on the root page
-would check a password and then have nowhere to put the result. Sending the visitor to an app
-makes the app start a real authorization request, which comes straight back here.
+would check a password and then have nowhere to put the result. So `/` always hands the visitor
+somewhere else, and an app's button is what starts a real authorization request.
 
-The target is configuration, not code: `DEFAULT_APP_SIGNIN_URL`, the **full** sign-in URL of
-the default app, so accounts knows nothing about any app's route shape. It is required — an
-unset value would leave a dead root on the domain people type, which reads as an outage.
+The target is configuration, not code: `ROOT_REDIRECT_URL` (formerly `DEFAULT_APP_SIGNIN_URL`).
+It is required — an unset value would leave a dead root on the domain people type, which reads
+as an outage. Local dev still points it at jobwork's own sign-in URL, which remains a valid value.
 
 ### 6.2 Creating an account
 

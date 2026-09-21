@@ -9,8 +9,11 @@
 > `docs/SSO_WALKTHROUGH.md`. **Neither is superseded.** This changes where a sign-in _starts_ and
 > where an unauthenticated visitor is _sent_ — the entry and the exit, not the flow between them.
 
-_Status: **⚠️ partly built, nothing deployed.** On `feat/singleSignOn`: accounts has §4.1, §4.2 and
-§4.4; jobwork has §5.1–§5.5. The rest is design only. The website page is owned by a different developer;
+_Status: **✅ deployed to production 2026-09-21 from `feat/singleSignOn`, except phase B of step 5**
+— the two jobwork URL values in §5.6, which wait for `www.octfis.com/job-work-1` to be public.
+Until then a signed-out visitor sees jobwork's own "Access Jobwork" button and logout returns to
+`jobwork.octfis.com/`. `feat/singleSignOn` is not merged to `dev`, so a production deploy from
+`dev` removes all of it. The website page is owned by a different developer;
 what they need from us is a link and one endpoint, and that contract is already handed over (§3).
 Sections below are marked with the site they belong to._
 
@@ -26,31 +29,31 @@ checking the real site:
   app, linked from the site menu. It is a different page for a different product and nothing here
   points at it.
 
-🔴 **Two prerequisites sit in front of all of this, as of 2026-09-21:**
+🔴 **Two prerequisites sat in front of all of this on 2026-09-21:**
 
-1. **Production jobwork is not running an SSO build.** `https://jobwork.octfis.com/api/auth/sso/login`
-   and `/api/auth/config` both answer 404 while `/api/health` is fine. The SSO code lives only on
-   `feat/singleSignOn` — neither `dev` nor `main` has `sso.routes.ts` — so a later deploy replaced
-   it. The website's link is dead until an SSO build is deployed again.
-2. **The website page is IP-restricted** while it is being built (visitors outside the office see
+1. ~~**Production jobwork is not running an SSO build.**~~ _Resolved the same day: production was
+   redeployed from `feat/singleSignOn` with `SSO_ENABLED=true`. It had been running a `dev` build
+   with no SSO code and the flag off. It will regress the same way on the next deploy from `dev`
+   until the branch is merged._
+2. **The website page is IP-restricted** — still true; while it is being built (visitors outside the office see
    _"Access Restricted"_), and its content is still the Zoho Sites template. §5.2's bounce and §5.6's
    post-logout both land there, so the page must be public before either ships.
 
-| Section                            | Site                  | State                                                                                                                                                                |
-| ---------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                                    |
-| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                                   |
-| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                                    |
-| §4 the identity provider           | `accounts.octfis.com` | ✅ §4.1, §4.2, §4.4 **deployed to production 2026-09-21**; ⚠️ §4.3 (`ROOT_REDIRECT_URL`) and noindex built, not deployed; §4.5 registry change prepared, not applied |
-| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 **deployed to production 2026-09-21** (SSO on); ⚠️ §5.7 noindex built, not deployed; §5.6 values wait for the website page to be public                 |
-| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                                              |
-| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                                          |
-| §8 build order                     | —                     | ❌                                                                                                                                                                   |
-| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy drafted, awaiting review                                                                               |
-| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                                          |
+| Section                            | Site                  | State                                                                                                                                               |
+| ---------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                   |
+| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                  |
+| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                   |
+| §4 the identity provider           | `accounts.octfis.com` | ✅ §4.1–§4.5 and noindex **deployed to production 2026-09-21** (`/` → `https://www.octfis.com`; `jobwork-production` accepts both post-logout URIs) |
+| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 and §5.7 **deployed to production 2026-09-21** (SSO on); ⏳ §5.6 values (phase B) wait for the website page to be public               |
+| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                             |
+| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                         |
+| §8 build order                     | —                     | ❌                                                                                                                                                  |
+| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy drafted, awaiting review                                                              |
+| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                         |
 
 _Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
-assumed `octfis.com/jobwork` throughout; build-order steps 1–4 are in code, not deployed._
+assumed `octfis.com/jobwork` throughout; build-order steps 1–4 and step 5 phase A deployed._
 
 ---
 
