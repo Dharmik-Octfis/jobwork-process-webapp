@@ -157,28 +157,35 @@ async function main(): Promise<void> {
     return;
   }
 
-  await prisma.oidcClient.upsert({
-    where: { id: args.id },
-    create: {
-      id: args.id,
-      name: args.name,
-      secretHash: await argon2.hash(secret!),
-      redirectUris: args.redirect,
-      postLogoutUris: args.postLogout,
-      backchannelLogoutUri: args.backchannel ?? null,
-    },
-    update: {
-      name: args.name,
-      ...(secret ? { secretHash: await argon2.hash(secret) } : {}),
-      redirectUris: args.redirect,
-      postLogoutUris: args.postLogout,
-      backchannelLogoutUri: args.backchannel ?? null,
-      // An update reactivates: re-registering a client that was switched off is a
-      // deliberate act, and leaving it inactive would look like the write failed.
-      isActive: true,
-      isDeleted: false,
-    },
-  });
+  /**
+   * Create OR update, not `upsert`: an upsert's `create` arguments are built even
+   * when the row exists, so hashing `secret!` there threw on every update that left
+   * the secret unchanged — the one kind of update this script is run for most.
+   */
+  const fields = {
+    name: args.name,
+    redirectUris: args.redirect,
+    postLogoutUris: args.postLogout,
+    backchannelLogoutUri: args.backchannel ?? null,
+  };
+
+  if (existing) {
+    await prisma.oidcClient.update({
+      where: { id: args.id },
+      data: {
+        ...fields,
+        ...(secret ? { secretHash: await argon2.hash(secret) } : {}),
+        // An update reactivates: re-registering a client that was switched off is a
+        // deliberate act, and leaving it inactive would look like the write failed.
+        isActive: true,
+        isDeleted: false,
+      },
+    });
+  } else {
+    await prisma.oidcClient.create({
+      data: { id: args.id, ...fields, secretHash: await argon2.hash(secret!) },
+    });
+  }
 
   console.log('\n  Written.\n');
 
