@@ -32,6 +32,10 @@ accounts/app-config.json
 # name across both accounts, which is what per-target names exist to avoid.
 catalyst.json
 
+# Database dumps that scripts/deploy.mjs moves out of a service folder during upload.
+# Normally restored at once; left behind only if a deploy dies mid-upload.
+.backups.deploy-parked-*/
+
 # Logs
 *.log
 npm-debug.log*

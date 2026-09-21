@@ -19,7 +19,7 @@
  *   --skip-build            deploy the existing dist/ + public/ as-is
  *   --skip-account-check    proceed when the CLI login file cannot be read
  */
-import { existsSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { resolve } from 'node:path';
@@ -45,6 +45,13 @@ const CATALYST_JSON = resolve(ROOT, 'catalyst.json');
 // carries the service so a died-mid-deploy recovery can never restore one
 // service's .env over another's.
 const parkedEnvFor = (service) => resolve(ROOT, `.env.deploy-backup-${service.name}`);
+
+// Same reasoning for `db:apply` / `db:backup` dumps, which db-sync writes to
+// `<service>/backups/`. 🔴 A dump is the whole database — password hashes, signing
+// keys, every tenant's data — and it lives inside the folder that gets zipped. Until
+// 2026-09-21 only `.env` was held back, so every deploy carried the dumps along.
+const backupsDirFor = (service) => resolve(ROOT, service.source, 'backups');
+const parkedBackupsFor = (service) => resolve(ROOT, `.backups.deploy-parked-${service.name}`);
 
 const say = (msg = '') => console.log(msg);
 
@@ -149,6 +156,46 @@ function restoreLocalEnv(service, parked) {
   if (!parked) return;
   const live = service.localEnvFile;
   const backup = parkedEnvFor(service);
+  if (existsSync(backup) && !existsSync(live)) renameSync(backup, live);
+}
+
+// ── Database dumps must not ride along either ────────────────────────────────
+
+function isEmptyDir(path) {
+  return readdirSync(path).length === 0;
+}
+
+function parkBackups(service) {
+  const live = backupsDirFor(service);
+  const parked = parkedBackupsFor(service);
+  const liveRelative = `${service.source}/backups`;
+  const parkedName = `.backups.deploy-parked-${service.name}`;
+
+  // A previous deploy died before restoring. An empty live folder (db-sync may have
+  // recreated it) is safe to drop; one holding dumps is two sets to reconcile by hand.
+  if (existsSync(parked)) {
+    if (existsSync(live) && !isEmptyDir(live)) {
+      fail(
+        `both ${liveRelative}/ and ${parkedName}/ hold files.\n` +
+          `    A previous deploy died before restoring the backups. Move the dumps from\n` +
+          `    ${parkedName}/ back into ${liveRelative}/, delete ${parkedName}/, and re-run.`,
+      );
+    }
+    if (existsSync(live)) rmSync(live, { recursive: true });
+    renameSync(parked, live);
+    say(`  note: recovered ${liveRelative}/ from an interrupted previous deploy.`);
+  }
+
+  if (!existsSync(live) || isEmptyDir(live)) return false;
+
+  renameSync(live, parked);
+  return true;
+}
+
+function restoreBackups(service, parked) {
+  if (!parked) return;
+  const live = backupsDirFor(service);
+  const backup = parkedBackupsFor(service);
   if (existsSync(backup) && !existsSync(live)) renameSync(backup, live);
 }
 
@@ -264,9 +311,13 @@ async function main() {
     for (const script of service.build) run('npm', ['run', script]);
   }
 
-  // ---- 5. Upload, with the local .env held out of the zip -----------------
+  // ---- 5. Upload, with the local .env and any database dumps held out of the zip
   let parked = false;
-  const restore = () => restoreLocalEnv(service, parked);
+  let backupsParked = false;
+  const restore = () => {
+    restoreLocalEnv(service, parked);
+    restoreBackups(service, backupsParked);
+  };
   process.once('SIGINT', () => {
     restore();
     process.exit(130);
@@ -276,6 +327,12 @@ async function main() {
     if (parked) {
       say(
         `\n  ${service.localEnvRelative} parked at .env.deploy-backup-${service.name} (it would otherwise be uploaded).`,
+      );
+    }
+    backupsParked = parkBackups(service);
+    if (backupsParked) {
+      say(
+        `  ${service.source}/backups/ parked at .backups.deploy-parked-${service.name}/ (database dumps must not be uploaded).`,
       );
     }
     // `--only appsail`, NOT the `appsail` subcommand. Both deploy just the AppSail,
@@ -293,6 +350,7 @@ async function main() {
   } finally {
     restore();
     if (parked) say(`  ${service.localEnvRelative} restored.`);
+    if (backupsParked) say(`  ${service.source}/backups/ restored.`);
   }
 
   say(
