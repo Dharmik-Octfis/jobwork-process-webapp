@@ -1,5 +1,8 @@
 import { runAsTenant } from '../../../db/prisma.ts';
-import type { StockMovementQuery, PaginatedStockMovementResponse } from './stockMovement.schemas.ts';
+import type {
+  StockMovementQuery,
+  PaginatedStockMovementResponse,
+} from './stockMovement.schemas.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 
 const COUNTED_SOURCE = Prisma.sql`
@@ -62,40 +65,35 @@ export async function getStockMovementReport(
     const fromDateFilter = fromDate
       ? Prisma.sql`l.posted_at >= ${new Date(fromDate)}::timestamptz`
       : Prisma.sql`true`;
-      
+
     const toDateFilter = toDate
       ? Prisma.sql`l.posted_at <= ${new Date(toDate)}::timestamptz`
       : Prisma.sql`true`;
 
+    // Applied to the netted row: an edited bill's reversal is an out-row, so a
+    // row-level `qty_in > 0` kept every superseded posting and dropped what undid it.
     let movementFilter = Prisma.sql`true`;
     if (movementType === 'inward') {
-      movementFilter = Prisma.sql`l.qty_in > 0 AND l.source_doc_type != 'item_opening_stock'`;
+      movementFilter = Prisma.sql`d.net > 0 AND d.source_doc_type != 'item_opening_stock'`;
     } else if (movementType === 'outward') {
-      movementFilter = Prisma.sql`l.qty_out > 0 AND l.source_doc_type != 'item_opening_stock'`;
+      movementFilter = Prisma.sql`d.net < 0 AND d.source_doc_type != 'item_opening_stock'`;
     }
 
-    let q = Prisma.sql`
+    const itemFilter = itemId ? Prisma.sql`l.item_id = ${itemId}::uuid` : Prisma.sql`true`;
+
+    // One row per document, item and location, netted: an edit posts a reversal
+    // and a re-post rather than rewriting its rows, so the raw ledger lists a bill
+    // once per save. A null source doc keys on the row itself so unrelated rows never merge.
+    const docMoves = Prisma.sql`
       SELECT
-        l.id,
-        l.posted_at AS "transactionDate",
-        COALESCE(
-          CASE 
-            WHEN l.source_doc_type = 'bill' THEN (SELECT bill_number FROM bills WHERE id = l.source_doc_id)
-            WHEN l.source_doc_type = 'job_receipt' THEN (SELECT receipt_number FROM job_receipts WHERE id = l.source_doc_id)
-            WHEN l.source_doc_type = 'job_issue' THEN (SELECT challan_number FROM job_issues WHERE id = l.source_doc_id)
-            WHEN l.source_doc_type = 'purchase_order' THEN (SELECT po_number FROM purchase_orders WHERE id = l.source_doc_id)
-            ELSE l.source_doc_id::text
-          END,
-          '-'
-        ) AS "transactionNumber",
-        i.name AS "itemName",
-        REPLACE(l.source_doc_type, '_', ' ') AS "transactionType",
-        CASE WHEN l.qty_in > 0 THEN 'Inward' ELSE 'Outward' END AS "movementType",
-        REPLACE(l.source_doc_type, '_', ' ') AS "source",
-        COALESCE((SELECT loc.name FROM locations loc WHERE loc.id = l.location_id), '-') AS "destination",
-        CASE WHEN l.qty_in > 0 THEN l.qty_in ELSE l.qty_out END AS "quantity"
+        MAX(l.id::text) AS id,
+        MAX(l.posted_at) AS posted_at,
+        l.source_doc_type,
+        MAX(l.source_doc_id::text)::uuid AS source_doc_id,
+        l.item_id,
+        l.location_id,
+        SUM(l.qty_in - l.qty_out) AS net
       FROM stock_ledger l
-      JOIN items i ON l.item_id = i.id
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'physical')
@@ -103,21 +101,47 @@ export async function getStockMovementReport(
         AND ${OWN_PLACE}
         AND ${fromDateFilter}
         AND ${toDateFilter}
+        AND ${itemFilter}
+      GROUP BY l.source_doc_type, COALESCE(l.source_doc_id, l.id), l.item_id, l.location_id
+    `;
+
+    const netted = Prisma.sql`
+      SELECT d.* FROM (${docMoves}) d
+      WHERE d.net <> 0
         AND ${movementFilter}
     `;
 
-    if (itemId) {
-      q = Prisma.sql`${q} AND l.item_id = ${itemId}::uuid`;
-    }
+    const totals = await tx.$queryRaw<
+      { count: string | number | bigint; quantity: string | number | null }[]
+    >`SELECT COUNT(*) AS count, COALESCE(SUM(ABS(n.net)), 0) AS quantity FROM (${netted}) n`;
+    const total = Number(totals[0]?.count || 0);
+    const grandTotalQuantity = Number(totals[0]?.quantity || 0);
 
-    const countQuery = Prisma.sql`SELECT COUNT(*) as count FROM (${q}) as sub`;
-    const countResult = await tx.$queryRaw<{ count: string | number | bigint }[]>`${countQuery}`;
-    const total = Number(countResult[0]?.count || 0);
-
-    q = Prisma.sql`${q} ORDER BY l.posted_at DESC, l.id DESC`;
-    q = Prisma.sql`${q} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
-
-    const rawRows = await tx.$queryRaw<RawRow[]>`${q}`;
+    const rawRows = await tx.$queryRaw<RawRow[]>`
+      SELECT
+        n.id,
+        n.posted_at AS "transactionDate",
+        COALESCE(
+          CASE
+            WHEN n.source_doc_type = 'bill' THEN (SELECT bill_number FROM bills WHERE id = n.source_doc_id)
+            WHEN n.source_doc_type = 'job_receipt' THEN (SELECT receipt_number FROM job_receipts WHERE id = n.source_doc_id)
+            WHEN n.source_doc_type = 'job_issue' THEN (SELECT challan_number FROM job_issues WHERE id = n.source_doc_id)
+            WHEN n.source_doc_type = 'purchase_order' THEN (SELECT po_number FROM purchase_orders WHERE id = n.source_doc_id)
+            ELSE n.source_doc_id::text
+          END,
+          '-'
+        ) AS "transactionNumber",
+        i.name AS "itemName",
+        REPLACE(n.source_doc_type, '_', ' ') AS "transactionType",
+        CASE WHEN n.net > 0 THEN 'Inward' ELSE 'Outward' END AS "movementType",
+        REPLACE(n.source_doc_type, '_', ' ') AS "source",
+        COALESCE((SELECT loc.name FROM locations loc WHERE loc.id = n.location_id), '-') AS "destination",
+        ABS(n.net) AS "quantity"
+      FROM (${netted}) n
+      JOIN items i ON n.item_id = i.id
+      ORDER BY n.posted_at DESC, n.id DESC
+      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
+    `;
 
     const mappedRows = rawRows.map((row) => ({
       id: row.id,
@@ -132,7 +156,6 @@ export async function getStockMovementReport(
     }));
 
     const totalPages = Math.ceil(total / perPage);
-    const grandTotalQuantity = mappedRows.reduce((sum, row) => sum + row.quantity, 0);
 
     return {
       results: mappedRows,

@@ -51,7 +51,7 @@ export async function getStockSummaryReport(
     const fromDateFilter = fromDate
       ? Prisma.sql`l.posted_at >= ${new Date(fromDate)}::timestamptz`
       : Prisma.sql`true`;
-      
+
     const toDateFilter = toDate
       ? Prisma.sql`l.posted_at <= ${new Date(toDate)}::timestamptz`
       : Prisma.sql`true`;
@@ -59,6 +59,25 @@ export async function getStockSummaryReport(
     const beforeFromDateFilter = fromDate
       ? Prisma.sql`l.posted_at < ${new Date(fromDate)}::timestamptz`
       : Prisma.sql`false`;
+
+    // In/Out net each document per location first: an edited bill keeps its
+    // superseded postings and their reversals, so summing raw qty_in/qty_out
+    // counted every save (in 300 / out 200 for one 100-unit bill).
+    const docMoves = Prisma.sql`
+      SELECT
+        l.item_id,
+        SUM(CASE WHEN ${beforeFromDateFilter} OR (l.source_doc_type = 'item_opening_stock' AND ${toDateFilter}) THEN l.qty_in - l.qty_out ELSE 0 END) AS opening,
+        SUM(CASE WHEN ${fromDateFilter} AND ${toDateFilter} AND l.source_doc_type != 'item_opening_stock' THEN l.qty_in - l.qty_out ELSE 0 END) AS period_net,
+        SUM(CASE WHEN ${toDateFilter} THEN l.qty_in - l.qty_out ELSE 0 END) AS closing
+      FROM stock_ledger l
+      WHERE l.organization_id = ${organizationId}::uuid
+        AND l.ownership = 'own'
+        AND l.stock_effect IN ('both', 'physical')
+        AND ${countedSourceFilter}
+        ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
+        AND ${OWN_PLACE}
+      GROUP BY l.item_id, l.source_doc_type, COALESCE(l.source_doc_id, l.id), l.location_id
+    `;
 
     let q = Prisma.sql`
       SELECT
@@ -69,19 +88,13 @@ export async function getStockSummaryReport(
         i.hsn_code AS "hsnCode",
         i.custom_fields AS "customFields",
         u.unit_name AS "uomName",
-        COALESCE(SUM(CASE WHEN ${beforeFromDateFilter} OR (l.source_doc_type = 'item_opening_stock' AND ${toDateFilter}) THEN l.qty_in - l.qty_out ELSE 0 END), 0) AS "openingStock",
-        COALESCE(SUM(CASE WHEN ${fromDateFilter} AND ${toDateFilter} AND l.source_doc_type != 'item_opening_stock' THEN l.qty_in ELSE 0 END), 0) AS "quantityIn",
-        COALESCE(SUM(CASE WHEN ${fromDateFilter} AND ${toDateFilter} AND l.source_doc_type != 'item_opening_stock' THEN l.qty_out ELSE 0 END), 0) AS "quantityOut",
-        COALESCE(SUM(CASE WHEN ${toDateFilter} THEN l.qty_in - l.qty_out ELSE 0 END), 0) AS "closingStock"
+        COALESCE(SUM(d.opening), 0) AS "openingStock",
+        COALESCE(SUM(GREATEST(d.period_net, 0)), 0) AS "quantityIn",
+        COALESCE(SUM(GREATEST(-d.period_net, 0)), 0) AS "quantityOut",
+        COALESCE(SUM(d.closing), 0) AS "closingStock"
       FROM items i
       LEFT JOIN units_of_measurement u ON i.stocking_uom_id = u.id
-      LEFT JOIN stock_ledger l ON i.id = l.item_id
-        AND l.organization_id = ${organizationId}::uuid
-        AND l.ownership = 'own'
-        AND l.stock_effect IN ('both', 'physical')
-        AND ${countedSourceFilter}
-        ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
-        AND ${OWN_PLACE}
+      LEFT JOIN (${docMoves}) d ON d.item_id = i.id
     `;
 
     q = Prisma.sql`${q} WHERE i.organization_id = ${organizationId}::uuid AND i.is_deleted = false`;
