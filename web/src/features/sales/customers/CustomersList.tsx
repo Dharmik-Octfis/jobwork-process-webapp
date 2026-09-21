@@ -6,7 +6,7 @@ import {
   updateCustomer,
 } from './customers.api';
 import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { CustomerDetail } from './CustomerDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -42,6 +42,7 @@ function renderCustomerCell(customer: Customer, key: string): string {
 
 export function CustomersList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedCustomerId = searchParams.get('id');
@@ -155,8 +156,9 @@ export function CustomersList() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedCustomerId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedCustomerId ? '0 0 320px' : 1,
             borderRight: selectedCustomerId ? '1px solid #eef0f3' : 'none',
@@ -215,7 +217,7 @@ export function CustomersList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -282,7 +284,7 @@ export function CustomersList() {
                   purchase orders and bills.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -324,6 +326,8 @@ export function CustomersList() {
                           background:
                             selectedCustomerId === customer.id ? '#f1f5f9' : 'transparent',
                           transition: 'background 0.1s',
+                          display: 'flex',
+                          alignItems: 'flex-start',
                         }}
                         onMouseEnter={(e) => {
                           if (selectedCustomerId !== customer.id)
@@ -334,24 +338,34 @@ export function CustomersList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          {customer.contactName}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              color: '#1e293b',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {customer.contactName}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            {customer.companyName || customer.email || 'No email'}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {customer.companyName || customer.email || 'No email'}
-                        </div>
+                        {customer.status === 'inactive' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                              INACTIVE
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -437,6 +451,7 @@ export function CustomersList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -459,7 +474,7 @@ export function CustomersList() {
 
         {/* Right Panel - Detail */}
         {selectedCustomerId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <CustomerDetail customerId={selectedCustomerId} onClose={() => setSearchParams({})} />
           </div>
         )}

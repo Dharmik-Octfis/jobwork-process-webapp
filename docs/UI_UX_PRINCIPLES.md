@@ -120,10 +120,17 @@ screens.
 
 ## 12. Responsive Design
 
-- Design for the primary device first (mobile/tablet or desktop, as fits the user).
-- Keep primary actions within thumb reach on touch devices.
-- Tables collapse to cards on narrow screens; keep the key columns.
-- Test on real devices.
+- Every screen works on a phone. `768px` is the breakpoint — `@media (max-width: 768px)` in
+  `web/src/index.css`, where the shared responsive rules live.
+- Keep primary actions within thumb reach on touch devices; touch targets ≥ 44px.
+- **A wide table scrolls horizontally, it does not collapse to cards.** Wrap it in
+  `.responsive-table-wrapper`: the table keeps its `min-width` so columns stay readable and the
+  wrapper takes the overflow. Every column stays reachable, which is what a jobwork sheet needs —
+  picking "key columns" hides the one the operator came for.
+- Reuse the shared classes rather than writing a media query per page: `.form-field-grid`,
+  `.master-detail-container` + `.master-pane` / `.detail-pane`, `.action-btn-text`,
+  `.hidden-on-mobile`.
+- Test on real devices, and walk each new page at 390px / 768px / desktop before calling it done.
 
 ## 13. Microcopy
 

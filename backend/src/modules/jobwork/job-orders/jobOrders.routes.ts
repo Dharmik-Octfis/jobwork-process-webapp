@@ -14,6 +14,7 @@ import {
   createJobOrder,
   deleteJobOrder,
   getJobOrder,
+  getJobOrderWithSteps,
   getJobOrderCount,
   getJobOrders,
   getNumberPreferenceRoute,
@@ -56,6 +57,7 @@ router.put(
 );
 
 router.get('/:id', requirePermission('job_order:read'), getJobOrder);
+router.get('/:id/with-steps', requirePermission('job_order:read'), getJobOrderWithSteps);
 // The stepper page. A read, so it is gated on `read` — the Issue and Receive
 // buttons it renders are gated separately by their own modules' routes.
 router.get('/:id/overview', requirePermission('job_order:read'), getOverview);

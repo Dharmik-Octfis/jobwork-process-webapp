@@ -41,14 +41,12 @@ export function CreateVendor() {
   };
 
   return (
-    <div>
-      <VendorForm
-        initialData={initialData}
-        onSubmit={onSubmit}
-        isSubmitting={mutation.isPending}
-        isEdit={false}
-        customFieldErrors={fieldErrors}
-      />
-    </div>
+    <VendorForm
+      initialData={initialData}
+      onSubmit={onSubmit}
+      isSubmitting={mutation.isPending}
+      isEdit={false}
+      customFieldErrors={fieldErrors}
+    />
   );
 }

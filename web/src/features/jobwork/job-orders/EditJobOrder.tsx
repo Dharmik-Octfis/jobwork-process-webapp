@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { BackButton } from '../../../components/ui/BackButton';
+import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchJobOrderById, updateJobOrder } from './jobOrders.api';
 import type { UpdateJobOrderData } from './jobOrders.schemas';
@@ -29,7 +29,6 @@ export function EditJobOrder() {
   const queryClient = useQueryClient();
   const { orgId, id } = useParams<{ orgId: string; id: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
 
   /**
    * Back to the LIST with this order still selected, not to the standalone
@@ -56,8 +55,9 @@ export function EditJobOrder() {
       navigate(backPath);
     },
     onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
-      setFieldErrors(error.response?.data?.details ?? {});
-      setMessage(error.response?.data?.message ?? 'Failed to update job order');
+      const details = error.response?.data?.details ?? {};
+      // Highlight only — the global mutation handler shows the one toast (app/queryClient.ts).
+      setFieldErrors(details);
     },
   });
 
@@ -105,53 +105,51 @@ export function EditJobOrder() {
   }
 
   return (
-    <div
-      style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}
-    >
+    <div className="page-container" style={{ background: '#fff' }}>
       <header
+        className="page-header"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 12,
           padding: '16px 24px',
           borderBottom: '1px solid #eef0f3',
+          justifyContent: 'space-between',
         }}
       >
-        <BackButton onClick={() => navigate(backPath)} label="Back to the job order" />
         <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
           {jobOrder.jobOrderNumber}
         </h1>
-      </header>
-      {message && (
-        <p
+        <button
+          type="button"
+          onClick={() => navigate(backPath)}
           style={{
-            fontSize: 13,
-            color: '#b91c1c',
-            background: '#fef2f2',
-            borderBottom: '1px solid #fecaca',
-            padding: '10px 24px',
-            margin: 0,
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
           }}
-          role="alert"
         >
-          {message}
-        </p>
-      )}
-      <div style={{ padding: '0 0 44px 0' }}>
-        <JobOrderForm
-          initialData={jobOrder}
-          // Material In posted its ledger rows when the order was created. There
-          // is no second one: correcting posted stock is an adjustment, not an edit.
-          onSubmit={(data) => {
-            setFieldErrors({});
-            setMessage(null);
-            mutation.mutate(data);
-          }}
-          isPending={mutation.isPending}
-          onCancel={() => navigate(backPath)}
-          fieldErrors={fieldErrors}
-        />
-      </div>
+          <X size={20} />
+        </button>
+      </header>
+      <JobOrderForm
+        initialData={jobOrder}
+        // Material In posted its ledger rows when the order was created. There
+        // is no second one: correcting posted stock is an adjustment, not an edit.
+        onSubmit={(data) => {
+          setFieldErrors({});
+          mutation.mutate(data);
+        }}
+        isPending={mutation.isPending}
+        onCancel={() => navigate(backPath)}
+        fieldErrors={fieldErrors}
+      />
     </div>
   );
 }

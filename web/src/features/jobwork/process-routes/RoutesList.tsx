@@ -107,8 +107,12 @@ export function RoutesList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -291,96 +295,98 @@ export function RoutesList() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle} scope="col">
-                        {col.label}
-                      </th>
-                    ))}
-                    <th style={{ ...headerStyle, width: 60 }} scope="col" aria-label="Actions" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {routes.map((route) => (
-                    /**
-                     * The whole row opens the route. The name stays a real
-                     * `<button>` underneath it — a clickable `<tr>` is invisible to
-                     * Tab, so without it the list would be unreachable by keyboard
-                     * (CLAUDE.md). The row click is the mouse convenience; the
-                     * button is the control.
-                     */
+              <div className="responsive-table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={route.id}
-                      onClick={() => openDetail(route.id)}
-                      style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
-                        >
-                          {col.locked ? (
-                            <button
-                              type="button"
-                              onClick={() => openDetail(route.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                font: 'inherit',
-                                fontWeight: 500,
-                                color: '#0062ff',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {renderRouteCell(route, col.key)}
-                            </button>
-                          ) : (
-                            renderRouteCell(route, col.key)
-                          )}
-                        </td>
+                        <th key={col.key} style={headerStyle} scope="col">
+                          {col.label}
+                        </th>
                       ))}
-                      <td style={{ padding: '12px 16px' }}>
-                        <button
-                          type="button"
-                          // Deleting must not also open the row underneath it.
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setToDelete(route);
-                          }}
-                          title={`Delete ${route.name}`}
-                          aria-label={`Delete ${route.name}`}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 4,
-                            background: '#fff',
-                            cursor: 'pointer',
-                            color: '#94a3b8',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
+                      <th style={{ ...headerStyle, width: 60 }} scope="col" aria-label="Actions" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {routes.map((route) => (
+                      /**
+                       * The whole row opens the route. The name stays a real
+                       * `<button>` underneath it — a clickable `<tr>` is invisible to
+                       * Tab, so without it the list would be unreachable by keyboard
+                       * (CLAUDE.md). The row click is the mouse convenience; the
+                       * button is the control.
+                       */
+                      <tr
+                        key={route.id}
+                        onClick={() => openDetail(route.id)}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
+                          >
+                            {col.locked ? (
+                              <button
+                                type="button"
+                                onClick={() => openDetail(route.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  font: 'inherit',
+                                  fontWeight: 500,
+                                  color: '#0062ff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                {renderRouteCell(route, col.key)}
+                              </button>
+                            ) : (
+                              renderRouteCell(route, col.key)
+                            )}
+                          </td>
+                        ))}
+                        <td style={{ padding: '12px 16px' }}>
+                          <button
+                            type="button"
+                            // Deleting must not also open the row underneath it.
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setToDelete(route);
+                            }}
+                            title={`Delete ${route.name}`}
+                            aria-label={`Delete ${route.name}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 28,
+                              height: 28,
+                              border: '1px solid #e2e8f0',
+                              borderRadius: 4,
+                              background: '#fff',
+                              cursor: 'pointer',
+                              color: '#94a3b8',
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
@@ -399,7 +405,7 @@ export function RoutesList() {
         </div>
 
         {selectedId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <RouteDetail routeId={selectedId} onClose={() => setSearchParams({})} />
           </div>
         )}

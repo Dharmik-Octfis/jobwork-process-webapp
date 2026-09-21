@@ -31,6 +31,10 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.input:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
 /* Room for the reveal toggle so text never sits under it. */
 .hasTrailing {
   padding-right: var(--space-8);
@@ -44,7 +48,7 @@
   outline: none;
   background: var(--color-surface);
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
+  box-shadow: 0 0 0 3px rgba(28, 124, 140, 0.15);
 }
 
 .input:disabled {

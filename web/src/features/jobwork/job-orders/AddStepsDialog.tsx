@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
 import { Modal } from '../../../components/ui/Modal';
 import { StepsGrid } from '../StepsGrid';
 import { emptyStep, emptyStepItem, toNumber } from '../jobwork.schemas';
@@ -70,7 +71,6 @@ export function AddStepsDialog({
   const [rows, setRows] = useState<JobOrderStepData[]>(seed);
   const [reason, setReason] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
 
   /** `itemId → seq` for everything the order already produces. Latest producer
    * wins: an item made twice is fed by the nearest step above. */
@@ -123,25 +123,25 @@ export function AddStepsDialog({
       onClose();
     },
     onError: (error: AxiosError<{ message?: string; details?: Record<string, string> }>) => {
-      setFieldErrors(error.response?.data?.details ?? {});
-      setMessage(error.response?.data?.message ?? 'Could not add the step.');
+      const details = error.response?.data?.details ?? {};
+      // Highlight only — the global mutation handler shows the one toast (app/queryClient.ts).
+      setFieldErrors(details);
     },
   });
 
   const submit = () => {
     const missing = rows.findIndex((row) => !row.processId);
     if (missing >= 0) {
-      setMessage(`Step ${startSeq + missing} needs a process.`);
+      toast.error(`Step ${startSeq + missing} needs a process.`);
       return;
     }
     // A step that consumes nothing has nothing to issue, and the failure would
     // otherwise surface days later as an Issue dialog with no sections in it.
     const empty = rows.findIndex((row) => (row.inputs ?? []).length === 0);
     if (empty >= 0) {
-      setMessage(`Step ${startSeq + empty} consumes nothing. Add at least one item to it.`);
+      toast.error(`Step ${startSeq + empty} consumes nothing. Add at least one item to it.`);
       return;
     }
-    setMessage(null);
     setFieldErrors({});
     mutation.mutate();
   };
@@ -150,6 +150,7 @@ export function AddStepsDialog({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      position="fullScreen"
       title={`Add work to ${jobOrderNumber}`}
       footer={
         <>
@@ -189,23 +190,6 @@ export function AddStepsDialog({
         </>
       }
     >
-      {message && (
-        <p
-          role="alert"
-          style={{
-            fontSize: 13,
-            color: '#b91c1c',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 4,
-            padding: '8px 12px',
-            margin: '0 0 14px 0',
-          }}
-        >
-          {message}
-        </p>
-      )}
-
       <StepsGrid
         steps={rows}
         onChange={setRows}
@@ -217,6 +201,7 @@ export function AddStepsDialog({
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
         priorSpare={priorSpare}
+        unassignedProcessorLabel="Decide when issuing"
         /* Inside a Modal — the item picker's menu is clipped by the dialog's
            scrolling body without this (CLAUDE.md). */
         portalMenus

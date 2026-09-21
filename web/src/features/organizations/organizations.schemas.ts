@@ -29,12 +29,25 @@ const baseOrganizationSchema = z.object({
     .regex(/^(https?:\/\/)?([\w.-]+)\.([a-z]{2,})([/\w .-]*)*\/?$/i, 'Invalid website URL')
     .optional()
     .or(z.literal('')),
-  settings: z.object({
-    itemTrackingLabel: z.object({
-      singular: z.string().max(30).optional(),
-      plural: z.string().max(30).optional(),
-    }).optional()
-  }).optional(),
+  settings: z
+    .object({
+      itemTrackingLabel: z
+        .object({
+          singular: z.string().max(30).optional(),
+          plural: z.string().max(30).optional(),
+        })
+        .optional(),
+      /** The optional level below a batch — see the backend schema for why it
+       * lives in `settings` and why there is no per-item gate. */
+      batchUnit: z
+        .object({
+          enabled: z.boolean().optional(),
+          singular: z.string().max(30).optional(),
+          plural: z.string().max(30).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 const phoneRefinement = (_data: { phone?: string; dialCode?: string }, _ctx: z.RefinementCtx) => {
@@ -45,8 +58,20 @@ export const createOrganizationSchema = baseOrganizationSchema.superRefine(phone
 
 export type CreateOrganizationData = z.infer<typeof createOrganizationSchema>;
 
+/**
+ * 🔴 THE DAY THE BOOKS BEGIN HERE — UPDATE-ONLY, matching the server.
+ *
+ * Deliberately absent from create. Zoho Books asks for it on Settings → Opening
+ * Balances rather than when an organization is made, and nothing depends on it
+ * until opening stock is declared — so putting it on the create form would ask
+ * the least-informed user for the one value that, typed wrong, refuses every
+ * document they go on to raise. It is edited in Preferences.
+ *
+ * `''` clears it back to "never migrated"; the server takes date-only.
+ */
 export const updateOrganizationSchema = baseOrganizationSchema
   .partial()
+  .extend({ migrationDate: z.string().optional() })
   .superRefine(phoneRefinement);
 export type UpdateOrganizationData = z.infer<typeof updateOrganizationSchema>;
 
@@ -82,5 +107,12 @@ export interface Organization {
       singular?: string;
       plural?: string;
     };
+    batchUnit?: {
+      enabled?: boolean;
+      singular?: string;
+      plural?: string;
+    };
   } | null;
+  /** Date-only (`YYYY-MM-DD`), or null when the organization never migrated. */
+  migrationDate?: string | null;
 }

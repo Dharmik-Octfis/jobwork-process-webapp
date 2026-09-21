@@ -216,9 +216,7 @@ export function UomFormModal({ orgId, isOpen, onClose, uomToEdit }: UomFormModal
               </div>
             )}
 
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
-            >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 13, fontWeight: 500 }}>
                   Name <span style={{ color: 'var(--color-danger)' }}>*</span>

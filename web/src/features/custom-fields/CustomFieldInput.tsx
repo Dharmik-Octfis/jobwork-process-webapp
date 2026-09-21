@@ -1,14 +1,17 @@
 import type { CustomFieldDefinition } from './customFields.schemas';
 import { DateInput } from '../../components/ui/DateInput';
+import { DateTimeInput } from '../../components/ui/DateTimeInput';
 import { Select } from '../../components/ui/Select';
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   maxWidth: '440px',
-  padding: '6px 8px',
+  padding: '8px 12px',
+  height: '36px',
   fontSize: '13px',
   border: '1px solid #d1d5db',
   borderRadius: '4px',
+  boxSizing: 'border-box',
 };
 
 /** ISO datetime (stored) -> value for <input type="datetime-local"> in local time. */
@@ -49,7 +52,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
-          style={{ ...inputStyle, resize: 'vertical' }}
+          style={{ ...inputStyle, resize: 'vertical', height: 'auto' }}
         />
       );
       break;
@@ -86,28 +89,33 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           style={inputStyle}
           containerStyle={{ maxWidth: 440 }}
           portal={portal}
+          defaultToCurrent={true}
         />
       );
       break;
 
     case 'datetime':
       control = (
-        <input
-          type="datetime-local"
+        <DateInput
+          type="datetime"
           value={isoToLocalInput(value)}
-          onChange={(e) => onChange(localInputToIso(e.target.value))}
+          onChange={(val) => onChange(localInputToIso(val))}
           style={inputStyle}
+          containerStyle={{ maxWidth: 440 }}
+          portal={portal}
+          defaultToCurrent={true}
         />
       );
       break;
 
     case 'time':
       control = (
-        <input
+        <DateTimeInput
           type="time"
           value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(val) => onChange(val)}
           style={inputStyle}
+          defaultToCurrent={true}
         />
       );
       break;
@@ -144,7 +152,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
             { value: '', label: 'Select…' },
             ...options.map((o) => ({ value: o.id, label: o.label })),
           ]}
-          buttonStyle={{ maxWidth: '440px' }}
+          buttonStyle={{ maxWidth: '440px', height: '36px' }}
         />
       );
       break;

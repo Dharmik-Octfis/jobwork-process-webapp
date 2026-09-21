@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import {
   allocateNumber,
   getNumberPreference,
@@ -8,13 +9,13 @@ import {
   setNumberPreference,
 } from '../../../lib/numberSequence.ts';
 import { getMemberDirectory, type MemberDirectory } from '../../../lib/memberDirectory.ts';
-import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
+import { pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
   loadActiveDefinitions,
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
-import { getBalance, type Ownership } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { type Ownership } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import {
   assertItemsBelongToOrg,
   assertLocationsBelongToOrg,
@@ -22,10 +23,13 @@ import {
   assertUomsBelongToOrg,
   resolveProcessorName,
 } from '../jobwork.refs.ts';
-import { runAsDocument, type ProcessorType } from '../jobwork.types.ts';
+import { POSTED_DOC_STATUS, runAsDocument, type ProcessorType } from '../jobwork.types.ts';
+import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
+import { writeOffStep } from './jobOrders.writeOff.ts';
+import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import {
-  chainNotReady,
-  getStepTotals,
+  getAllChainNotReady,
+  getAllStepTotals,
   recomputeJobOrder,
   recomputeStep,
 } from './jobOrders.status.ts';
@@ -65,14 +69,23 @@ import type {
 
 const DUPLICATE_NUMBER = 'A job order with this number already exists in this organization.';
 
-const SEARCH_COLUMNS = ['jobOrderNumber', 'routeNameSnapshot', 'remarks'] as const;
-
 function jobOrderListWhere(organizationId: string, opts: ListQuery): Prisma.JobOrderWhereInput {
-  return {
+  const baseWhere = {
     organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.JobOrderWhereInput>('job_order', opts.filter),
-    ...searchWhere<Prisma.JobOrderWhereInput>(opts.search, [...SEARCH_COLUMNS]),
+  };
+
+  if (!opts.search) return baseWhere;
+
+  return {
+    ...baseWhere,
+    OR: [
+      { jobOrderNumber: { contains: opts.search, mode: 'insensitive' } },
+      { routeNameSnapshot: { contains: opts.search, mode: 'insensitive' } },
+      { remarks: { contains: opts.search, mode: 'insensitive' } },
+      { inputItem: { name: { contains: opts.search, mode: 'insensitive' } } },
+    ],
   };
 }
 
@@ -99,6 +112,9 @@ const STEP_INCLUDE = {
         orderBy: { createdAt: 'asc' },
         include: {
           batch: { select: { id: true, supplierBatchRef: true, manufacturerBatch: true } },
+          /** Which package was planned, when the org runs a unit level. Null on
+           * every plan row written before it, and on one naming a batch generally. */
+          batchUnit: { select: { id: true, seq: true, label: true } },
           location: { select: { id: true, name: true } },
         },
       },
@@ -122,6 +138,18 @@ const JOB_ORDER_INCLUDE = {
   },
 } satisfies Prisma.JobOrderInclude;
 
+const JOB_ORDER_LIST_INCLUDE = {
+  inputItem: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
+  inputUom: { select: { id: true, unitName: true, symbol: true } },
+  route: { select: { id: true, name: true } },
+  steps: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    // Omit `include: STEP_INCLUDE` for list view to avoid massive N+1 queries.
+    // The frontend only needs `order.steps.length` and step scalar fields for lists.
+  },
+} satisfies Prisma.JobOrderInclude;
+
 export async function getJobOrdersList(organizationId: string, opts: ListQuery) {
   const { page, perPage } = opts;
   return runAsTenant(organizationId, async (tx) => {
@@ -131,7 +159,7 @@ export async function getJobOrdersList(organizationId: string, opts: ListQuery) 
       orderBy: [{ orderDate: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * perPage,
       take: takeForPage(perPage),
-      include: JOB_ORDER_INCLUDE,
+      include: JOB_ORDER_LIST_INCLUDE,
     });
     return pageSlice(rows, page, perPage);
   });
@@ -143,11 +171,56 @@ export async function countJobOrders(organizationId: string, opts: ListQuery): P
   );
 }
 
-export async function getJobOrderById(organizationId: string, id: string) {
+/**
+ * 🔴 THE TERNARY IS ON THE QUERY, NOT INSIDE `include` (2026-09-01).
+ *
+ * `include: light ? LIST : FULL` type-checks and returns the right rows, but
+ * Prisma infers the payload from the union of the two includes and keeps only
+ * what both guarantee — so `steps.inputs` vanished from the type of a call that
+ * returns it at runtime, and reading it was a `tsc` error in code that worked.
+ * Two call sites, each with one literal `include`, is what lets it be inferred.
+ */
+function findJobOrderFull(tx: TenantClient, organizationId: string, id: string) {
+  return tx.jobOrder.findFirst({
+    where: { id, organizationId, isDeleted: false },
+    include: JOB_ORDER_INCLUDE,
+  });
+}
+
+function findJobOrderLight(tx: TenantClient, organizationId: string, id: string) {
+  return tx.jobOrder.findFirst({
+    where: { id, organizationId, isDeleted: false },
+    include: JOB_ORDER_LIST_INCLUDE,
+  });
+}
+
+type FullJobOrder = Awaited<ReturnType<typeof findJobOrderFull>>;
+type LightJobOrder = Awaited<ReturnType<typeof findJobOrderLight>>;
+
+/** Omitting `light`, or passing a literal `false`, keeps the full payload's type
+ * — which is what a caller reading `steps[].inputs` needs. A caller switching on
+ * a runtime boolean gets the union and has to narrow, as it should. */
+export async function getJobOrderById(
+  organizationId: string,
+  id: string,
+  light?: false,
+): Promise<FullJobOrder>;
+export async function getJobOrderById(
+  organizationId: string,
+  id: string,
+  light: boolean,
+): Promise<FullJobOrder | LightJobOrder>;
+export async function getJobOrderById(organizationId: string, id: string, light = false) {
+  return runAsTenant(organizationId, (tx) =>
+    light ? findJobOrderLight(tx, organizationId, id) : findJobOrderFull(tx, organizationId, id),
+  );
+}
+
+export async function getJobOrderWithStepsById(organizationId: string, id: string) {
   return runAsTenant(organizationId, (tx) =>
     tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
-      include: JOB_ORDER_INCLUDE,
+      select: JOB_ORDER_WITH_STEPS_SELECT,
     }),
   );
 }
@@ -156,8 +229,8 @@ interface ResolvedInput {
   itemId: string;
   uomId: string | null;
   plannedQty: number | null;
-  /** Null falls through to the step's at issue time — never defaulted here, or
-   * "not set" and "no tolerance at all" become the same value. */
+  /** Typed on the row and stored as typed — nothing fills a blank one in.
+   * 0 = none allowed; null = unchecked. */
   tolerancePct: number | null;
   fromStock: boolean;
   /** The planner's batch note. Empty for every untracked item and for anyone who
@@ -165,11 +238,24 @@ interface ResolvedInput {
   plannedBatches: PlannedBatchRow[];
 }
 
+interface RecipeRow {
+  componentItemId: string;
+  qtyPerUnit: Prisma.Decimal;
+  uomId: string | null;
+  seq: number;
+}
+
 interface ResolvedOutput {
   itemId: string;
   uomId: string | null;
   expectedQty: number | null;
   isPrimary: boolean;
+  /** Charge per ACCEPTED unit (landed-cost plan D1–D2). */
+  rate: number | null;
+  /** Share of the input's material, in % (R1b). Cleared where shares do not apply. */
+  sharePct: number | null;
+  /** The composite's recipe, frozen onto the step (§5.2). Empty for a plain item. */
+  components: RecipeRow[];
 }
 
 interface ResolvedStep extends JobOrderStepInput {
@@ -260,6 +346,10 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
     uomId: row.uomId ?? null,
     expectedQty: row.expectedQty ?? null,
     isPrimary: flagged.length === 1 ? Boolean(row.isPrimary) : index === 0,
+    rate: row.rate ?? null,
+    sharePct: row.sharePct ?? null,
+    // Filled in `buildSteps`, once one query has read every composite's recipe.
+    components: [],
   }));
 }
 
@@ -318,13 +408,10 @@ function classifyStepInputs(
 }
 
 /**
- * Fill each step's blanks from the Process master — the last link of the default
- * chain (§2.5), running Process → route step → job order step → document.
+ * Freeze the Process master's name onto the step (§2.4).
  *
- * `??`, never `||`. A tolerance of 0 means "no tolerance at all" and must not
- * fall through to the process's 2%; a rate of 0 means free-of-charge and must
- * not be replaced either. The distinction between "unset" and "zero" is the
- * whole reason these columns are nullable.
+ * Nothing else comes from the process any more: the rate is per output row and
+ * its basis is gone (landed-cost plan D1–D2), and tolerance is typed per input row.
  *
  * The items are NOT set here — they are two lists now (`resolveStepRows`), and
  * the units that follow them cannot be known until every step's items are. See
@@ -332,20 +419,9 @@ function classifyStepInputs(
  */
 function applyStepDefaults(
   step: JobOrderStepInput,
-  process: {
-    name: string;
-    rateBasis: string;
-    defaultTolerancePct: Prisma.Decimal | null;
-  },
+  process: { name: string },
 ): JobOrderStepInput & { processNameSnapshot: string } {
-  return {
-    ...step,
-    processNameSnapshot: process.name,
-    rateBasis: step.rateBasis ?? (process.rateBasis as JobOrderStepInput['rateBasis']),
-    tolerancePct:
-      step.tolerancePct ??
-      (process.defaultTolerancePct === null ? null : Number(process.defaultTolerancePct)),
-  };
+  return { ...step, processNameSnapshot: process.name };
 }
 
 /**
@@ -491,10 +567,15 @@ function planQuantities(steps: ResolvedStep[], seeded: ReadonlyMap<string, numbe
     });
 
     const principal = resolvedInputs[0] ?? null;
+    // 🔴 Only on a single-output step (landed-cost plan §6.3). With two outputs
+    // sharing one input, handing the primary the WHOLE planned input distorts the
+    // plan ratio every receipt is costed by, and books the gap as false loss.
+    const derivable = step.resolvedOutputs.length === 1;
     const resolvedOutputs = step.resolvedOutputs.map((row) => ({
       ...row,
       expectedQty:
-        row.expectedQty ?? derivedExpectedQty(row, principal, step.expectedYield ?? null),
+        row.expectedQty ??
+        (derivable ? derivedExpectedQty(row, principal, step.expectedYield ?? null) : null),
     }));
 
     // Added AFTER this step's own inputs are settled: a step does not feed itself,
@@ -592,21 +673,37 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
       seq: true,
       isDeleted: true,
       processNameSnapshot: true,
+      status: true,
+      processorType: true,
+      processorId: true,
       inputs: {
         where: { isDeleted: false },
         select: { itemId: true, plannedQty: true, fromStock: true },
       },
       outputs: { where: { isDeleted: false }, select: { itemId: true, expectedQty: true } },
+      // Posted documents only. A DRAFT must not lock the steps grid: the lock
+      // exists because a live challan's step number is printed on paperwork a
+      // processor is holding, and a draft has been handed to nobody. Editing the
+      // step under a parked draft is safe because posting re-validates the draft
+      // against the step as it stands then, and refuses it if the item is gone.
       _count: {
         select: {
-          issues: { where: { isDeleted: false, status: { not: 'cancelled' } } },
-          receipts: { where: { isDeleted: false, status: { not: 'cancelled' } } },
+          issues: { where: { isDeleted: false, status: POSTED_DOC_STATUS } },
+          receipts: { where: { isDeleted: false, status: POSTED_DOC_STATUS } },
         },
       },
     },
   });
 }
 
+/**
+ * Complete a step: a human saying nothing more is coming back (landed-cost D7).
+ *
+ * 🔴 Whatever is still at the processor is written off in the same transaction
+ * (R8), and the step is then closed to every document (R9) — so a draft still
+ * parked against it would be a document that can never post. Those are refused
+ * by name rather than silently stranded. There is no reopen.
+ */
 export async function manuallyCompleteStep(
   organizationId: string,
   jobOrderId: string,
@@ -614,15 +711,43 @@ export async function manuallyCompleteStep(
   userId: string | undefined,
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
-    await runAsTenant(organizationId, async (tx) => {
+    // A fifty-line challan writes fifty scrap rows (jobwork.types.ts).
+    await runAsDocument(organizationId, async (tx) => {
+      await lockStep(tx, organizationId, stepId);
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
-        select: { id: true, status: true },
+        select: { id: true, seq: true, status: true },
       });
       if (!step) throw ApiError.notFound('Step not found.');
       if (step.status === 'completed' || step.status === 'short_closed') {
         throw ApiError.conflict('Step is already completed or closed short.');
       }
+
+      const draftIssues = await tx.jobIssue.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false, status: 'draft' },
+        select: { challanNumber: true },
+      });
+      const draftReceipts = await tx.jobReceipt.findMany({
+        where: { organizationId, jobOrderStepId: step.id, isDeleted: false, status: 'draft' },
+        select: { receiptNumber: true },
+      });
+      const drafts = [
+        ...draftIssues.map((row) => row.challanNumber),
+        ...draftReceipts.map((row) => row.receiptNumber),
+      ];
+      if (drafts.length > 0) {
+        throw new ApiError(
+          409,
+          `Step ${step.seq} still has drafts parked against it: ${drafts.join(', ')}. Post or ` +
+            'delete them first — once the step is completed they can never be posted.',
+          { drafts: drafts.join(', ') },
+        );
+      }
+
+      await writeOffStep(tx, organizationId, step.id, {
+        reason: 'Step completed — still at the processor, written off as job order loss.',
+        userId,
+      });
 
       await tx.jobOrderStep.update({
         where: { id: step.id },
@@ -686,11 +811,149 @@ function priorFrom(steps: readonly ExistingStep[], startSeq: number): PriorSteps
   return { producedItemIds, producedQty, startSeq };
 }
 
+/**
+ * 🔴 WHAT A STEP MAY LOOK LIKE (landed-cost plan §3, V1, V2, V5) — so that every
+ * output can later be costed by what it is made from.
+ *
+ *   V1  more than one input item → every output is a composite, whose recipe says
+ *       what it is made from. There is no "made from" column (D3).
+ *   V2  every component of an output composite is one of the step's inputs, and a
+ *       composite with no recipe is refused.
+ *   V3  GONE (2026-09-18). One input with several outputs in different units used
+ *       to be refused because `Σ expected × w` cannot add pieces to metres. Such a
+ *       step now splits by share (R1b), which never adds them.
+ *   V5  every input is drawn on by some output (R1). One nothing draws on is never
+ *       consumed by a receipt and was only ever written off at completion — lace
+ *       beside a shirt whose recipe has none (2026-09-18, was a warning).
+ *
+ * An output that is itself one of the inputs passes straight through — leftover
+ * fabric returned beside the shirts — and is exempt from V1 and V2. A step that
+ * lists no inputs yet is a draft being typed, with nothing to check V1 or V2
+ * against; one that lists no outputs is left to V4 at issue.
+ *
+ * Only steps being written are checked: a locked step already has documents and
+ * cannot be re-planned, so it is never passed in here.
+ */
+function assertStepShape(
+  step: {
+    resolvedInputs: readonly { itemId: string; uomId: string | null }[];
+    resolvedOutputs: readonly { itemId: string; uomId: string | null }[];
+  },
+  stepIndex: number,
+  itemById: ReadonlyMap<string, { name: string; itemStructure: string }>,
+  recipeByComposite: ReadonlyMap<string, readonly RecipeRow[]>,
+  nameById: ReadonlyMap<string, string>,
+) {
+  const inputIds = new Set(step.resolvedInputs.map((row) => row.itemId));
+  const nameOf = (id: string) => itemById.get(id)?.name ?? nameById.get(id) ?? 'An item';
+  const refuse = (rowIndex: number, message: string): never => {
+    throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+      [`steps.${stepIndex}.outputs.${rowIndex}.itemId`]: message,
+    });
+  };
+
+  if (inputIds.size > 0) {
+    for (const [rowIndex, output] of step.resolvedOutputs.entries()) {
+      if (inputIds.has(output.itemId)) continue;
+      const isComposite = itemById.get(output.itemId)?.itemStructure === 'composite';
+
+      if (inputIds.size > 1 && !isComposite) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} is not a composite item. A step that consumes several items ` +
+            'can only produce composites, whose recipe says what each is made from.',
+        );
+      }
+      if (!isComposite) continue;
+
+      const components = recipeByComposite.get(output.itemId) ?? [];
+      if (components.length === 0) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} has no recipe yet, so nothing says what it is made from. ` +
+            'Add its components first.',
+        );
+      }
+      const missing = components.find((row) => !inputIds.has(row.componentItemId));
+      if (missing) {
+        refuse(
+          rowIndex,
+          `${nameOf(output.itemId)} is made from ${nameOf(missing.componentItemId)}, which this ` +
+            'step does not consume. Add it to the inputs, or pick a different output.',
+        );
+      }
+    }
+  }
+
+  if (inputIds.size > 0 && step.resolvedOutputs.length > 0) {
+    // Mirrors R1 (`drawPerUnit`): a pass-through draws itself, a composite its
+    // recipe, a plain output of a single-input step that one input.
+    const drawn = new Set<string>();
+    for (const output of step.resolvedOutputs) {
+      if (inputIds.has(output.itemId)) drawn.add(output.itemId);
+      else if (itemById.get(output.itemId)?.itemStructure === 'composite') {
+        for (const row of recipeByComposite.get(output.itemId) ?? []) {
+          drawn.add(row.componentItemId);
+        }
+      } else if (inputIds.size === 1) drawn.add(step.resolvedInputs[0]!.itemId);
+    }
+    const unused = step.resolvedInputs.findIndex((row) => !drawn.has(row.itemId));
+    if (unused >= 0) {
+      const message =
+        `Nothing this step produces is made from ${nameOf(step.resolvedInputs[unused]!.itemId)}. ` +
+        'Remove it, or add it to the recipe of what the step produces.';
+      throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+        [`steps.${stepIndex}.inputs.${unused}.itemId`]: message,
+      });
+    }
+  }
+}
+
+/**
+ * 🔴 R1b AT SAVE — every share-split output states its share, and they make 100%.
+ *
+ * Checked when the job order is saved rather than at the first challan like the
+ * quantities (V4): the planner is the one who knows the split, and a blank must
+ * never be read as "the first output takes it all". Only steps being written come
+ * through here, so a locked step planned before shares existed is not re-checked.
+ */
+function assertShares(
+  outputs: readonly ResolvedOutput[],
+  split: ReadonlySet<ResolvedOutput>,
+  stepIndex: number,
+  itemById: ReadonlyMap<string, { name: string }>,
+) {
+  if (split.size === 0) return;
+  const rows = [...outputs.entries()].filter(([, row]) => split.has(row));
+  const blank = rows.find(([, row]) => row.sharePct === null);
+  if (blank) {
+    const [rowIndex, row] = blank;
+    const message = `Enter the share % for ${itemById.get(row.itemId)?.name ?? 'this item'}.`;
+    throw new ApiError(400, `Step ${stepIndex + 1}: ${message}`, {
+      [`steps.${stepIndex}.outputs.${rowIndex}.sharePct`]: message,
+    });
+  }
+  const total = roundQty(rows.reduce((sum, [, row]) => sum + row.sharePct!, 0));
+  if (Math.abs(total - 100) > 0.01) {
+    const message = `The shares add up to ${total}%. They must total 100%.`;
+    throw new ApiError(
+      400,
+      `Step ${stepIndex + 1}: ${message}`,
+      Object.fromEntries(
+        rows.map(([rowIndex]) => [`steps.${stepIndex}.outputs.${rowIndex}.sharePct`, message]),
+      ),
+    );
+  }
+}
+
 async function buildSteps(
   tx: TenantClient,
   organizationId: string,
   steps: readonly JobOrderStepInput[],
   prior: PriorSteps = NO_PRIOR_STEPS,
+  /** Where `steps` begin in the grid the client holds. The update path builds only
+   * the tail past the work front, and an error keyed from 0 would mark the wrong row. */
+  indexOffset = 0,
 ) {
   const processes = await tx.process.findMany({
     where: {
@@ -701,9 +964,7 @@ async function buildSteps(
     select: {
       id: true,
       name: true,
-      rateBasis: true,
       itemChanges: true,
-      defaultTolerancePct: true,
     },
   });
   const byId = new Map(processes.map((p) => [p.id, p]));
@@ -720,7 +981,7 @@ async function buildSteps(
     // null) and still saves; tightening it here would block a legitimate
     // work-in-progress. It is refused where it becomes a real problem: the Issue
     // dialog, which has nothing to offer and says so.
-    const { inputs, outputs } = resolveStepRows(step, index);
+    const { inputs, outputs } = resolveStepRows(step, index + indexOffset);
 
     resolved.push({
       ...applyStepDefaults(step, process),
@@ -734,13 +995,13 @@ async function buildSteps(
         fromStock: true,
         plannedBatches: row.plannedBatches ?? [],
       })),
-      resolvedOutputs: flagPrimaryOutput(outputs, index),
+      resolvedOutputs: flagPrimaryOutput(outputs, index + indexOffset),
     });
   }
 
   // One query for every item any step touches, so the units below are the items'
-  // own rather than an org-wide guess off the process master. Names are not
-  // selected: nothing on this path renders one any more.
+  // own rather than an org-wide guess off the process master. Names and structure
+  // ride along for the shape rules.
   const itemIds = [
     ...new Set(
       resolved.flatMap((step) => [
@@ -752,16 +1013,72 @@ async function buildSteps(
   const chainItems = itemIds.length
     ? await tx.item.findMany({
         where: { id: { in: itemIds }, organizationId, isDeleted: false },
-        select: { id: true, stockingUomId: true },
+        select: {
+          id: true,
+          name: true,
+          itemStructure: true,
+          stockingUomId: true,
+        },
       })
     : [];
+  const itemById = new Map(chainItems.map((item) => [item.id, item]));
   const stockingUomByItem = new Map(chainItems.map((item) => [item.id, item.stockingUomId]));
+
+  // Every composite output's recipe in ONE query, never one per row — it is both
+  // what V2 checks and what the step freezes (§5.2).
+  const compositeIds = [
+    ...new Set(
+      resolved
+        .flatMap((step) => step.resolvedOutputs.map((row) => row.itemId))
+        .filter((id) => itemById.get(id)?.itemStructure === 'composite'),
+    ),
+  ];
+  const recipeRows = compositeIds.length
+    ? await tx.compositeItemComponent.findMany({
+        where: { organizationId, compositeItemId: { in: compositeIds }, isDeleted: false },
+        orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          compositeItemId: true,
+          componentItemId: true,
+          qtyPerUnit: true,
+          uomId: true,
+          seq: true,
+          component: { select: { name: true } },
+        },
+      })
+    : [];
+  const recipeByComposite = new Map<string, RecipeRow[]>();
+  const componentNameById = new Map<string, string>();
+  for (const { compositeItemId, component, ...row } of recipeRows) {
+    recipeByComposite.set(compositeItemId, [
+      ...(recipeByComposite.get(compositeItemId) ?? []),
+      row,
+    ]);
+    componentNameById.set(row.componentItemId, component.name);
+  }
 
   const withUnits = resolved.map((step) => ({
     ...step,
     resolvedInputs: applyRowUnits(step.resolvedInputs, stockingUomByItem),
-    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem),
+    resolvedOutputs: applyRowUnits(step.resolvedOutputs, stockingUomByItem).map((row) => ({
+      ...row,
+      components: recipeByComposite.get(row.itemId) ?? [],
+    })),
   }));
+
+  for (const [index, step] of withUnits.entries()) {
+    assertStepShape(step, index + indexOffset, itemById, recipeByComposite, componentNameById);
+    // A share means nothing off a share-split step (R1b) — two inputs, one product,
+    // the leftover row — so none is kept there to be misread later.
+    const split = new Set(
+      shareSplitOutputs(
+        step.resolvedInputs.map((row) => row.itemId),
+        step.resolvedOutputs,
+      ),
+    );
+    for (const row of step.resolvedOutputs) if (!split.has(row)) row.sharePct = null;
+    assertShares(step.resolvedOutputs, split, index + indexOffset, itemById);
+  }
 
   classifyStepInputs(withUnits, prior.producedItemIds);
 
@@ -783,10 +1100,7 @@ async function buildSteps(
         step.processorId,
       ),
       workCentreLocationId: step.workCentreLocationId ?? null,
-      rate: step.rate ?? null,
-      rateBasis: step.rateBasis ?? null,
       expectedYield: step.expectedYield ?? null,
-      tolerancePct: step.tolerancePct ?? null,
       plannedInputQty: step.plannedInputQty,
       remarks: step.remarks?.trim() || null,
       customFields: step.customFields,
@@ -796,6 +1110,87 @@ async function buildSteps(
   }
   return rows;
 }
+
+const ROW_OVERVIEW_INCLUDE = {
+  item: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
+  uom: { select: { id: true, unitName: true, symbol: true } },
+} satisfies Prisma.JobOrderStepInputInclude;
+
+const STEP_OVERVIEW_INCLUDE = {
+  inputs: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: {
+      ...ROW_OVERVIEW_INCLUDE,
+      /**
+       * 🔴 The plan rides along, or the Issue screen cannot pre-fill from it.
+       *
+       * That screen is reached from a step's Issue button and is fed by THIS
+       * payload, not by `STEP_INCLUDE` — so leaving the plan out here made the
+       * seeding effect in `IssueForm` dead code: `plannedBatches` arrived absent,
+       * the schema's `.default([])` turned it into an empty array, and the effect
+       * returned early on every item.
+       *
+       * SCALARS ONLY, unlike `STEP_INCLUDE`. The seeding matches on ids and takes
+       * its labels from the availability query it has already run, so hydrating
+       * the batch, package and godown here would be three more round trips for
+       * strings nothing reads.
+       */
+      plannedBatches: {
+        where: { isDeleted: false },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          batchId: true,
+          batchUnitId: true,
+          locationId: true,
+          qty: true,
+        },
+      },
+    },
+  },
+  outputs: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: {
+      ...ROW_OVERVIEW_INCLUDE,
+      // The frozen recipe (§5.2), scalars only — the Issue screen's plan warnings
+      // read what each output draws on from it.
+      components: {
+        where: { isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { componentItemId: true, qtyPerUnit: true },
+      },
+    },
+  },
+  process: { select: { id: true, name: true, code: true } },
+  workCentre: { select: { id: true, name: true } },
+} satisfies Prisma.JobOrderStepInclude;
+
+export const JOB_ORDER_OVERVIEW_INCLUDE = {
+  inputItem: { select: { id: true, name: true, sku: true, inventoryTracking: true } },
+  inputUom: { select: { id: true, unitName: true, symbol: true } },
+  route: { select: { id: true, name: true } },
+  steps: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    include: STEP_OVERVIEW_INCLUDE,
+  },
+} satisfies Prisma.JobOrderInclude;
+
+export const JOB_ORDER_WITH_STEPS_SELECT = {
+  id: true,
+  steps: {
+    where: { isDeleted: false },
+    orderBy: { seq: 'asc' },
+    select: {
+      id: true,
+      seq: true,
+      processNameSnapshot: true,
+      processorNameSnapshot: true,
+    },
+  },
+} satisfies Prisma.JobOrderSelect;
 
 export async function createNewJobOrder(
   organizationId: string,
@@ -865,12 +1260,22 @@ export async function createNewJobOrder(
       ? await reserveSuppliedNumber(tx, organizationId, 'job_order', header.jobOrderNumber)
       : await allocateNumber(tx, organizationId, 'job_order');
 
+    const orderDate = header.orderDate ?? new Date();
+    // A job order posts no stock, but it is still a document on these books and
+    // every challan raised under it inherits its period.
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: orderDate,
+      field: 'orderDate',
+      label: 'job order',
+    });
+
     const created = await withUniqueViolation(DUPLICATE_NUMBER, () =>
       tx.jobOrder.create({
         data: {
           organizationId,
           jobOrderNumber,
-          orderDate: header.orderDate ?? new Date(),
+          orderDate,
           targetDate: header.targetDate ?? null,
           inputItemId: headerItem.itemId,
           inputUomId: headerItem.uomId,
@@ -953,6 +1358,34 @@ async function assertPlannedBatches(
   });
   const byId = new Map(batches.map((batch) => [batch.id, batch]));
 
+  /**
+   * The packages named across every plan row, read in ONE query and checked
+   * against the batch each was named under.
+   *
+   * 🔴 The same reason `postMovement` re-reads its own: a plan pointing at a
+   * package of a DIFFERENT batch — or a different organization — is not a number
+   * anyone can correct later, it is a row no screen can interpret. RLS is the net
+   * under this; the `batchId` comparison is what the query means.
+   */
+  const unitIds = [
+    ...new Set(
+      [...wanted.values()]
+        .flat()
+        .map((row) => row.batchUnitId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const unitsById = new Map(
+    unitIds.length === 0
+      ? []
+      : (
+          await tx.batchUnit.findMany({
+            where: { id: { in: unitIds }, organizationId, isDeleted: false },
+            select: { id: true, batchId: true, label: true },
+          })
+        ).map((unit) => [unit.id, unit]),
+  );
+
   for (const step of rows) {
     for (const input of step.inputs) {
       if (input.plannedBatches.length === 0) continue;
@@ -966,6 +1399,36 @@ async function assertPlannedBatches(
             `Batch ${batch.supplierBatchRef ?? 'selected'} belongs to a different item than the row it is planned against.`,
           );
         }
+        if (planned.batchUnitId) {
+          const unit = unitsById.get(planned.batchUnitId);
+          if (!unit || unit.batchId !== planned.batchId) {
+            throw ApiError.badRequest(
+              `A planned unit is not in batch ${batch.supplierBatchRef ?? 'selected'}.`,
+              { plannedBatches: 'A planned unit does not belong to the batch beside it.' },
+            );
+          }
+        }
+      }
+
+      /**
+       * 🔴 THE SAME PACKAGE TWICE IN ONE ROW is a typo or two rows that should
+       * have been one — and since the unique index below now treats untagged rows
+       * as equal too, an unchecked duplicate would fail as a 500 from Postgres
+       * rather than a sentence the planner can act on.
+       */
+      const seen = new Set<string>();
+      for (const planned of input.plannedBatches) {
+        const key = `${planned.batchId}@${planned.locationId}#${planned.batchUnitId ?? ''}`;
+        if (seen.has(key)) {
+          const batch = byId.get(planned.batchId);
+          const unit = planned.batchUnitId ? unitsById.get(planned.batchUnitId) : null;
+          throw ApiError.badRequest(
+            `${unit?.label ?? `Batch ${batch?.supplierBatchRef ?? 'selected'}`} is planned twice on ` +
+              'one row. Combine the two into a single line.',
+            { plannedBatches: 'The same batch or unit is planned twice.' },
+          );
+        }
+        seen.add(key);
       }
 
       const total = roundQty(input.plannedBatches.reduce((sum, row) => sum + row.qty, 0));
@@ -1029,6 +1492,7 @@ async function writeSteps(
               create: input.plannedBatches.map((planned) => ({
                 organizationId,
                 batchId: planned.batchId,
+                batchUnitId: planned.batchUnitId ?? null,
                 locationId: planned.locationId,
                 qty: planned.qty,
                 createdBy: userId ?? null,
@@ -1045,8 +1509,23 @@ async function writeSteps(
             uomId: output.uomId,
             expectedQty: output.expectedQty,
             isPrimary: output.isPrimary,
+            rate: output.rate,
+            sharePct: output.sharePct,
             createdBy: userId ?? null,
             updatedBy: userId ?? null,
+            // The recipe, frozen with the step (§5.2): a later edit to the composite
+            // never changes what this order consumes.
+            components: {
+              create: output.components.map((component) => ({
+                organizationId,
+                componentItemId: component.componentItemId,
+                qtyPerUnit: component.qtyPerUnit,
+                uomId: component.uomId,
+                seq: component.seq,
+                createdBy: userId ?? null,
+                updatedBy: userId ?? null,
+              })),
+            },
           })),
         },
       },
@@ -1126,6 +1605,33 @@ export async function updateJobOrderById(
 
     assertLockedStepsUnchanged(lockedLive, steps);
 
+    /**
+     * 🔴 THE ONE FIELD A LOCKED STEP STILL TAKES: its processor. On a step it is
+     * only the Issue screen's default — each challan snapshots its own processor,
+     * receipts inherit theirs from the challans, and nothing costs or allocates by
+     * the step's. So changing it rewrites no document already raised. Everything
+     * else on a locked step stays ignored, as above. Not "Done by": switching to
+     * in-house needs a work centre, which is a different destination. Not on a
+     * finished step either — it takes no more challans, so there is nothing to
+     * default.
+     */
+    for (const [index, stored] of lockedLive.entries()) {
+      const sentProcessorId = steps[index]?.processorId;
+      if (sentProcessorId === undefined || sentProcessorId === stored.processorId) continue;
+      if (stored.processorType === 'internal') continue;
+      if (stored.status === 'completed' || stored.status === 'short_closed') continue;
+      const processorNameSnapshot = await resolveProcessorName(
+        tx,
+        organizationId,
+        stored.processorType as ProcessorType,
+        sentProcessorId,
+      );
+      await tx.jobOrderStep.updateMany({
+        where: { id: stored.id, organizationId },
+        data: { processorId: sentProcessorId, processorNameSnapshot, updatedBy: userId ?? null },
+      });
+    }
+
     await assertStepRefs(tx, organizationId, steps.slice(lockedLive.length));
 
     let customFields: Prisma.InputJsonValue | undefined;
@@ -1144,7 +1650,13 @@ export async function updateJobOrderById(
     const frontSeq = locked.at(-1)?.seq ?? 0;
     const tail = steps.slice(lockedLive.length);
     const stepRows = tail.length
-      ? await buildSteps(tx, organizationId, tail, priorFrom(locked, frontSeq + 1))
+      ? await buildSteps(
+          tx,
+          organizationId,
+          tail,
+          priorFrom(locked, frontSeq + 1),
+          lockedLive.length,
+        )
       : [];
 
     /**
@@ -1154,10 +1666,18 @@ export async function updateJobOrderById(
      */
     const headerItem = locked.length === 0 ? headerItemFrom(stepRows) : null;
 
+    const orderDate = header.orderDate ?? existing.orderDate;
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: orderDate,
+      field: 'orderDate',
+      label: 'job order',
+    });
+
     await tx.jobOrder.update({
       where: { id },
       data: {
-        orderDate: header.orderDate ?? existing.orderDate,
+        orderDate,
         targetDate: header.targetDate ?? null,
         ...(headerItem
           ? {
@@ -1206,8 +1726,9 @@ function lockedPrefix(steps: readonly ExistingStep[]): ExistingStep[] {
 /**
  * The payload must still begin with the locked steps, in order, by id.
  *
- * Their content is never read — the stored rows are authoritative — so this is
- * purely a proof that the client is editing the grid it was shown. A stale form
+ * Their content is never read here — the stored rows are authoritative, apart from
+ * the processor, which the caller applies — so this is purely a proof that the
+ * client is editing the grid it was shown. A stale form
  * that would drop or reorder a step with a challan against it is refused here
  * rather than allowed to cascade.
  */
@@ -1373,6 +1894,9 @@ export async function deleteJobOrderById(organizationId: string, id: string, use
  * `jobOrders.status.ts`. It is sticky, so a stray later receipt cannot quietly
  * reopen the order, and the reason is appended to `remarks` because a decision
  * with no recorded why is a decision nobody can review.
+ *
+ * 🔴 Every step it closes has its remainder at the processor written off first
+ * (landed-cost R8), exactly as completing that step would.
  */
 export async function shortCloseJobOrder(
   organizationId: string,
@@ -1380,7 +1904,8 @@ export async function shortCloseJobOrder(
   reason: string,
   userId?: string,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  return runAsDocument(organizationId, async (tx) => {
+    await lockJobOrderSteps(tx, organizationId, id);
     const existing = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
       select: { id: true, status: true, remarks: true },
@@ -1391,6 +1916,23 @@ export async function shortCloseJobOrder(
     }
 
     const note = `Closed short: ${reason.trim()}`;
+    const closing = await tx.jobOrderStep.findMany({
+      where: {
+        organizationId,
+        jobOrderId: id,
+        isDeleted: false,
+        status: { notIn: ['completed', 'short_closed'] },
+      },
+      orderBy: { seq: 'asc' },
+      select: { id: true },
+    });
+    for (const step of closing) {
+      await writeOffStep(tx, organizationId, step.id, {
+        reason: `${note} — still at the processor, written off as job order loss.`,
+        userId,
+      });
+    }
+
     await tx.jobOrderStep.updateMany({
       where: {
         organizationId,
@@ -1425,18 +1967,43 @@ export async function shortCloseJobOrder(
  * to issue" — with the ledger, not the `batches` table. A batch goes on existing long
  * after the last metre of it has left (§10).
  */
-export async function getJobOrderOverview(organizationId: string, id: string) {
+export async function getJobOrderOverview(
+  organizationId: string,
+  id: string,
+  filterStepId?: string,
+) {
   // Outside the transaction, and before it — `memberships` has no RLS policy, so
   // this is a plain probe, and taking it here keeps it off a second pooled
   // connection held open by the tenant tx (`lib/memberDirectory.ts`).
   const directory = await getMemberDirectory(organizationId);
 
-  return runAsTenant(organizationId, async (tx) => {
+  const activityPromise = filterStepId
+    ? Promise.resolve([])
+    : runAsTenant(organizationId, (tx) =>
+        buildActivity(tx, organizationId, id, directory, filterStepId),
+      );
+
+  const mainOverviewPromise = runAsTenant(organizationId, async (tx) => {
+    const includeQuery = filterStepId
+      ? {
+          ...JOB_ORDER_OVERVIEW_INCLUDE,
+          steps: {
+            ...JOB_ORDER_OVERVIEW_INCLUDE.steps,
+            where: { ...JOB_ORDER_OVERVIEW_INCLUDE.steps?.where, id: filterStepId },
+          },
+        }
+      : JOB_ORDER_OVERVIEW_INCLUDE;
+
     const order = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
-      include: JOB_ORDER_INCLUDE,
+      include: includeQuery,
     });
+
     if (!order) throw ApiError.notFound('Job order not found');
+
+    if (filterStepId) {
+      order.steps = order.steps.filter((s) => s.id === filterStepId);
+    }
 
     const batches = await tx.batch.findMany({
       where: { organizationId, isDeleted: false, sourceDocId: id },
@@ -1444,165 +2011,193 @@ export async function getJobOrderOverview(organizationId: string, id: string) {
       select: { id: true, supplierBatchRef: true, itemId: true },
     });
 
-    // In hand = this order's own batches, wherever they physically are — including
-    // at a processor, because goods at a processor are still our stock (§5.4).
-    let inHandQty = new Prisma.Decimal(0);
-    let inHandValue = new Prisma.Decimal(0);
-    const batchBalances = await Promise.all(
-      batches.map((batch) => getBalance(tx, { organizationId, batchId: batch.id })),
+    const stepIds = order.steps.map((s) => s.id);
+    const principalItemIds = [
+      ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
+    ] as string[];
+
+    const allTotalsMap = await getAllStepTotals(tx, organizationId, stepIds);
+
+    const allStepsLightweight = await tx.jobOrderStep.findMany({
+      where: { organizationId, jobOrderId: id, isDeleted: false },
+      select: { id: true, seq: true, processNameSnapshot: true, status: true },
+      orderBy: { seq: 'asc' },
+    });
+
+    const allChainBlockedMap = await getAllChainNotReady(
+      tx,
+      organizationId,
+      id,
+      allStepsLightweight,
     );
-    for (const balance of batchBalances) {
-      inHandQty = inHandQty.plus(balance.qty);
-      inHandValue = inHandValue.plus(balance.value);
-    }
 
-    const steps = await Promise.all(
-      order.steps.map(async (step) => {
-        const totals = await getStepTotals(tx, organizationId, step.id);
-
-        // The issue button is enabled by AVAILABILITY, not by status: a step can be
-        // ready on paper and have nothing to send. Measured on the PRINCIPAL input
-        // — the first consumed row, which is what the step is fundamentally about.
-        const principalInput = step.inputs[0] ?? null;
-        let availableQty = new Prisma.Decimal(0);
-        if (principalInput) {
-          const balance = await getBalance(tx, {
-            organizationId,
-            itemId: principalInput.itemId,
-            ownership: order.ownership as Ownership,
-          });
-          availableQty = balance.qty;
-        }
-
-        const blockedReason = await chainNotReady(tx, organizationId, order.id, step);
-
-        // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
-        // `receivedQty` would mix metres and pieces on any step where the item
-        // changes (jobOrders.status.ts).
-        const issuedD = totals.issuedQty;
-        const consumedD = totals.consumedQty;
-        const outstanding = issuedD.minus(consumedD);
-        return {
-          ...step,
-          totals: {
-            issuedQty: totals.issuedQty.toString(),
-            consumedQty: totals.consumedQty.toString(),
-            receivedQty: totals.receivedQty.toString(),
-            acceptedQty: totals.acceptedQty.toString(),
-            reworkQty: totals.reworkQty.toString(),
-            scrapQty: totals.scrapQty.toString(),
-            returnedQty: totals.returnedQty.toString(),
-            outstandingQty: outstanding.toString(),
-            issueCount: totals.issueCount,
-            receiptCount: totals.receiptCount,
-          },
-          /**
-           * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
-           * principal input's and the primary output's; these are every item's,
-           * each in its own unit, and they are what the Overview renders.
-           *
-           * Both lists include items the PLAN never named — a step can be issued
-           * something nobody listed, and a receipt can return something nobody
-           * expected. Showing only the planned rows would hide exactly the
-           * movements somebody needs to look at.
-           */
-          itemTotals: await buildItemTotals(tx, organizationId, step, totals),
-          availableQty: availableQty.toString(),
-          /**
-           * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
-           * by the ledger.
-           *
-           * It used to require a positive balance, which is the right rule and
-           * will be again. Material In was retired before Purchase Received and
-           * Opening Stock exist, so today there is no way to put stock on the
-           * books at all — and a button that can never light up makes the whole
-           * loop untestable. The Issue dialog creates a zero-valued batch for an
-           * item with no stock and says so on screen (`jobIssues.service.ts`).
-           *
-           * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
-           * lands. Issuing what you do not have is a real defect, not a feature.
-           *
-           * The ONE thing the scaffold does not relax is the chain — see
-           * `blockedReason` below.
-           */
-          canIssue: step.inputs.length > 0 && !blockedReason,
-          /**
-           * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
-           *
-           * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
-           * there is physically nothing to send — and the no-stock scaffold would
-           * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
-           * is the one thing it must never do. Raw material can be conjured while
-           * Purchase Received is missing; work in progress cannot.
-           *
-           * Items drawn from stock are unaffected: thread comes from the godown,
-           * not from the operation above.
-           */
-          blockedReason,
-          // Visible once something is out there to come back.
-          canReceive: outstanding.greaterThan(0),
-        };
-      }),
-    );
+    const balances =
+      principalItemIds.length > 0
+        ? await tx.stockLedgerEntry.groupBy({
+            by: ['itemId'],
+            where: {
+              organizationId,
+              itemId: { in: principalItemIds },
+              ownership: order.ownership as Ownership,
+            },
+            _sum: { qtyIn: true, qtyOut: true },
+          })
+        : [];
 
     const firstStep = order.steps[0];
-    const firstTotals = firstStep ? await getStepTotals(tx, organizationId, firstStep.id) : null;
+    const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
 
-    /**
-     * Wastage across CLOSED steps only, and only where the units allow it.
-     *
-     * Two exclusions, each for its own reason:
-     *
-     *   - A step still out at the dyer has issued everything and received
-     *     nothing, so including it would report 100% wastage on every order the
-     *     moment it starts.
-     *
-     *   - 🔴 A step where the OUTPUT UNIT DIFFERS FROM THE INPUT UNIT is skipped
-     *     entirely. "How much was lost" is `issued − received`, and 4,800 metres
-     *     minus 2,850 pieces is not a quantity — it is the conversion the whole
-     *     domain refuses to make (§5.1). A number here would be worse than no
-     *     number, because somebody would act on it.
-     */
-    let wastageIssued = new Prisma.Decimal(0);
-    let wastageLost = new Prisma.Decimal(0);
-    for (const step of steps) {
-      if (step.status !== 'completed' && step.status !== 'short_closed') continue;
-      // 🔴 Read off the LISTS since the scalars went (2026-08-12): the principal
-      // input's unit against the primary output's. Comparing nulls would make
-      // every unit-changing step pass this test and report nonsense wastage.
-      const inputUomId = step.inputs[0]?.uomId ?? null;
-      const outputUomId = (step.outputs.find((row) => row.isPrimary) ?? step.outputs[0])?.uomId;
-      if (outputUomId && outputUomId !== inputUomId) continue;
-      const issued = new Prisma.Decimal(step.totals.issuedQty);
-      const received = new Prisma.Decimal(step.totals.receivedQty);
-      const returned = new Prisma.Decimal(step.totals.returnedQty);
-      wastageIssued = wastageIssued.plus(issued);
-      wastageLost = wastageLost.plus(issued.minus(received).minus(returned));
+    const availableQtyMap = new Map<string, Prisma.Decimal>();
+    for (const row of balances as {
+      itemId: string;
+      _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null };
+    }[]) {
+      const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
+      const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
+      availableQtyMap.set(row.itemId, inD.minus(outD));
     }
+
+    const allUnplannedIds = new Set<string>();
+    for (const step of order.steps) {
+      const totals = allTotalsMap.get(step.id)!;
+      const planned = new Set([
+        ...step.inputs.map((row) => row.itemId),
+        ...step.outputs.map((row) => row.itemId),
+      ]);
+      for (const flow of totals.perItem) {
+        if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+      }
+      for (const flow of totals.perOutput) {
+        if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+      }
+    }
+
+    const unplannedItems =
+      allUnplannedIds.size > 0
+        ? await tx.item.findMany({
+            where: { id: { in: [...allUnplannedIds] }, organizationId },
+            select: {
+              id: true,
+              name: true,
+              stockingUom: { select: { symbol: true, unitName: true } },
+            },
+          })
+        : [];
+
+    const unplannedById = new Map<
+      string,
+      { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
+    >(
+      unplannedItems.map((item) => [
+        item.id,
+        item as { name: string; stockingUom: { symbol: string | null; unitName: string } | null },
+      ]),
+    );
+
+    const steps = order.steps.map((step) => {
+      const totals = allTotalsMap.get(step.id)!;
+
+      // The issue button is enabled by AVAILABILITY, not by status: a step can be
+      // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+      // — the first consumed row, which is what the step is fundamentally about.
+      const principalInput = step.inputs[0] ?? null;
+      let availableQty = new Prisma.Decimal(0);
+      if (principalInput) {
+        availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
+      }
+
+      const blockedReason = allChainBlockedMap.get(step.id) ?? null;
+
+      // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
+      // `receivedQty` would mix metres and pieces on any step where the item
+      // changes (jobOrders.status.ts).
+      const issuedD = totals.issuedQty;
+      const consumedD = totals.consumedQty;
+      // A completed step's remainder was written off — it is no longer out (R8).
+      const outstanding = issuedD.minus(consumedD).minus(totals.writtenOffQty);
+      return {
+        ...step,
+        totals: {
+          issuedQty: totals.issuedQty.toString(),
+          consumedQty: totals.consumedQty.toString(),
+          receivedQty: totals.receivedQty.toString(),
+          acceptedQty: totals.acceptedQty.toString(),
+          reworkQty: totals.reworkQty.toString(),
+          scrapQty: totals.scrapQty.toString(),
+          returnedQty: totals.returnedQty.toString(),
+          outstandingQty: outstanding.toString(),
+          writtenOffQty: totals.writtenOffQty.toString(),
+          writtenOffValue: totals.writtenOffValue.toString(),
+          issueCount: totals.issueCount,
+          receiptCount: totals.receiptCount,
+        },
+        /**
+         * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
+         * principal input's and the primary output's; these are every item's,
+         * each in its own unit, and they are what the Overview renders.
+         *
+         * Both lists include items the PLAN never named — a step can be issued
+         * something nobody listed, and a receipt can return something nobody
+         * expected. Showing only the planned rows would hide exactly the
+         * movements somebody needs to look at.
+         */
+        itemTotals: buildItemTotals(step, totals, unplannedById),
+        availableQty: availableQty.toString(),
+        /**
+         * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
+         * by the ledger.
+         *
+         * It used to require a positive balance, which is the right rule and
+         * will be again. Material In was retired before Purchase Received and
+         * Opening Stock exist, so today there is no way to put stock on the
+         * books at all — and a button that can never light up makes the whole
+         * loop untestable. The Issue dialog creates a zero-valued batch for an
+         * item with no stock and says so on screen (`jobIssues.service.ts`).
+         *
+         * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
+         * lands. Issuing what you do not have is a real defect, not a feature.
+         *
+         * The ONE thing the scaffold does not relax is the chain — see
+         * `blockedReason` below.
+         */
+        canIssue: step.inputs.length > 0 && !blockedReason,
+        /**
+         * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
+         *
+         * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
+         * there is physically nothing to send — and the no-stock scaffold would
+         * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
+         * is the one thing it must never do. Raw material can be conjured while
+         * Purchase Received is missing; work in progress cannot.
+         *
+         * Items drawn from stock are unaffected: thread comes from the godown,
+         * not from the operation above.
+         */
+        blockedReason,
+        // Visible once something is out there to come back.
+        canReceive: outstanding.greaterThan(0),
+      };
+    });
 
     return {
       jobOrder: order,
       batches,
-      activity: await buildActivity(tx, organizationId, id, directory),
       summary: {
         issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
-        inHandQty: inHandQty.toString(),
-        inHandValue: inHandValue.toString(),
-        wastagePct: wastageIssued.greaterThan(0)
-          ? wastageLost.dividedBy(wastageIssued).times(100).toDecimalPlaces(2).toString()
-          : null,
-        // Cost per unit of what is actually still here. Derived every time; there
-        // is no stored cost column and there will not be one (§9.1).
-        costPerUnit: inHandQty.greaterThan(0)
-          ? inHandValue.dividedBy(inHandQty).toDecimalPlaces(4).toString()
-          : null,
       },
       steps,
     };
   });
+
+  const [activity, mainOverview] = await Promise.all([activityPromise, mainOverviewPromise]);
+
+  return {
+    ...mainOverview,
+    activity,
+  };
 }
 
-type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE }>;
+type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_OVERVIEW_INCLUDE }>;
 
 /**
  * Merge what the step PLANNED with what has actually moved, per item.
@@ -1612,11 +2207,13 @@ type StepWithRows = Prisma.JobOrderStepGetPayload<{ include: typeof STEP_INCLUDE
  * kept either way — a plan nothing has moved against yet is a row of zeroes, and
  * a movement nobody planned is the row most worth seeing.
  */
-async function buildItemTotals(
-  tx: TenantClient,
-  organizationId: string,
+function buildItemTotals(
   step: StepWithRows,
   totals: StepTotals,
+  unplannedById: Map<
+    string,
+    { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
+  >,
 ) {
   const issuedByItem = new Map<string, ItemFlow>(
     totals.perItem.map((row) => [row.itemId, row] as const),
@@ -1625,32 +2222,34 @@ async function buildItemTotals(
     totals.perOutput.map((row) => [row.itemId, row] as const),
   );
 
-  // One query for anything moved but never planned, so those rows can still be
-  // named on screen instead of rendering as a bare id.
-  const planned = new Set([
-    ...step.inputs.map((row) => row.itemId),
-    ...step.outputs.map((row) => row.itemId),
-  ]);
-  const unplannedIds = [...new Set([...issuedByItem.keys(), ...receivedByItem.keys()])].filter(
-    (itemId) => !planned.has(itemId),
-  );
-  const unplanned =
-    unplannedIds.length > 0
-      ? await tx.item.findMany({
-          where: { id: { in: unplannedIds }, organizationId },
-          select: {
-            id: true,
-            name: true,
-            stockingUom: { select: { symbol: true, unitName: true } },
-          },
-        })
-      : [];
-  const unplannedById = new Map<string, (typeof unplanned)[number]>(
-    unplanned.map((item) => [item.id, item] as const),
-  );
-
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
+
+  /** Where an input's material stands (landed-cost §6.7): still at the processor,
+   * on a challan a receipt closed (consumed into cost, challan-closure R10), or
+   * written off as job order loss when the step was completed. */
+  const atProcessor = (flow: ItemFlow | undefined) => {
+    if (!flow) {
+      return { stillOutQty: '0', closedQty: '0', writtenOffQty: '0', writtenOffValue: '0' };
+    }
+    const stillOut = flow.issuedQty.minus(flow.consumedQty).minus(flow.writtenOffQty);
+    return {
+      stillOutQty: stillOut.greaterThan(0) ? stillOut.toString() : '0',
+      closedQty: flow.closedQty.toString(),
+      writtenOffQty: flow.writtenOffQty.toString(),
+      writtenOffValue: flow.writtenOffValue.toString(),
+    };
+  };
+
+  /** What an output's accepted goods have landed at so far, per unit — running,
+   * from every posted receipt's stored breakdown. Null until something is accepted. */
+  const landedOf = (flow: OutputFlow | undefined) => ({
+    acceptedQty: (flow?.acceptedQty ?? new Prisma.Decimal(0)).toString(),
+    landedCostPerUnit:
+      flow && flow.acceptedQty.greaterThan(0)
+        ? flow.landedValue.dividedBy(flow.acceptedQty).toDecimalPlaces(4).toString()
+        : null,
+  });
 
   /**
    * 🔴 WHAT MOVED, and nothing else.
@@ -1676,6 +2275,7 @@ async function buildItemTotals(
         plannedQty: plannedQ?.toString() ?? null,
         issuedQty: issued.toString(),
         remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+        ...atProcessor(issuedByItem.get(row.itemId)),
       };
     }),
     ...[...issuedByItem.values()]
@@ -1689,6 +2289,7 @@ async function buildItemTotals(
         plannedQty: null,
         issuedQty: flow.issuedQty.toString(),
         remainingQty: null,
+        ...atProcessor(flow),
       })),
   ];
 
@@ -1706,6 +2307,7 @@ async function buildItemTotals(
         expectedQty: expectedQ?.toString() ?? null,
         receivedQty: received.toString(),
         remainingQty: remainingQ ? (remainingQ.greaterThan(0) ? remainingQ.toString() : '0') : null,
+        ...landedOf(receivedByItem.get(row.itemId)),
       };
     }),
     ...[...receivedByItem.values()]
@@ -1721,6 +2323,7 @@ async function buildItemTotals(
         expectedQty: null,
         receivedQty: flow.receivedQty.toString(),
         remainingQty: null,
+        ...landedOf(flow),
       })),
   ];
 
@@ -1746,101 +2349,117 @@ async function buildItemTotals(
  * went out on the 3rd and was cancelled on the 5th is a thing that happened, and
  * the ledger carries its reversal either way (§10); hiding it leaves a gap
  * between two numbers that no longer explain each other.
+ *
+ * 🔴 DRAFTS ARE NOT — `HAPPENED_DOC_STATUS`. This is the timeline of what the
+ * order did, and a parked draft has done nothing; rendering one here would put
+ * "4,800 m issued to Sunrise Dyers" against goods still standing in the godown.
+ * Drafts are found on the Issues and Receipts lists, under their own filter.
  */
 async function buildActivity(
   tx: TenantClient,
   organizationId: string,
   jobOrderId: string,
   directory: MemberDirectory,
+  filterStepId?: string,
 ) {
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
-  const [issues, receipts] = await Promise.all([
-    tx.jobIssue.findMany({
-      where: { organizationId, jobOrderId, isDeleted: false },
-      select: {
-        id: true,
-        jobOrderStepId: true,
-        challanNumber: true,
-        issueDate: true,
-        status: true,
-        remarks: true,
-        isRework: true,
-        attemptNo: true,
-        totalQty: true,
-        processorNameSnapshot: true,
-        createdBy: true,
-        createdAt: true,
-        destination: { select: { name: true } },
-        lines: {
-          where: { isDeleted: false },
-          select: {
-            id: true,
-            itemId: true,
-            qty: true,
-            item: { select: { name: true } },
-            uom: { select: { symbol: true, unitName: true } },
-            // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
-            batch: { select: { supplierBatchRef: true } },
-          },
+  const issues = await tx.jobIssue.findMany({
+    where: {
+      organizationId,
+      jobOrderId,
+      isDeleted: false,
+      ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
+    },
+    select: {
+      id: true,
+      jobOrderStepId: true,
+      challanNumber: true,
+      issueDate: true,
+      status: true,
+      remarks: true,
+      isRework: true,
+      attemptNo: true,
+      totalQty: true,
+      processorType: true,
+      processorNameSnapshot: true,
+      createdBy: true,
+      createdAt: true,
+      destination: { select: { name: true } },
+      lines: {
+        where: { isDeleted: false },
+        select: {
+          id: true,
+          itemId: true,
+          qty: true,
+          item: { select: { name: true } },
+          uom: { select: { symbol: true, unitName: true } },
+          // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
+          batch: { select: { supplierBatchRef: true } },
         },
       },
-    }),
-    tx.jobReceipt.findMany({
-      where: { organizationId, jobOrderId, isDeleted: false },
-      select: {
-        id: true,
-        jobOrderStepId: true,
-        receiptNumber: true,
-        receiptDate: true,
-        status: true,
-        remarks: true,
-        totalIssuedQty: true,
-        totalReturnedQty: true,
-        processorNameSnapshot: true,
-        createdBy: true,
-        createdAt: true,
-        location: { select: { name: true } },
-        // Only the challan each line closes — the per-line quantities are the
-        // consumption side and the disposition lives on `outputs`, so carrying
-        // the whole line here would be a second copy of neither.
-        lines: {
-          where: { isDeleted: false },
-          select: { jobIssue: { select: { challanNumber: true } } },
-        },
-        outputs: {
-          where: { isDeleted: false },
-          orderBy: { seq: 'asc' },
-          select: {
-            id: true,
-            itemId: true,
-            receivedQty: true,
-            acceptedQty: true,
-            reworkQty: true,
-            scrapQty: true,
-            isPrimary: true,
-            remarks: true,
-            item: { select: { name: true } },
-            uom: { select: { symbol: true, unitName: true } },
-            reason: { select: { name: true } },
-            // 🔴 The child table, not `outputBatch`/`reworkBatch` — those name
-            // only the FIRST of each kind, and a split delivery has more.
-            batches: {
-              where: { isDeleted: false },
-              orderBy: [{ kind: 'asc' }, { seq: 'asc' }],
-              select: {
-                kind: true,
-                qty: true,
-                isNewBatch: true,
-                batch: { select: { supplierBatchRef: true } },
-              },
+    },
+  });
+  const receipts = await tx.jobReceipt.findMany({
+    where: {
+      organizationId,
+      jobOrderId,
+      isDeleted: false,
+      ...(filterStepId ? { jobOrderStepId: filterStepId } : {}),
+    },
+    select: {
+      id: true,
+      jobOrderStepId: true,
+      receiptNumber: true,
+      receiptDate: true,
+      status: true,
+      remarks: true,
+      totalIssuedQty: true,
+      totalReturnedQty: true,
+      processorType: true,
+      processorNameSnapshot: true,
+      createdBy: true,
+      createdAt: true,
+      location: { select: { name: true } },
+      // Only the challan each line closes — the per-line quantities are the
+      // consumption side and the disposition lives on `outputs`, so carrying
+      // the whole line here would be a second copy of neither.
+      lines: {
+        where: { isDeleted: false },
+        select: { jobIssue: { select: { challanNumber: true } } },
+      },
+      outputs: {
+        where: { isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: {
+          id: true,
+          itemId: true,
+          receivedQty: true,
+          acceptedQty: true,
+          reworkQty: true,
+          scrapQty: true,
+          isPrimary: true,
+          remarks: true,
+          item: { select: { name: true } },
+          uom: { select: { symbol: true, unitName: true } },
+          reason: { select: { name: true } },
+          // 🔴 The child table, not `outputBatch`/`reworkBatch` — those name
+          // only the FIRST of each kind, and a split delivery has more.
+          batches: {
+            where: { isDeleted: false },
+            orderBy: [{ kind: 'asc' }, { seq: 'asc' }],
+            select: {
+              kind: true,
+              qty: true,
+              isNewBatch: true,
+              batch: { select: { supplierBatchRef: true } },
             },
           },
         },
       },
-    }),
-  ]);
+    },
+  });
 
   const issueEvents = issues.map((issue) => ({
     kind: 'issue' as const,
@@ -1851,6 +2470,7 @@ async function buildActivity(
     status: issue.status,
     remarks: issue.remarks,
     partyName: issue.processorNameSnapshot ?? issue.destination?.name ?? null,
+    processorType: issue.processorType,
     actorName: directory.actorName(issue.createdBy),
     isRework: issue.isRework,
     attemptNo: issue.attemptNo,
@@ -1875,7 +2495,8 @@ async function buildActivity(
     date: receipt.receiptDate.toISOString(),
     status: receipt.status,
     remarks: receipt.remarks,
-    partyName: receipt.processorNameSnapshot ?? null,
+    partyName: receipt.processorNameSnapshot ?? receipt.location?.name ?? null,
+    processorType: receipt.processorType,
     actorName: directory.actorName(receipt.createdBy),
     locationName: receipt.location?.name ?? null,
     consumedQty: receipt.totalIssuedQty.toString(),

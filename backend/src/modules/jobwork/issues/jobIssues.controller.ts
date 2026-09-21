@@ -8,15 +8,19 @@ import {
   cancelJobIssue,
   countJobIssues,
   createNewJobIssue,
+  deleteJobIssueDraft,
   getIssuesForStep,
   getJobIssueById,
   getJobIssuesList,
+  postJobIssueDraft,
 } from './jobIssues.service.ts';
 import {
   cancelJobIssueSchema,
   createJobIssueSchema,
+  updateJobIssueSchema,
   type CancelJobIssueInput,
   type CreateJobIssueInput,
+  type UpdateJobIssueInput,
 } from './jobIssues.schemas.ts';
 
 const orgParam = z.object({ orgId: z.string() });
@@ -58,6 +62,46 @@ openApiRegistry.registerPath({
 });
 
 openApiRegistry.registerPath({
+  method: 'put',
+  path: '/organizations/{orgId}/jobwork/issues/{id}',
+  tags: ['Job Issues'],
+  summary: 'Rewrite a DRAFT challan — and optionally issue it. Refused once issued',
+  request: {
+    params: orgParam.extend({ id: z.string() }),
+    body: { content: { 'application/json': { schema: updateJobIssueSchema } } },
+  },
+  responses: {
+    200: { description: 'Saved' },
+    409: { description: 'Already issued, so it can no longer be edited' },
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/organizations/{orgId}/jobwork/issues/{id}/post',
+  tags: ['Job Issues'],
+  summary: 'Issue a draft as it stands — runs every check the draft was allowed to skip',
+  request: { params: orgParam.extend({ id: z.string() }) },
+  responses: {
+    200: { description: 'Issued' },
+    400: { description: 'No stock, past tolerance, or the previous step has returned nothing' },
+    409: { description: 'Not a draft' },
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'delete',
+  path: '/organizations/{orgId}/jobwork/issues/{id}',
+  tags: ['Job Issues'],
+  summary: 'Delete a DRAFT. A posted challan is cancelled, never deleted',
+  request: { params: orgParam.extend({ id: z.string() }) },
+  responses: {
+    200: { description: 'Deleted' },
+    409: { description: 'Not a draft — cancel it instead' },
+  },
+});
+
+openApiRegistry.registerPath({
   method: 'post',
   path: '/organizations/{orgId}/jobwork/issues/{id}/cancel',
   tags: ['Job Issues'],
@@ -93,12 +137,36 @@ export const getJobIssueCount = async (req: Request, res: Response) => {
 };
 
 export const createJobIssue = async (req: Request, res: Response) => {
+  const body = req.body as CreateJobIssueInput;
   const created = await createNewJobIssue(
     req.tenantId!,
-    req.body as CreateJobIssueInput,
+    body,
     req.user?.id,
+    body.saveAsDraft ? 'draft' : 'post',
   );
-  sendSuccess(res, created, 'Success', 201);
+  sendSuccess(res, created, body.saveAsDraft ? 'Draft saved.' : 'Success', 201);
+};
+
+export const updateJobIssue = async (req: Request, res: Response) => {
+  const body = req.body as UpdateJobIssueInput;
+  const updated = await createNewJobIssue(
+    req.tenantId!,
+    body,
+    req.user?.id,
+    body.saveAsDraft ? 'draft' : 'post',
+    req.params.id as string,
+  );
+  sendSuccess(res, updated, body.saveAsDraft ? 'Draft saved.' : 'Challan issued.');
+};
+
+export const postJobIssue = async (req: Request, res: Response) => {
+  const posted = await postJobIssueDraft(req.tenantId!, req.params.id as string, req.user?.id);
+  sendSuccess(res, posted, 'Challan issued.');
+};
+
+export const deleteJobIssue = async (req: Request, res: Response) => {
+  await deleteJobIssueDraft(req.tenantId!, req.params.id as string, req.user?.id);
+  sendSuccess(res, null, 'Draft deleted.');
 };
 
 export const getJobIssue = async (req: Request, res: Response) => {

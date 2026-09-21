@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export const itemImageAttachmentSchema = z.object({
@@ -69,7 +68,7 @@ export const itemFormSchema = z.object({
   category: z.string().optional().nullable(),
   hsnCode: z.string().optional().nullable(),
   itemStructure: z.enum(['single', 'variants', 'composite']).default('single'),
-  unit: z.string().optional().default(''),
+  unit: z.string().min(1, 'Unit is required'),
   /**
    * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit
    * (jobwork domain §5.1): every batch, challan line and balance is denominated in
@@ -111,6 +110,21 @@ export const itemFormSchema = z.object({
 export type Item = z.infer<typeof itemSchema>;
 export type ItemFormData = z.infer<typeof itemFormSchema>;
 
+/**
+ * One package inside a declared batch — a taka, roll, bale. `id` is the real
+ * `batch_units.id` and round-trips: a row carrying a known one is that package
+ * EDITED, a row without is a new package, and a package the payload never
+ * mentions was deleted. Same contract as the batch id one level up.
+ */
+export const itemOpeningStockUnitSchema = z.object({
+  id: z.string().optional(),
+  label: z.string().optional().nullable(),
+  /** Read-back only — the batch's own `seq`, so the grid can render them in the
+   * order they were tagged rather than in insertion order. */
+  seq: z.number().optional(),
+  quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+});
+
 export const itemOpeningStockBatchSchema = z.object({
   id: z.string().optional(),
   /** 🔴 Removed from the payload 2026-08-14 — internal key. */
@@ -121,6 +135,9 @@ export const itemOpeningStockBatchSchema = z.object({
   sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
   mrp: z.union([z.string(), z.number()]).optional().nullable(),
   quantityIn: z.union([z.string(), z.number()]).optional().nullable(),
+  /** The packages inside this batch. Their quantities may total LESS than the
+   * batch's — the rest is its untagged remainder. */
+  units: z.array(itemOpeningStockUnitSchema).optional(),
 });
 
 export const itemOpeningStockLocationRowSchema = z.object({
@@ -129,6 +146,9 @@ export const itemOpeningStockLocationRowSchema = z.object({
   openingStock: z.union([z.string(), z.number()]).optional().nullable(),
   openingStockValue: z.union([z.string(), z.number()]).optional().nullable(),
   stockOnHand: z.union([z.string(), z.number()]).optional().nullable(),
+  /** Read-back only: opening stock here not yet assigned to a batch. Inside
+   * `stockOnHand`, outside `availableForSale` — it cannot be issued until assigned. */
+  unallocatedQty: z.union([z.string(), z.number()]).optional().nullable(),
   committedStock: z.union([z.string(), z.number()]).optional().nullable(),
   availableForSale: z.union([z.string(), z.number()]).optional().nullable(),
   batches: z.array(itemOpeningStockBatchSchema),
@@ -163,6 +183,29 @@ export const itemBatchSchema = z.object({
   sellingPrice: z.union([z.string(), z.number()]).optional().nullable(),
   mrp: z.union([z.string(), z.number()]).optional().nullable(),
   isExpired: z.boolean().optional(),
+  /** Opening stock not yet assigned to a batch — no reference, not issuable. */
+  isUnallocated: z.boolean().optional(),
+  /**
+   * 🔴 THE PACKAGES OF THIS BATCH AT THIS LOCATION, and what is left of each —
+   * which is what makes "where is roll T-1" answerable at a glance. A roll at the
+   * dyer's appears under the dyer's row.
+   *
+   * Empty for a batch that has none, which is every batch in an org that never
+   * turned the level on.
+   */
+  units: z
+    .array(
+      z.object({
+        batchUnitId: z.string(),
+        seq: z.number(),
+        label: z.string(),
+        availableQty: z.number(),
+      }),
+    )
+    .default([]),
+  /** What is here but in no package. Real and issuable, so it is shown rather
+   * than left to be inferred from a subtraction. */
+  untaggedQty: z.number().optional(),
 });
 
 export type ItemBatchDto = z.infer<typeof itemBatchSchema>;

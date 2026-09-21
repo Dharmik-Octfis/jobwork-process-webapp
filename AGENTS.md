@@ -128,6 +128,34 @@ promotes it to `req.tenantId` after checking `memberships`. Everything downstrea
 - **New tenant table?** Add an RLS policy (copy the two statements at the bottom of
   `migrations/*_enable_rls`) **and** add it to `TENANT_TABLES` in `src/db/rls.test.ts`.
   _A tenant table with no policy is unprotected and nothing will tell you._
+- 🔴 **`migrate diff` IS BLIND TO RLS, so no tool here will ever remind you.** It compares columns,
+  indexes and constraints — never `relrowsecurity`, never `pg_policies`. Two consequences, and both
+  have already cost us: **`db:draft` will not generate the RLS statements** for your new table (write
+  them into the migration by hand), and **`db:check-drift` will never report them missing**. On
+  2026-09-11 a rebuilt database matched the schema — `migrate diff` said "This is an empty migration"
+  — while `item_categories` and three `purchase_order_*` tables had no policy at all and
+  `bill_items` / `bill_activities` / `bill_comments` were gated on the live database but on no
+  migration. `TENANT_TABLES` is the ONLY thing that catches this; forgetting that list is the one
+  step here that fails open.
+- **Enable RLS in a migration, never by hand on the database.** Every hole above came from someone
+  running `ENABLE ROW LEVEL SECURITY` or `CREATE POLICY` straight against the shared database: live
+  looks protected, a database rebuilt from `prisma/migrations` is wide open, and drift says nothing.
+- **Create a policy guarded on `pg_policies`, never `DROP POLICY` + recreate.** `CREATE POLICY` has
+  no `IF NOT EXISTS`, so the obvious idempotent spelling is a drop followed by a create — and
+  migrations here are not transactional, so a failure between the two leaves the table RLS-enabled
+  with **no policy**. `db:apply` blocks `DROP POLICY` for exactly this reason. Copy the guarded
+  `pg_policies` shape from
+  `migrations/20260911150000_enable_rls_on_purchase_orders_and_item_categories`.
+- **Two policy forms.** Direct (`organization_id = current_tenant`) when the table carries its own
+  `organization_id`; join-through the parent when it only has a parent id — `vendor_*` and
+  `purchase_order_*` use `EXISTS (...)`, the `bill_*` children use `bill_id IN (SELECT ...)`. Prefer
+  the direct form and denormalise `organization_id` onto the child, as `batch_units` and
+  `bill_item_batches` do, so a query that reads the child without joining its parent is still covered.
+- 🔴 **A policy on a table with `relrowsecurity = false` does NOTHING** — Postgres does not evaluate
+  policies at all while RLS is off, so `DISABLE ROW LEVEL SECURITY` leaves a table looking protected
+  in `pg_policies` while nothing is enforced. Conversely RLS **on** with no policy is deny-all, which
+  fails closed and loudly. Never turn RLS off on a tenant table; to check what the app would see, run
+  it inside `BEGIN; ... SET ROLE jobwork_app; SELECT count(*) ...; ROLLBACK;` rather than committing.
 
 ## 🔴 Database
 
@@ -373,6 +401,17 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
   `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
   default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose
   and headings are free to read however they read best.
+- 🔴 **Field messages stay short — no sentence under a field, no paragraph in a hover.** A field
+  error is the **red border on that field plus a toast** carrying the message (`toast.error`, first
+  value of the server's `details`). Never render the error text below the input, and never turn a
+  whole section/step red — only the offending field. Server `details` are often a full sentence
+  ("Maroon Pieces comes back in a different unit from what goes in, so it has to be this step's only
+  output.") and under a narrow grid cell they wreck the layout. A `title` tooltip is a few words
+  (`Expected quantity`, `Rate per m`), never an explanation. When a field genuinely needs a longer
+  explanation, put an **info icon** beside its label and show the text from there — there is no
+  shared info-icon component yet, so build it once in `components/ui/` (keyboard-focusable
+  `<button>`) the first time one is needed. Worked example: `jobwork/StepsGrid.tsx` +
+  `job-orders/CreateJobOrder.tsx`.
 - **A dropdown inside a `Modal` must be portalled to `document.body` and positioned `fixed`.** The
   dialog body is a scroll container and cards inside it set `overflow: hidden` for their rounded
   corners, so a `position: absolute` menu is clipped to the card — it opens _inside_ the section and
@@ -381,6 +420,36 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
   bubble, so a `window` listener never hears the dialog body scrolling), flip upwards when the room
   below runs out, and keep the menu element mounted while closed so downshift's `getMenuProps` ref
   still tells an inside click from an outside one.
+- 🔴 **Every screen must work on a phone — responsive is mandatory, not a follow-up.** This is a
+  shop-floor app used from phones and tablets as much as from a desk, so a page that only lays out on
+  a 1440px monitor is **unfinished**, the same way an unreachable control is. Nothing catches it for
+  you: `tsc -b` passes, the desktop screenshot looks perfect, and the breakage only exists at 390px.
+  Like tab order, it is fixed **once in the shared layer, not per page**:
+  - **`768px` is THE breakpoint** — `@media (max-width: 768px)` in `web/src/index.css`, where the
+    shared responsive rules already live. A couple of feature stylesheets tune at 640px/480px; do
+    not invent a new breakpoint per page.
+  - **Reuse the shared classes; do not hand-roll a media query per screen.** They are already wired
+    and used across the app: `.responsive-table-wrapper` (a wide table scrolls instead of squashing),
+    `.form-field-grid` (multi-column form collapses to one column), `.master-detail-container` +
+    `.master-pane` / `.detail-pane` (one pane at a time on narrow screens), `.action-btn-text` (drop
+    a button's label, keep the icon), `.hidden-on-mobile` (non-essential chrome), `.page-container`.
+    A page that writes its own media query is exactly where the behaviour diverges from Vendors or
+    Items.
+  - **A wide table scrolls, it never shrinks.** Wrap it in `.responsive-table-wrapper`; the table
+    keeps its `min-width` so columns stay readable and the wrapper takes the overflow. Never let a
+    table set the page's width — a container wider than the viewport pushes the header and its
+    primary button off-screen, which is the flexbox blowout that
+    `.detail-pane, .detail-pane div { max-width: 100vw }` exists to stop.
+  - **Fluid units, never a fixed pixel width on layout.** `width: 900px` on a container is the bug;
+    `max-width` + `%` / `fr` / `minmax()` is the fix. Every flex or grid child holding text or a
+    table needs `min-width: 0` — without it flexbox refuses to shrink the child and the whole row
+    overflows the screen.
+  - **Touch targets ≥ 44px, and overlays must fit a phone.** A portalled dropdown positioned `fixed`
+    (the rule above) must also clamp its width to the viewport and flip upwards when there is no room
+    below — on a phone there usually is not. A modal on a narrow screen is full-width with its
+    actions reachable without zooming.
+  - **Walk the new page at 390px, 768px and desktop before calling it done** — same as the keyboard
+    walk. No horizontal page scroll, nothing clipped, every primary action reachable with a thumb.
 - 🔴 **Tab navigation is mandatory and must be perfect — a control you cannot reach with Tab is not
   done.** Native elements (`input`, `textarea`, `select`, `button`, `a[href]`) are focusable for free;
   a `<div onClick>` is **not**. Tab skips straight past it, so the control is unreachable by keyboard

@@ -1,7 +1,9 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
+import { splitByQty } from '../../../lib/splitByQty.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import {
@@ -9,18 +11,38 @@ import {
   validateCustomFields,
 } from '../../settings/customization/custom-fields/customFields.engine.ts';
 import {
+  asResolvedBatch,
   createBatch,
-  getBalance,
+  createBatchUnits,
   getBalancesByBatchAndLocation,
   postMovement,
+  resolveBatchesForPosting,
+  resolveExistingBatchUnits,
+  reverseMovement,
+  UNALLOCATED_BATCH_STATE,
   type Ownership,
+  type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { fifoLineOrder, openLayersByIssueLine } from '../../inventory/stock-ledger/costLayers.ts';
 import {
   assertItemsBelongToOrg,
-  assertLocationsBelongToOrg,
+  assertReceivableLocation,
   assertUomsBelongToOrg,
 } from '../jobwork.refs.ts';
-import { SOURCE_DOC_TYPES, isExternalLocation, runAsDocument } from '../jobwork.types.ts';
+import { closedQtyByIssueLine, lockStep } from '../jobwork.posting.ts';
+import {
+  materialByOutput,
+  needTable,
+  outputValues,
+  usedByItem,
+  type CostPlan,
+} from './landedCost.ts';
+import {
+  POSTED_DOC_STATUS,
+  SOURCE_DOC_TYPES,
+  isExternalLocation,
+  runAsDocument,
+} from '../jobwork.types.ts';
 import { recomputeStep } from '../job-orders/jobOrders.status.ts';
 import type {
   CreateJobReceiptInput,
@@ -77,11 +99,12 @@ const RECEIPT_INCLUDE = {
       seq: true,
       processNameSnapshot: true,
       expectedYield: true,
-      rate: true,
-      rateBasis: true,
     },
   },
-  location: { select: { id: true, name: true } },
+  // `type` rides along so the document can say the goods never came back — a
+  // receipt into an external location is the dispatch-onward case, and it must
+  // not read like an ordinary one.
+  location: { select: { id: true, name: true, type: true } },
   outputBatch: { select: { id: true, supplierBatchRef: true } },
   reworkBatch: { select: { id: true, supplierBatchRef: true } },
   /** The CONSUMPTION record — one row per challan line this receipt closes. */
@@ -99,7 +122,9 @@ const RECEIPT_INCLUDE = {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
     include: {
-      item: { select: { id: true, name: true, sku: true } },
+      item: {
+        select: { id: true, name: true, sku: true, itemType: true, inventoryTracking: true },
+      },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
       outputBatch: { select: { id: true, supplierBatchRef: true } },
@@ -119,6 +144,7 @@ const RECEIPT_INCLUDE = {
       },
     },
   },
+  _count: { select: { billItems: { where: { isDeleted: false } } } },
 } satisfies Prisma.JobReceiptInclude;
 
 export async function getJobReceiptsList(organizationId: string, opts: ListQuery) {
@@ -142,12 +168,51 @@ export async function countJobReceipts(organizationId: string, opts: ListQuery):
 }
 
 export async function getJobReceiptById(organizationId: string, id: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.jobReceipt.findFirst({
+  return runAsTenant(organizationId, async (tx) => {
+    const receipt = await tx.jobReceipt.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: RECEIPT_INCLUDE,
-    }),
-  );
+    });
+    if (!receipt) return receipt;
+
+    /**
+     * The packages this receipt created, attached to the batch rows they belong
+     * to. Read HERE and not in `RECEIPT_INCLUDE`, on purpose: that include is
+     * shared with the list endpoint, and a fourth relation level would cost the
+     * list a round trip per page for something only the detail screen renders.
+     *
+     * Keyed on `sourceDocId`, so a top-up shows the rolls THIS delivery brought
+     * rather than everything the batch has ever held. One query for the whole
+     * receipt, indexed into a Map — never one per batch row.
+     */
+    const units = await tx.batchUnit.findMany({
+      where: {
+        organizationId,
+        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+        sourceDocId: id,
+        isDeleted: false,
+      },
+      orderBy: { seq: 'asc' },
+      select: { id: true, batchId: true, seq: true, label: true },
+    });
+    if (units.length === 0) return receipt;
+
+    const byBatch = new Map<string, typeof units>();
+    for (const unit of units) {
+      byBatch.set(unit.batchId, [...(byBatch.get(unit.batchId) ?? []), unit]);
+    }
+
+    return {
+      ...receipt,
+      outputs: receipt.outputs.map((output) => ({
+        ...output,
+        batches: output.batches.map((row) => ({
+          ...row,
+          units: byBatch.get(row.batch.id) ?? [],
+        })),
+      })),
+    };
+  });
 }
 
 export async function getReceiptsForStep(organizationId: string, jobOrderStepId: string) {
@@ -183,6 +248,12 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
           include: {
             item: { select: { id: true, name: true, sku: true } },
             uom: { select: { id: true, unitName: true, symbol: true } },
+            // The recipe frozen onto the step — what the cost preview draws by (R1).
+            components: {
+              where: { isDeleted: false },
+              orderBy: { seq: 'asc' },
+              select: { componentItemId: true, qtyPerUnit: true },
+            },
           },
         },
         inputs: {
@@ -197,17 +268,33 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
     });
     if (!step) throw ApiError.notFound('Job order step not found');
 
+    /**
+     * 🔴 Every challan that actually went out — `POSTED_DOC_STATUS`, so drafts
+     * and cancellations are excluded and nothing else is.
+     *
+     * It used to ask for `['issued','partially_received']`, i.e. "not closed",
+     * and that was the status doing the work of hiding challans with nothing left
+     * on them. With no closing, the same list is derived from the material below:
+     * a challan whose every line is exhausted contributes no rows and is dropped
+     * from `issues` at the end. Same screen, one fewer thing to keep in step.
+     */
     const issues = await tx.jobIssue.findMany({
       where: {
         organizationId,
         jobOrderStepId,
         isDeleted: false,
-        status: { in: ['issued', 'partially_received'] },
+        status: POSTED_DOC_STATUS,
       },
       orderBy: { issueDate: 'asc' },
       include: {
+        // Where these goods are standing. The dialog needs it to offer "they
+        // stayed there" as a receive-into option — the one external location a
+        // receipt may name, and only because the challan itself put them there.
+        destination: { select: { id: true, name: true } },
         lines: {
           where: { isDeleted: false },
+          // Oldest first, the order `allocateConsumption` walks them in.
+          orderBy: { createdAt: 'asc' },
           include: {
             item: { select: { id: true, name: true, sku: true } },
             uom: { select: { id: true, unitName: true, symbol: true } },
@@ -218,45 +305,115 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
     });
 
     // Outstanding per issue LINE, so a partly-received challan does not offer the
-    // same taka twice.
-    const rows = [];
-    for (const issue of issues) {
-      for (const line of issue.lines) {
-        const closed = await tx.jobReceiptLine.aggregate({
-          where: { organizationId, jobIssueLineId: line.id, isDeleted: false },
-          _sum: { issuedQty: true },
-        });
-        const outstanding = line.qty.minus(closed._sum.issuedQty ?? ZERO);
-        if (outstanding.lessThanOrEqualTo(0)) continue;
+    // same taka twice. One read for every line between them, not one per line.
+    const closedByLine = await closedQtyByIssueLine(
+      tx,
+      organizationId,
+      issues.flatMap((issue) => issue.lines.map((line) => line.id)),
+    );
 
-        rows.push({
-          jobIssueId: issue.id,
-          challanNumber: issue.challanNumber,
-          jobIssueLineId: line.id,
-          // 🔴 The item is on the LINE now (§5.7) — the consumed grid groups by
-          // it, because one challan carries fabric, thread and buttons and their
-          // quantities can never be added together.
-          itemId: line.itemId,
-          itemName: line.item?.name ?? null,
-          uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
+    /**
+     * 🔴 What each line still holds at the processor, as the FIFO layers a receipt
+     * will consume (docs/FIFO_COSTING_PLAN.md §5.2) — the Receive screen's cost
+     * preview walks exactly these, so what it shows is what posts. One query for
+     * every line, never a read per line.
+     */
+    const layersByLine = await openLayersByIssueLine(
+      tx,
+      organizationId,
+      issues.flatMap((issue) =>
+        issue.lines.map((line) => ({
+          id: line.id,
           batchId: line.batchId,
-          // The label, not the internal number (2026-08-14).
-          batchReference: line.batch.supplierBatchRef,
-          issuedQty: outstanding.toString(),
-        });
-      }
+          locationId: issue.destinationLocationId,
+        })),
+      ),
+    );
+
+    const rows = [];
+    for (const { issue, line } of fifoLineOrder(
+      issues.flatMap((issue) => issue.lines.map((line) => ({ issue, line }))),
+      (entry) => layersByLine.get(entry.line.id),
+    )) {
+      const outstanding = line.qty.minus(closedByLine.get(line.id) ?? ZERO);
+      if (outstanding.lessThanOrEqualTo(0)) continue;
+      const layers = layersByLine.get(line.id) ?? [];
+      const layerQty = layers.reduce((sum, layer) => sum.plus(layer.qty), ZERO);
+      const layerValue = layers.reduce((sum, layer) => sum.plus(layer.value), ZERO);
+
+      rows.push({
+        jobIssueId: issue.id,
+        challanNumber: issue.challanNumber,
+        jobIssueLineId: line.id,
+        // 🔴 The item is on the LINE now (§5.7) — the consumed grid groups by
+        // it, because one challan carries fabric, thread and buttons and their
+        // quantities can never be added together.
+        itemId: line.itemId,
+        itemName: line.item?.name ?? null,
+        uomSymbol: line.uom?.symbol ?? line.uom?.unitName ?? null,
+        batchId: line.batchId,
+        // The label, not the internal number (2026-08-14).
+        batchReference: line.batch.supplierBatchRef,
+        issuedQty: outstanding.toString(),
+        /** The line's average — kept for display; the preview prices by `layers`. */
+        unitCost: (layerQty.greaterThan(0) ? layerValue.dividedBy(layerQty) : ZERO)
+          .toDecimalPlaces(6)
+          .toString(),
+        /** Oldest first, the order a receipt consumes them in. */
+        layers: layers.map((layer) => ({
+          qty: layer.qty.toString(),
+          unitCost: layer.value.dividedBy(layer.qty).toDecimalPlaces(6).toString(),
+        })),
+      });
     }
+
+    /* Challans with nothing left to account for, dropped here rather than by a
+       `closed` status. `rows` already skips an exhausted LINE; this is the same
+       rule one level up, so the picker offers exactly the challans that have
+       something on them. */
+    const live = new Set(rows.map((row) => row.jobIssueId));
+
+    // Challans a posted receipt closed (R14), so the screen can say "Closed by
+    // JR-…" instead of letting them vanish like a challan that merely came out even.
+    const closing = await tx.jobReceiptLine.findMany({
+      where: {
+        organizationId,
+        jobIssueId: { in: issues.map((issue) => issue.id) },
+        closesChallan: true,
+        isDeleted: false,
+        jobReceipt: { isDeleted: false, status: POSTED_DOC_STATUS },
+      },
+      distinct: ['jobIssueId'],
+      select: { jobIssueId: true, jobReceipt: { select: { id: true, receiptNumber: true } } },
+    });
+    const closedBy = new Map(closing.map((row) => [row.jobIssueId, row.jobReceipt]));
 
     return {
       step,
-      issues: issues.map((issue) => ({
-        id: issue.id,
-        challanNumber: issue.challanNumber,
-        issueDate: issue.issueDate,
-        totalQty: issue.totalQty.toString(),
-        isRework: issue.isRework,
-        attemptNo: issue.attemptNo,
-      })),
+      issues: issues
+        .filter((issue) => live.has(issue.id))
+        .map((issue) => ({
+          id: issue.id,
+          challanNumber: issue.challanNumber,
+          issueDate: issue.issueDate,
+          totalQty: issue.totalQty.toString(),
+          isRework: issue.isRework,
+          attemptNo: issue.attemptNo,
+          // Who is holding it and where. Both are per challan because the dialog
+          // only offers "they stayed there" once the picked challans agree — which
+          // is the same condition the save enforces.
+          processorName: issue.processorNameSnapshot,
+          destinationLocationId: issue.destinationLocationId,
+          destinationName: issue.destination?.name ?? null,
+        })),
+      closedIssues: issues
+        .filter((issue) => !live.has(issue.id) && closedBy.has(issue.id))
+        .map((issue) => ({
+          id: issue.id,
+          challanNumber: issue.challanNumber,
+          closedByReceiptId: closedBy.get(issue.id)!.id,
+          closedByReceiptNumber: closedBy.get(issue.id)!.receiptNumber,
+        })),
       lines: rows,
       /**
        * The returned grid's opening rows — one per item the step planned to
@@ -273,6 +430,8 @@ export async function getReceivePrefill(organizationId: string, jobOrderStepId: 
         uomSymbol: row.uom?.symbol ?? row.uom?.unitName ?? null,
         isPrimary: row.isPrimary,
         expectedQty: row.expectedQty?.toString() ?? null,
+        // The agreed charge per accepted unit, which the Rate box opens with (R6).
+        rate: row.rate?.toString() ?? null,
       })),
     };
   });
@@ -348,7 +507,13 @@ function decodeCursor(raw: string | undefined): { createdAt: Date; id: string } 
  */
 export async function getOutputBatchOptions(
   organizationId: string,
-  query: { jobOrderStepId: string; itemId: string; search?: string; cursor?: string },
+  query: {
+    jobOrderStepId: string;
+    itemId: string;
+    search?: string;
+    cursor?: string;
+    withUnits?: boolean;
+  },
 ) {
   return runAsTenant(organizationId, async (tx) => {
     const step = await tx.jobOrderStep.findFirst({
@@ -379,6 +544,8 @@ export async function getOutputBatchOptions(
     // Receipts already posted against this job order — the batches they created
     // are the ones a follow-up delivery continues.
     const priorReceipts = await tx.jobReceipt.findMany({
+      // `'posted'` exactly — not "not cancelled". A draft receipt created no
+      // batch, so it has none to continue.
       where: { organizationId, jobOrderId: step.jobOrderId, isDeleted: false, status: 'posted' },
       select: { id: true },
     });
@@ -391,7 +558,9 @@ export async function getOutputBatchOptions(
         organizationId,
         itemId: query.itemId,
         isDeleted: false,
-        jobIssue: { jobOrderId: step.jobOrderId, isDeleted: false, status: { not: 'cancelled' } },
+        // Posted challans only — a draft's batches never left the godown, so
+        // offering them here would suggest continuing a lot that was never sent.
+        jobIssue: { jobOrderId: step.jobOrderId, isDeleted: false, status: POSTED_DOC_STATUS },
       },
       select: { batchId: true },
     });
@@ -400,6 +569,8 @@ export async function getOutputBatchOptions(
       organizationId,
       itemId: query.itemId,
       isDeleted: false,
+      // Never offered as something to add to — see `UNALLOCATED_BATCH_STATE`.
+      state: { not: UNALLOCATED_BATCH_STATE },
       ...ownershipWhere,
     };
 
@@ -513,6 +684,30 @@ export async function getOutputBatchOptions(
     });
     const locationById = new Map(locations.map((row) => [row.id, row]));
 
+    /**
+     * The packages each listed batch already holds, so the dialog can offer "add
+     * to an existing one" without a round trip per row. One grouped query for the
+     * whole page, indexed into a Map — never one per batch.
+     *
+     * Opt-in via `withUnits`, spelled exactly as on the batches picker: it costs
+     * an extra query, and only an org running the unit level can render them.
+     * Off, `units` is an empty array and the dialog renders as it always did.
+     */
+    const unitsByBatch = new Map<string, { batchUnitId: string; seq: number; label: string }[]>();
+    if (query.withUnits) {
+      const unitRows = await tx.batchUnit.findMany({
+        where: { organizationId, batchId: { in: all.map((row) => row.id) }, isDeleted: false },
+        orderBy: { seq: 'asc' },
+        select: { id: true, batchId: true, seq: true, label: true },
+      });
+      for (const row of unitRows) {
+        unitsByBatch.set(row.batchId, [
+          ...(unitsByBatch.get(row.batchId) ?? []),
+          { batchUnitId: row.id, seq: row.seq, label: row.label },
+        ]);
+      }
+    }
+
     const shape = (batch: (typeof all)[number], source: 'this_job_order' | 'other') => {
       const byLocation = balances.get(batch.id) ?? new Map<string, Prisma.Decimal>();
       const rows = [...byLocation.entries()]
@@ -562,6 +757,7 @@ export async function getOutputBatchOptions(
         internalQty: total.minus(external).toString(),
         externalQty: external.toString(),
         byLocation: rows,
+        units: unitsByBatch.get(batch.id) ?? [],
       };
     };
 
@@ -591,24 +787,6 @@ const BATCH_OPTION_SELECT = {
   uomId: true,
 } satisfies Prisma.BatchSelect;
 
-/** What the processor charges for this receipt, per `rateBasis` (§9.2). */
-function processCharge(
-  rate: Prisma.Decimal | null,
-  rateBasis: string | null,
-  issuedQty: Prisma.Decimal,
-  receivedQty: Prisma.Decimal,
-): Prisma.Decimal {
-  if (!rate) return ZERO;
-  switch (rateBasis) {
-    case 'per_issued_unit':
-      return rate.times(issuedQty);
-    case 'per_received_unit':
-      return rate.times(receivedQty);
-    default:
-      return ZERO;
-  }
-}
-
 /**
  * One batch a returned row will land in, resolved from the request but not yet
  * written. Exactly one of the two identifiers is set: `batchId` names an
@@ -622,6 +800,43 @@ interface OutputBatchPlan {
    * a `batchId`, because a batch that already exists is added to and never
    * restamped from inside a receipt. */
   attributes: OutputBatchAttributes;
+  /**
+   * The packages physically handed back inside this batch. Allowed on a top-up
+   * too — the second half of a split delivery is three more rolls, not a
+   * correction to the first half's. Empty, or totalling `qty` together with
+   * `existingUnits`: naming some but not all has been refused since 2026-09-02.
+   */
+  units: { label: string; qty: Prisma.Decimal }[];
+  /**
+   * Packages that ALREADY exist and are being added to — the same roll returning
+   * a second time. Separate from `units` because they take the other path: one is
+   * created, the other only resolved. Only ever set on a `batchId` row.
+   */
+  existingUnits: { batchUnitId: string; qty: Prisma.Decimal }[];
+}
+
+/** The packages a plan names, normalised and split by which path they take.
+ * Empty when the org runs no unit level, which is every receipt written before
+ * this feature existed. */
+function batchUnits(row: JobReceiptOutputBatchInput): { label: string; qty: Prisma.Decimal }[] {
+  return (row.units ?? [])
+    .filter((unit) => !unit.batchUnitId)
+    .map((unit) => ({
+      // Blank is legal — `createBatchUnits` auto-names it `#seq`.
+      label: (unit.label ?? '').trim(),
+      qty: new Prisma.Decimal(unit.qty),
+    }));
+}
+
+function existingBatchUnits(
+  row: JobReceiptOutputBatchInput,
+): { batchUnitId: string; qty: Prisma.Decimal }[] {
+  return (row.units ?? [])
+    .filter((unit) => unit.batchUnitId)
+    .map((unit) => ({
+      batchUnitId: unit.batchUnitId!,
+      qty: new Prisma.Decimal(unit.qty),
+    }));
 }
 
 /** What a NEW batch is stamped with at the gate. Every field means "not stated"
@@ -661,8 +876,8 @@ interface ResolvedOutput {
   scrapQty: Prisma.Decimal;
   returnedQty: Prisma.Decimal;
   isPrimary: boolean;
-  /** Null on the primary — it takes the remainder of the pot (§9.2.1). */
-  valueShare: Prisma.Decimal | null;
+  /** The rate agreed for this receipt; null takes the job order's (R6). */
+  rate: Prisma.Decimal | null;
   reasonId: string | null;
   responsibility: string | null;
   remarks: string | null;
@@ -687,39 +902,6 @@ interface ResolvedOutput {
   /** The same for rework — always a DIFFERENT set of batches, so the re-issue can
    * send back only the pieces that failed. */
   reworkBatches: OutputBatchPlan[];
-}
-
-/**
- * 🔴 SPLIT A VALUE ACROSS PARTS BY QUANTITY, CONSERVING EVERY PAISA.
- *
- * The last part takes the REMAINDER rather than its own rounded share. Rounding
- * each share independently to four decimals loses fractions — three ways of
- * ₹100 is 33.3333 × 3 = ₹99.9999 — and the missing paisa is not a display
- * problem: the pot no longer equals what was posted, so "cost per metre" stops
- * reconciling with the ledger and no report can say why.
- *
- * Legitimate ONLY where every part is the same item in the same unit (§9.2.1).
- * Across items it would be the cross-unit ratio the domain refuses everywhere.
- */
-function splitByQty(total: Prisma.Decimal, parts: readonly Prisma.Decimal[]): Prisma.Decimal[] {
-  if (parts.length === 0) return [];
-  const sum = parts.reduce((acc, part) => acc.plus(part), ZERO);
-  // Nothing to weigh by — a value with no quantity behind it goes nowhere rather
-  // than being spread evenly over rows that measured zero.
-  if (sum.lessThanOrEqualTo(0)) return parts.map(() => ZERO);
-
-  const shares: Prisma.Decimal[] = [];
-  let assigned = ZERO;
-  for (const [index, part] of parts.entries()) {
-    if (index === parts.length - 1) {
-      shares.push(total.minus(assigned));
-      break;
-    }
-    const share = total.times(part).dividedBy(sum).toDecimalPlaces(4);
-    shares.push(share);
-    assigned = assigned.plus(share);
-  }
-  return shares;
 }
 
 /**
@@ -763,7 +945,7 @@ function resolveOutputs(
         scrapQty: lineTotals.scrap,
         returnedQty: lineTotals.returned,
         isPrimary: true,
-        valueShare: null,
+        rate: null,
         reasonId: null,
         responsibility: null,
         remarks: null,
@@ -805,9 +987,7 @@ function resolveOutputs(
       scrapQty: new Prisma.Decimal(row.scrapQty ?? 0),
       returnedQty: new Prisma.Decimal(row.returnedQty ?? 0),
       isPrimary,
-      // The primary takes the remainder, so a value typed on it would be
-      // ignored — better to drop it here than to store a number nothing reads.
-      valueShare: isPrimary ? null : new Prisma.Decimal(row.valueShare ?? 0),
+      rate: row.rate == null ? null : new Prisma.Decimal(row.rate),
       reasonId: row.reasonId ?? null,
       responsibility: row.responsibility ?? null,
       remarks: row.remarks?.trim() || null,
@@ -827,6 +1007,8 @@ function resolveOutputs(
             batchReference: batch.batchReference?.trim() || null,
             qty: new Prisma.Decimal(batch.qty),
             attributes: batchAttributes(batch),
+            units: batchUnits(batch),
+            existingUnits: existingBatchUnits(batch),
           }))
         : singleBatchPlan(
             row.batchReference?.trim() || null,
@@ -838,6 +1020,8 @@ function resolveOutputs(
             batchReference: batch.batchReference?.trim() || null,
             qty: new Prisma.Decimal(batch.qty),
             attributes: batchAttributes(batch),
+            units: batchUnits(batch),
+            existingUnits: existingBatchUnits(batch),
           }))
         : singleBatchPlan(
             row.reworkBatchReference?.trim() || null,
@@ -851,44 +1035,17 @@ function resolveOutputs(
  * quantity. Empty when there is no quantity — an all-scrap row creates nothing. */
 function singleBatchPlan(batchReference: string | null, qty: Prisma.Decimal): OutputBatchPlan[] {
   if (qty.lessThanOrEqualTo(0)) return [];
-  // No attributes: the older shape had nowhere to state them.
-  return [{ batchId: null, batchReference, qty, attributes: NO_BATCH_ATTRIBUTES }];
-}
-
-/**
- * 🔴 THE VALUE SPLIT (§9.2.1). One pot, several places to put it.
- *
- *     pot = value of everything consumed + the process charge
- *     each by-product → the value the user typed, default ₹0
- *     the primary     → pot − the sum of the by-product values
- *
- * Apportioning by quantity is not available and reaching for it is the trap:
- * 2,910 PCS and 80 KG have no ratio between them, and inventing one would move
- * cost silently between two items every time the yield moved.
- *
- * Value is conserved by construction — the primary takes exactly what is left —
- * so the only way to break it is by-products claiming more than the whole
- * operation was worth, which is refused rather than left to make the primary
- * negative.
- */
-function splitValue(outputs: readonly ResolvedOutput[], pot: Prisma.Decimal) {
-  const byProducts = outputs.filter((row) => !row.isPrimary);
-  const claimed = byProducts.reduce((acc, row) => acc.plus(row.valueShare ?? ZERO), ZERO);
-
-  if (claimed.greaterThan(pot)) {
-    throw new ApiError(
-      400,
-      `The by-products are valued at ${claimed.toString()}, but this operation is only worth ` +
-        `${pot.toDecimalPlaces(4).toString()} in total (material consumed plus the process charge). ` +
-        'The main output would be left carrying a negative cost.',
-      { outputs: 'By-product values cannot exceed the value of the whole operation.' },
-    );
-  }
-
-  const primaryValue = pot.minus(claimed);
-  return new Map(
-    outputs.map((row) => [row.itemId, row.isPrimary ? primaryValue : (row.valueShare ?? ZERO)]),
-  );
+  // No attributes and no packages: the older shape had nowhere to state either.
+  return [
+    {
+      batchId: null,
+      batchReference,
+      qty,
+      attributes: NO_BATCH_ATTRIBUTES,
+      units: [],
+      existingUnits: [],
+    },
+  ];
 }
 
 /** One batch this receipt actually wrote into, ready to be recorded as a row. */
@@ -940,6 +1097,52 @@ function assertAllocationsBalance(outputs: readonly ResolvedOutput[]): void {
           },
         );
       }
+
+      /**
+       * 🔴 THE SAME CHECK ONE LEVEL DOWN, and since 2026-09-02 it is an EQUALITY
+       * too — naming any package commits to naming them all, so a batch is broken
+       * down completely or not at all. Naming NONE stays legal, which is what
+       * keeps every org without the level, and every receipt posted before it
+       * existed, working exactly as before.
+       *
+       * 🔴 Top-ups count. `existingUnits` is quantity going onto a package the
+       * batch already holds, so leaving it out of the sum let a receipt name half
+       * the batch and pass — the bug this line closes.
+       *
+       * Beside the write, not only in the schema: `validateBody` runs on the HTTP
+       * route alone, and a script, an import or a test must not be able to post a
+       * receipt whose packages do not account for the batch they are inside.
+       */
+      for (const [batchIndex, plan] of side.plans.entries()) {
+        if (plan.units.length === 0 && plan.existingUnits.length === 0) continue;
+        const inUnits = [...plan.units, ...plan.existingUnits].reduce(
+          (sum, unit) => sum.plus(unit.qty),
+          ZERO,
+        );
+        if (inUnits.minus(plan.qty).abs().greaterThan(tolerance)) {
+          const label = plan.batchReference ?? 'the batch';
+          throw new ApiError(
+            400,
+            `Returned item ${index + 1}: the units inside ${label} add up to ` +
+              `${inUnits.toString()}, not the ${plan.qty.toString()} that came back into it.`,
+            {
+              [`outputs.${index}.${side.field}.${batchIndex}.units`]:
+                'The units must account for the whole batch, or name none at all.',
+            },
+          );
+        }
+
+        const labels = plan.units.map((unit) => unit.label.toLowerCase());
+        if (new Set(labels).size !== labels.length) {
+          throw new ApiError(
+            400,
+            `Returned item ${index + 1}: two units of one batch share a label. A label is a physical tag, so it has to be unique.`,
+            {
+              [`outputs.${index}.${side.field}.${batchIndex}.units`]: 'A label is used twice.',
+            },
+          );
+        }
+      }
     }
 
     /** 🔴 Accepted and rework may never share a batch. Merged, the piece count
@@ -969,6 +1172,7 @@ interface ExistingBatch {
   ownerPartyId: string | null;
   parentBatchIds: string[];
   supplierBatchRef: string | null;
+  state: string;
 }
 
 /**
@@ -1021,6 +1225,7 @@ async function loadExistingOutputBatches(
       ownerPartyId: true,
       parentBatchIds: true,
       supplierBatchRef: true,
+      state: true,
     },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -1030,6 +1235,13 @@ async function loadExistingOutputBatches(
     if (!batch) {
       throw ApiError.badRequest(
         'One of the batches this receipt adds to no longer exists, or belongs to another organization.',
+      );
+    }
+    // Caught here as well as in `postMovement`, because a draft never posts and
+    // would otherwise park a receipt that can never be opened.
+    if (batch.state === UNALLOCATED_BATCH_STATE) {
+      throw ApiError.badRequest(
+        'A receipt cannot add to unallocated opening stock. Pick a named batch or create a new one.',
       );
     }
     if (batch.itemId !== output.itemId) {
@@ -1057,27 +1269,42 @@ interface ConsumeAllocation {
   jobIssueId: string;
   jobIssueLineId: string;
   batchId: string;
-  /** Which item was consumed — the challan line's own (§5.7). It is what the
-   * process charge is measured against when the rate is per issued unit. */
+  /**
+   * 🔴 WHICH PACKAGE went out on that challan line, so the consume can take it
+   * back out of the same one.
+   *
+   * Not optional decoration. A challan that sent a whole roll leaves the batch
+   * FULLY tagged at the processor, so an untagged consume against it is refused
+   * by `postMovement`'s invariant — the packages would claim more than the batch
+   * held. Carrying the package through is what makes a receipt against a
+   * package-wise challan possible at all.
+   *
+   * A PARTIAL consume of a package is fine and stays fine: taking quantity out of
+   * a package lowers both sides of that inequality equally, so what is left of
+   * the roll simply stays at the processor.
+   */
+  batchUnitId: string | null;
+  /** Which item was consumed — the challan line's own (§5.7). Material value is
+   * split across outputs per item (R5). */
   itemId: string;
   qty: Prisma.Decimal;
 }
 
-/**
- * Decide which issue lines this receipt consumes, and how much of each.
- *
- * Unit-wise lines name their own issue line, so the answer is given. Bulk lines
- * do not — one typed total closes whatever is still outstanding, oldest first.
- * FIFO rather than proportional because the batches went out in an order and came
- * back in that order; splitting a bulk return across every open line by ratio
- * invents a mixing that did not happen.
- */
-async function allocateConsumption(
+/** A line of a ticked challan, with what is still at the processor on it. */
+interface OpenIssueLine {
+  id: string;
+  jobIssueId: string;
+  batchId: string;
+  batchUnitId: string | null;
+  itemId: string;
+  outstanding: Prisma.Decimal;
+}
+
+async function openIssueLines(
   tx: TenantClient,
   organizationId: string,
   issueIds: readonly string[],
-  lines: readonly JobReceiptLineInput[],
-): Promise<ConsumeAllocation[]> {
+): Promise<OpenIssueLine[]> {
   const issueLines = await tx.jobIssueLine.findMany({
     where: { organizationId, jobIssueId: { in: [...issueIds] }, isDeleted: false },
     orderBy: { createdAt: 'asc' },
@@ -1085,19 +1312,103 @@ async function allocateConsumption(
       id: true,
       jobIssueId: true,
       batchId: true,
+      batchUnitId: true,
       qty: true,
       itemId: true,
+      jobIssue: { select: { destinationLocationId: true } },
     },
   });
+  const closedByLine = await closedQtyByIssueLine(
+    tx,
+    organizationId,
+    issueLines.map((line) => line.id),
+  );
+  // 🔴 Oldest STOCK first, not oldest line (FIFO plan §5.1): a bulk receipt walks
+  // these in order, and each line's cost is its own layers — so this order is
+  // what makes a bulk receipt cost the oldest material the challans carried.
+  const layersByLine = await openLayersByIssueLine(
+    tx,
+    organizationId,
+    issueLines.map((line) => ({
+      id: line.id,
+      batchId: line.batchId,
+      locationId: line.jobIssue.destinationLocationId,
+    })),
+  );
+  return fifoLineOrder(issueLines, (line) => layersByLine.get(line.id)).map(
+    ({ qty, jobIssue: _jobIssue, ...line }) => ({
+      ...line,
+      outstanding: qty.minus(closedByLine.get(line.id) ?? ZERO),
+    }),
+  );
+}
 
-  const outstanding = new Map<string, Prisma.Decimal>();
-  for (const line of issueLines) {
-    const closed = await tx.jobReceiptLine.aggregate({
-      where: { organizationId, jobIssueLineId: line.id, isDeleted: false },
-      _sum: { issuedQty: true },
-    });
-    outstanding.set(line.id, line.qty.minus(closed._sum.issuedQty ?? ZERO));
-  }
+/**
+ * What stops a step's plan from costing a receipt — the same gaps the issue
+ * refuses (V4), plus a composite with no recipe frozen onto it, which only a
+ * step planned before landed costing can have.
+ */
+function costingProblems(step: {
+  inputs: readonly { itemId: string; plannedQty: Prisma.Decimal | null; item: { name: string } }[];
+  outputs: readonly {
+    itemId: string;
+    expectedQty: Prisma.Decimal | null;
+    item: { name: string; itemStructure: string };
+    components: readonly unknown[];
+  }[];
+}): string[] {
+  const inputIds = new Set(step.inputs.map((row) => row.itemId));
+  const noPlanned = step.inputs
+    .filter((row) => !row.plannedQty || row.plannedQty.lessThanOrEqualTo(0))
+    .map((row) => row.item.name);
+  const noExpected = step.outputs
+    .filter((row) => !row.expectedQty || row.expectedQty.lessThanOrEqualTo(0))
+    .map((row) => row.item.name);
+  // A pass-through output draws on itself and needs no recipe (R1).
+  const noRecipe = step.outputs
+    .filter(
+      (row) =>
+        row.item.itemStructure === 'composite' &&
+        row.components.length === 0 &&
+        !inputIds.has(row.itemId),
+    )
+    .map((row) => row.item.name);
+  return [
+    ...(step.outputs.length === 0 ? ['it lists nothing it produces'] : []),
+    ...(noPlanned.length ? [`no planned quantity for ${noPlanned.join(', ')}`] : []),
+    ...(noExpected.length ? [`no expected quantity for ${noExpected.join(', ')}`] : []),
+    ...(noRecipe.length ? [`no recipe frozen onto the job order for ${noRecipe.join(', ')}`] : []),
+  ];
+}
+
+/**
+ * Decide which issue lines this receipt consumes, and how much of each.
+ *
+ * Unit-wise lines name their own issue line, so the answer is given. Bulk lines
+ * do not — one total per item closes whatever is still outstanding, oldest first.
+ * FIFO rather than proportional because the batches went out in an order and came
+ * back in that order; splitting a bulk return across every open line by ratio
+ * invents a mixing that did not happen.
+ */
+function allocateConsumption(
+  issueLines: readonly OpenIssueLine[],
+  lines: readonly JobReceiptLineInput[],
+  /**
+   * 🔴 THE DRAFT PATH. Over-receiving stops being an error and becomes a number
+   * the document is allowed to hold: the goods may genuinely not all be back yet,
+   * the operator may be entering what the delivery note claims before counting
+   * it, and a draft that refuses to save until the arithmetic closes is a draft
+   * that cannot be used for the one job drafts exist for.
+   *
+   * The remainder rides on the last eligible challan line so the quantity the
+   * user typed survives the round trip. Nothing is posted either way — the strict
+   * pass runs again at post, and refuses then.
+   */
+  lenient = false,
+  /** The challans this receipt closes — served first in the bulk walk (R12). */
+  closedIssueIds: ReadonlySet<string> = new Set(),
+): ConsumeAllocation[] {
+  const outstanding = new Map(issueLines.map((line) => [line.id, line.outstanding]));
 
   const allocations: ConsumeAllocation[] = [];
 
@@ -1114,7 +1425,7 @@ async function allocateConsumption(
         );
       }
       const left = outstanding.get(issueLine.id) ?? ZERO;
-      if (toConsume.greaterThan(left)) {
+      if (toConsume.greaterThan(left) && !lenient) {
         throw ApiError.badRequest(
           `Challan line for batch ${issueLine.batchId} has ${left.toString()} still out, ` +
             `but ${toConsume.toString()} is being received against it.`,
@@ -1125,6 +1436,7 @@ async function allocateConsumption(
         jobIssueId: issueLine.jobIssueId,
         jobIssueLineId: issueLine.id,
         batchId: issueLine.batchId,
+        batchUnitId: issueLine.batchUnitId,
         itemId: issueLine.itemId,
         qty: toConsume,
       });
@@ -1132,12 +1444,18 @@ async function allocateConsumption(
     }
 
     /**
-     * 🔴 Bulk: walk the open lines oldest first — WITHIN ONE ITEM.
+     * 🔴 Bulk: walk the open lines WITHIN ONE ITEM — closed challans first, then
+     * oldest first (challan-closure R12).
      *
-     * Unscoped, this settles a panel receipt by consuming thread, because the
-     * thread's lines are simply older. The item is asked for whenever the
+     * Unscoped by item, this settles a panel receipt by consuming thread, because
+     * the thread's lines are simply older. The item is asked for whenever the
      * challans carry more than one; with a single item there is nothing to
      * disambiguate and the old shape keeps working.
+     *
+     * Oldest-first alone is not enough once a challan can be closed: closing the
+     * NEWER of two challans would spend the quantity on the older one and leave
+     * the closed challan still holding stock — ticking Close would close nothing.
+     * The sort is stable, so each group keeps its oldest-first order.
      */
     const itemsOnChallans = new Set(issueLines.map((issueLine) => issueLine.itemId));
     if (!line.itemId && itemsOnChallans.size > 1) {
@@ -1148,9 +1466,11 @@ async function allocateConsumption(
         { lines: 'Name the item on every line when the challans carry more than one.' },
       );
     }
-    const eligible = line.itemId
-      ? issueLines.filter((issueLine) => issueLine.itemId === line.itemId)
-      : issueLines;
+    const eligible = (
+      line.itemId ? issueLines.filter((issueLine) => issueLine.itemId === line.itemId) : issueLines
+    ).toSorted(
+      (a, b) => Number(closedIssueIds.has(b.jobIssueId)) - Number(closedIssueIds.has(a.jobIssueId)),
+    );
     if (line.itemId && eligible.length === 0) {
       throw ApiError.badRequest(
         'One of the receipt lines names an item these challans did not carry.',
@@ -1169,12 +1489,32 @@ async function allocateConsumption(
         jobIssueId: issueLine.jobIssueId,
         jobIssueLineId: issueLine.id,
         batchId: issueLine.batchId,
+        batchUnitId: issueLine.batchUnitId,
         itemId: issueLine.itemId,
         qty: take,
       });
     }
 
     if (toConsume.greaterThan(0)) {
+      // A draft keeps the surplus, hung on the last line it could reach, so the
+      // typed quantity is still there when the draft is reopened. With no
+      // eligible line at all there is nothing to hang it on and it is dropped —
+      // the draft still saves, and the post refuses it.
+      const last = eligible[eligible.length - 1];
+      if (lenient) {
+        if (last) {
+          allocations.push({
+            jobIssueId: last.jobIssueId,
+            jobIssueLineId: last.id,
+            batchId: last.batchId,
+            batchUnitId: last.batchUnitId,
+            itemId: last.itemId,
+            qty: toConsume,
+          });
+        }
+        continue;
+      }
+
       throw ApiError.badRequest(
         `${toConsume.toString()} more is being received than these challans still have outstanding.`,
       );
@@ -1184,16 +1524,72 @@ async function allocateConsumption(
   return allocations;
 }
 
+/**
+ * 🔴 SAVING A RECEIPT — as a draft, or posted. One function, for the same reason
+ * `createNewJobIssue` is one: the two differ in what they check and what they
+ * write, never in what they mean, and a second path is a second place for a rule
+ * to go missing.
+ *
+ * WHAT A DRAFT SKIPS
+ *
+ *   · the disposition sum check   — the split is still being typed.
+ *   · allocation balance          — the batches have not been named yet.
+ *   · over-receipt                — `allocateConsumption({ lenient })`.
+ *   · `createBatch` / packages    — 🔴 no batch is born by parking a form.
+ *   · `postMovement`              — 🔴 THE POINT. No consume, no produce.
+ *   · closing the challans        — a draft settles nothing, so the challans it
+ *                                   names stay open and receivable.
+ *   · `recomputeStep`             — nothing moved.
+ *
+ * 🔴 AND ONE THING A DRAFT LOSES, deliberately (2026-09-04). An output batch the
+ * user is CREATING has no `batches` row to point at — `job_receipt_output_batches
+ * .batch_id` is a NOT NULL foreign key to a real batch — and inventing that batch
+ * early is exactly the thing a draft must not do. So new-batch allocations are
+ * not saved; allocations that TOP UP an existing batch are. Reopening the draft
+ * asks for the batch reference again, and `postJobReceiptDraft` refuses to post a
+ * draft that never got one rather than guessing a label.
+ */
+export type ReceiptSaveMode = 'draft' | 'post';
+
 export async function createNewJobReceipt(
   organizationId: string,
   data: CreateJobReceiptInput,
   userId?: string,
+  mode: ReceiptSaveMode = 'post',
+  existingId?: string,
 ) {
-  const { customFields: rawCustomFields, lines, outputs: sentOutputs, issueIds, ...header } = data;
+  const {
+    customFields: rawCustomFields,
+    lines,
+    outputs: sentOutputs,
+    issueIds,
+    closedIssueIds = [],
+    ...header
+  } = data;
+  const asDraft = mode === 'draft';
+  const closedIssues = new Set(closedIssueIds);
 
   // Consumes fifty, produces fifty, and creates a package per accepted taka —
   // past Prisma's 5-second default (jobwork.types.ts).
   return runAsDocument(organizationId, async (tx) => {
+    // First, so the outstanding quantities below include any receipt that just
+    // posted on this step. A draft consumes nothing and does not lock.
+    if (!asDraft) await lockStep(tx, organizationId, header.jobOrderStepId);
+
+    const existing = existingId
+      ? await tx.jobReceipt.findFirst({
+          where: { id: existingId, organizationId, isDeleted: false },
+          select: { id: true, status: true, receiptNumber: true },
+        })
+      : null;
+    if (existingId && !existing) throw ApiError.notFound('Receipt not found');
+    if (existing && existing.status !== 'draft') {
+      throw ApiError.conflict(
+        'This receipt has already been posted, so it can no longer be edited. ' +
+          'Cancel it and enter a new one instead.',
+      );
+    }
+
     const step = await tx.jobOrderStep.findFirst({
       where: { id: header.jobOrderStepId, organizationId, isDeleted: false },
       include: {
@@ -1205,8 +1601,14 @@ export async function createNewJobReceipt(
     });
     if (!step) throw ApiError.notFound('Job order step not found');
     if (step.jobOrder.isDeleted) throw ApiError.notFound('Job order not found');
+    // R9: nothing more comes back against a finished step — what was left at the
+    // processor has been written off, and a receipt now would consume it twice.
+    if (step.status === 'completed' || step.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This step has been completed or closed short, so nothing more can be received against it.',
+      );
+    }
 
-    await assertLocationsBelongToOrg(tx, organizationId, [header.locationId]);
     await assertItemsBelongToOrg(tx, organizationId, [header.outputItemId]);
     await assertUomsBelongToOrg(tx, organizationId, [header.outputUomId]);
 
@@ -1216,20 +1618,68 @@ export async function createNewJobReceipt(
         organizationId,
         jobOrderStepId: step.id,
         isDeleted: false,
-        status: { not: 'cancelled' },
+        // 🔴 A DRAFT CHALLAN CANNOT BE RECEIVED AGAINST, in either mode. Nothing
+        // was sent, so there is nothing at the processor to come back — and a
+        // receipt against one would consume stock the ledger says never left.
+        status: POSTED_DOC_STATUS,
       },
       select: {
         id: true,
+        challanNumber: true,
         destinationLocationId: true,
         processorType: true,
         processorId: true,
         processorNameSnapshot: true,
+        // Rework and first-pass challans are costed by different rules (R1).
+        isRework: true,
       },
     });
     if (issues.length !== issueIds.length) {
       throw ApiError.badRequest(
         'One of the selected challans does not belong to this step, or has been cancelled.',
       );
+    }
+    // Beside the write as well as in the schema, which runs on the HTTP route alone.
+    if (closedIssueIds.some((id) => !issueIds.includes(id))) {
+      throw new ApiError(
+        400,
+        'A challan can only be closed by a receipt that is received against it.',
+        {
+          closedIssueIds: 'Tick the challan before closing it.',
+        },
+      );
+    }
+    const challanNumberOf = (issueId: string) =>
+      issues.find((issue) => issue.id === issueId)?.challanNumber ?? 'a challan';
+
+    /**
+     * 🔴 R14 — a challan closed by a POSTED receipt takes no more receipts. Reopening
+     * it is cancelling that receipt (plan §0): its consume reverses and its lines stop
+     * counting here, so the challan is open again with nothing else to undo. Checked
+     * on a draft too — a draft that can never post is a document parked with a fault.
+     */
+    const alreadyClosed = await tx.jobReceiptLine.findMany({
+      where: {
+        organizationId,
+        jobIssueId: { in: issueIds },
+        closesChallan: true,
+        isDeleted: false,
+        jobReceipt: { isDeleted: false, status: POSTED_DOC_STATUS },
+      },
+      distinct: ['jobIssueId'],
+      select: { jobIssueId: true, jobReceipt: { select: { receiptNumber: true } } },
+    });
+    if (alreadyClosed.length > 0) {
+      const named = alreadyClosed
+        .map(
+          (row) =>
+            `${challanNumberOf(row.jobIssueId!)} (closed by ${row.jobReceipt.receiptNumber})`,
+        )
+        .join(', ');
+      const message =
+        `Nothing more can be received on ${named}. Cancel the receipt that closed it to ` +
+        'reopen the challan.';
+      throw new ApiError(409, message, { issueIds: message });
     }
 
     /**
@@ -1249,7 +1699,13 @@ export async function createNewJobReceipt(
         'These challans are at different locations, so they cannot be received together.',
       );
     }
-    const processorLocationId = issues[0]!.destinationLocationId;
+    const processorLocationId = issues[0]?.destinationLocationId ?? null;
+
+    // Somewhere we hold, or the one shed these very challans are standing in —
+    // asked here rather than above because the second answer is `processorLocationId`,
+    // which the challans decide. Asked for a draft too: a draft naming a location
+    // the post will refuse is a document parked with a fault in it.
+    await assertReceivableLocation(tx, organizationId, header.locationId, processorLocationId);
 
     // Copied from the process, never taken from the request.
 
@@ -1283,10 +1739,6 @@ export async function createNewJobReceipt(
       { issued: ZERO, received: ZERO, accepted: ZERO, rework: ZERO, scrap: ZERO, returned: ZERO },
     );
 
-    if (totals.issued.lessThanOrEqualTo(0)) {
-      throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
-    }
-
     /**
      * 🔴 THE SUM CHECK, ENFORCED HERE AND NOT ONLY IN THE SCHEMA.
      *
@@ -1302,7 +1754,9 @@ export async function createNewJobReceipt(
      * Compared at four decimals — the columns' own precision — because an exact
      * comparison would reject 3 × 33.3333 for being a billionth off.
      */
-    for (const [index, line] of lines.entries()) {
+    // Not on a draft: the split is what the operator is still working out, and
+    // the whole reason to park the form is that it does not add up yet.
+    for (const [index, line] of asDraft ? [] : lines.entries()) {
       const split = new Prisma.Decimal(line.acceptedQty ?? 0)
         .plus(line.reworkQty ?? 0)
         .plus(line.scrapQty ?? 0)
@@ -1317,8 +1771,6 @@ export async function createNewJobReceipt(
         );
       }
     }
-
-    const allocations = await allocateConsumption(tx, organizationId, issueIds, lines);
 
     /**
      * 🔴 WHAT CAME BACK (§5.7) — resolved before anything is written, because
@@ -1352,13 +1804,277 @@ export async function createNewJobReceipt(
     }
 
     /**
+     * 🔴 THE LANDED COST (docs/JOBWORK_LANDED_COST_PLAN.md §6.5, R1–R7).
+     *
+     * A receipt no longer settles its challans in full. It works out how much
+     * material what came back used — from the ratio the step's own plan states,
+     * planned input against expected output — unless the processor's figure was
+     * typed, and allocates exactly that, oldest challan line first — after the lines
+     * of any challan it closes, which it empties (challan-closure R10–R12). Whatever the
+     * plan did not account for stays at the processor until the step is completed.
+     */
+    const reworkChallans = issues.filter((issue) => issue.isRework).length;
+    const isRework = reworkChallans > 0;
+    if (isRework && reworkChallans !== issues.length) {
+      throw new ApiError(
+        400,
+        'Rework and first-pass challans consume different items by different rules, so they ' +
+          'cannot be received on one receipt. Receive them separately.',
+        { issueIds: 'Pick only rework challans, or only first-pass ones.' },
+      );
+    }
+
+    // The plan the receipt is costed by — frozen on the step, read in one query.
+    const planStep = await tx.jobOrderStep.findFirstOrThrow({
+      where: { id: step.id, organizationId },
+      select: {
+        seq: true,
+        inputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: { itemId: true, uomId: true, plannedQty: true, item: { select: { name: true } } },
+        },
+        outputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: {
+            itemId: true,
+            uomId: true,
+            expectedQty: true,
+            rate: true,
+            sharePct: true,
+            item: { select: { name: true, itemStructure: true } },
+            components: {
+              where: { isDeleted: false },
+              orderBy: { seq: 'asc' },
+              select: { componentItemId: true, qtyPerUnit: true },
+            },
+          },
+        },
+      },
+    });
+    const plan: CostPlan = { inputs: planStep.inputs, outputs: planStep.outputs };
+    const plannedOutputByItem = new Map(planStep.outputs.map((row) => [row.itemId, row]));
+    const itemName = (itemId: string) =>
+      [...planStep.inputs, ...planStep.outputs].find((row) => row.itemId === itemId)?.item.name ??
+      'an item';
+
+    // Rework has no plan of its own (R2), and a draft is still being typed.
+    if (!isRework && !asDraft) {
+      const problems = costingProblems(planStep);
+      if (problems.length > 0) {
+        const message =
+          `Step ${planStep.seq} cannot be costed: ${problems.join('; ')}. Complete its plan on the ` +
+          'job order while it is still editable — otherwise it was planned before landed costing, ' +
+          'so complete it or close it short.';
+        throw new ApiError(409, message, { plan: message });
+      }
+      const unplanned = outputRows.filter((row) => !plannedOutputByItem.has(row.itemId));
+      if (unplanned.length > 0) {
+        throw new ApiError(
+          400,
+          'What came back includes an item this step’s plan does not list, so nothing says what ' +
+            'it is made from or what it costs. Add it to the job order first.',
+          { outputs: 'Only items on the step’s plan can be received.' },
+        );
+      }
+    }
+
+    // What is still out on the ticked challans, per line and per item — read once.
+    const issueLines = await openIssueLines(tx, organizationId, issueIds);
+    const outstandingByItem = new Map<string, Prisma.Decimal>();
+    for (const line of issueLines) {
+      outstandingByItem.set(
+        line.itemId,
+        (outstandingByItem.get(line.itemId) ?? ZERO).plus(line.outstanding),
+      );
+    }
+    const inputItemIds = [...outstandingByItem.keys()];
+
+    // R11 — closing a challan consumes everything still out on it, per item.
+    const closedFloor = new Map<string, Prisma.Decimal>();
+    for (const line of issueLines) {
+      if (!closedIssues.has(line.jobIssueId) || line.outstanding.lessThanOrEqualTo(0)) continue;
+      closedFloor.set(line.itemId, (closedFloor.get(line.itemId) ?? ZERO).plus(line.outstanding));
+    }
+
+    // A typed Used figure, per item. Zero or blank means "work it out" (R4).
+    const itemOfIssueLine = new Map(issueLines.map((line) => [line.id, line.itemId]));
+    const itemOfLine = (line: JobReceiptLineInput) =>
+      line.itemId ??
+      (line.jobIssueLineId ? itemOfIssueLine.get(line.jobIssueLineId) : undefined) ??
+      (inputItemIds.length === 1 ? inputItemIds[0] : undefined);
+    const typedLines = lines.filter((line) => (line.issuedQty ?? 0) > 0);
+    const typedByItem = new Map<string, Prisma.Decimal>();
+    for (const line of typedLines) {
+      const itemId = itemOfLine(line);
+      // An ambiguous line is refused by `allocateConsumption`, which names the fix.
+      if (!itemId) continue;
+      typedByItem.set(itemId, (typedByItem.get(itemId) ?? ZERO).plus(line.issuedQty!));
+    }
+
+    const needs = needTable(
+      plan,
+      inputItemIds,
+      outputRows.map((row) => ({
+        itemId: row.itemId,
+        acceptedQty: row.acceptedQty,
+        reworkQty: row.reworkQty,
+      })),
+      isRework,
+    );
+    const { used, undrawn, belowFloor, closedUndrawn } = usedByItem(
+      needs,
+      inputItemIds,
+      typedByItem,
+      outstandingByItem,
+      closedFloor,
+    );
+
+    // R13 — beside the undrawn refusal below, which is the same condition typed.
+    if (!asDraft && closedUndrawn.length > 0) {
+      const challans = [
+        ...new Set(
+          issueLines
+            .filter(
+              (line) => closedIssues.has(line.jobIssueId) && closedUndrawn.includes(line.itemId),
+            )
+            .map((line) => challanNumberOf(line.jobIssueId)),
+        ),
+      ];
+      const message =
+        `Closing ${challans.join(', ')} would consume ${closedUndrawn.map(itemName).join(', ')}, ` +
+        'but nothing received on this receipt is made from it, so there is nothing to carry its ' +
+        'value. Leave the challan open, or record what was made from it.';
+      throw new ApiError(400, message, { closedIssueIds: message });
+    }
+
+    // R11 — a typed figure still wins, but not below what the closure consumes.
+    if (!asDraft && belowFloor.length > 0) {
+      const itemId = belowFloor[0]!;
+      const typedQty = typedByItem.get(itemId)!;
+      const lineIndex = lines.findIndex((line) => itemOfLine(line) === itemId);
+      const message =
+        `${typedQty.toString()} of ${itemName(itemId)} is typed as used, but closing the ` +
+        `challan consumes the ${closedFloor.get(itemId)!.toString()} still out on it. Type at ` +
+        'least that, or leave the challan open.';
+      throw new ApiError(400, message, {
+        [lineIndex >= 0 ? `lines.${lineIndex}` : 'lines']: message,
+      });
+    }
+
+    if (!asDraft && undrawn.length > 0) {
+      throw new ApiError(
+        400,
+        `Nothing received on this receipt is made from ${undrawn.map(itemName).join(', ')}, so ` +
+          'there is nothing to carry what it used. Clear the used quantity, or record what was ' +
+          'made from it.',
+        { lines: 'A used quantity needs something received that is made from it.' },
+      );
+    }
+
+    // Typed lines stand as sent; every other item's use is the calculated figure.
+    const calculatedLines: JobReceiptLineInput[] = asDraft
+      ? []
+      : inputItemIds
+          .filter((itemId) => !typedByItem.has(itemId) && (used.get(itemId) ?? ZERO).greaterThan(0))
+          .map((itemId) => ({ itemId, issuedQty: Number(used.get(itemId)), receivedQty: 0 }));
+
+    const usedTotal = [...used.values()].reduce((sum, qty) => sum.plus(qty), ZERO);
+    if (!asDraft && usedTotal.lessThanOrEqualTo(0)) {
+      throw ApiError.badRequest('Say how much of the issued material this receipt accounts for.');
+    }
+
+    /**
+     * 🔴 A typed figure for an item a closure touches is re-expressed as one bulk
+     * line, so it goes through R12's closed-first walk. A draft being posted sends
+     * its typed quantities back on the challan LINES it parked them on, and those
+     * named lines are consumed exactly as named — if the outstanding moved since
+     * the draft was saved, they would no longer empty the closed challan.
+     */
+    const closingItems = new Set(closedFloor.keys());
+    const typedForAllocation: JobReceiptLineInput[] = asDraft
+      ? typedLines
+      : [
+          ...typedLines.filter((line) => !closingItems.has(itemOfLine(line) ?? '')),
+          ...[...closingItems]
+            .filter((itemId) => typedByItem.has(itemId))
+            .map((itemId) => ({
+              itemId,
+              issuedQty: Number(typedByItem.get(itemId)),
+              receivedQty: 0,
+            })),
+        ];
+
+    const allocations = allocateConsumption(
+      issueLines,
+      [...typedForAllocation, ...calculatedLines],
+      asDraft,
+      closedIssues,
+    );
+
+    /**
+     * R10 — every line of a closed challan is consumed to zero. R11 and R12 make
+     * this true by construction; it stays as the net, because a closure that
+     * leaves stock behind is a receipt whose cost is silently short.
+     */
+    if (!asDraft) {
+      const allocatedByLine = new Map<string, Prisma.Decimal>();
+      for (const row of allocations) {
+        allocatedByLine.set(
+          row.jobIssueLineId,
+          (allocatedByLine.get(row.jobIssueLineId) ?? ZERO).plus(row.qty),
+        );
+      }
+      const leftOpen = issueLines.find(
+        (line) =>
+          closedIssues.has(line.jobIssueId) &&
+          line.outstanding.minus(allocatedByLine.get(line.id) ?? ZERO).greaterThan(0),
+      );
+      if (leftOpen) {
+        const message =
+          `Closing ${challanNumberOf(leftOpen.jobIssueId)} consumes everything still out on it, ` +
+          `but this receipt leaves ${leftOpen.outstanding
+            .minus(allocatedByLine.get(leftOpen.id) ?? ZERO)
+            .toString()} of ${itemName(leftOpen.itemId)} there.`;
+        throw new ApiError(400, message, { closedIssueIds: message });
+      }
+    }
+
+    // A draft keeps every ticked challan even with nothing typed against it yet —
+    // `postJobReceiptDraft` finds its challans from these lines (§6.5). A posted
+    // receipt keeps one row per closed challan that consumed nothing, so the
+    // closure is still recorded (R10).
+    const covered = new Set(allocations.map((row) => row.jobIssueLineId));
+    const closedCovered = new Set(allocations.map((row) => row.jobIssueId));
+    for (const line of issueLines) {
+      if (covered.has(line.id)) continue;
+      if (!asDraft && (!closedIssues.has(line.jobIssueId) || closedCovered.has(line.jobIssueId))) {
+        continue;
+      }
+      covered.add(line.id);
+      closedCovered.add(line.jobIssueId);
+      allocations.push({
+        jobIssueId: line.jobIssueId,
+        jobIssueLineId: line.id,
+        batchId: line.batchId,
+        batchUnitId: line.batchUnitId,
+        itemId: line.itemId,
+        qty: ZERO,
+      });
+    }
+
+    /**
      * 🔴 CHECKED BEFORE A SINGLE ROW IS POSTED, and after the units above are
      * settled — the unit check compares against the item's stocking unit, so it
      * has to run once that is known. A batch this receipt may not add to has to
      * fail while nothing has moved; discovering it halfway through leaves the
      * ledger holding half a receipt.
      */
-    assertAllocationsBalance(outputRows);
+    // Not on a draft — it is a COMPLETENESS check ("every metre came back into
+    // some batch"), and a draft is incomplete by definition. It runs in full at
+    // post, before a single row is written, exactly as it always has.
+    if (!asDraft) assertAllocationsBalance(outputRows);
 
     const ownership = step.jobOrder.ownership as Ownership;
     const existingBatches = await loadExistingOutputBatches(
@@ -1371,135 +2087,223 @@ export async function createNewJobReceipt(
 
     const primaryOutput = outputRows.find((row) => row.isPrimary)!;
 
-    /**
-     * 🔴 THE QUANTITY THE CHARGE IS MEASURED AGAINST, keyed to ONE item.
-     *
-     * `per_issued_unit` means the principal input, `per_received_unit` the
-     * primary output. Summing across a multi-item challan instead would multiply
-     * the rate by 100 PCS + 5 CONE + 300 PCS = 405, which is 405 of nothing —
-     * the same mistake §6.5 refuses everywhere else.
-     */
-    const consumedByItem = new Map<string, Prisma.Decimal>();
-    for (const allocation of allocations) {
-      consumedByItem.set(
-        allocation.itemId,
-        (consumedByItem.get(allocation.itemId) ?? ZERO).plus(allocation.qty),
-      );
-    }
-    const principalInput = await tx.jobOrderStepInput.findFirst({
-      where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
-      orderBy: { seq: 'asc' },
-      select: { itemId: true },
-    });
-    // A step that lists nothing to consume has no principal item, so the
-    // cross-item sum IS the figure — there is only one number in play.
-    const principalItemId = principalInput?.itemId ?? null;
-    const principalConsumedQty = principalItemId
-      ? (consumedByItem.get(principalItemId) ?? ZERO)
-      : totals.issued;
+    // The header's issued total is the principal input's, in its own unit — a sum
+    // across a multi-item challan would be 100 PCS + 5 CONE, which is nothing.
+    const principalItemId = planStep.inputs[0]?.itemId ?? inputItemIds[0] ?? null;
+    const principalConsumedQty = allocations
+      .filter((allocation) => allocation.itemId === principalItemId)
+      .reduce((sum, allocation) => sum.plus(allocation.qty), ZERO);
+
+    // The rate this receipt charges each row at: typed on the receipt, else the
+    // job order's (R6). Rework is charged too — the pieces are accepted now.
+    const rateByItem = new Map(
+      outputRows.map((row) => [
+        row.itemId,
+        row.rate ?? plannedOutputByItem.get(row.itemId)?.rate ?? null,
+      ]),
+    );
 
     const defs = await loadActiveDefinitions(tx, organizationId, 'job_receipt');
     const customFields = validateCustomFields({
       defs,
       input: rawCustomFields,
-      mode: 'create',
+      // A draft's custom fields are re-validated on the way to being posted, so
+      // `update` here — it is what keeps a required field from blocking the save
+      // of a form somebody has not finished filling in.
+      mode: asDraft ? 'update' : 'create',
     }) as Prisma.InputJsonValue;
 
-    const receiptNumber = await allocateNumber(tx, organizationId, 'job_receipt');
+    // A draft KEEPS its number across edits — re-allocating would walk the
+    // series forward every time somebody opens and saves a parked receipt.
+    const receiptNumber =
+      existing?.receiptNumber ?? (await allocateNumber(tx, organizationId, 'job_receipt'));
     const receiptDate = header.receiptDate ?? new Date();
+    // Drafts too — see the same call in `jobIssues.service`.
+    await assertOnOrAfterMigration(tx, {
+      organizationId,
+      date: receiptDate,
+      field: 'receiptDate',
+      label: 'receipt',
+    });
+
+    const headerData = {
+      jobOrderId: step.jobOrderId,
+      jobOrderStepId: step.id,
+      receiptDate,
+      processorType: issues[0]?.processorType ?? 'vendor',
+      processorId: issues[0]?.processorId ?? null,
+      processorNameSnapshot: issues[0]?.processorNameSnapshot ?? null,
+      locationId: header.locationId,
+      status: asDraft ? 'draft' : 'posted',
+      /**
+       * 🔴 THE SIX TOTALS ARE THE PRIMARY OUTPUT'S, IN ITS OWN UNIT — not a sum
+       * across items. Three items in three units cannot be added, so rather than
+       * store a meaningless figure the header describes one row and
+       * `job_receipt_outputs` holds the rest.
+       *
+       * The `outputItemId` / `outputUomId` columns that used to say WHICH row
+       * these belong to went on 2026-08-12; it is the primary output, and that is
+       * derivable from the child list. `chainNotReady` still sums
+       * `totalReceivedQty`, which is why these six stay.
+       *
+       * 🔴 A DRAFT FILLS THESE IN TOO, so the list page can show what it is for.
+       * They are therefore populated while the ledger behind them is empty, which
+       * is precisely why every sum over receipts filters on `POSTED_DOC_STATUS` —
+       * `chainNotReady` above all, since it reads `totalReceivedQty` alone and
+       * would otherwise let a parked receipt unlock the next step.
+       */
+      totalIssuedQty: principalConsumedQty,
+      totalReceivedQty: primaryOutput.receivedQty,
+      totalAcceptedQty: primaryOutput.acceptedQty,
+      totalReworkQty: primaryOutput.reworkQty,
+      totalScrapQty: primaryOutput.scrapQty,
+      totalReturnedQty: primaryOutput.returnedQty,
+      remarks: header.remarks?.trim() || null,
+      customFields,
+      updatedBy: userId ?? null,
+    };
 
     const receipt = await withUniqueViolation(DUPLICATE_NUMBER, () =>
-      tx.jobReceipt.create({
-        data: {
-          organizationId,
-          jobOrderId: step.jobOrderId,
-          jobOrderStepId: step.id,
-          receiptNumber,
-          receiptDate,
-          processorType: issues[0]!.processorType,
-          processorId: issues[0]!.processorId,
-          processorNameSnapshot: issues[0]!.processorNameSnapshot,
-          locationId: header.locationId,
-          /**
-           * 🔴 THE SIX TOTALS ARE THE PRIMARY OUTPUT'S, IN ITS OWN UNIT — not a
-           * sum across items. Three items in three units cannot be added, so
-           * rather than store a meaningless figure the header describes one row
-           * and `job_receipt_outputs` holds the rest.
-           *
-           * The `outputItemId` / `outputUomId` columns that used to say WHICH row
-           * these belong to went on 2026-08-12; it is the primary output, and
-           * that is derivable from the child list. `chainNotReady` still sums
-           * `totalReceivedQty`, which is why these six stay.
-           */
-          totalIssuedQty: principalConsumedQty,
-          totalReceivedQty: primaryOutput.receivedQty,
-          totalAcceptedQty: primaryOutput.acceptedQty,
-          totalReworkQty: primaryOutput.reworkQty,
-          totalScrapQty: primaryOutput.scrapQty,
-          totalReturnedQty: primaryOutput.returnedQty,
-          remarks: header.remarks?.trim() || null,
-          customFields,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
-      }),
+      existing
+        ? tx.jobReceipt.update({ where: { id: existing.id }, data: headerData })
+        : tx.jobReceipt.create({
+            data: { ...headerData, organizationId, receiptNumber, createdBy: userId ?? null },
+          }),
     );
+
+    /**
+     * 🔴 HARD DELETE, and legal for exactly the same reason as on the issue side:
+     * a draft's children never counted. No ledger row references them, no report
+     * sums them, and nobody outside this document has seen them — so there is no
+     * history for a soft delete to preserve, and stamping `is_deleted` instead
+     * would leave a dead row per line per save on a document meant to be edited
+     * repeatedly.
+     *
+     * `existing` is proved to be a draft above, so this is unreachable once a
+     * receipt is posted. Batch rows are NOT touched here because a draft never
+     * created any — that is the whole point of the batch work being skipped.
+     */
+    if (existing) {
+      await tx.jobReceiptOutputBatch.deleteMany({
+        where: { organizationId, jobReceiptId: existing.id },
+      });
+      await tx.jobReceiptOutput.deleteMany({
+        where: { organizationId, jobReceiptId: existing.id },
+      });
+      await tx.jobReceiptLine.deleteMany({
+        where: { organizationId, jobReceiptId: existing.id },
+      });
+    }
 
     /**
      * STEP 1 — consume the input where it physically is: the processor's
      * location. The value that leaves here is what the output batch inherits, which
      * is how cost follows material through the chain without anyone storing it.
      */
-    let consumedValue = ZERO;
+    const consumedBatchIds = [...new Set(allocations.map((allocation) => allocation.batchId))];
+    // Feeds `postMovement` alone, so a draft — which never posts — skips it and
+    // the loop below with it.
+    const consumedBatches = asDraft
+      ? new Map()
+      : await resolveBatchesForPosting(tx, organizationId, consumedBatchIds);
+
+    /** What actually left the ledger, per input item — the material R5 splits. */
+    const consumedValueByItem = new Map<string, Prisma.Decimal>();
     const parentBatchIds = new Set<string>();
-    for (const allocation of allocations) {
-      const balance = await getBalance(tx, {
-        organizationId,
-        batchId: allocation.batchId,
-        locationId: processorLocationId,
-      });
-      const unitValue = balance.qty.greaterThan(0) ? balance.value.dividedBy(balance.qty) : ZERO;
-      const lineValue = unitValue.times(allocation.qty).toDecimalPlaces(4);
-      consumedValue = consumedValue.plus(lineValue);
+    for (const allocation of asDraft ? [] : allocations) {
+      if (allocation.qty.lessThanOrEqualTo(0)) continue;
       parentBatchIds.add(allocation.batchId);
 
-      await postMovement(tx, {
-        organizationId,
-        batchId: allocation.batchId,
-        locationId: processorLocationId,
-        movementType: 'consume',
-        qtyOut: allocation.qty,
-        valueOut: lineValue,
-        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-        sourceDocId: receipt.id,
-        postedAt: receiptDate,
-        userId,
-      });
+      /**
+       * 🔴 FIFO WITHIN THE CHALLAN LINE IT CAME BACK AGAINST (§3.4). The line's
+       * processor layers carry the godown cost the challan took out, so one job
+       * can never consume another job's material at the same processor — and a
+       * line's remaining layers always equal what the line still has out, which
+       * is what cancel and the completion write-off rely on.
+       */
+      const posted = await postMovement(
+        tx,
+        {
+          organizationId,
+          batchId: allocation.batchId,
+          // Back out of the package it went out in — see `ConsumeAllocation`.
+          batchUnitId: allocation.batchUnitId,
+          locationId: processorLocationId!,
+          movementType: 'consume',
+          qtyOut: allocation.qty,
+          costScope: {
+            kind: 'job',
+            issueLineIds: [allocation.jobIssueLineId],
+            batchId: allocation.batchId,
+          },
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: receipt.id,
+          postedAt: receiptDate,
+          userId,
+        },
+        consumedBatches,
+      );
+
+      // From the row actually WRITTEN — `postMovement` zeroes customer-owned value.
+      consumedValueByItem.set(
+        allocation.itemId,
+        (consumedValueByItem.get(allocation.itemId) ?? ZERO).plus(posted.valueOut),
+      );
     }
+    const consumedValue = [...consumedValueByItem.values()].reduce(
+      (sum, value) => sum.plus(value),
+      ZERO,
+    );
 
     /**
-     * The bill for the work, added to the material's cost. That is what makes
-     * "cost per metre after dyeing" answerable at all — and why `rateBasis` had
-     * to be decided back on the Process master rather than inferred here (§9.2).
+     * 🔴 R5–R7: each input's value follows the rows that drew on it, by need, and
+     * each row adds its own charge. Recomputed from what was POSTED rather than
+     * from the typed-or-calculated quantities, so the ledger and the breakdown
+     * cannot disagree.
      */
-    const charge = processCharge(
-      step.rate,
-      step.rateBasis,
-      principalConsumedQty,
-      primaryOutput.receivedQty,
+    const materialByItem = materialByOutput(needs, consumedValueByItem);
+    const valuesByItem = new Map(
+      outputRows.map((row) => {
+        const material = materialByItem.get(row.itemId) ?? ZERO;
+        return [
+          row.itemId,
+          {
+            material,
+            ...outputValues(
+              material,
+              rateByItem.get(row.itemId) ?? null,
+              row.acceptedQty,
+              row.reworkQty,
+            ),
+          },
+        ];
+      }),
     );
-    // The pot (§9.2.1). Everything that came back shares exactly this and no more.
-    const totalValue = consumedValue.plus(charge);
-    const valueByItem = splitValue(outputRows, totalValue);
+    const splitMaterial = [...valuesByItem.values()].reduce(
+      (sum, row) => sum.plus(row.material),
+      ZERO,
+    );
+    // Consumed value no returned row draws on would vanish from the books. The
+    // undrawn refusal above should make this unreachable; it stays as the net.
+    if (!asDraft && !splitMaterial.equals(consumedValue)) {
+      throw ApiError.conflict(
+        `This receipt consumed material worth ${consumedValue.toString()} but only ` +
+          `${splitMaterial.toString()} of it lands in what came back. Nothing has been posted.`,
+      );
+    }
+    const processChargeTotal = [...valuesByItem.values()].reduce(
+      (sum, row) => sum.plus(row.charge),
+      ZERO,
+    );
 
     /**
      * STEPS 2–4 — a batch per returned ITEM, and the value split across them.
      *
      * 🔴 Scrap and returned quantities take NO share. The whole cost lands on the
      * pieces that survived, which is the point of §5.5: 4,850 good metres that
-     * cost what 5,000 cost. Within one item, accepted and rework then split that
-     * item's share by quantity — legitimate here, and ONLY here, because both
-     * sides are the same item in the same unit.
+     * cost what 5,000 cost. Within one item, accepted and rework split the
+     * material by quantity — legitimate here, and ONLY here, because both sides
+     * are the same item in the same unit — and the charge lands on accepted (R7).
      *
      * 🔴 Rework goes into a batch of its OWN, always (plan §7). Merging it into the
      * accepted batch would lose the piece count rework has to be measured by, and
@@ -1537,6 +2341,10 @@ export async function createNewJobReceipt(
         const share = shares[index] ?? ZERO;
         let batchId: string;
         let isNewBatch: boolean;
+        /* Both branches already hold the batch row — `existingBatches` read it,
+           or `createBatch` just returned it — so the post below has no reason to
+           read it again. */
+        let postableBatch: ResolvedBatches;
 
         if (plan.batchId) {
           /**
@@ -1552,6 +2360,7 @@ export async function createNewJobReceipt(
           const existing = existingBatches.get(plan.batchId)!;
           batchId = existing.id;
           isNewBatch = false;
+          postableBatch = asResolvedBatch(existing);
 
           // 🔴 Genealogy is APPENDED, never replaced (inventory.prisma). This
           // delivery may have consumed batches the first one did not, and a
@@ -1588,22 +2397,120 @@ export async function createNewJobReceipt(
           });
           batchId = batch.id;
           isNewBatch = true;
+          postableBatch = asResolvedBatch(batch);
         }
 
-        await postMovement(tx, {
-          organizationId,
-          batchId,
-          locationId: header.locationId,
-          movementType: 'produce',
-          qtyIn: plan.qty,
-          valueIn: share,
-          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-          sourceDocId: receipt.id,
-          remarks:
-            kind === 'rework' ? 'Rework — to be re-issued against the same step.' : undefined,
-          postedAt: receiptDate,
-          userId,
-        });
+        /**
+         * 🔴 THE PACKAGES THE PROCESSOR HANDED BACK, created before anything is
+         * posted so each `produce` can name the one it belongs to.
+         *
+         * On a top-up this CONTINUES the batch's own `seq` rather than restarting
+         * — the first delivery's T-1..T-3 and this one's T-4..T-6 are six rolls of
+         * one batch, and two rolls both called "1" could not be told apart on the
+         * goods.
+         */
+        // Guarded beside the write as well as in the schema: a batch born on this
+        // receipt has no packages that predate it, and the schema runs on the
+        // HTTP route alone.
+        if (plan.existingUnits.length && isNewBatch) {
+          throw ApiError.badRequest('A batch being created has no existing units to add to.', {
+            outputs: 'Pick an existing batch before adding to one of its units.',
+          });
+        }
+
+        /**
+         * 🔴 Two kinds of package row, two paths. A `label` row is a roll handed
+         * back for the first time and is CREATED; a `batchUnitId` row is the same
+         * roll returning again and is only RESOLVED, because `createBatchUnits`
+         * refuses a label the batch already carries — a label is a physical tag.
+         * Both then produce the same movement.
+         */
+        const createdUnits = [
+          ...(plan.units.length
+            ? await createBatchUnits(tx, {
+                organizationId,
+                batchId,
+                units: plan.units,
+                uomId: output.uomId,
+                sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+                sourceDocId: receipt.id,
+                userId,
+              })
+            : []),
+          ...(plan.existingUnits.length
+            ? await resolveExistingBatchUnits(tx, {
+                organizationId,
+                batchId,
+                units: plan.existingUnits,
+              })
+            : []),
+        ];
+
+        /**
+         * The side's value is already this batch's share; it is now split again
+         * across the packages BY QUANTITY — legitimate here for the same reason it
+         * was one level up, because every package is the same item in the same
+         * unit. Through `splitByQty` so the last one takes the remainder and not a
+         * paisa of the batch's share goes missing.
+         *
+         * The untagged remainder is the final part of that split, which is what
+         * keeps the batch's total value identical to what it would have been with
+         * no packages at all. A package carries no value of its own (§2.2) — it
+         * inherits its batch's weighted average, and this is how.
+         */
+        const tagged = createdUnits.reduce((sum, unit) => sum.plus(unit.qty), ZERO);
+        const loose = plan.qty.minus(tagged);
+        const parts = [
+          ...createdUnits.map((unit) => unit.qty),
+          ...(loose.greaterThan(0) ? [loose] : []),
+        ];
+        const unitShares = splitByQty(share, parts);
+
+        const remarks =
+          kind === 'rework' ? 'Rework — to be re-issued against the same step.' : undefined;
+
+        for (const [unitIndex, unit] of createdUnits.entries()) {
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId,
+              batchUnitId: unit.id,
+              locationId: header.locationId,
+              movementType: 'produce',
+              qtyIn: unit.qty,
+              valueIn: unitShares[unitIndex] ?? ZERO,
+              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+              sourceDocId: receipt.id,
+              remarks,
+              postedAt: receiptDate,
+              userId,
+            },
+            postableBatch,
+          );
+        }
+
+        // A batch broken up entirely leaves nothing behind, and a zero-quantity
+        // movement is one `postMovement` refuses by design.
+        if (loose.greaterThan(0)) {
+          await postMovement(
+            tx,
+            {
+              organizationId,
+              batchId,
+              locationId: header.locationId,
+              movementType: 'produce',
+              qtyIn: loose,
+              valueIn: unitShares[unitShares.length - 1] ?? ZERO,
+              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+              sourceDocId: receipt.id,
+              remarks,
+              postedAt: receiptDate,
+              userId,
+            },
+            postableBatch,
+          );
+        }
 
         posted.push({ kind, batchId, qty: plan.qty, isNewBatch });
       }
@@ -1611,19 +2518,17 @@ export async function createNewJobReceipt(
       return posted;
     };
 
-    for (const output of outputRows) {
-      const rowValue = valueByItem.get(output.itemId) ?? ZERO;
-      /**
-       * 🔴 Accepted and rework split the ITEM's share by quantity — legitimate
-       * here, and only here, because both sides are the same item in the same
-       * unit. Through `splitByQty` rather than two independent divisions: two
-       * rounded halves do not add back up to the whole, and the missing paisa
-       * would leave the pot disagreeing with what was posted.
-       */
-      const [acceptedValue, reworkValue] = splitByQty(rowValue, [
-        output.acceptedQty,
-        output.reworkQty,
-      ]) as [Prisma.Decimal, Prisma.Decimal];
+    /**
+     * 🔴 A DRAFT NEVER REACHES `postSide`, SO IT CREATES NO BATCH AND NO PACKAGE.
+     *
+     * This is the receipt side's version of "a draft moves no stock", and it is
+     * the stronger half: a receipt is where batches are BORN. Running this for a
+     * parked form would mint a batch, a package grid and a `produce` row for
+     * goods nobody has accepted yet, and deleting the draft afterwards would
+     * leave all three behind with nothing to explain them.
+     */
+    for (const output of asDraft ? [] : outputRows) {
+      const { acceptedValue, reworkValue } = valuesByItem.get(output.itemId)!;
 
       const posted = [
         ...(await postSide(output, 'accepted', output.batches, acceptedValue)),
@@ -1647,7 +2552,39 @@ export async function createNewJobReceipt(
      * org could have defined to put in it.
      */
     for (const [index, output] of outputRows.entries()) {
-      const posted = postedByItem.get(output.itemId) ?? [];
+      /**
+       * 🔴 WHAT A DRAFT KEEPS OF THE BATCH PLAN: the allocations that name a
+       * batch which ALREADY EXISTS, and only those.
+       *
+       * A top-up points at a real `batches` row, so it survives the round trip
+       * untouched. A NEW batch is nothing but a label the user typed — there is
+       * no row to point `batch_id` at, and creating one would be the very thing
+       * this whole path avoids — so it is dropped, and reopening the draft asks
+       * for the reference again. `postJobReceiptDraft` refuses rather than
+       * guessing.
+       */
+      const posted =
+        postedByItem.get(output.itemId) ??
+        (asDraft
+          ? [
+              ...output.batches
+                .filter((plan) => plan.batchId)
+                .map((plan) => ({
+                  kind: 'accepted' as const,
+                  batchId: plan.batchId!,
+                  qty: plan.qty,
+                  isNewBatch: false,
+                })),
+              ...output.reworkBatches
+                .filter((plan) => plan.batchId)
+                .map((plan) => ({
+                  kind: 'rework' as const,
+                  batchId: plan.batchId!,
+                  qty: plan.qty,
+                  isNewBatch: false,
+                })),
+            ]
+          : []);
       const outputRow = await tx.jobReceiptOutput.create({
         data: {
           organizationId,
@@ -1661,7 +2598,13 @@ export async function createNewJobReceipt(
           scrapQty: output.scrapQty,
           returnedQty: output.returnedQty,
           isPrimary: output.isPrimary,
-          valueShare: output.valueShare,
+          // No longer drives cost (R5); kept null until Migration 2 drops it.
+          valueShare: null,
+          // 🔴 The breakdown as posted, never re-derived — a later change to the
+          // job order's rate must not rewrite what this receipt cost.
+          rate: rateByItem.get(output.itemId) ?? null,
+          materialValue: valuesByItem.get(output.itemId)?.material ?? ZERO,
+          processCharge: valuesByItem.get(output.itemId)?.charge ?? ZERO,
           // The FIRST batch of each kind, not the only one — see the column's
           // note. `batches` below is the complete record.
           outputBatchId: posted.find((row) => row.kind === 'accepted')?.batchId ?? null,
@@ -1735,6 +2678,8 @@ export async function createNewJobReceipt(
           jobIssueId: allocation.jobIssueId,
           jobIssueLineId: allocation.jobIssueLineId,
           issuedQty: allocation.qty,
+          // A draft keeps the tick too, so a parked receipt remembers it.
+          closesChallan: closedIssues.has(allocation.jobIssueId),
           customFields: lineCustomFields,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
@@ -1742,36 +2687,217 @@ export async function createNewJobReceipt(
       });
     }
 
-    await tx.jobReceipt.update({
-      where: { id: receipt.id },
-      data: { outputBatchId, reworkBatchId },
-    });
-
-    // Close the challans this receipt fully accounted for.
-    for (const issue of issues) {
-      const issueLines = await tx.jobIssueLine.findMany({
-        where: { organizationId, jobIssueId: issue.id, isDeleted: false },
-        select: { id: true, qty: true },
-      });
-      let outstanding = ZERO;
-      for (const line of issueLines) {
-        const closed = await tx.jobReceiptLine.aggregate({
-          where: { organizationId, jobIssueLineId: line.id, isDeleted: false },
-          _sum: { issuedQty: true },
-        });
-        outstanding = outstanding.plus(line.qty.minus(closed._sum.issuedQty ?? ZERO));
-      }
-      await tx.jobIssue.update({
-        where: { id: issue.id },
-        data: { status: outstanding.lessThanOrEqualTo(0) ? 'closed' : 'partially_received' },
+    if (!asDraft) {
+      await tx.jobReceipt.update({
+        where: { id: receipt.id },
+        data: { outputBatchId, reworkBatchId, consumedValue, processChargeTotal },
       });
     }
 
-    await recomputeStep(tx, organizationId, step.id);
+    /**
+     * 🔴 A RECEIPT NO LONGER TOUCHES THE CHALLAN'S STATUS (2026-09-07).
+     *
+     * This used to read every line of every ticked challan, sum what was still
+     * out, and stamp `closed` or `partially_received` on each one. All of it is
+     * gone: a challan is `issued` until somebody cancels it.
+     *
+     * The status was the only thing removed. Ticking a challan still decides
+     * WHICH BATCH at the processor this receipt draws down and by how much —
+     * `allocateConsumption` above — so the stock still leaves the processor and
+     * its cost still flows into the output. What went was a derived label that
+     * duplicated, less accurately, what the ledger already says: what is still at
+     * a jobworker is the balance at their location, per batch, and no status
+     * column can disagree with that because none is consulted.
+     *
+     * `closedQtyByIssueLine` stays and is still the cap on over-consumption —
+     * that is arithmetic about material, not about a document's state.
+     */
+    if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
     return tx.jobReceipt.findFirstOrThrow({
       where: { id: receipt.id, organizationId },
       include: RECEIPT_INCLUDE,
+    });
+  });
+}
+
+/**
+ * Post a draft receipt as it stands.
+ *
+ * 🔴 IT GOES BACK THROUGH `createNewJobReceipt` in `post` mode, never a status
+ * flip. The draft was saved leniently — its dispositions may not add up, it may
+ * account for more than the challans have outstanding, and the goods it consumes
+ * may have moved on since. Every one of those checks lives in that function, and
+ * a shortcut past them is a receipt that posts a ledger nobody can reconcile.
+ *
+ * 🔴 AND IT REFUSES A DRAFT THAT NEVER NAMED ITS OUTPUT BATCHES. A draft cannot
+ * store a batch it is CREATING (see the note on `createNewJobReceipt`), so most
+ * drafts come back here with an accepted quantity and nothing to put it in.
+ * `assertAllocationsBalance` would catch it anyway — but with "the accepted
+ * batches add up to 0", which reads as a bug rather than as the one field the
+ * form still needs. Saying so plainly here is the difference between a user who
+ * knows to reopen the draft and one who thinks the software is broken.
+ */
+export async function postJobReceiptDraft(organizationId: string, id: string, userId?: string) {
+  const draft = await runAsTenant(organizationId, (tx) =>
+    tx.jobReceipt.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      include: RECEIPT_INCLUDE,
+    }),
+  );
+  if (!draft) throw ApiError.notFound('Receipt not found');
+  if (draft.status !== 'draft') throw ApiError.conflict('This receipt has already been posted.');
+
+  const issueIds = [
+    ...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : []))),
+  ];
+
+  /**
+   * 🔴 A draft with no challan on it cannot be posted.
+   *
+   * `createNewJobReceipt` refuses it too — nothing was issued, so there is nothing
+   * for the receipt to account for — but only after resolving the step, the
+   * outputs and the batches, and the message it lands on describes an arithmetic
+   * failure rather than the missing field. Said here, it names the one thing to
+   * go and do.
+   *
+   * Restored 2026-09-07 with the check inside that function; it was removed on
+   * 2026-09-04 (`fd2ddfe`) and JR-00019 / JR-00020 went through the gap, minting
+   * 90 shirts against no material at all.
+   */
+  if (issueIds.length === 0) {
+    throw ApiError.badRequest(
+      'This draft does not say which challan it accounts for. Open it and pick the challan first.',
+    );
+  }
+
+  /**
+   * 🔴 A DRAFT THAT NEVER NAMED ITS OUTPUT BATCHES CANNOT BE POSTED FROM HERE.
+   *
+   * A draft cannot store a batch it is CREATING — the batch does not exist until
+   * something posts it — so a receipt parked for a batch-tracked output comes
+   * back with an accepted quantity and nothing to put it in. Reopening the draft
+   * and pressing Receive is the way through: the form asks for the reference and
+   * posts in one go.
+   *
+   * Without this, `createBatch` refuses far downstream with "This item is
+   * batch-tracked, so the batch needs a reference" — true, but thrown from inside
+   * the posting machinery with no hint that the fix is to reopen the draft. The
+   * Post button on the detail drawer then looks broken for every batch-tracked
+   * item while working fine for untracked ones.
+   *
+   * 🔴 THE TEST IS THE ITEM'S OWN `inventoryTracking`, not a guess at the item's
+   * name. A guard removed on 2026-09-04 decided this by matching the name against
+   * "service", "dyeing" and "stitching", which refuses a real item called Dyeing
+   * Cloth and waves through a batch-tracked one called anything else. Whether a
+   * batch is needed is the item's answer, and `createBatch` enforces exactly the
+   * same rule at the other end.
+   *
+   * An output that names an EXISTING batch is fine — that id survives a draft,
+   * because the batch is already there to point at.
+   */
+  const needsReference = draft.outputs.filter((output) => {
+    if (output.item?.inventoryTracking !== 'batch') return false;
+    const has = (kind: string) => output.batches.some((row) => row.kind === kind);
+    return (
+      (output.acceptedQty.greaterThan(0) && !has('accepted')) ||
+      (output.reworkQty.greaterThan(0) && !has('rework'))
+    );
+  });
+  if (needsReference.length > 0) {
+    const names = needsReference.map((output) => output.item?.name ?? 'the goods').join(', ');
+    throw ApiError.badRequest(
+      `This draft does not say which batch ${names} came back into. Open the draft, enter the ` +
+        'batch reference, and receive it from there.',
+      { outputs: 'Enter the batch reference on the draft.' },
+    );
+  }
+
+  return createNewJobReceipt(
+    organizationId,
+    {
+      jobOrderStepId: draft.jobOrderStepId,
+      receiptDate: draft.receiptDate,
+      issueIds,
+      closedIssueIds: [
+        ...new Set(
+          draft.lines.flatMap((line) =>
+            line.closesChallan && line.jobIssueId ? [line.jobIssueId] : [],
+          ),
+        ),
+      ],
+      locationId: draft.locationId,
+      remarks: draft.remarks,
+      customFields: draft.customFields as Record<string, unknown>,
+      lines: draft.lines.map((line) => ({
+        jobIssueId: line.jobIssueId,
+        jobIssueLineId: line.jobIssueLineId,
+        issuedQty: Number(line.issuedQty),
+        receivedQty: Number(line.receivedQty),
+        acceptedQty: Number(line.acceptedQty),
+        reworkQty: Number(line.reworkQty),
+        scrapQty: Number(line.scrapQty),
+        returnedQty: Number(line.returnedQty),
+      })),
+      outputs: draft.outputs.map((output) => ({
+        itemId: output.itemId,
+        uomId: output.uomId,
+        receivedQty: Number(output.receivedQty),
+        acceptedQty: Number(output.acceptedQty),
+        reworkQty: Number(output.reworkQty),
+        scrapQty: Number(output.scrapQty),
+        returnedQty: Number(output.returnedQty),
+        isPrimary: output.isPrimary,
+        rate: output.rate === null ? null : Number(output.rate),
+        reasonId: output.reasonId,
+        responsibility: output.responsibility,
+        remarks: output.remarks,
+        batches: output.batches
+          .filter((row) => row.kind === 'accepted')
+          .map((row) => ({ batchId: row.batch.id, qty: Number(row.qty) })),
+        reworkBatches: output.batches
+          .filter((row) => row.kind === 'rework')
+          .map((row) => ({ batchId: row.batch.id, qty: Number(row.qty) })),
+      })),
+    } as CreateJobReceiptInput,
+    userId,
+    'post',
+    draft.id,
+  );
+}
+
+/**
+ * Delete a draft receipt. Children go for real, the header is soft-deleted.
+ *
+ * 🔴 Only a draft, and only because a draft posted nothing: no ledger row, no
+ * batch, no package, no challan reopened. A POSTED receipt is cancelled
+ * (`cancelJobReceipt`), which reverses what it wrote — deleting one would strand
+ * the batches it created with no document explaining where they came from.
+ *
+ * The header stays as a soft-deleted row so its receipt NUMBER remains taken.
+ */
+export async function deleteJobReceiptDraft(organizationId: string, id: string, userId?: string) {
+  return runAsTenant(organizationId, async (tx) => {
+    const draft = await tx.jobReceipt.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { id: true, status: true },
+    });
+    if (!draft) throw ApiError.notFound('Receipt not found');
+    if (draft.status !== 'draft') {
+      throw ApiError.conflict(
+        'Only a draft can be deleted. This receipt has been posted — cancel it instead, ' +
+          'which posts the reversing stock entries.',
+      );
+    }
+
+    await tx.jobReceiptOutputBatch.deleteMany({
+      where: { organizationId, jobReceiptId: draft.id },
+    });
+    await tx.jobReceiptOutput.deleteMany({ where: { organizationId, jobReceiptId: draft.id } });
+    await tx.jobReceiptLine.deleteMany({ where: { organizationId, jobReceiptId: draft.id } });
+    await tx.jobReceipt.update({
+      where: { id: draft.id },
+      data: { isDeleted: true, updatedBy: userId ?? null },
     });
   });
 }
@@ -1805,12 +2931,31 @@ export async function cancelJobReceipt(
   userId?: string,
 ) {
   return runAsDocument(organizationId, async (tx) => {
+    const target = await tx.jobReceipt.findFirst({
+      where: { id, organizationId, isDeleted: false },
+      select: { jobOrderStepId: true },
+    });
+    if (!target) throw ApiError.notFound('Receipt not found');
+    await lockStep(tx, organizationId, target.jobOrderStepId);
+
     const receipt = await tx.jobReceipt.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
     if (!receipt) throw ApiError.notFound('Receipt not found');
     if (receipt.status === 'cancelled')
       throw ApiError.conflict('This receipt is already cancelled.');
+
+    // R9: a finished step has had what was left at the processor written off, so
+    // reversing a consume would put material back somewhere the step already closed.
+    const receiptStep = await tx.jobOrderStep.findFirst({
+      where: { id: receipt.jobOrderStepId, organizationId },
+      select: { status: true },
+    });
+    if (receiptStep?.status === 'completed' || receiptStep?.status === 'short_closed') {
+      throw ApiError.conflict(
+        'This receipt’s step has been completed or closed short, so the receipt can no longer be cancelled.',
+      );
+    }
 
     const touched = await tx.jobReceiptOutputBatch.findMany({
       where: { organizationId, jobReceiptId: id, isDeleted: false },
@@ -1870,33 +3015,80 @@ export async function cancelJobReceipt(
         sourceDocId: id,
         movementType: { not: 'reversal' },
       },
-      select: {
-        batchId: true,
-        locationId: true,
-        qtyIn: true,
-        qtyOut: true,
-        valueIn: true,
-        valueOut: true,
-      },
+      orderBy: { createdAt: 'asc' },
+      // The package and everything else a reversal copies is read off the row by
+      // `reverseMovement` — `jobReceipts.batchUnits.test.ts` guards it.
+      select: { id: true, batchId: true },
     });
 
+    // Every row this receipt posted is reversed, and a receipt touches the same
+    // handful of batches over and over — so the batch rows are read once here
+    // rather than once per reversal.
+    const reversedBatches = await resolveBatchesForPosting(
+      tx,
+      organizationId,
+      posted.map((row) => row.batchId),
+    );
+
+    /* Consumes give their draws back to the challan lines' processor layers;
+       produces withdraw the layers they created, which is refused — naming the
+       document — if anything has already been costed against them (D3). */
     const now = new Date();
     for (const row of posted) {
-      await postMovement(tx, {
+      await reverseMovement(
+        tx,
         organizationId,
-        batchId: row.batchId,
-        locationId: row.locationId,
-        movementType: 'reversal',
-        qtyIn: row.qtyOut,
-        qtyOut: row.qtyIn,
-        valueIn: row.valueOut,
-        valueOut: row.valueIn,
+        row.id,
+        {
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: id,
+          remarks: `Cancelled: ${reason.trim()}`,
+          postedAt: now,
+          userId,
+        },
+        reversedBatches,
+      );
+    }
+
+    /**
+     * 🔴 THE PACKAGES THIS RECEIPT CREATED GO WITH IT — and unlike the batches,
+     * they have to.
+     *
+     * A cancelled receipt leaves its BATCHES behind at zero, deliberately: a batch
+     * reference is not unique (two suppliers both number from 1, and Zoho allows
+     * duplicates), so an empty one costs nothing and re-entering the receipt mints
+     * a fresh batch anyway.
+     *
+     * A package label IS unique inside its batch. So on the TOP-UP path — receipt
+     * 2 adds T-4..T-6 to a batch receipt 1 created — cancelling and re-entering
+     * would hit "T-4 already exists in this batch" and the user would be stuck
+     * with no way to say what they meant. Anything another document has moved
+     * keeps its row: those ledger rows name it forever and have to stay
+     * interpretable.
+     */
+    const created = await tx.batchUnit.findMany({
+      where: {
+        organizationId,
         sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
         sourceDocId: id,
-        remarks: `Cancelled: ${reason.trim()}`,
-        postedAt: now,
-        userId,
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+    for (const unit of created) {
+      const movedElsewhere = await tx.stockLedgerEntry.count({
+        where: {
+          organizationId,
+          batchUnitId: unit.id,
+          NOT: { sourceDocType: SOURCE_DOC_TYPES.jobReceipt, sourceDocId: id },
+        },
       });
+      if (movedElsewhere === 0) {
+        await tx.batchUnit.update({
+          where: { id: unit.id },
+          data: { isDeleted: true, updatedBy: userId ?? null },
+        });
+      }
     }
 
     const updated = await tx.jobReceipt.update({
@@ -1910,12 +3102,11 @@ export async function cancelJobReceipt(
       },
     });
 
-    // The challans this receipt closed are open again.
-    await tx.jobIssue.updateMany({
-      where: { organizationId, jobOrderStepId: receipt.jobOrderStepId, status: 'closed' },
-      data: { status: 'partially_received' },
-    });
-
+    /* Nothing else to reopen. What a cancellation gives back is the OUTSTANDING
+       quantity, derived from this receipt's own lines — which `closedQtyByIssueLine`
+       stops counting the moment the status here becomes `cancelled`. A challan this
+       receipt CLOSED reopens the same way: R14 reads posted receipts only
+       (challan-closure plan §0). */
     await recomputeStep(tx, organizationId, receipt.jobOrderStepId);
     return updated;
   });

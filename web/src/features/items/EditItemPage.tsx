@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { X } from 'lucide-react';
 import { itemsApi } from './items.api.ts';
 import type { ItemFormData, ItemImageAttachment } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
@@ -18,6 +18,7 @@ import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { data: uoms = [] } = useUoms(orgId!);
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'item');
@@ -88,15 +89,13 @@ export function EditItemPage() {
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
           : (null as unknown as number),
-      salesDescription:
-        (rawItem.salesDescription as string) || '',
+      salesDescription: (rawItem.salesDescription as string) || '',
       isPurchaseInfo: true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
           : (null as unknown as number),
-      purchaseDescription:
-        (rawItem.purchaseDescription as string) || '',
+      purchaseDescription: (rawItem.purchaseDescription as string) || '',
       packaging: rawItem.packaging || '',
       frontImage: rawItem.frontImage || null,
       rearImage: rawItem.rearImage || null,
@@ -112,7 +111,9 @@ export function EditItemPage() {
           ? Number(rawItem.openingStockValuePerUnit)
           : null,
       customFields:
-        rawItem.customFields || (rawItem.customFields as unknown as Record<string, unknown>) || null,
+        rawItem.customFields ||
+        (rawItem.customFields as unknown as Record<string, unknown>) ||
+        null,
     });
   }
 
@@ -260,44 +261,38 @@ export function EditItemPage() {
   }
 
   return (
-    <div
-      style={{
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: '100vh',
-        display: 'block',
-        paddingBottom: '80px',
-      }}
-    >
-      <div style={{ padding: '16px 24px' }}>
+    <div className="page-container">
+      <div className="page-header">
+        <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
+          Edit Item
+        </h1>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() =>
+            navigate(
+              (location.state as { returnUrl?: string })?.returnUrl ||
+                `/organizations/${orgId}/items`,
+            )
+          }
           style={{
             background: 'none',
             border: 'none',
-            color: '#0062ff',
+            color: '#64748b',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
-            padding: 0,
-            marginBottom: '12px',
-            fontSize: 12,
-            fontWeight: 500,
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
           }}
         >
-          <ArrowLeft size={14} /> Back to Items
+          <X size={20} />
         </button>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>Edit Item</h1>
-        </div>
       </div>
 
-      <div style={{ padding: '0 32px 32px' }}>
+      <div className="page-body">
         <form
+          id="edit-item-form"
           onSubmit={handleSubmit}
           style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
         >
@@ -306,26 +301,19 @@ export function EditItemPage() {
             <div
               style={{
                 flex: 1,
-                minWidth: '480px',
+                minWidth: 'min(100%, 480px)',
                 maxWidth: '640px',
-                background: '#f8fafc',
-                padding: '24px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
+                // No background or border to match Zoho style
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '14px',
               }}
             >
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Name*</label>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Name*</label>
                 <div>
                   <input
                     name="name"
@@ -333,10 +321,11 @@ export function EditItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      padding: '6px 10px',
+                      height: '36px',
+                      padding: '8px 12px',
                       borderRadius: '4px',
                       border: errors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   {errors.name && (
@@ -350,21 +339,17 @@ export function EditItemPage() {
               </div>
 
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Type</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Type</label>
                 <div style={{ display: 'flex', gap: 16 }}>
                   <label
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                     }}
                   >
@@ -382,7 +367,7 @@ export function EditItemPage() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                     }}
                   >
@@ -399,14 +384,10 @@ export function EditItemPage() {
               </div>
 
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>SKU</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>SKU</label>
                 <div>
                   <input
                     name="sku"
@@ -414,10 +395,11 @@ export function EditItemPage() {
                     onChange={handleChange}
                     style={{
                       width: '100%',
-                      padding: '6px 10px',
+                      height: '36px',
+                      padding: '8px 12px',
                       borderRadius: '4px',
                       border: errors.sku ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   />
                   {errors.sku && (
@@ -427,14 +409,10 @@ export function EditItemPage() {
               </div>
 
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Category</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Category</label>
                 <CategorySelectDropdown
                   value={formData.category || null}
                   onChange={(val) => handleSelectChange('category', val)}
@@ -442,15 +420,11 @@ export function EditItemPage() {
                 />
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
+              <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                   alignItems: 'center',
                   gap: '12px',
-                }}
-              >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>Unit</label>
+                 }}>
+                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Unit*</label>
                 <div>
                   <div
                     style={{
@@ -458,16 +432,17 @@ export function EditItemPage() {
                       border: errors.unit ? '1px solid #ef4444' : '1px solid #d1d5db',
                       borderRadius: '4px',
                       width: '100%',
+                      height: '36px',
                     }}
                   >
                     <div
                       style={{
-                        padding: '6px 12px',
+                        padding: '8px 12px',
                         borderRight: '1px solid #d1d5db',
                         borderTopLeftRadius: '3px',
                         borderBottomLeftRadius: '3px',
                         background: '#f1f5f9',
-                        fontSize: 12,
+                        fontSize: 13,
                         color: '#475569',
                         display: 'flex',
                         alignItems: 'center',
@@ -477,19 +452,9 @@ export function EditItemPage() {
                     >
                       Unit
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                       <Select
                         value={formData.stockingUomId ?? ''}
-                        /**
-                         * 🔴 SETS BOTH. `stockingUomId` is the FK the stock
-                         * ledger denominates every batch, challan line and balance
-                         * in — one item, one stocking unit (jobwork §5.1) —
-                         * while `unit` is the legacy free string this form has
-                         * always shown and the lists still render. One dropdown
-                         * writes them together so they cannot drift; a second
-                         * "unit" control beside the first would be the confusion,
-                         * not the fix.
-                         */
                         onChange={(val) => {
                           const picked = uoms.find((u) => u.id === val);
                           setFormData((prev) => ({
@@ -497,18 +462,27 @@ export function EditItemPage() {
                             stockingUomId: val || null,
                             unit: picked?.unitName ?? '',
                           }));
+                          if (errors.unit) {
+                            setErrors((prev) => {
+                              const newErrors = { ...prev };
+                              delete newErrors.unit;
+                              return newErrors;
+                            });
+                          }
                         }}
                         options={[
                           ...uoms.map((u) => ({ value: u.id, label: u.unitName })),
-                          // An item saved before this field existed carries only
-                          // the legacy name, and no id to select by. Show it so
-                          // the box is not mysteriously blank; picking anything
-                          // replaces it with a real unit.
                           ...(formData.unit && !uoms.some((u) => u.id === formData.stockingUomId)
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonStyle={{ border: 'none' }}
+                        buttonClassName="no-global-focus"
+                        buttonStyle={{
+                          border: 'none',
+                          height: '100%',
+                          padding: '0 12px',
+                          fontSize: 13,
+                        }}
                         actionItem={
                           <button
                             type="button"
@@ -546,24 +520,21 @@ export function EditItemPage() {
               </div>
 
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '140px 1fr',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
+                className="form-field-grid"
+                style={{ gridTemplateColumns: '140px 1fr', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
                   value={formData.hsnCode || ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
-                    padding: '6px 10px',
+                    height: '36px',
+                    padding: '8px 12px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',
-                    fontSize: 12,
+                    fontSize: 13,
                   }}
                 />
               </div>
@@ -573,19 +544,17 @@ export function EditItemPage() {
             <div
               style={{
                 width: '360px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid #e5e7eb',
                 borderRadius: '8px',
                 padding: '16px',
                 display: 'flex',
                 gap: '12px',
-                background: '#f8fafc',
+                background: '#ffffff',
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
-                    Front View
-                  </div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Front View</div>
                   <input
                     type="file"
                     ref={frontImageRef}
@@ -598,7 +567,7 @@ export function EditItemPage() {
                     onClick={() => frontImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '16px 8px',
+                      padding: '18px 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -612,22 +581,18 @@ export function EditItemPage() {
                   >
                     <div
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: '#0062ff',
-                        color: 'white',
+                        color: '#0062ff',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 12,
+                        fontSize: 16,
+                        fontWeight: 'bold',
                       }}
                     >
                       ↑
                     </div>
                     <div
                       style={{
-                        fontWeight: 500,
                         fontSize: 12,
                         color: '#1e293b',
                         textAlign: 'center',
@@ -644,9 +609,7 @@ export function EditItemPage() {
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
-                    Rear View
-                  </div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Rear View</div>
                   <input
                     type="file"
                     ref={rearImageRef}
@@ -659,7 +622,7 @@ export function EditItemPage() {
                     onClick={() => rearImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '16px 8px',
+                      padding: '32px 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -673,22 +636,18 @@ export function EditItemPage() {
                   >
                     <div
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        background: '#0062ff',
-                        color: 'white',
+                        color: '#0062ff',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 12,
+                        fontSize: 16,
+                        fontWeight: 'bold',
                       }}
                     >
                       ↑
                     </div>
                     <div
                       style={{
-                        fontWeight: 500,
                         fontSize: 12,
                         color: '#1e293b',
                         textAlign: 'center',
@@ -706,9 +665,7 @@ export function EditItemPage() {
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#1e293b', fontWeight: 500 }}>
-                  Other Images
-                </div>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Other Images</div>
                 <input
                   type="file"
                   ref={otherImagesRef}
@@ -723,8 +680,8 @@ export function EditItemPage() {
                   style={{
                     width: '100%',
                     flex: 1,
-                    minHeight: '110px',
-                    padding: '12px 8px',
+                    minHeight: '180px',
+                    padding: '24px 16px',
                     border: '1px dashed #cbd5e1',
                     borderRadius: '6px',
                     background: '#ffffff',
@@ -747,13 +704,14 @@ export function EditItemPage() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: 12,
+                      marginBottom: 4,
                     }}
                   >
                     ↑
                   </div>
                   <div
                     style={{
-                      fontWeight: 500,
+                      fontWeight: 600,
                       fontSize: 12,
                       color: '#1e293b',
                       textAlign: 'center',
@@ -764,10 +722,16 @@ export function EditItemPage() {
                       ? `${otherImageFiles.length} new files selected`
                       : formData.images && formData.images.length > 0
                         ? `${formData.images.length} existing image(s)`
-                        : 'Drag & Drop Images (Max 3)'}
+                        : 'Drag & Drop Images'}
                   </div>
                   <div
-                    style={{ fontSize: 10, color: '#64748b', textAlign: 'center', lineHeight: 1.3 }}
+                    style={{
+                      fontSize: 10,
+                      color: '#64748b',
+                      textAlign: 'center',
+                      lineHeight: 1.4,
+                      marginTop: 4,
+                    }}
                   >
                     You can add up to 3 images, each not exceeding 2 MB.
                   </div>
@@ -780,165 +744,223 @@ export function EditItemPage() {
           <div
             style={{
               background: '#f8fafc',
-              padding: '24px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              padding: '24px 24px',
+              margin: '0 -24px',
+              width: 'calc(100% + 48px)',
+              boxSizing: 'border-box',
+              borderRadius: 0,
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-              {/* Sales Information */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: '#1e293b',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="isSalesInfo"
-                    checked={formData.isSalesInfo}
-                    onChange={handleChange}
-                  />
-                  Sales Information
-                </label>
-                {formData.isSalesInfo && (
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+            <div style={{ maxWidth: '900px', width: '100%' }}>
+              <div
+                className="form-field-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '24px',
+                  alignItems: 'start',
+                }}
+              >
+                {/* Sales Information */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#1e293b',
+                    }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
-                        Selling Price*
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="sellingPrice"
-                        value={formData.sellingPrice || ''}
-                        onChange={handleChange}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: errors.sellingPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
-                        }}
-                      />
-                      {errors.sellingPrice && (
-                        <span
-                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                    <input
+                      type="checkbox"
+                      name="isSalesInfo"
+                      checked={formData.isSalesInfo}
+                      onChange={handleChange}
+                    />
+                    Sales Information
+                  </label>
+                  {formData.isSalesInfo && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <label
+                          style={{
+                            fontSize: 13,
+                            color: '#ef4444',
+                            fontWeight: 500,
+                            minWidth: '120px',
+                          }}
                         >
-                          {errors.sellingPrice}
-                        </span>
-                      )}
+                          Selling Price*
+                        </label>
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="sellingPrice"
+                            value={formData.sellingPrice || ''}
+                            onChange={handleChange}
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: errors.sellingPrice
+                                ? '1px solid #ef4444'
+                                : '1px solid #d1d5db',
+                              fontSize: 13,
+                            }}
+                          />
+                          {errors.sellingPrice && (
+                            <span
+                              style={{
+                                color: '#ef4444',
+                                fontSize: 12,
+                                marginTop: 4,
+                                display: 'block',
+                              }}
+                            >
+                              {errors.sellingPrice}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <label
+                          style={{
+                            fontSize: 13,
+                            color: '#4b5563',
+                            fontWeight: 500,
+                            minWidth: '120px',
+                            paddingTop: '8px',
+                          }}
+                        >
+                          Sales Description
+                        </label>
+                        <textarea
+                          name="salesDescription"
+                          value={formData.salesDescription || ''}
+                          onChange={(e) =>
+                            handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                          }
+                          rows={3}
+                          style={{
+                            width: '100%',
+                            flex: 1,
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                            fontSize: 13,
+                            resize: 'vertical',
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                        Sales Description
-                      </label>
-                      <textarea
-                        name="salesDescription"
-                        value={formData.salesDescription || ''}
-                        onChange={(e) =>
-                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
-                        }
-                        rows={3}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          fontSize: 12,
-                          resize: 'vertical',
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Purchase Information */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: '#1e293b',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    name="isPurchaseInfo"
-                    checked={formData.isPurchaseInfo}
-                    onChange={handleChange}
-                  />
-                  Purchase Information
-                </label>
-                {formData.isPurchaseInfo && (
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 24 }}
+                {/* Purchase Information */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#1e293b',
+                    }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>
-                        Cost Price*
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="costPrice"
-                        value={formData.costPrice || ''}
-                        onChange={handleChange}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          fontSize: 12,
-                        }}
-                      />
-                      {errors.costPrice && (
-                        <span
-                          style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'block' }}
+                    <input
+                      type="checkbox"
+                      name="isPurchaseInfo"
+                      checked={formData.isPurchaseInfo}
+                      onChange={handleChange}
+                    />
+                    Purchase Information
+                  </label>
+                  {formData.isPurchaseInfo && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <label
+                          style={{
+                            fontSize: 13,
+                            color: '#ef4444',
+                            fontWeight: 500,
+                            minWidth: '130px',
+                          }}
                         >
-                          {errors.costPrice}
-                        </span>
-                      )}
+                          Cost Price*
+                        </label>
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="costPrice"
+                            value={formData.costPrice || ''}
+                            onChange={handleChange}
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: errors.costPrice ? '1px solid #ef4444' : '1px solid #d1d5db',
+                              fontSize: 13,
+                            }}
+                          />
+                          {errors.costPrice && (
+                            <span
+                              style={{
+                                color: '#ef4444',
+                                fontSize: 12,
+                                marginTop: 4,
+                                display: 'block',
+                              }}
+                            >
+                              {errors.costPrice}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <label
+                          style={{
+                            fontSize: 13,
+                            color: '#4b5563',
+                            fontWeight: 500,
+                            minWidth: '130px',
+                            paddingTop: '8px',
+                          }}
+                        >
+                          Purchase Description
+                        </label>
+                        <textarea
+                          name="purchaseDescription"
+                          value={formData.purchaseDescription || ''}
+                          onChange={(e) =>
+                            handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+                          }
+                          rows={3}
+                          style={{
+                            width: '100%',
+                            flex: 1,
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                            fontSize: 13,
+                            resize: 'vertical',
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                        Purchase Description
-                      </label>
-                      <textarea
-                        name="purchaseDescription"
-                        value={formData.purchaseDescription || ''}
-                        onChange={(e) =>
-                          handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
-                        }
-                        rows={3}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          fontSize: 12,
-                          resize: 'vertical',
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -946,163 +968,174 @@ export function EditItemPage() {
           {/* Inventory Tracking */}
           <div
             style={{
-              maxWidth: '640px',
               background: '#f8fafc',
-              padding: '24px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              padding: '24px 24px',
+              margin: '0 -24px',
+              width: 'calc(100% + 48px)',
+              boxSizing: 'border-box',
+              borderRadius: 0,
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
             }}
           >
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#1e293b',
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type="checkbox"
-                name="trackInventory"
-                checked={formData.trackInventory}
-                onChange={handleChange}
-                style={{ marginTop: 2 }}
-              />
-              <div>
-                Track Inventory for this item
-                <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>
-                  You cannot enable/disable inventory tracking once you've created transactions for
-                  this item
-                </div>
-              </div>
-            </label>
-
-            {formData.trackInventory && (
-              <div
+            <div style={{ maxWidth: '900px', width: '100%' }}>
+              <label
                 style={{
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: 14,
-                  paddingTop: 8,
-                  borderTop: '1px solid #e2e8f0',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#1e293b',
+                  cursor: 'pointer',
                 }}
               >
+                <input
+                  type="checkbox"
+                  name="trackInventory"
+                  checked={formData.trackInventory}
+                  onChange={handleChange}
+                  style={{ marginTop: 2 }}
+                />
+                <div>
+                  Track Inventory for this item
+                  <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>
+                    You cannot enable/disable inventory tracking once you've created transactions
+                    for this item
+                  </div>
+                </div>
+              </label>
+
+              {formData.trackInventory && (
                 <div
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '160px 1fr',
-                    alignItems: 'center',
-                    gap: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    paddingTop: 8,
+                    borderTop: '1px solid #e2e8f0',
                   }}
                 >
-                  <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                    Inventory Tracking
-                  </label>
-                  <div style={{ display: 'flex', gap: 16 }}>
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="inventoryTracking"
-                        value="none"
-                        checked={formData.inventoryTracking === 'none'}
-                        onChange={() => handleRadioChange('inventoryTracking', 'none')}
-                      />{' '}
-                      None
+                  <div
+                    className="form-field-grid"
+                    style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
+                  >
+                    <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                      Inventory Tracking
                     </label>
-                    {formData.itemType !== 'service' && (
+                    <div style={{ display: 'flex', gap: 16 }}>
                       <label
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontSize: 12,
+                          fontSize: 13,
                           cursor: 'pointer',
                         }}
                       >
                         <input
                           type="radio"
                           name="inventoryTracking"
-                          value="batch"
-                          checked={formData.inventoryTracking === 'batch'}
-                          onChange={() => handleRadioChange('inventoryTracking', 'batch')}
+                          value="none"
+                          checked={formData.inventoryTracking === 'none'}
+                          onChange={() => handleRadioChange('inventoryTracking', 'none')}
                         />{' '}
-                        {singular}
+                        None
                       </label>
-                    )}
+                      {formData.itemType !== 'service' && (
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="inventoryTracking"
+                            value="batch"
+                            checked={formData.inventoryTracking === 'batch'}
+                            onChange={() => handleRadioChange('inventoryTracking', 'batch')}
+                          />{' '}
+                          {singular}
+                        </label>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {formData.inventoryTracking === 'none' && (
-                  <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                        Opening Stock
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="openingStock"
-                        value={formData.openingStock || ''}
-                        onChange={handleChange}
-                        style={{
-                          width: '100%',
-                          minWidth: '160px',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          fontSize: 12,
-                        }}
-                      />
+                  {formData.inventoryTracking === 'none' && (
+                    <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <label
+                          style={{
+                            fontSize: 13,
+                            color: '#4b5563',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Opening Stock
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="openingStock"
+                          value={formData.openingStock || ''}
+                          onChange={handleChange}
+                          style={{
+                            width: '140px',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                            fontSize: 13,
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <label
+                          style={{
+                            fontSize: 13,
+                            color: '#4b5563',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Value of Opening Stock (per quantity)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="openingStockValuePerUnit"
+                          value={formData.openingStockValuePerUnit || ''}
+                          onChange={handleChange}
+                          style={{
+                            width: '140px',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                            fontSize: 13,
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <label style={{ fontSize: 12, color: '#4b5563', fontWeight: 500 }}>
-                        Value of Opening Stock (per quantity)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="openingStockValuePerUnit"
-                        value={formData.openingStockValuePerUnit || ''}
-                        onChange={handleChange}
-                        style={{
-                          width: '100%',
-                          minWidth: '200px',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          fontSize: 12,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Custom Fields */}
           {orgId && (
             <div
               style={{
-                maxWidth: '640px',
-                background: '#f8fafc',
-                padding: '24px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
+                width: '100%',
+                padding: '24px 0',
+                borderTop: '1px solid #e2e8f0',
               }}
             >
               <h3
@@ -1127,61 +1160,49 @@ export function EditItemPage() {
               />
             </div>
           )}
-
-          <div
-            style={{
-              height: '56px',
-              boxSizing: 'border-box',
-              position: 'fixed',
-              bottom: 0,
-              left: 220,
-              right: 0,
-              background: '#fff',
-              padding: '0 32px',
-              borderTop: '1px solid #cbd5e1',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              zIndex: 100,
-              boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
-            }}
-          >
-            <button
-              type="submit"
-              disabled={updateMutation.isPending}
-              style={{
-                padding: '8px 24px',
-                background: '#0062ff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                fontSize: '13px',
-                opacity: updateMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {updateMutation.isPending ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              type="button"
-              disabled={updateMutation.isPending}
-              onClick={() => navigate(-1)}
-              style={{
-                padding: '8px 24px',
-                background: 'white',
-                color: updateMutation.isPending ? '#94a3b8' : '#334155',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                fontSize: '13px',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
         </form>
+      </div>
+
+      <div className="form-actions-footer page-footer">
+        <button
+          form="edit-item-form"
+          type="submit"
+          disabled={updateMutation.isPending}
+          style={{
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+            opacity: updateMutation.isPending ? 0.7 : 1,
+          }}
+        >
+          {updateMutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          disabled={updateMutation.isPending}
+          onClick={() =>
+            (location.state as { returnUrl?: string })?.returnUrl
+              ? navigate((location.state as { returnUrl?: string }).returnUrl!)
+              : navigate(-1)
+          }
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: updateMutation.isPending ? '#94a3b8' : '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: updateMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
       </div>
       <UomFormModal
         orgId={orgId!}

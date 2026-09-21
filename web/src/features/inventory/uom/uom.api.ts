@@ -34,7 +34,10 @@ export const useUpdateUom = (orgId: string) => {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateUomData }): Promise<Uom> => {
-      const { data: resData } = await apiClient.put(`/organizations/${orgId}/inventory/uom/${id}`, data);
+      const { data: resData } = await apiClient.put(
+        `/organizations/${orgId}/inventory/uom/${id}`,
+        data,
+      );
       return resData;
     },
     onSuccess: () => {

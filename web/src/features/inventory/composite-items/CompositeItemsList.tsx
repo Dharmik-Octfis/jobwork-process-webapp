@@ -117,7 +117,8 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
         )}
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #eef0f3' }}>
+      <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #eef0f3' }}>
         <thead style={{ background: '#f8fafc' }}>
           <tr>
             <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', color: '#64748b', fontWeight: 500, borderBottom: '1px solid #eef0f3' }}>Component Item</th>
@@ -223,6 +224,7 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
           )}
         </tbody>
       </table>
+                  </div>
     </div>
   );
 }

@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchProcessById } from './processes.api';
-import { rateBasisLabel } from './processes.schemas';
 
 interface Props {
   processId: string;
@@ -21,6 +20,7 @@ function Flag({ on, yes, no }: { on: boolean; yes: string; no: string }) {
 
 export function ProcessDetail({ processId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
 
   const { data: process, isLoading } = useQuery({
@@ -43,26 +43,24 @@ export function ProcessDetail({ processId, onClose }: Props) {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}
+          >
             {process.name}
           </h2>
           {process.code && <span style={{ fontSize: 12, color: '#64748b' }}>{process.code}</span>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
+            className="action-btn"
             type="button"
             onClick={() =>
-              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`)
+              navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
             }
             style={{
               display: 'flex',
@@ -77,7 +75,7 @@ export function ProcessDetail({ processId, onClose }: Props) {
               color: '#333',
             }}
           >
-            <Pencil size={14} /> Edit
+            <Pencil size={14} /> <span className="action-btn-text">Edit</span>
           </button>
           <button
             type="button"
@@ -108,38 +106,28 @@ export function ProcessDetail({ processId, onClose }: Props) {
           </p>
         )}
 
-        <table style={{ borderCollapse: 'collapse' }}>
-          <tbody>
-            <tr>
-              <td style={rowLabel}>Rate basis</td>
-              <td style={{ padding: '6px 0', ...rowValue }}>{rateBasisLabel(process.rateBasis)}</td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Output item</td>
-              <td style={{ padding: '6px 0' }}>
-                <Flag
-                  on={process.itemChanges}
-                  yes="Different item comes back"
-                  no="Same item comes back"
-                />
-              </td>
-            </tr>
-            {/* Receipt mode and batch mixing are not shown: both described
+        <div className="responsive-table-wrapper">
+          <table style={{ borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr>
+                <td style={rowLabel}>Output item</td>
+                <td style={{ padding: '6px 0' }}>
+                  <Flag
+                    on={process.itemChanges}
+                    yes="Different item comes back"
+                    no="Same item comes back"
+                  />
+                </td>
+              </tr>
+              {/* Receipt mode and batch mixing are not shown: both described
                 taka-level behaviour, and issue and receive are batch level now. */}
-            <tr>
-              <td style={rowLabel}>Default tolerance</td>
-              <td style={{ padding: '6px 0', ...rowValue }}>
-                {process.defaultTolerancePct === null
-                  ? 'No default'
-                  : `${process.defaultTolerancePct}%`}
-              </td>
-            </tr>
-            {/* Default issue/receive unit are not shown: a step transacts in its
+              {/* Default issue/receive unit are not shown: a step transacts in its
                 items' stocking units, so an org-wide default here was a guess
                 about one item. Custom fields went with them — `process` is no
                 longer a custom-field module. */}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

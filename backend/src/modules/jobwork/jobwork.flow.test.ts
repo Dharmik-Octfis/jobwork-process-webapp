@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../db/testTenant.ts';
 import {
   createBatch,
   getBalance,
   postMovement,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
-import { SOURCE_DOC_TYPES, runAsDocument } from './jobwork.types.ts';
+import { SOURCE_DOC_TYPES, isExternalLocation, runAsDocument } from './jobwork.types.ts';
 import { createNewProcess } from './processes/processes.service.ts';
 import { createNewRoute, updateRouteById } from './process-routes/processRoutes.service.ts';
 import {
@@ -13,6 +14,7 @@ import {
   createNewJobOrder,
   getJobOrderById,
   getJobOrderOverview,
+  manuallyCompleteStep,
   shortCloseJobOrder,
   updateJobOrderById,
 } from './job-orders/jobOrders.service.ts';
@@ -100,7 +102,7 @@ let cutterId: string;
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `jobwork-flow-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `jobwork-flow-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -212,13 +214,15 @@ afterAll(async () => {
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.process.deleteMany({ where: { organizationId: orgId } });
+    // Recipes hold RESTRICT keys to items, so they go first.
+    await tx.compositeItemComponent.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
     await tx.location.deleteMany({ where: { organizationId: orgId } });
     await tx.vendor.deleteMany({ where: { organizationId: orgId } });
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 /**
@@ -236,17 +240,12 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     // ---------------------------------------------------------------------
     const dyeing = await createNewProcess(orgId, {
       name: 'Dyeing',
-      // The same roll comes back, so goods can be received taka by taka.
-      rateBasis: 'per_issued_unit',
-      defaultTolerancePct: 5,
     });
 
     const cutting = await createNewProcess(orgId, {
       name: 'Cutting',
       // Cloth in, panels out — a different item in a different unit.
       itemChanges: true,
-      // The roll is destroyed, so only a bulk quantity can be received.
-      rateBasis: 'per_received_unit',
     });
 
     const route = await createNewRoute(orgId, {
@@ -255,15 +254,12 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         {
           processId: dyeing.id,
           processorId: dyerId,
-          rate: 12,
           inputs: [{ itemId: greyId }],
           outputs: [{ itemId: dyedId, isPrimary: true }],
-          tolerancePct: 5,
         },
         {
           processId: cutting.id,
           processorId: cutterId,
-          rate: 4,
           inputs: [{ itemId: dyedId }],
           outputs: [{ itemId: shirtId, isPrimary: true }],
           expectedYield: 0.6,
@@ -293,12 +289,14 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         processId: step.processId,
         processorType: step.processorType as ProcessorType,
         processorId: step.processorId,
-        rate: step.rate === null ? null : Number(step.rate),
-        rateBasis: step.rateBasis as 'per_issued_unit' | 'per_received_unit' | null,
         inputs: step.inputs.map((row) => ({ itemId: row.itemId })),
-        outputs: step.outputs.map((row) => ({ itemId: row.itemId, isPrimary: row.isPrimary })),
+        // The charge lives on the output row (R6): ₹12 a dyed metre, ₹4 a panel.
+        outputs: step.outputs.map((row) => ({
+          itemId: row.itemId,
+          isPrimary: row.isPrimary,
+          rate: index === 0 ? 12 : 4,
+        })),
         expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
-        tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
         // The quantity is per item now; step 1's principal row carries the run.
         plannedInputQty: index === 0 ? 5000 : null,
       })),
@@ -412,13 +410,14 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     expect(dyedBatch.parentBatchIds).toContain(inputBatch.id);
     expect(dyedBatch.itemId).toBe(dyedId);
 
-    // The cost of the material plus the dyeing charge landed on the pieces that
-    // survived — 250,000 + (5,000 × 12) = 310,000, split by quantity.
+    // The material splits between accepted and rework by quantity, and the
+    // dyeing charge is on the ACCEPTED metres alone (R6–R7) — the rework pieces
+    // are charged when they are finally accepted, never twice.
     const dyedBalance = await runAsTenant(orgId, (tx) =>
       getBalance(tx, { organizationId: orgId, batchId: dyedBatch.id }),
     );
     expect(dyedBalance.qty.toString()).toBe('4800');
-    expect(Number(dyedBalance.value)).toBeCloseTo((310000 * 4800) / 4850, 0);
+    expect(Number(dyedBalance.value)).toBeCloseTo((250000 * 4800) / 4850 + 4800 * 12, 0);
 
     // ---------------------------------------------------------------------
     // Rework — back to the SAME step, counted as a second attempt
@@ -504,8 +503,21 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
      * came back against 4,800 metres.
      */
     expect(Number(overview.steps[0]!.totals.outstandingQty)).toBe(50);
-    expect(overview.steps[1]!.status).toBe('completed');
     expect(overview.jobOrder.status).toBe('in_progress');
+
+    /**
+     * 🔴 A STEP DOES NOT COMPLETE ITSELF (2026-08-24, `4f70306`).
+     *
+     * Everything step 2 issued has been accounted for, and it is still
+     * `partially_received` — arithmetic no longer decides this. `is_completed` is
+     * a flag a human sets from the step's own screen, because "the paperwork
+     * balances" and "we are finished with this operation" are different claims,
+     * and only the second one closes a step.
+     */
+    expect(overview.steps[1]!.status).toBe('partially_received');
+
+    const afterComplete = await manuallyCompleteStep(orgId, jobOrder.id, step2.id, undefined);
+    expect(afterComplete.steps[1]!.status).toBe('completed');
 
     // ---------------------------------------------------------------------
     // Closing short — the one status a human sets, and it is sticky
@@ -539,6 +551,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           processId: process.id,
           processorId: dyerId,
           inputs: [{ itemId: greyId, plannedQty: 200 }],
+          // A step must say what it produces before material leaves (V4); one
+          // output in the same unit takes its Expected from the plan.
+          outputs: [{ itemId: dyedId, isPrimary: true }],
         },
       ],
     });
@@ -569,6 +584,7 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
           processId: process.id,
           processorId: dyerId,
           inputs: [{ itemId: greyId, plannedQty: 100 }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
         },
       ],
     });
@@ -587,6 +603,233 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
         // 90 received, but only 80 accounted for. The missing 10 is exactly the
         // kind of gap a separate rejection note would have hidden.
         lines: [{ issuedQty: 100, receivedQty: 90, acceptedQty: 80 }],
+      }),
+    ).rejects.toBeTruthy();
+  });
+
+  /**
+   * 🔴 WHERE A RECEIPT MAY LAND ITS GOODS — the two answers, and the line between
+   * them (`docs/JOBWORK_DISPATCH_ONWARD_PLAN.md`).
+   *
+   * A godown of ours is the ordinary one. The other is the shed the challans are
+   * ALREADY STANDING IN: the dyeing is done but nothing has been collected, and
+   * writing the cloth into a warehouse it is not in is a lie the ageing report
+   * then repeats. Nothing moved, so nothing needs a document.
+   *
+   * An unrelated processor is the case that stays refused, and it is a different
+   * claim entirely — it asserts a transfer between two premises with no challan
+   * behind it. On 2026-09-07 a lost filter in `ReceiveForm` did exactly that:
+   * JR-00023 recorded five bags of finished cloth at a jobworker who had done no
+   * work on them.
+   */
+  it('lands goods at the processor they are already standing at, but never at another', async () => {
+    const process = await createNewProcess(orgId, { name: `Receive-into ${unique()}` });
+    const batch = await seedStock(greyId, 100);
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: process.id,
+          processorId: dyerId,
+          inputs: [{ itemId: greyId, plannedQty: 100 }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
+        },
+      ],
+    });
+    const stepId = jobOrder.steps[0]!.id;
+
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: stepId,
+      sourceLocationId: godownId,
+      lines: [{ batchId: batch.id, qty: 100 }],
+    });
+
+    // Both processors' own locations, auto-provisioned by the challans that went
+    // to them. `atDyer` is where this step's goods are; `atCutter` is a jobworker
+    // with no part in it.
+    const atDyer = await runAsTenant(orgId, (tx) =>
+      tx.jobIssue
+        .findFirstOrThrow({
+          where: { id: issue.id, organizationId: orgId },
+          select: { destinationLocationId: true },
+        })
+        .then((row) => row.destinationLocationId),
+    );
+    const atCutter = await runAsTenant(orgId, (tx) =>
+      tx.location
+        .create({
+          data: {
+            organizationId: orgId,
+            name: `Unrelated cutter ${unique()}`,
+            type: 'processor',
+            vendorId: cutterId,
+          },
+          select: { id: true },
+        })
+        .then((row) => row.id),
+    );
+
+    const receipt = (locationId: string) => ({
+      jobOrderStepId: stepId,
+      issueIds: [issue.id],
+      locationId,
+      lines: [{ itemId: greyId, issuedQty: 100, receivedQty: 100, acceptedQty: 100 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 100,
+          acceptedQty: 100,
+          batchReference: `DYE-${unique()}`,
+        },
+      ],
+    });
+
+    // 🔴 Refused, in both modes: a draft naming a location the post can only
+    // reject is a document parked with a fault in it.
+    await expect(createNewJobReceipt(orgId, receipt(atCutter))).rejects.toThrow(/not where these/);
+    await expect(createNewJobReceipt(orgId, receipt(atCutter), undefined, 'draft')).rejects.toThrow(
+      /not where these/,
+    );
+
+    /* Deltas, not absolutes: this describe block shares one dyer, and its rework
+       challans put dyed fabric at that same location. What this test owns is the
+       change its own receipt made. */
+    const dyedAt = (locationId: string) =>
+      runAsTenant(orgId, (tx) =>
+        getBalance(tx, { organizationId: orgId, itemId: dyedId, locationId }),
+      ).then((b) => b.qty);
+    const beforeAtDyer = await dyedAt(atDyer);
+    const beforeAtGodown = await dyedAt(godownId);
+
+    // 🔴 Allowed — and the output stands at the dyer's, where it physically is.
+    const posted = await createNewJobReceipt(orgId, receipt(atDyer));
+    expect(posted.status).toBe('posted');
+
+    expect((await dyedAt(atDyer)).minus(beforeAtDyer).toString()).toBe('100');
+    // Not a metre of it in our godown — which is the whole point of saying so.
+    expect((await dyedAt(godownId)).minus(beforeAtGodown).toString()).toBe('0');
+
+    // …and the ledger still calls it external, so the ageing report keeps
+    // counting it as out and the 180/365-day clock goes on running.
+    const where = await runAsTenant(orgId, (tx) =>
+      tx.location.findFirstOrThrow({
+        where: { id: atDyer, organizationId: orgId },
+        select: { type: true },
+      }),
+    );
+    expect(isExternalLocation(where.type)).toBe(true);
+  });
+
+  /**
+   * 🔴 A CHALLAN IS NEVER CLOSED (2026-09-07). It is `draft`, `issued` or
+   * `cancelled`, and a receipt does not touch it.
+   *
+   * What ticking a challan still does is the half that matters, and this pins
+   * both halves apart: the material is drawn down from the processor exactly as
+   * before, while the status stays put. The Receive picker stops offering a
+   * challan by asking whether anything is still OUTSTANDING on it — derived from
+   * the receipts, not read off a column — which is what `closed` used to do less
+   * accurately: a cancellation reopened every closed challan on the step,
+   * including ones it had nothing to do with, and they stayed wrong.
+   */
+  it('accounts for a challan without closing it, and stops offering it when nothing is left', async () => {
+    const process = await createNewProcess(orgId, { name: `No-closing ${unique()}` });
+    const batch = await seedStock(greyId, 100);
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: process.id,
+          processorId: dyerId,
+          inputs: [{ itemId: greyId, plannedQty: 100 }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
+        },
+      ],
+    });
+    const stepId = jobOrder.steps[0]!.id;
+
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: stepId,
+      sourceLocationId: godownId,
+      lines: [{ batchId: batch.id, qty: 100 }],
+    });
+
+    /* 🔴 Scoped to THIS test's batch, not to the dyer's location. Every test in
+       this block ships to the same dyer, so the location holds their material
+       too — asserting a location total here reads as this test's 100 one day and
+       300 the next, depending on what ran before it. The batch is fresh from
+       `seedStock`, so its position is unambiguously ours. */
+    const atDyer = () =>
+      runAsTenant(orgId, (tx) =>
+        getBalance(tx, {
+          organizationId: orgId,
+          batchId: batch.id,
+          locationId: issue.destinationLocationId,
+        }),
+      ).then((b) => b.qty.toString());
+
+    expect(await atDyer()).toBe('100');
+
+    // Half of it back. The challan still has 40 out, so it stays on offer…
+    await createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: 60, receivedQty: 60, acceptedQty: 60 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 60,
+          acceptedQty: 60,
+          batchReference: `DYE-${unique()}`,
+        },
+      ],
+    });
+    const midway = await runAsTenant(orgId, (tx) =>
+      tx.jobIssue.findFirstOrThrow({ where: { id: issue.id, organizationId: orgId } }),
+    );
+    expect(midway.status).toBe('issued');
+    expect((await getReceivePrefill(orgId, stepId)).issues.map((i) => i.id)).toContain(issue.id);
+
+    // …and the consumption really happened: 60 gone from the processor.
+    expect(await atDyer()).toBe('40');
+
+    // The rest. Still `issued` — nothing closes it — but nothing is outstanding,
+    // so the picker drops it.
+    await createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: 40, receivedQty: 40, acceptedQty: 40 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 40,
+          acceptedQty: 40,
+          batchReference: `DYE-${unique()}`,
+        },
+      ],
+    });
+    const settled = await runAsTenant(orgId, (tx) =>
+      tx.jobIssue.findFirstOrThrow({ where: { id: issue.id, organizationId: orgId } }),
+    );
+    expect(settled.status).toBe('issued');
+    expect((await getReceivePrefill(orgId, stepId)).issues.map((i) => i.id)).not.toContain(
+      issue.id,
+    );
+
+    expect(await atDyer()).toBe('0');
+
+    // 🔴 And the cap the challan still carries: it has nothing left to account
+    // for, so a third receipt against it is refused.
+    await expect(
+      createNewJobReceipt(orgId, {
+        jobOrderStepId: stepId,
+        issueIds: [issue.id],
+        locationId: godownId,
+        lines: [{ itemId: greyId, issuedQty: 10, receivedQty: 10, acceptedQty: 10 }],
+        outputs: [{ itemId: dyedId, isPrimary: true, receivedQty: 10, acceptedQty: 10 }],
       }),
     ).rejects.toBeTruthy();
   });
@@ -611,6 +854,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   let shirtsId: string;
   let rejectsId: string;
   let offcutsId: string;
+  let threadedId: string;
+  let sewnId: string;
+  let linedId: string;
 
   beforeAll(async () => {
     await runAsTenant(orgId, async (tx) => {
@@ -620,7 +866,12 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       });
       coneId = cone.id;
 
-      const make = async (name: string, unit: string, uomId: string) => {
+      const make = async (
+        name: string,
+        unit: string,
+        uomId: string,
+        itemStructure: 'single' | 'composite' = 'single',
+      ) => {
         const item = await tx.item.create({
           data: {
             organizationId: orgId,
@@ -629,6 +880,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             unit,
             stockingUomId: uomId,
             inventoryTracking: 'none',
+            itemStructure,
           },
           select: { id: true },
         });
@@ -637,9 +889,51 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
       threadId = await make('Thread', 'Cone', coneId);
       buttonId = await make('Buttons', 'Piece', pieceId);
-      shirtsId = await make('Stitched Shirts', 'Piece', pieceId);
-      rejectsId = await make('Reject Shirts', 'Piece', pieceId);
+      // Composites made from the panels: a step with several inputs may only produce
+      // composites whose recipe it covers (landed-cost plan V1–V2), and every
+      // stitching step below consumes the panels, whatever else it takes.
+      shirtsId = await make('Stitched Shirts', 'Piece', pieceId, 'composite');
+      rejectsId = await make('Reject Shirts', 'Piece', pieceId, 'composite');
       offcutsId = await make('Fabric Offcuts', 'Metre', metreId);
+      await tx.compositeItemComponent.createMany({
+        data: [shirtsId, rejectsId].map((compositeItemId) => ({
+          organizationId: orgId,
+          compositeItemId,
+          componentItemId: shirtId,
+          qtyPerUnit: 1,
+        })),
+      });
+
+      // …and composites that DO draw on the thread and buttons, for the steps that
+      // consume them: an input nothing produced is made from is refused (V5).
+      threadedId = await make('Threaded Shirts', 'Piece', pieceId, 'composite');
+      sewnId = await make('Sewn Shirts', 'Piece', pieceId, 'composite');
+      linedId = await make('Lined Panels', 'Piece', pieceId, 'composite');
+      const recipe = (compositeItemId: string, rows: [string, number][]) =>
+        rows.map(([componentItemId, qtyPerUnit], seq) => ({
+          organizationId: orgId,
+          compositeItemId,
+          componentItemId,
+          qtyPerUnit,
+          seq,
+        }));
+      await tx.compositeItemComponent.createMany({
+        data: [
+          ...recipe(threadedId, [
+            [shirtId, 1],
+            [threadId, 0.05],
+          ]),
+          ...recipe(sewnId, [
+            [shirtId, 1],
+            [threadId, 0.05],
+            [buttonId, 3],
+          ]),
+          ...recipe(linedId, [
+            [dyedId, 1],
+            [shirtId, 1],
+          ]),
+        ],
+      });
     });
   });
 
@@ -661,10 +955,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: threadId, plannedQty: 12 },
             { itemId: buttonId, plannedQty: 8700 },
           ],
-          outputs: [
-            { itemId: shirtsId, isPrimary: true, expectedQty: 2880 },
-            { itemId: rejectsId },
-          ],
+          outputs: [{ itemId: sewnId, isPrimary: true, expectedQty: 2880 }, { itemId: rejectsId }],
         },
       ],
     });
@@ -684,7 +975,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     // godown. That is a label, never a rejection (§6.4).
     expect(step.inputs.every((row) => row.fromStock)).toBe(true);
 
-    expect(step.outputs.map((row) => row.itemId)).toEqual([shirtsId, rejectsId]);
+    expect(step.outputs.map((row) => row.itemId)).toEqual([sewnId, rejectsId]);
     // 🔴 Exactly one primary — the output that absorbs the step's whole cost
     // (§9.2.1). The rejects are a by-product and take an explicit value later.
     expect(step.outputs.filter((row) => row.isPrimary)).toHaveLength(1);
@@ -698,7 +989,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     // four scalar columns that mirrored them went with Migration B (2026-08-12).
     expect(step.inputs[0]!.itemId).toBe(shirtId);
     expect(step.inputs[0]!.uomId).toBe(pieceId);
-    expect(step.outputs.find((row) => row.isPrimary)!.itemId).toBe(shirtsId);
+    expect(step.outputs.find((row) => row.isPrimary)!.itemId).toBe(sewnId);
     expect(Number(step.plannedInputQty)).toBe(2910);
   });
 
@@ -719,7 +1010,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           ],
           // 🔴 A quantity sent on an OUTPUT is dropped, not stored. What comes
           // back is a per-run answer; only the consumed side has a default.
-          outputs: [{ itemId: shirtsId, isPrimary: true, plannedQty: 2880 }],
+          outputs: [{ itemId: threadedId, isPrimary: true, plannedQty: 2880 }],
         },
       ],
     });
@@ -789,21 +1080,22 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           processorId: cutterId,
           expectedYield: 0.6,
           inputs: [{ itemId: dyedId, plannedQty: 4800 }],
-          outputs: [{ itemId: shirtId, isPrimary: true }, { itemId: offcutsId }],
+          // Panels only: metres in and pieces out cannot share a step with a second
+          // output (landed-cost plan V3), so the offcuts are not listed.
+          outputs: [{ itemId: shirtId, isPrimary: true }],
         },
         {
           processId: stitching.id,
           processorId: cutterId,
           inputs: [{ itemId: shirtId }, { itemId: threadId }],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: threadedId, isPrimary: true }],
         },
       ],
     });
 
     const [cut, stitch] = jobOrder.steps;
-    // 4,800 m × 0.6 — the yield plans the primary output and nothing else.
+    // 4,800 m × 0.6 — the yield plans the output.
     expect(Number(cut!.outputs[0]!.expectedQty)).toBe(2880);
-    expect(cut!.outputs[1]!.expectedQty).toBeNull();
 
     // 🔴 The panels come from the step above; the thread comes from the godown.
     // Both save. That is the whole of §6.4.
@@ -1012,7 +1304,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: threadId, plannedQty: 5 },
             { itemId: buttonId, plannedQty: 300 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: sewnId, isPrimary: true }],
         },
       ],
     });
@@ -1084,11 +1376,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           processId: stitching.id,
           processorId: cutterId,
           inputs: [
-            { itemId: shirtId, plannedQty: 100 },
-            { itemId: threadId, plannedQty: 5 },
+            { itemId: shirtId, plannedQty: 100, tolerancePct: 0 },
+            { itemId: threadId, plannedQty: 5, tolerancePct: 0 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
-          tolerancePct: 0,
+          outputs: [{ itemId: threadedId, isPrimary: true }],
         },
       ],
     });
@@ -1196,7 +1487,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: dyedId, plannedQty: 100 },
             { itemId: shirtId, plannedQty: 50 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          // Pieces from metres, so nothing defaults it — and the plan check (V4)
+          // would otherwise refuse before the batch rule this test is about.
+          outputs: [{ itemId: linedId, isPrimary: true, expectedQty: 50 }],
         },
       ],
     });
@@ -1233,28 +1526,36 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
       itemChanges: true,
-      // Stitching destroys the bundle, so goods come back as a bulk quantity.
-      rateBasis: 'per_issued_unit',
     });
 
-    await stockUp(threadId, 20);
-    await stockUp(buttonId, 900);
+    /* 🔴 Its own godown. Cost is FIFO per item per location, so on the shared
+       Main Godown the panels would be costed at whatever an earlier test left
+       there first — which is FIFO working, not the ₹1,000 this test is about. */
+    const store = await runAsTenant(orgId, (tx) =>
+      tx.location.create({
+        data: { organizationId: orgId, name: `Conserve Store ${unique()}`, type: 'godown' },
+        select: { id: true },
+      }),
+    );
+    await seedStock(threadId, 20, { locationId: store.id });
+    await seedStock(buttonId, 900, { locationId: store.id });
 
-    await stockUp(shirtId, 100, 1000);
+    await seedStock(shirtId, 100, { value: 1000, locationId: store.id });
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
         {
           processId: stitching.id,
           processorId: cutterId,
-          // ₹3 per panel issued — 🔴 per PANEL, not per (panel + cone + button).
-          rate: 3,
-          rateBasis: 'per_issued_unit',
           inputs: [
             { itemId: shirtId, plannedQty: 100 },
             { itemId: threadId, plannedQty: 5 },
             { itemId: buttonId, plannedQty: 300 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }, { itemId: rejectsId }],
+          outputs: [
+            // ₹3 per stitched shirt accepted; rejects are not paid for.
+            { itemId: sewnId, isPrimary: true, expectedQty: 95, rate: 3 },
+            { itemId: rejectsId, expectedQty: 5 },
+          ],
         },
       ],
     });
@@ -1274,7 +1575,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
     const issue = await createNewJobIssue(orgId, {
       jobOrderStepId: step.id,
-      sourceLocationId: godownId,
+      sourceLocationId: store.id,
       lines: [
         { itemId: shirtId, batchId: panelBatch.id, qty: 100 },
         { itemId: threadId, batchId: threadBatch.id, qty: 5 },
@@ -1283,10 +1584,14 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     });
 
     /**
-     * 🔴 THREE ITEMS CONSUMED, TWO RETURNED, and the two sides are unrelated in
+     * 🔴 THREE ITEMS ISSUED, TWO RETURNED, and the two sides are unrelated in
      * both length and unit. Every consumption line names its own item — without
      * that the bulk allocation would settle the panel line by eating the thread,
      * which is simply older.
+     *
+     * The shirts' recipe draws on all three, the rejects' on the panels alone —
+     * so thread and buttons are consumed by the shirts only (V5: every input is
+     * drawn on by something).
      */
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
@@ -1294,25 +1599,22 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       locationId: godownId,
       lines: [
         { itemId: shirtId, issuedQty: 100, receivedQty: 0 },
-        { itemId: threadId, issuedQty: 5, receivedQty: 0 },
-        { itemId: buttonId, issuedQty: 300, receivedQty: 0 },
+        { itemId: threadId, receivedQty: 0 },
+        { itemId: buttonId, receivedQty: 0 },
       ],
       outputs: [
         {
-          itemId: shirtsId,
+          itemId: sewnId,
           isPrimary: true,
           receivedQty: 92,
           acceptedQty: 92,
           batchReference: 'SHIRT-C1',
         },
-        // A by-product with an explicit value — deducted from the primary's
-        // share, never apportioned by quantity (§9.2.1). Its own batch, so its
-        // own label.
+        // Its own batch, so its own label.
         {
           itemId: rejectsId,
           receivedQty: 8,
           acceptedQty: 8,
-          valueShare: 40,
           batchReference: 'SHIRT-C1/REJ',
         },
       ],
@@ -1327,7 +1629,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(outputs).toHaveLength(2);
     expect(outputs.filter((row) => row.isPrimary)).toHaveLength(1);
     // 🔴 A batch per returned item, each with genealogy back to EVERY batch consumed
-    // — the rejects came from the same panels and thread the shirts did.
+    // — the rejects came from the same panels the shirts did.
     expect(outputs[0]!.outputBatchId).not.toBeNull();
     expect(outputs[1]!.outputBatchId).not.toBeNull();
     expect(outputs[0]!.outputBatchId).not.toBe(outputs[1]!.outputBatchId);
@@ -1335,92 +1637,49 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const shirtBatch = await runAsTenant(orgId, (tx) =>
       tx.batch.findFirstOrThrow({ where: { id: outputs[0]!.outputBatchId! } }),
     );
-    expect(shirtBatch.itemId).toBe(shirtsId);
-    for (const consumed of [panelBatch.id, threadBatch.id, buttonBatch.id]) {
-      expect(shirtBatch.parentBatchIds).toContain(consumed);
-    }
+    expect(shirtBatch.itemId).toBe(sewnId);
+    expect(shirtBatch.parentBatchIds).toContain(panelBatch.id);
+    expect(shirtBatch.parentBatchIds).toContain(threadBatch.id);
+    expect(shirtBatch.parentBatchIds).toContain(buttonBatch.id);
 
     /**
-     * 🔴 VALUE IS CONSERVED (§9.2.1).
+     * 🔴 VALUE IS CONSERVED (R5–R7).
      *
-     *   pot      = everything consumed + the process charge
-     *   rejects  = the 40 somebody typed
-     *   shirts   = pot − 40
+     *   material = the ₹1,000 of panels (thread and buttons were stocked at ₹0),
+     *              split by need: 92 and 8 of them
+     *   shirts   = 920 + 92 accepted × ₹3
+     *   rejects  = 80, with no rate agreed
      *
-     * The charge is 100 panels × ₹3 — 🔴 keyed to the PRINCIPAL input. Against
-     * the cross-item sum it would have been (100 + 5 + 300) × ₹3, which is 405
-     * of nothing multiplied by a rate.
+     * Never a typed by-product value: the rejects are worth the panels they used.
      */
     const balanceOf = async (batchId: string) =>
       runAsTenant(orgId, (tx) => getBalance(tx, { organizationId: orgId, batchId }));
     const shirtBalance = await balanceOf(outputs[0]!.outputBatchId!);
     const rejectBalance = await balanceOf(outputs[1]!.outputBatchId!);
 
-    const consumedValue = 1000 + 0 + 0; // only the panels were valued
-    const pot = consumedValue + 100 * 3;
-    expect(Number(rejectBalance.value)).toBeCloseTo(40, 4);
-    expect(Number(shirtBalance.value)).toBeCloseTo(pot - 40, 4);
-    expect(Number(shirtBalance.value) + Number(rejectBalance.value)).toBeCloseTo(pot, 4);
+    expect(Number(rejectBalance.value)).toBeCloseTo(80, 4);
+    expect(Number(shirtBalance.value)).toBeCloseTo(920 + 92 * 3, 4);
+    expect(Number(receipt.consumedValue)).toBeCloseTo(1000, 4);
+    expect(Number(receipt.processChargeTotal)).toBeCloseTo(276, 4);
 
     // The header's six totals are the PRIMARY output's, in its own unit — which
     // row that is comes off `isPrimary`, not from a header column any more.
-    expect(receipt.outputs.find((row) => row.isPrimary)!.itemId).toBe(shirtsId);
+    expect(receipt.outputs.find((row) => row.isPrimary)!.itemId).toBe(sewnId);
     expect(Number(receipt.totalReceivedQty)).toBe(92);
     expect(Number(receipt.totalIssuedQty)).toBe(100);
 
-    // 🔴 Every input accounted for → the step is finished. Had the thread been
-    // left out, it would still be `partially_received` (§6.5).
+    /**
+     * Every input is accounted for — and the step is still `partially_received`,
+     * because completing one is a decision, not a sum (2026-08-24, `4f70306`).
+     * What the arithmetic decides is everything BELOW `completed`: had the thread
+     * been left out this would read the same, so the per-item rule of §6.5 is
+     * checked through `totals.perItem` rather than through the status.
+     */
     const overview = await getJobOrderOverview(orgId, jobOrder.id);
-    expect(overview.steps[0]!.status).toBe('completed');
-  });
+    expect(overview.steps[0]!.status).toBe('partially_received');
 
-  it('refuses by-products worth more than the whole operation', async () => {
-    const stitching = await createNewProcess(orgId, {
-      name: `Stitching ${unique()}`,
-      itemChanges: true,
-    });
-
-    await stockUp(shirtId, 100, 500);
-    const jobOrder = await createNewJobOrder(orgId, {
-      steps: [
-        {
-          processId: stitching.id,
-          processorId: cutterId,
-          inputs: [{ itemId: shirtId, plannedQty: 100 }],
-          outputs: [{ itemId: shirtsId, isPrimary: true }, { itemId: rejectsId }],
-        },
-      ],
-    });
-    const step = jobOrder.steps[0]!;
-
-    const panelBatch = await runAsTenant(orgId, (tx) =>
-      tx.batch.findFirstOrThrow({
-        where: { organizationId: orgId, itemId: shirtId, isDeleted: false },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
-      }),
-    );
-    const issue = await createNewJobIssue(orgId, {
-      jobOrderStepId: step.id,
-      sourceLocationId: godownId,
-      lines: [{ itemId: shirtId, batchId: panelBatch.id, qty: 100 }],
-    });
-
-    // The operation is worth 500. Handing the by-product 900 would leave the
-    // primary carrying a negative cost — which is not a rounding problem, it is
-    // somebody having mistyped what the offcuts are worth.
-    await expect(
-      createNewJobReceipt(orgId, {
-        jobOrderStepId: step.id,
-        issueIds: [issue.id],
-        locationId: godownId,
-        lines: [{ itemId: shirtId, issuedQty: 100, receivedQty: 0 }],
-        outputs: [
-          { itemId: shirtsId, isPrimary: true, receivedQty: 90, acceptedQty: 90 },
-          { itemId: rejectsId, receivedQty: 10, acceptedQty: 10, valueShare: 900 },
-        ],
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+    const completed = await manuallyCompleteStep(orgId, jobOrder.id, step.id, undefined);
+    expect(completed.steps[0]!.status).toBe('completed');
   });
 
   it('refuses a bulk receipt that does not say which item it accounts for', async () => {
@@ -1441,7 +1700,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
             { itemId: shirtId, plannedQty: 100 },
             { itemId: threadId, plannedQty: 5 },
           ],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: threadedId, isPrimary: true }],
         },
       ],
     });
@@ -2062,7 +2321,14 @@ describe('jobwork — FIFO allocation for untracked items', () => {
  * reach into its children either (the deliberate choice of exact-match over
  * picked-plus-descendants); and a flat org, which is most of them, is untouched.
  */
-describe('jobwork — one challan, one location', () => {
+/**
+ * The timeout is explicit for the same reason as the block above: these cases
+ * build a site, several godowns and their stock before asserting anything, which
+ * lands around five seconds against the shared dev database — vitest's default,
+ * exactly. It passed on the margin and failed the moment another suite ran
+ * beside it, which is a stopwatch result rather than a code result.
+ */
+describe('jobwork — one challan, one location', { timeout: 60_000 }, () => {
   /** A root location with `children` godowns under it — the shape a compound has. */
   const makeSite = async (childCount: number) =>
     runAsTenant(orgId, async (tx) => {

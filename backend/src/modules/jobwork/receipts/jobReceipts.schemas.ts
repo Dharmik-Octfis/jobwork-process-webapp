@@ -120,6 +120,93 @@ const outputBatchAllocationSchema = z
      * would read as "free" instead of "not stated". */
     sellingPrice: z.coerce.number().min(0).nullable().optional(),
     mrp: z.coerce.number().min(0).nullable().optional(),
+
+    /**
+     * 🔴 THE PACKAGES INSIDE THIS BATCH — the takas, rolls or bales the processor
+     * physically handed back, when the org runs a unit level.
+     *
+     * Allowed on BOTH kinds of row, unlike the attributes above, and the asymmetry
+     * is deliberate: restamping an existing batch's expiry rewrites a fact about
+     * goods that already exist, whereas adding packages to it records goods that
+     * have just arrived. The second half of a split delivery is three more rolls,
+     * not a correction to the first half's.
+     *
+     * 🔴 Naming them is optional; naming SOME of them is not (2026-09-02). Name
+     * none and the whole batch comes back untagged, exactly as before the level
+     * existed. Name one and they must add up to `qty` — enforced here AND beside
+     * the write, since this schema runs on the HTTP route alone.
+     */
+    units: z
+      .array(
+        z
+          .object({
+            /**
+             * Set to TOP UP a package that already exists rather than name a new
+             * one — the same roll coming back a second time. Mutually exclusive
+             * with `label`, exactly as `batchId` and `batchReference` are one
+             * level up, and for the same reason: a label is a physical tag, so
+             * re-typing an existing one is a duplicate and not an addition.
+             */
+            batchUnitId: z.string().uuid().optional(),
+            /** 🔴 Optional since 2026-09-03 — a roll the processor handed back with
+             * no tag on it is auto-named `#seq`. Only the quantity is required. */
+            label: z.string().trim().max(60).optional(),
+            qty: z.coerce.number().positive('Every unit needs a quantity greater than zero.'),
+          })
+          /* 🔴 "Not BOTH", no longer "exactly one" — a row with NEITHER is now the
+             ordinary case: a package that arrived without a tag. */
+          .refine((unit) => !(unit.batchUnitId && unit.label?.trim()), {
+            message: 'A unit row is either an existing unit or a new one, not both.',
+            path: ['label'],
+          }),
+      )
+      .optional(),
+  })
+  .refine(
+    (row) => {
+      // 🔴 An EQUALITY since 2026-09-02: naming any package commits to naming
+      // them all, so a batch is broken down completely or not at all. Naming NONE
+      // stays legal, which is what keeps every org without the level working.
+      const units = row.units ?? [];
+      if (units.length === 0) return true;
+      const total = units.reduce((sum, unit) => sum + unit.qty, 0);
+      return Math.abs(total - row.qty) < 0.00005;
+    },
+    {
+      message:
+        'The units named inside a batch must add up to the batch itself — name all of them, or none.',
+      path: ['units'],
+    },
+  )
+  .refine(
+    (row) => {
+      const labels = (row.units ?? [])
+        .map((unit) => unit.label?.trim().toLowerCase())
+        .filter((label): label is string => Boolean(label));
+      return new Set(labels).size === labels.length;
+    },
+    {
+      message: 'Two units of one batch cannot share a label — a label is a physical tag.',
+      path: ['units'],
+    },
+  )
+  .refine(
+    (row) => {
+      // The same roll cannot be topped up twice on one receipt; the two rows
+      // would be indistinguishable and the user meant a single number.
+      const ids = (row.units ?? [])
+        .map((unit) => unit.batchUnitId)
+        .filter((id): id is string => Boolean(id));
+      return new Set(ids).size === ids.length;
+    },
+    {
+      message: 'The same unit is listed twice in this batch — combine the quantities.',
+      path: ['units'],
+    },
+  )
+  .refine((row) => row.batchId || !(row.units ?? []).some((unit) => unit.batchUnitId), {
+    message: 'A batch being created has no existing units to add to.',
+    path: ['units'],
   })
   .refine((row) => Boolean(row.batchId) !== Boolean(row.batchReference?.trim()), {
     message: 'A batch row is either an existing batch or a new one, not both and not neither.',
@@ -207,6 +294,10 @@ export const jobReceiptOutputSchema = z
      * ratio between them, and inventing one is the conversion §5.1 forbids.
      */
     valueShare: z.coerce.number().min(0).nullable().optional(),
+
+    /** What this row is billed at, per ACCEPTED unit (landed-cost plan D1–D2).
+     * Omitted, the step output's agreed rate applies. */
+    rate: z.coerce.number().min(0).nullable().optional(),
 
     /**
      * 🔴 The label the accepted goods will carry from here on. What the processor
@@ -311,47 +402,105 @@ export type JobReceiptOutputInput = z.infer<typeof jobReceiptOutputSchema>;
 
 export const createJobReceiptSchema = openApiRegistry.register(
   'CreateJobReceiptRequest',
-  z.object({
-    jobOrderStepId: z.string().uuid({ message: 'A receipt must belong to a job order step.' }),
-    receiptDate: z.coerce.date().optional(),
+  z
+    .object({
+      jobOrderStepId: z.string().uuid({ message: 'A receipt must belong to a job order step.' }),
+      receiptDate: z.coerce.date().optional(),
 
-    /** One receipt may close several challans — a processor often returns two
-     * consignments together (§6.1). */
-    issueIds: z.array(z.string().uuid()).min(1, 'Pick at least one challan to receive against.'),
+      /** One receipt may close several challans — a processor often returns two
+       * consignments together (§6.1). */
+      issueIds: z.array(z.string().uuid()),
 
-    /** Defaults to the step's receive item. Editable: what comes back is
-     * sometimes not what was planned, and forcing a job order edit to record that
-     * is how people stop recording it. */
-    outputItemId: z.string().uuid().nullable().optional(),
-    outputUomId: z.string().uuid().nullable().optional(),
+      /**
+       * 🔴 The ticked challans this receipt CLOSES — nothing more comes back on
+       * them, so everything still out on each is consumed here and lands in the
+       * goods' cost (challan-closure R10). Per challan, never per receipt: the last
+       * lot may finish one challan and not another. Each must also be in
+       * `issueIds`. Omitted means none.
+       */
+      closedIssueIds: z.array(z.string().uuid()).optional(),
 
-    /** Where the goods landed — ours again, so a godown. */
-    locationId: z.string().uuid({ message: 'Say where the goods were received.' }),
+      /** Defaults to the step's receive item. Editable: what comes back is
+       * sometimes not what was planned, and forcing a job order edit to record that
+       * is how people stop recording it. */
+      outputItemId: z.string().uuid().nullable().optional(),
+      outputUomId: z.string().uuid().nullable().optional(),
 
-    /** The CONSUMPTION side: how much of each challan line this receipt accounts
-     * for. In unit-wise mode each line is one taka and carries the disposition
-     * that built the primary output's packages. */
-    lines: z.array(jobReceiptLineSchema).min(1, 'A receipt needs at least one line.'),
+      /** Where the goods landed — ours again, so a godown. */
+      locationId: z.string().uuid({ message: 'Say where the goods were received.' }),
 
-    /**
-     * 🔴 The RETURN side, one row per item (§5.7). Left empty, one output is
-     * derived from the lines and the header's output item — exactly what
-     * Sprints 1–4 did, which is what keeps the old Receive dialog working.
-     */
-    outputs: z.array(jobReceiptOutputSchema).optional(),
+      /** The CONSUMPTION side: how much of each challan line this receipt accounts
+       * for. In unit-wise mode each line is one taka and carries the disposition
+       * that built the primary output's packages. */
+      lines: z.array(jobReceiptLineSchema),
 
-    /** The single-output form's copy of the same two fields — with no `outputs`
-     * grid to carry them, the derived output takes them from the header. Ignored
-     * whenever `outputs` is supplied, since each row then names its own. */
-    batchReference: z.string().trim().max(100).nullable().optional(),
-    reworkBatchReference: z.string().trim().max(100).nullable().optional(),
+      /**
+       * 🔴 The RETURN side, one row per item (§5.7). Left empty, one output is
+       * derived from the lines and the header's output item — exactly what
+       * Sprints 1–4 did, which is what keeps the old Receive dialog working.
+       */
+      outputs: z.array(jobReceiptOutputSchema).optional(),
 
-    remarks: z.string().trim().max(2000).nullable().optional(),
-    customFields: z.record(z.string(), z.unknown()).optional(),
-  }),
+      /** The single-output form's copy of the same two fields — with no `outputs`
+       * grid to carry them, the derived output takes them from the header. Ignored
+       * whenever `outputs` is supplied, since each row then names its own. */
+      batchReference: z.string().trim().max(100).nullable().optional(),
+      reworkBatchReference: z.string().trim().max(100).nullable().optional(),
+
+      remarks: z.string().trim().max(2000).nullable().optional(),
+      customFields: z.record(z.string(), z.unknown()).optional(),
+
+      /**
+       * 🔴 A MODE, NOT A STATUS — the same reasoning as on the issue side. It says
+       * which button was pressed; the service turns it into `draft` or `posted` and
+       * nothing else, so no payload can name `cancelled`.
+       *
+       * Absent means post, so every existing client keeps behaving as it did.
+       */
+      saveAsDraft: z.boolean().optional(),
+    })
+    .superRefine((data, ctx) => {
+      if ((data.closedIssueIds ?? []).some((id) => !data.issueIds.includes(id))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'A challan can only be closed by a receipt that is received against it.',
+          path: ['closedIssueIds'],
+        });
+      }
+      if (!data.saveAsDraft) {
+        if (data.issueIds.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Pick at least one challan to receive against.',
+            path: ['issueIds'],
+          });
+        }
+        if (data.lines.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'A receipt needs at least one line.',
+            path: ['lines'],
+          });
+        }
+      }
+    }),
 );
 
 export type CreateJobReceiptInput = z.infer<typeof createJobReceiptSchema>;
+
+/**
+ * Rewriting a parked draft — the whole form again, not a patch. The lines,
+ * outputs and batch rows are replaced wholesale, and a partial update of a
+ * document made of three child lists is a shape nothing on the screen produces.
+ *
+ * Refused by the service on anything that is not still a draft.
+ */
+export const updateJobReceiptSchema = openApiRegistry.register(
+  'UpdateJobReceiptRequest',
+  createJobReceiptSchema,
+);
+
+export type UpdateJobReceiptInput = z.infer<typeof updateJobReceiptSchema>;
 
 /**
  * Cancelling a receipt. Same rule as an issue: reversing entries, never a delete.

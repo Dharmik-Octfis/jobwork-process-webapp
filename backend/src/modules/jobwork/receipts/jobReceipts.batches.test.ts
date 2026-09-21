@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../../db/testTenant.ts';
 import {
   createBatch,
   getBalance,
@@ -77,7 +78,18 @@ async function seedStock(itemId: string, qty: number, value: number, locationId 
  * A whole job order with one dyeing step, issued and ready to receive against.
  * Each test gets its own so a receipt in one cannot close a challan in another.
  */
-async function aStepReadyToReceive(qty: number, value: number) {
+async function aStepReadyToReceive(
+  qty: number,
+  value: number,
+  // ₹10 per accepted metre — the charge lives on the output row (R6).
+  outputs: {
+    itemId: string;
+    isPrimary?: boolean;
+    expectedQty?: number;
+    rate?: number;
+    sharePct?: number;
+  }[] = [{ itemId: dyedId, isPrimary: true, rate: 10 }],
+) {
   const inputBatch = await seedStock(greyId, qty, value);
   const jobOrder = await createNewJobOrder(orgId, {
     steps: [
@@ -85,10 +97,8 @@ async function aStepReadyToReceive(qty: number, value: number) {
         processId,
         processorType: 'vendor',
         processorId: dyerId,
-        rate: 10,
-        rateBasis: 'per_issued_unit',
         inputs: [{ itemId: greyId }],
-        outputs: [{ itemId: dyedId, isPrimary: true }],
+        outputs,
         plannedInputQty: qty,
       },
     ],
@@ -117,7 +127,7 @@ const batchRowsOf = (receiptId: string) =>
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `receipt-batches-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `receipt-batches-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -174,7 +184,7 @@ beforeAll(async () => {
     ).id;
   });
 
-  processId = (await createNewProcess(orgId, { name: 'Dyeing', rateBasis: 'per_issued_unit' })).id;
+  processId = (await createNewProcess(orgId, { name: 'Dyeing' })).id;
 });
 
 afterAll(async () => {
@@ -193,6 +203,8 @@ afterAll(async () => {
     await tx.jobOrderStep.deleteMany({ where: { organizationId: orgId } });
     await tx.jobOrder.deleteMany({ where: { organizationId: orgId } });
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
+    // Packages before batches — a package points at its batch with a RESTRICT key.
+    await tx.batchUnit.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.process.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
@@ -201,7 +213,7 @@ afterAll(async () => {
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 describe('receipt — several batches from one delivery', { timeout: 60_000 }, () => {
@@ -288,7 +300,8 @@ describe('receipt — several batches from one delivery', { timeout: 60_000 }, (
       total
         .reduce((sum, balance) => sum.plus(balance.value), total[0]!.value.minus(total[0]!.value))
         .toString(),
-    ).toBe('60000');
+      // The charge is on ACCEPTED metres only (R6): 50,000 + 900 × ₹10.
+    ).toBe('59000');
   });
 
   it('still posts a receipt that names no batches at all (the pre-2026-08-21 shape)', async () => {
@@ -543,7 +556,10 @@ describe('receipt — continuing a batch across deliveries', { timeout: 60_000 }
 describe('receipt — what a batch allocation may not do', { timeout: 60_000 }, () => {
   /** A receipt whose only job is to produce one named batch to point at. */
   async function anExistingBatchOf(itemId: string, reference: string) {
-    const { step, issue } = await aStepReadyToReceive(200, 10000);
+    // The step has to plan the item it returns — a receipt refuses anything else.
+    const { step, issue } = await aStepReadyToReceive(200, 10000, [
+      { itemId, isPrimary: true, rate: 10 },
+    ]);
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
       issueIds: [issue.id],
@@ -698,7 +714,10 @@ describe('receipt — cancellation', { timeout: 60_000 }, () => {
    * already issued onward, leaving that step holding stock no document explains.
    */
   it('refuses when a BY-PRODUCT’s batch has already been issued onward', async () => {
-    const { step, issue } = await aStepReadyToReceive(1000, 50000);
+    const { step, issue } = await aStepReadyToReceive(1000, 50000, [
+      { itemId: dyedId, isPrimary: true, expectedQty: 900, rate: 10, sharePct: 90 },
+      { itemId: otherItemId, expectedQty: 100, sharePct: 10 },
+    ]);
     const receipt = await createNewJobReceipt(orgId, {
       jobOrderStepId: step.id,
       issueIds: [issue.id],
@@ -716,7 +735,6 @@ describe('receipt — cancellation', { timeout: 60_000 }, () => {
           itemId: otherItemId,
           receivedQty: 100,
           acceptedQty: 100,
-          valueShare: 0,
           batchReference: 'BYPRODUCT',
         },
       ],
@@ -1031,5 +1049,118 @@ describe('receipt — the batch picker', { timeout: 60_000 }, () => {
     expect(row.externalQty).toBe('400');
     expect(row.byLocation.filter((location) => location.isExternal)).toHaveLength(1);
     expect(row.byLocation.find((location) => location.isExternal)!.qty).toBe('400');
+  });
+});
+
+/**
+ * 🔴 TWO ALLOCATIONS, ONE BATCH — the case that decides how the consume loop may
+ * be written.
+ *
+ * Since FIFO costing (docs/FIFO_COSTING_PLAN.md §3.4) each allocation is costed
+ * from ITS OWN challan line's processor layers, which the engine updates as it
+ * goes — so a second allocation on the same batch can never be priced against a
+ * fullness the first already took. And a line whose layers are gone is REFUSED,
+ * never costed at zero: until FIFO this test accepted a receipt that consumed
+ * 1000 from the 500 on hand, leaving the ledger at −500 with ₹0 on the shortfall.
+ */
+describe('receipt — a second allocation on the same batch', { timeout: 60_000 }, () => {
+  const twoChallans = async () => {
+    // 1000 m at 10/m, sent to the dyer on TWO challans of 500 — the SAME batch on
+    // both, which is what makes one receipt allocate against it twice.
+    const inputBatch = await seedStock(greyId, 1000, 10000);
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId,
+          processorType: 'vendor',
+          processorId: dyerId,
+          inputs: [{ itemId: greyId }],
+          outputs: [{ itemId: dyedId, isPrimary: true }],
+          plannedInputQty: 1000,
+        },
+      ],
+    });
+    const step = jobOrder.steps[0]!;
+    const first = await createNewJobIssue(orgId, {
+      jobOrderStepId: step.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: inputBatch.id, qty: 500 }],
+    });
+    const second = await createNewJobIssue(orgId, {
+      jobOrderStepId: step.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: inputBatch.id, qty: 500 }],
+    });
+    return { inputBatch, step, first, second };
+  };
+
+  const receive = (stepId: string, issueIds: string[], qty: number) =>
+    createNewJobReceipt(orgId, {
+      jobOrderStepId: stepId,
+      issueIds,
+      locationId: godownId,
+      lines: [{ itemId: greyId, issuedQty: qty, receivedQty: 0 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: qty,
+          acceptedQty: qty,
+          batches: [{ batchReference: `TWO-ALLOC-${unique()}`, qty }],
+        },
+      ],
+    });
+
+  it('costs each allocation from its own challan line', async () => {
+    const { inputBatch, step, first, second } = await twoChallans();
+    const receipt = await receive(step.id, [first.id, second.id], 1000);
+
+    const consumes = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocId: receipt.id, movementType: 'consume' },
+        select: { qtyOut: true, valueOut: true },
+      }),
+    );
+    expect(consumes.map((row) => Number(row.qtyOut))).toEqual([500, 500]);
+    expect(consumes.map((row) => Number(row.valueOut))).toEqual([5000, 5000]);
+
+    const after = await balanceOf(inputBatch.id, first.destinationLocationId);
+    expect(Number(after.qty)).toBe(0);
+    expect(Number(after.value)).toBe(0);
+  });
+
+  it('refuses a line whose layers a loss emptied, instead of costing it at zero', async () => {
+    const { inputBatch, step, first, second } = await twoChallans();
+    const firstLineId = first.lines[0]!.id;
+
+    // A loss on the FIRST challan at the dyer's, out of band — the only way this
+    // test can empty one line's layers without a document that would also close it.
+    await runAsDocument(orgId, (tx) =>
+      postMovement(tx, {
+        organizationId: orgId,
+        batchId: inputBatch.id,
+        locationId: first.destinationLocationId,
+        movementType: 'adjustment',
+        qtyOut: 500,
+        costScope: { kind: 'job', issueLineIds: [firstLineId], batchId: inputBatch.id },
+        sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
+        sourceDocId: inputBatch.id,
+      }),
+    );
+
+    await expect(receive(step.id, [first.id, second.id], 1000)).rejects.toMatchObject({
+      status: 409,
+    });
+
+    // What is really there still comes back — the bulk walk takes the line that
+    // holds stock first (oldest layer first), so 500 is receivable in full.
+    const receipt = await receive(step.id, [first.id, second.id], 500);
+    const consumes = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, sourceDocId: receipt.id, movementType: 'consume' },
+        select: { valueOut: true },
+      }),
+    );
+    expect(consumes.map((row) => Number(row.valueOut))).toEqual([5000]);
   });
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { Send, SlidersHorizontal } from 'lucide-react';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Plus, Send, SlidersHorizontal } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -12,8 +12,6 @@ import { formatDate } from '../../../lib/formatDate';
 import {
   ISSUE_STATUS_META,
   formatQty,
-  itemSummary,
-  sharedUnit,
   statusMeta,
 } from '../jobwork.schemas';
 import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
@@ -28,44 +26,38 @@ const headerStyle: React.CSSProperties = {
   textTransform: 'uppercase',
 };
 
+function StatusPill({ status }: { status: string }) {
+  const meta = statusMeta(ISSUE_STATUS_META, status);
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: 10,
+        fontSize: 11,
+        fontWeight: 500,
+        color: meta.color,
+        background: meta.bg,
+      }}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 // No `cf:` branch — `job_issue` is list-only since 2026-08-10, so the server
 // merges no custom-field columns into this catalog. A `cf:` key left in someone's
 // saved preferences falls through to the default and renders "-".
 function renderCell(issue: JobIssue, key: string): React.ReactNode {
   switch (key) {
-    case 'status': {
-      const meta = statusMeta(ISSUE_STATUS_META, issue.status);
-      return (
-        <span
-          style={{
-            display: 'inline-block',
-            padding: '2px 8px',
-            borderRadius: 10,
-            fontSize: 11,
-            fontWeight: 500,
-            color: meta.color,
-            background: meta.bg,
-          }}
-        >
-          {meta.label}
-        </span>
-      );
-    }
+    case 'status':
+      return <StatusPill status={issue.status} />;
     case 'jobOrderNumber':
       return issue.jobOrder?.jobOrderNumber ?? '-';
     case 'processName':
       return issue.step?.processNameSnapshot ?? '-';
     case 'processorName':
       return issue.processorNameSnapshot ?? 'In-house';
-    case 'item':
-      // Every item on the challan, counted — the header column that named only
-      // the principal one went on 2026-08-12.
-      return itemSummary(issue.lines);
-    case 'totalQty': {
-      // No unit when the lines disagree: metres + cones + pieces is not a sum.
-      const unit = sharedUnit(issue.lines);
-      return `${formatQty(issue.totalQty)}${unit ? ` ${unit}` : ''}`;
-    }
     case 'sourceLocation':
       return issue.sourceLocation?.name ?? '-';
     case 'destinationLocation':
@@ -92,6 +84,8 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
  * than a filter preset.
  */
 export function IssuesList() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -153,8 +147,12 @@ export function IssuesList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -199,31 +197,56 @@ export function IssuesList() {
                 filters={filters}
                 value={filter}
                 onChange={setFilter}
-                fallbackLabel="Open Challans"
+                fallbackLabel="All Challans"
               />
             )}
 
             {!selectedId && !stepId && (
-              <button
-                type="button"
-                onClick={() => setIsColumnsOpen(true)}
-                title="Customize Columns"
-                aria-label="Customize Columns"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 30,
-                  height: 30,
-                  borderRadius: 4,
-                  border: '1px solid #e2e8f0',
-                  background: '#fff',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                }}
-              >
-                <SlidersHorizontal size={15} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsColumnsOpen(true)}
+                  title="Customize Columns"
+                  aria-label="Customize Columns"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 30,
+                    height: 30,
+                    borderRadius: 4,
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                  }}
+                >
+                  <SlidersHorizontal size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/jobwork/issues/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
+                  style={{
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: 4,
+                    fontWeight: 500,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <Plus size={16} /> New
+                </button>
+              </div>
             )}
           </header>
 
@@ -290,14 +313,17 @@ export function IssuesList() {
                   >
                     <span
                       style={{
-                        display: 'block',
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: '#1e293b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
                         marginBottom: 4,
                       }}
                     >
-                      {issue.challanNumber}
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+                        {issue.challanNumber}
+                      </span>
+                      <StatusPill status={issue.status} />
                     </span>
                     <span style={{ fontSize: 12, color: '#64748b' }}>
                       {issue.processorNameSnapshot ?? 'In-house'} · {formatQty(issue.totalQty)}
@@ -306,68 +332,70 @@ export function IssuesList() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle} scope="col">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {issues.map((issue) => (
-                    /**
-                     * The whole row opens it. The LOCKED column stays a real
-                     * `<button>` underneath: a row `onClick` is invisible to
-                     * Tab, so this is the mouse convenience and the button is
-                     * the control (CLAUDE.md).
-                     */
+              <div className="responsive-table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={issue.id}
-                      onClick={() => openDetail(issue.id)}
-                      style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
-                        >
-                          {col.locked ? (
-                            <button
-                              type="button"
-                              onClick={() => openDetail(issue.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                font: 'inherit',
-                                fontWeight: 500,
-                                color: '#0062ff',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {renderCell(issue, col.key)}
-                            </button>
-                          ) : (
-                            renderCell(issue, col.key)
-                          )}
-                        </td>
+                        <th key={col.key} style={headerStyle} scope="col">
+                          {col.label}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {issues.map((issue) => (
+                      /**
+                       * The whole row opens it. The LOCKED column stays a real
+                       * `<button>` underneath: a row `onClick` is invisible to
+                       * Tab, so this is the mouse convenience and the button is
+                       * the control (CLAUDE.md).
+                       */
+                      <tr
+                        key={issue.id}
+                        onClick={() => openDetail(issue.id)}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
+                          >
+                            {col.locked ? (
+                              <button
+                                type="button"
+                                onClick={() => openDetail(issue.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  font: 'inherit',
+                                  fontWeight: 500,
+                                  color: '#0062ff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                {renderCell(issue, col.key)}
+                              </button>
+                            ) : (
+                              renderCell(issue, col.key)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
@@ -386,7 +414,7 @@ export function IssuesList() {
         </div>
 
         {selectedId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <IssueDetail issueId={selectedId} onClose={closeDetail} />
           </div>
         )}

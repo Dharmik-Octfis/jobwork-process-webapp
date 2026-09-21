@@ -68,13 +68,10 @@ describe('processes — the full CRUD path', () => {
       code: 'DYE',
       description: 'Wet processing',
       itemChanges: true,
-      rateBasis: 'per_received_unit',
-      defaultTolerancePct: 2.5,
     });
 
     expect(created.name).toBe(name);
     expect(created.itemChanges).toBe(true);
-    expect(created.defaultTolerancePct?.toString()).toBe('2.5');
 
     const listed = await getProcessesList(orgId, listOpts);
     expect(listed.results.map((p) => p.id)).toContain(created.id);
@@ -86,7 +83,6 @@ describe('processes — the full CRUD path', () => {
     const updated = await updateProcessById(orgId, created.id, {
       name,
       code: 'DYE2',
-      rateBasis: 'per_issued_unit',
     });
     expect(updated.code).toBe('DYE2');
     // Not sent on the update, so it falls back to its default rather than

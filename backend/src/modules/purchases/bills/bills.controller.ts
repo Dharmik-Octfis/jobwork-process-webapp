@@ -44,6 +44,12 @@ export async function getBill(req: Request, res: Response) {
   sendSuccess(res, item);
 }
 
+export async function getOpenJobReceipts(req: Request, res: Response) {
+  const orgId = req.tenantId!;
+  const data = await billService.getOpenJobReceiptsForVendor(orgId, req.params.vendorId as string);
+  sendSuccess(res, data);
+}
+
 export async function createBill(req: Request, res: Response) {
   const orgId = req.tenantId!;
   const data = createBillSchema.parse(req.body);
@@ -61,7 +67,7 @@ export async function updateBill(req: Request, res: Response) {
 
 export async function deleteBill(req: Request, res: Response) {
   const orgId = req.tenantId!;
-  await billService.deleteBill(orgId, req.params.id as string);
+  await billService.deleteBill(orgId, req.params.id as string, req.user?.id ?? null);
   sendSuccess(res, null, 'Bill deleted.');
 }
 

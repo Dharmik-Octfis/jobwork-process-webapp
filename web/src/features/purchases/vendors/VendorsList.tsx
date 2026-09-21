@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchVendors, fetchVendorCount, deleteVendor, updateVendor } from './vendors.api';
 import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { VendorDetail } from './VendorDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -48,6 +48,7 @@ function renderVendorCell(vendor: Vendor, key: string): string {
 
 export function VendorsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedVendorId = searchParams.get('id');
@@ -154,8 +155,9 @@ export function VendorsList() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedVendorId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedVendorId ? '0 0 320px' : 1,
             borderRight: selectedVendorId ? '1px solid #eef0f3' : 'none',
@@ -214,7 +216,7 @@ export function VendorsList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -281,7 +283,7 @@ export function VendorsList() {
                   purchase orders and bills.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -322,6 +324,8 @@ export function VendorsList() {
                           cursor: 'pointer',
                           background: selectedVendorId === vendor.id ? '#f1f5f9' : 'transparent',
                           transition: 'background 0.1s',
+                          display: 'flex',
+                          alignItems: 'flex-start',
                         }}
                         onMouseEnter={(e) => {
                           if (selectedVendorId !== vendor.id)
@@ -332,24 +336,34 @@ export function VendorsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          {vendor.contactName}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              color: '#1e293b',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {vendor.contactName}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            {vendor.companyName || vendor.email || 'No email'}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {vendor.companyName || vendor.email || 'No email'}
-                        </div>
+                        {vendor.status === 'inactive' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                              INACTIVE
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -431,6 +445,7 @@ export function VendorsList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -453,7 +468,7 @@ export function VendorsList() {
 
         {/* Right Panel - Detail */}
         {selectedVendorId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams({})} />
           </div>
         )}

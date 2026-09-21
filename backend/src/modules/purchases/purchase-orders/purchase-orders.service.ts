@@ -7,6 +7,7 @@ import type {
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 
 const DUPLICATE_NUMBER = 'A purchase order with this PO number already exists.';
 
@@ -77,6 +78,13 @@ export async function createPurchaseOrder(
 ) {
   const { lineItems: lineItems, ...poData } = data;
   return runAsTenant(orgId, async (tx) => {
+    await assertOnOrAfterMigration(tx, {
+      organizationId: orgId,
+      date: poData.date,
+      field: 'date',
+      label: 'purchase order',
+    });
+
     let performedBy = 'System';
     if (userId) {
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -142,6 +150,17 @@ export async function updatePurchaseOrder(
 ) {
   const { lineItems: lineItems, ...poData } = data;
   return runAsTenant(orgId, async (tx) => {
+    // `updatePurchaseOrderSchema` is partial, so an edit that does not touch the
+    // date must not be refused for one it never sent.
+    if (poData.date !== undefined) {
+      await assertOnOrAfterMigration(tx, {
+        organizationId: orgId,
+        date: poData.date,
+        field: 'date',
+        label: 'purchase order',
+      });
+    }
+
     let performedBy = 'System';
     if (userId) {
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -160,7 +179,12 @@ export async function updatePurchaseOrder(
             poData.documents !== undefined
               ? (poData.documents as Prisma.InputJsonValue)
               : undefined,
-          customFields: (poData.customFields ?? {}) as Prisma.InputJsonObject,
+          // Only when sent — `?? {}` here wiped every custom field on any PATCH
+          // that did not carry them (a note, a status change).
+          customFields:
+            poData.customFields !== undefined
+              ? (poData.customFields as Prisma.InputJsonObject)
+              : undefined,
         },
       });
 

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
+import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import {
   createItemCategory,
   updateItemCategory,
@@ -17,7 +18,7 @@ export async function createHandler(req: Request, res: Response) {
   const data = createItemCategorySchema.parse(req.body);
 
   const category = await createItemCategory(orgId, userId as string, data);
-  res.status(StatusCodes.CREATED).json(category);
+  sendSuccess(res, category, 'Item category created successfully', StatusCodes.CREATED);
 }
 
 export async function updateHandler(req: Request, res: Response) {
@@ -27,7 +28,7 @@ export async function updateHandler(req: Request, res: Response) {
   const data = updateItemCategorySchema.parse(req.body);
 
   const category = await updateItemCategory(orgId, categoryId, userId as string, data);
-  res.status(StatusCodes.OK).json(category);
+  sendSuccess(res, category, 'Item category updated successfully');
 }
 
 export async function deleteHandler(req: Request, res: Response) {
@@ -36,12 +37,12 @@ export async function deleteHandler(req: Request, res: Response) {
   const userId = req.user?.id;
 
   await deleteItemCategory(orgId, categoryId, userId as string);
-  res.status(StatusCodes.NO_CONTENT).send();
+  sendSuccess(res, null, 'Item category deleted successfully');
 }
 
 export async function listHandler(req: Request, res: Response) {
   const orgId = req.tenantId!;
 
   const categories = await fetchItemCategories(orgId);
-  res.status(StatusCodes.OK).json(categories);
+  sendSuccess(res, categories);
 }

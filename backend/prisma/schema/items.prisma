@@ -72,6 +72,12 @@ model Item {
   /// line. Nothing reads it yet.
   defaultRouteId String? @map("default_route_id") @db.Uuid
 
+  /// ⚠️ `defaultTolerancePct` was dropped 2026-09-16: tolerance is typed per job
+  /// order input row (`JobOrderStepInput.tolerancePct`), never inherited from the item.
+
+  /// Frozen recipe rows on job order steps where this item is a component.
+  jobOrderStepOutputComponentRows JobOrderStepOutputComponent[] @relation("JobOrderStepOutputComponentItem")
+
   /// Rows where THIS item is the composite — its own recipe.
   recipeComponents      CompositeItemComponent[] @relation("CompositeRecipe")
   /// Rows where THIS item is a component — every composite that uses it.
@@ -125,16 +131,18 @@ model UnitOfMeasurement {
 
   stockedItems  Item[]             @relation("ItemStockingUom")
   batches       Batch[]            @relation("BatchUom")
+  batchUnits    BatchUnit[]        @relation("BatchUnitUom")
   ledgerEntries StockLedgerEntry[] @relation("StockLedgerUom")
 
   jobOrderInputUoms JobOrder[] @relation("JobOrderInputUom")
 
-  routeStepInputUoms      RouteStepInput[]     @relation("RouteStepInputUom")
-  routeStepOutputUoms     RouteStepOutput[]    @relation("RouteStepOutputUom")
-  jobOrderStepInputUoms   JobOrderStepInput[]  @relation("JobOrderStepInputUom")
-  jobOrderStepOutputUoms  JobOrderStepOutput[] @relation("JobOrderStepOutputUom")
-  jobIssueLineUoms        JobIssueLine[]       @relation("JobIssueLineUom")
-  jobReceiptOutputRowUoms JobReceiptOutput[]   @relation("JobReceiptOutputRowUom")
+  routeStepInputUoms              RouteStepInput[]              @relation("RouteStepInputUom")
+  routeStepOutputUoms             RouteStepOutput[]             @relation("RouteStepOutputUom")
+  jobOrderStepInputUoms           JobOrderStepInput[]           @relation("JobOrderStepInputUom")
+  jobOrderStepOutputUoms          JobOrderStepOutput[]          @relation("JobOrderStepOutputUom")
+  jobOrderStepOutputComponentUoms JobOrderStepOutputComponent[] @relation("JobOrderStepOutputComponentUom")
+  jobIssueLineUoms                JobIssueLine[]                @relation("JobIssueLineUom")
+  jobReceiptOutputRowUoms         JobReceiptOutput[]            @relation("JobReceiptOutputRowUom")
 
   compositeComponentRows CompositeItemComponent[] @relation("CompositeComponentUom")
   itemAssemblies         ItemAssembly[]           @relation("ItemAssemblyCompositeUom")

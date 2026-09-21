@@ -1,5 +1,5 @@
 import { formatDate } from '../../../lib/formatDate';
-import type { AvailableBatch } from '../batches/batches.api';
+import type { AvailableBatch, AvailableBatchUnit } from '../batches/batches.api';
 
 /**
  * What a picked batch is, and what it is called — shared by the Issue dialog and
@@ -22,6 +22,19 @@ import type { AvailableBatch } from '../batches/batches.api';
 export const rowKey = (batch: Pick<AvailableBatch, 'batchId' | 'locationId'>) =>
   `${batch.batchId}@${batch.locationId}`;
 
+/**
+ * 🔴 …AND THE PACKAGE, WHERE THERE IS ONE.
+ *
+ * A batch broken into rolls is several independent things a challan can take, so
+ * each needs its own key — exactly as the batch-at-a-godown split above. The
+ * batch's UNTAGGED remainder is a selection in its own right and takes the bare
+ * `rowKey`, which is also what every selection made before the level existed is.
+ */
+export const selectionKey = (
+  batch: Pick<AvailableBatch, 'batchId' | 'locationId'>,
+  batchUnitId: string | null,
+) => (batchUnitId ? `${rowKey(batch)}#${batchUnitId}` : rowKey(batch));
+
 export interface BatchSelection {
   /**
    * 🔴 THE BATCH ITSELF, not just its id.
@@ -32,6 +45,16 @@ export interface BatchSelection {
    * nothing to check the quantity against.
    */
   batch: AvailableBatch;
+  /**
+   * Which package of it, when the org runs a unit level. Null is the batch's
+   * untagged remainder — and is what every selection means in an org that does
+   * not run one.
+   *
+   * Held whole for the same reason the batch is: the package list is part of a
+   * search result and a ticked roll can drop out of it on the next keystroke,
+   * leaving the row unable to say what it took or how much that was.
+   */
+  unit: AvailableBatchUnit | null;
   qty: number;
 }
 

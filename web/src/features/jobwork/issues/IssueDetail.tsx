@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -7,9 +7,11 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
-import { cancelJobIssue, fetchJobIssueById } from './jobIssues.api';
+import { invalidateStockQueries } from '../stockCache';
+import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
 import { printChallan } from './printChallan';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
   issueId: string;
@@ -30,13 +32,54 @@ const th: React.CSSProperties = {
 
 const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#333' };
 
+/**
+ * 🔴 A STATUS CHANGE IS PATCHED INTO THE OPEN LISTS, never invalidated.
+ *
+ * Most presets here filter on `status` — Issued Challans, Drafts, Cancelled —
+ * so a refetch DELETES the row from the view the operator is looking at the
+ * instant they act on it: press Issue on a draft and the Drafts list drops it
+ * mid-click, which reads as the challan having been removed rather than sent.
+ * Both transitions rewrite the row in place (`createNewJobIssue` updates it —
+ * same id, same challan number), so `status` is the only thing the cached list
+ * is now wrong about. The row leaves the view on the next real fetch: a
+ * refresh, or `staleTime` expiring.
+ */
+function patchStatusInLists(
+  queryClient: QueryClient,
+  orgId: string | undefined,
+  issueId: string,
+  status: string,
+) {
+  const swap = (rows: JobIssue[]) =>
+    rows.map((item) => (item.id === issueId ? { ...item, status } : item));
+
+  queryClient.setQueriesData(
+    { queryKey: ['job-issues', orgId], type: 'active' },
+    // Two shapes live under this key: the paginated list, and the unpaginated
+    // "every challan against one step" read (`?stepId=`). That one is not
+    // filtered on status, so its row STAYS — it just has to say the right thing.
+    (old: JobIssuesPage | JobIssue[] | undefined) => {
+      if (!old) return old;
+      if (Array.isArray(old)) return swap(old);
+      if (!old.results) return old;
+      return { ...old, results: swap(old.results) };
+    },
+  );
+  // The pages nobody is looking at are refetched instead — nothing is on screen
+  // for the row to disappear from, and they must be right when next opened.
+  queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
+}
+
 export function IssueDetail({ issueId, onClose }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const trackingLabel = useTrackingLabel();
+  /** What this org calls the level below a batch, for the challan's own column. */
+  const unitLabel = useBatchUnitLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: issue, isLoading } = useQuery({
@@ -57,14 +100,57 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobIssue(orgId!, issueId, cancelReason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      patchStatusInLists(queryClient, orgId, issueId, 'cancelled');
       queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      // A cancellation posts the reversing ledger rows, so the stock came BACK —
+      // every balance on screen is as stale as it is after an issue.
+      invalidateStockQueries(queryClient, orgId);
       setCancelOpen(false);
       setCancelReason('');
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       setError(err.response?.data?.message ?? 'Could not cancel this challan');
+    },
+  });
+
+  /**
+   * Issue a draft as it stands.
+   *
+   * 🔴 A 400 here is the NORMAL outcome, not a bug: the draft skipped the stock,
+   * tolerance and step-chain checks, and this is where they run. The message says
+   * which one refused it, so it is shown rather than replaced with a generic one.
+   */
+  const postMutation = useMutation({
+    mutationFn: () => postJobIssue(orgId!, issueId),
+    // The server's own word for the new state, not a hardcoded 'issued' — this
+    // one value is the only thing `status` is derived from at post time.
+    onSuccess: (posted) => {
+      patchStatusInLists(queryClient, orgId, issueId, posted.status);
+      queryClient.invalidateQueries({ queryKey: ['job-issue', orgId, issueId] });
+      queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      // The stock behind it has just moved, so anything valuing or listing it is stale.
+      invalidateStockQueries(queryClient, orgId);
+      setError(null);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message ?? 'Could not issue this challan');
+    },
+  });
+
+  /** Only a draft reaches this — a posted challan is cancelled, which reverses
+   * its ledger rows rather than removing anything. */
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteJobIssue(orgId!, issueId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
+      setDeleteOpen(false);
+      onClose();
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      setError(err.response?.data?.message ?? 'Could not delete this draft');
+      setDeleteOpen(false);
     },
   });
 
@@ -105,18 +191,13 @@ export function IssueDetail({ issueId, onClose }: Props) {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>
+            <h2
+              className="detail-title"
+              style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}
+            >
               {issue.challanNumber}
             </h2>
             <span
@@ -142,33 +223,108 @@ export function IssueDetail({ issueId, onClose }: Props) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => {
-              const opened = printChallan(issue, orgName, trackingLabel.singular);
-              if (!opened) {
-                setError(
-                  'The print window was blocked. Allow pop-ups for this site and try again.',
-                );
-              }
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              fontSize: 13,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: '#fff',
-              cursor: 'pointer',
-              color: '#333',
-            }}
-          >
-            <Printer size={14} /> Print challan
-          </button>
-          {issue.status !== 'cancelled' && (
+          {/**
+           * 🔴 A DRAFT GETS A DIFFERENT SET, and Print is deliberately not in it.
+           * A challan is the document that TRAVELS WITH THE GOODS; printing one
+           * for material still in the godown puts a Rule 55 challan in somebody's
+           * hand for a consignment that does not exist.
+           */}
+          {issue.status === 'draft' && (
+            <>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() =>
+                  navigate(`/organizations/${orgId}/jobwork/issues/new?draftId=${issue.id}`, {
+                    state: { returnUrl: `/organizations/${orgId}/jobwork/issues` },
+                  })
+                }
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #d1d5db',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#333',
+                }}
+              >
+                <span className="action-btn-text">Edit</span>
+              </button>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: postMutation.isPending ? '#93c5fd' : '#0062ff',
+                  cursor: postMutation.isPending ? 'not-allowed' : 'pointer',
+                  color: '#fff',
+                  fontWeight: 500,
+                }}
+              >
+                <span className="action-btn-text">
+                  {postMutation.isPending ? 'Issuing…' : 'Issue challan'}
+                </span>
+              </button>
+              <button
+                className="action-btn"
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: '1px solid #fecaca',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#b91c1c',
+                }}
+              >
+                <span className="action-btn-text">Delete</span>
+              </button>
+            </>
+          )}
+          {issue.status !== 'draft' && (
             <button
+              className="action-btn"
+              type="button"
+              onClick={() => {
+                const opened = printChallan(issue, orgName, trackingLabel.singular, unitLabel);
+                if (!opened) {
+                  setError(
+                    'The print window was blocked. Allow pop-ups for this site and try again.',
+                  );
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                fontSize: 13,
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+                background: '#fff',
+                cursor: 'pointer',
+                color: '#333',
+              }}
+            >
+              <Printer size={14} />{' '}
+              <span className="action-btn-text">
+                <span className="action-btn-text">Print</span> challan
+              </span>
+            </button>
+          )}
+          {/* Cancelling posts reversing rows, so it only applies to a challan
+              that posted some — a draft is deleted above instead. */}
+          {issue.status !== 'cancelled' && issue.status !== 'draft' && (
+            <button
+              className="action-btn"
               type="button"
               onClick={() => setCancelOpen(true)}
               style={{
@@ -181,7 +337,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 color: '#b91c1c',
               }}
             >
-              Cancel
+              <span className="action-btn-text">Cancel</span>
             </button>
           )}
           <button
@@ -223,76 +379,79 @@ export function IssueDetail({ issueId, onClose }: Props) {
       )}
 
       <div style={{ padding: '20px 24px' }}>
-        <table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
-          <tbody>
-            <tr>
-              <td style={rowLabel}>Job order</td>
-              <td style={rowValue}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(`/organizations/${orgId}/jobwork/job-orders/${issue.jobOrderId}`)
-                  }
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    font: 'inherit',
-                    color: '#0062ff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {issue.jobOrder?.jobOrderNumber ?? 'Open'}
-                </button>
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Step</td>
-              <td style={rowValue}>
-                {issue.step ? `${issue.step.seq}. ${issue.step.processNameSnapshot}` : '-'}
-              </td>
-            </tr>
-            <tr>
-              {/* One line per ITEM on the challan (§5.7), each in its own unit —
+        <div className="responsive-table-wrapper">
+          <table style={{ borderCollapse: 'collapse', marginBottom: 20 }}>
+            <tbody>
+              <tr>
+                <td style={rowLabel}>Job order</td>
+                <td style={rowValue}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/jobwork/job-orders/${issue.jobOrderId}`)
+                    }
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      font: 'inherit',
+                      color: '#0062ff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {issue.jobOrder?.jobOrderNumber ?? 'Open'}
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td style={rowLabel}>Step</td>
+                <td style={rowValue}>
+                  {issue.step ? `${issue.step.seq}. ${issue.step.processNameSnapshot}` : '-'}
+                </td>
+              </tr>
+              <tr>
+                {/* One line per ITEM on the challan (§5.7), each in its own unit —
                   they are never added together. There is no header item to fall
                   back to any more, and a challan with no lines carries nothing. */}
-              <td style={rowLabel}>Items</td>
-              <td style={rowValue}>
-                {issuedByItem.length === 0
-                  ? '-'
-                  : issuedByItem.map((row) => (
-                      <span key={row.name} style={{ display: 'block' }}>
-                        {row.name} · {formatQty(row.qty)} {row.unit}
-                      </span>
-                    ))}
-              </td>
-            </tr>
-            <tr>
-              <td style={rowLabel}>Moved</td>
-              <td style={rowValue}>
-                {issue.sourceLocation?.name ?? '-'} → {issue.destination?.name ?? '-'}
-              </td>
-            </tr>
-            {issue.toleranceOverrideReason && (
-              <tr>
-                <td style={rowLabel}>Tolerance override</td>
-                <td style={{ ...rowValue, color: '#b45309' }}>{issue.toleranceOverrideReason}</td>
+                <td style={rowLabel}>Items</td>
+                <td style={rowValue}>
+                  {issuedByItem.length === 0
+                    ? '-'
+                    : issuedByItem.map((row) => (
+                        <span key={row.name} style={{ display: 'block' }}>
+                          {row.name} · {formatQty(row.qty)} {row.unit}
+                        </span>
+                      ))}
+                </td>
               </tr>
-            )}
-            {issue.remarks && (
               <tr>
-                <td style={rowLabel}>Remarks</td>
-                <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
+                <td style={rowLabel}>Moved</td>
+                <td style={rowValue}>
+                  {issue.sourceLocation?.name ?? '-'} → {issue.destination?.name ?? '-'}
+                </td>
               </tr>
-            )}
-          </tbody>
-        </table>
+              {issue.toleranceOverrideReason && (
+                <tr>
+                  <td style={rowLabel}>Tolerance override</td>
+                  <td style={{ ...rowValue, color: '#b45309' }}>{issue.toleranceOverrideReason}</td>
+                </tr>
+              )}
+              {issue.remarks && (
+                <tr>
+                  <td style={rowLabel}>Remarks</td>
+                  <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <div style={{ border: '1px solid #eef0f3', borderRadius: 4, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
-                {/*
+          <div className="responsive-table-wrapper">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9f9fb', borderBottom: '1px solid #eef0f3' }}>
+                  {/*
                   🔴 ITEM, not "Party ref" and "Taka".
 
                   A challan carries several items now (§5.7), so which item each
@@ -302,31 +461,32 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   which nothing can capture until Purchase Received records it
                   (spec §4.5). Both come back with the features that fill them.
                 */}
-                <th style={th} scope="col">
-                  Item
-                </th>
-                <th style={th} scope="col">
-                  {trackingLabel.singular}
-                </th>
-                <th style={th} scope="col">
-                  Quantity
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {issue.lines.map((line) => (
-                <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                    {line.item?.name ?? '-'}
-                  </td>
-                  <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
-                  <td style={td}>
-                    {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
-                  </td>
+                  <th style={th} scope="col">
+                    Item
+                  </th>
+                  <th style={th} scope="col">
+                    {trackingLabel.singular}
+                  </th>
+                  <th style={th} scope="col">
+                    Quantity
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {issue.lines.map((line) => (
+                  <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                      {line.item?.name ?? '-'}
+                    </td>
+                    <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
+                    <td style={td}>
+                      {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -369,6 +529,24 @@ export function IssueDetail({ issueId, onClose }: Props) {
           setCancelOpen(false);
           setCancelReason('');
         }}
+      />
+
+      {/* No reason is asked for, unlike a cancellation. A cancelled challan is
+          history somebody will question; a deleted draft never happened, so there
+          is nothing to explain. */}
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="Delete this draft"
+        message={
+          <p style={{ margin: 0, lineHeight: 1.6 }}>
+            {issue.challanNumber} has not been issued, so no stock has moved and there is nothing to
+            reverse. The challan number stays used and will not be given to another challan.
+          </p>
+        }
+        confirmText={deleteMutation.isPending ? 'Deleting…' : 'Delete draft'}
+        cancelText="Keep it"
+        onConfirm={() => deleteMutation.mutate()}
+        onCancel={() => setDeleteOpen(false)}
       />
     </div>
   );

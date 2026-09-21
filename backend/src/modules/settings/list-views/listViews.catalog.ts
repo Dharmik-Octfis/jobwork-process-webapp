@@ -161,10 +161,10 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'type', label: 'Type' },
   ],
   /**
-   * Processes — the jobwork operation master. `rateBasis` and `itemChanges` are
-   * default-visible on purpose: they are not decoration, they decide what a later
-   * step is allowed to charge and whether a different item comes back, so someone
-   * scanning this list needs to see them without opening each row.
+   * Processes — the jobwork operation master. `itemChanges` is default-visible on
+   * purpose: it decides whether a different item comes back, so someone scanning
+   * this list needs to see it without opening each row. (`rateBasis` went with the
+   * landed-cost redesign; a saved layout naming it drops it on read.)
    *
    * No `cf:` columns are merged into this one — `process` is list-only now
    * (LIST_ONLY_ENTITY_TYPES above).
@@ -172,9 +172,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
   process: [
     { key: 'name', label: 'Process Name', locked: true },
     { key: 'code', label: 'Code', defaultVisible: true },
-    { key: 'rateBasis', label: 'Rate Basis', defaultVisible: true },
     { key: 'itemChanges', label: 'Changes Item', defaultVisible: true },
-    { key: 'defaultTolerancePct', label: 'Tolerance %' },
     { key: 'description', label: 'Description' },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
@@ -228,8 +226,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'issueDate', label: 'Date', defaultVisible: true },
     { key: 'jobOrderNumber', label: 'Job Order', defaultVisible: true },
     { key: 'processorName', label: 'Processor', defaultVisible: true },
-    { key: 'item', label: 'Item', defaultVisible: true },
-    { key: 'totalQty', label: 'Quantity', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
     { key: 'processName', label: 'Process' },
     { key: 'sourceLocation', label: 'From' },
@@ -244,8 +240,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'jobOrderNumber', label: 'Job Order', defaultVisible: true },
     { key: 'processorName', label: 'Processor', defaultVisible: true },
     { key: 'outputItem', label: 'Output Item', defaultVisible: true },
-    { key: 'totalReceivedQty', label: 'Received', defaultVisible: true },
-    { key: 'totalAcceptedQty', label: 'Accepted', defaultVisible: true },
     { key: 'totalReworkQty', label: 'Rework' },
     { key: 'totalScrapQty', label: 'Scrap' },
     { key: 'totalReturnedQty', label: 'Returned' },

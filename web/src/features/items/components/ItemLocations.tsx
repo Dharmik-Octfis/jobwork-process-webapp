@@ -2,9 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, ChevronDown } from 'lucide-react';
-import { fetchLocations, type Location } from '../../configuration/locations/locations.api';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+} from '../../configuration/locations/locations.api';
 import { itemsApi } from '../items.api';
 import type { ItemOpeningStockLocationRowDto } from '../items.schemas';
+import { availableOf, stockOnHandOf } from '../stockFigures';
 
 // Stable identity so the `useMemo` below doesn't recompute on every render while the query loads.
 const EMPTY_ROWS: ItemOpeningStockLocationRowDto[] = [];
@@ -15,7 +20,11 @@ interface ItemLocationsProps {
   isBatchTracked?: boolean;
 }
 
-export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked = true }: ItemLocationsProps) {
+export function ItemLocations({
+  orgId,
+  itemId,
+  isBatchTracked: _isBatchTracked = true,
+}: ItemLocationsProps) {
   const navigate = useNavigate();
   const [stockType, setStockType] = useState<'accounting' | 'physical'>('accounting');
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
@@ -26,11 +35,28 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
     enabled: !!orgId && !!itemId,
   });
 
-  const { data: locations = [], isLoading } = useQuery({
+  const { data: allLocations = [], isLoading } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId),
     enabled: !!orgId,
   });
+
+  /**
+   * 🔴 OUR OWN PREMISES ONLY (2026-09-07).
+   *
+   * A processor's location is a real place the ledger holds stock at — goods at a
+   * jobworker are our stock at their location (§5.4) — but this table answers
+   * "how much is in my godowns", and mixing the two made every item read as
+   * though a dyer's shed were one of them. Material out at a processor is shown
+   * where it belongs: on the job order, and on the challan that sent it.
+   *
+   * ⚠️ THE CONSEQUENCE, AND IT IS DELIBERATE: these rows no longer add up to the
+   * item's total stock whenever anything is out for processing. That is what was
+   * asked for; if the totals ever need to reconcile on this page again, the fix
+   * is a second "with processors" group, not widening this filter — the two are
+   * different questions and one table cannot answer both without saying which.
+   */
+  const locations = useMemo(() => allLocations.filter(isOwnLocation), [allLocations]);
 
   const { data: openingStockRows = EMPTY_ROWS, isLoading: isOpeningStockLoading } = useQuery({
     queryKey: ['itemOpeningStock', orgId, itemId],
@@ -38,24 +64,16 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
     enabled: !!orgId && !!itemId,
   });
 
-
-  // 🔴 `stockOnHand` FIRST — it is the ledger balance, which is what every other
-  // screen sees. Reading `openingStock` ahead of it froze this column at the
-  // declared figure, so an item that had since been issued to a processor still
-  // showed its full opening quantity here and nowhere else. The declared value and
-  // the batch total survive only as fallbacks for a payload that predates them; a
-  // location drained to 0 must read 0, which is why this tests nullish and not
-  // truthiness.
+  // 🔴 The LIVE balance, via `stockOnHandOf` — reading the declared `openingStock`
+  // here froze this column at the go-live figure, so a bill into head office never
+  // moved it (2026-09-11, the second time this regressed).
   const stockByLocation = useMemo(() => {
     const map = new Map<string, { onHand: number; committed: number; available: number }>();
     for (const row of Array.isArray(openingStockRows) ? openingStockRows : []) {
-      const batchTotal = row.batches.reduce(
-        (acc, batch) => acc + (Number(batch.quantityIn) || 0),
-        0,
-      );
-      const onHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
+      const onHand = stockOnHandOf(row);
       const committed = Number(row.committedStock ?? 0) || 0;
-      const available = Number(row.availableForSale ?? onHand - committed) || 0;
+      // Not `onHand - committed`: unallocated opening stock is on hand but not issuable.
+      const available = availableOf(row);
       map.set(row.locationId, { onHand, committed, available });
     }
     return map;
@@ -69,6 +87,8 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '24px',
+          flexWrap: 'wrap',
+          gap: '16px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -198,10 +218,10 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
       </div>
 
       <div
+        className="responsive-table-wrapper"
         style={{
           border: '1px solid #eef0f3',
           borderRadius: '6px',
-          overflow: 'hidden',
           background: '#fff',
         }}
       >
@@ -366,7 +386,6 @@ export function ItemLocations({ orgId, itemId, isBatchTracked: _isBatchTracked =
           </tbody>
         </table>
       </div>
-
     </div>
   );
 }

@@ -87,6 +87,7 @@ function ExpandableCompositeItemRow({
   orgId,
   customFieldsDef,
   isSelected,
+  isActive,
   onToggle,
 }: {
   item: Item;
@@ -95,6 +96,7 @@ function ExpandableCompositeItemRow({
   orgId: string;
   customFieldsDef?: CustomFieldDefinition[];
   isSelected: boolean;
+  isActive?: boolean;
   onToggle: () => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -113,12 +115,15 @@ function ExpandableCompositeItemRow({
           borderBottom: '1px solid #eef0f3',
           transition: 'background 0.1s',
           cursor: 'pointer',
-          background: isExpanded || isSelected ? '#fafafa' : 'transparent',
+          background: isActive ? '#f1f5f9' : isExpanded || isSelected ? '#fafafa' : 'transparent',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.background = isExpanded || isSelected ? '#fafafa' : 'transparent')
-        }
+        onMouseEnter={(e) => {
+          if (!isActive) e.currentTarget.style.background = '#f8fafc';
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive)
+            e.currentTarget.style.background = isExpanded || isSelected ? '#fafafa' : 'transparent';
+        }}
       >
         <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
           <input
@@ -208,7 +213,7 @@ function ExpandableCompositeItemRow({
                           borderTop: '1px solid #cbd5e1',
                         }}
                       />
-                      <div style={{ flex: 1 }}>
+                      <div className="master-pane" style={{ flex: 1 }}>
                         {comp.component?.name || 'Unknown Item'} ( {comp.qtyPerUnit}{' '}
                         {comp.component?.unit || ''} ){' '}
                         {comp.component?.sku ? `| SKU : ${comp.component.sku}` : ''}
@@ -229,9 +234,142 @@ function ExpandableCompositeItemRow({
   );
 }
 
+function CompactCompositeItemRow({
+  item,
+  setSearchParams,
+  orgId,
+  isSelected: _isSelected,
+  isActive,
+  onToggle: _onToggle,
+}: {
+  item: Item;
+  setSearchParams: (params: Record<string, string>) => void;
+  orgId: string;
+  isSelected: boolean;
+  isActive?: boolean;
+  onToggle: () => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const { data: components, isLoading } = useQuery({
+    queryKey: ['compositeComponents', orgId, item.id],
+    queryFn: () => compositeItemsApi.getComponents(orgId, item.id),
+    enabled: isExpanded,
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div
+        onClick={() => setSearchParams({ id: item.id })}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '12px 16px',
+          borderBottom: '1px solid #eef0f3',
+          background: isActive ? '#f1f5f9' : 'transparent',
+          cursor: 'pointer',
+          transition: 'background 0.1s',
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) e.currentTarget.style.background = '#f8fafc';
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            marginRight: 8,
+            color: '#0062ff',
+          }}
+        >
+          {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+        </button>
+
+        <span style={{ fontSize: 13, color: '#333', fontWeight: 500, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {item.name}
+        </span>
+        
+        {item.isActive === false && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8' }}>
+              INACTIVE
+            </div>
+          </div>
+        )}
+      </div>
+
+      {isExpanded && (
+        <div style={{ background: '#fafafa', borderBottom: '1px solid #eef0f3' }}>
+          {isLoading ? (
+            <div style={{ padding: '8px 16px 8px 48px', color: '#64748b', fontSize: 13 }}>
+              Loading components...
+            </div>
+          ) : components && components.length > 0 ? (
+            components.map((comp, compIdx) => {
+              const isLast = compIdx === components.length - 1;
+              return (
+                <div
+                  key={comp.id}
+                  style={{
+                    position: 'relative',
+                    padding: '8px 16px 8px 64px',
+                    fontSize: 13,
+                    color: '#475569',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 44,
+                      top: 0,
+                      bottom: isLast ? '50%' : 0,
+                      borderLeft: '1px solid #cbd5e1',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 44,
+                      top: '50%',
+                      width: 12,
+                      borderTop: '1px solid #cbd5e1',
+                    }}
+                  />
+                  {comp.component?.itemStructure === 'composite' ? <Folder size={14} color="#0062ff" style={{ marginRight: 6 }} /> : null}
+                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {comp.component?.name || 'Unknown Item'}
+                  </span>
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ padding: '8px 16px 8px 48px', color: '#64748b', fontSize: 13 }}>
+              No components found.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CompositeItemsPage() {
-  const navigate = useNavigate();
-  const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();  const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemId = searchParams.get('id');
 
@@ -254,7 +392,7 @@ export function CompositeItemsPage() {
     total,
     isCounting,
     request: requestCount,
-  } = useListCount(['items-count', orgId, search, filter], () =>
+  } = useListCount(['composite-items-count', orgId, search, filter], () =>
     compositeItemsApi.getItemCount(orgId!, { search: search || undefined, filter }),
   );
 
@@ -341,14 +479,20 @@ export function CompositeItemsPage() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
+        {/* Left Panel - List */}
         <div
+          className="master-pane"
           style={{
             flex: selectedItemId ? '0 0 320px' : 1,
             borderRight: selectedItemId ? '1px solid #eef0f3' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
+            minWidth: 0,
           }}
         >
           {/* Page Header */}
@@ -376,7 +520,7 @@ export function CompositeItemsPage() {
               filters={filters}
               value={filter}
               onChange={setFilter}
-              fallbackLabel="Active Items"
+              fallbackLabel="All Items"
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -487,55 +631,22 @@ export function CompositeItemsPage() {
             ) : (
               <div>
                 {selectedItemId ? (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div
-                      style={{
-                        padding: '8px 16px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        background: '#f9f9fb',
-                        borderBottom: '1px solid #eef0f3',
-                      }}
-                    >
-                      {filters.find((f) => f.key === filter)?.label ?? 'Active Items'}
-                    </div>
+                  <div style={{ borderTop: '1px solid #eef0f3' }}>
                     {items.map((item) => (
-                      <div
+                      <CompactCompositeItemRow
                         key={item.id}
-                        onClick={() => setSearchParams({ id: item.id })}
-                        style={{
-                          padding: '12px 16px',
-                          borderBottom: '1px solid #eef0f3',
-                          cursor: 'pointer',
-                          background: selectedItemId === item.id ? '#f1f5f9' : 'transparent',
-                          transition: 'background 0.1s',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedItemId !== item.id)
-                            e.currentTarget.style.background = '#f8fafc';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedItemId !== item.id)
-                            e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          {item.name}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>SKU: {item.sku}</div>
-                      </div>
+                        item={item}
+                        setSearchParams={setSearchParams}
+                        orgId={orgId!}
+                        isSelected={selectedIds.includes(item.id)}
+                        isActive={selectedItemId === item.id}
+                        onToggle={() => toggleSelection(item.id)}
+                      />
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -569,11 +680,13 @@ export function CompositeItemsPage() {
                           orgId={orgId!}
                           customFieldsDef={customFieldsDef}
                           isSelected={selectedIds.includes(item.id)}
+                          isActive={selectedItemId === item.id}
                           onToggle={() => toggleSelection(item.id)}
                         />
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -596,7 +709,7 @@ export function CompositeItemsPage() {
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ overflowY: 'auto' }}>
             <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
           </div>
         )}

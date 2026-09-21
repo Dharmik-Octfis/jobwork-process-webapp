@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../db/prisma.ts';
+import { deleteTestOrganization, uniqueOrgCode } from '../../db/testTenant.ts';
 import { getBalance, postMovement } from '../inventory/stock-ledger/stockLedger.service.ts';
 import { itemsService } from './items.service.ts';
 
@@ -60,7 +61,7 @@ async function freshItem(inventoryTracking: 'batch' | 'none') {
 
 beforeAll(async () => {
   const org = await prisma.organization.create({
-    data: { name: `opening-stock-test-${unique()}`, orgCode: String(Date.now()).slice(-10) },
+    data: { name: `opening-stock-test-${unique()}`, orgCode: uniqueOrgCode() },
     select: { id: true },
   });
   orgId = org.id;
@@ -92,13 +93,15 @@ afterAll(async () => {
   await runAsTenant(orgId, async (tx) => {
     await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
     await tx.itemOpeningStockRow.deleteMany({ where: { organizationId: orgId } });
+    // Packages before batches — a package points at its batch with a RESTRICT key.
+    await tx.batchUnit.deleteMany({ where: { organizationId: orgId } });
     await tx.batch.deleteMany({ where: { organizationId: orgId } });
     await tx.item.deleteMany({ where: { organizationId: orgId } });
     await tx.location.deleteMany({ where: { organizationId: orgId } });
     await tx.unitOfMeasurement.deleteMany({ where: { organizationId: orgId } });
     await tx.numberSequence.deleteMany({ where: { organizationId: orgId } });
   });
-  await prisma.organization.deleteMany({ where: { id: orgId } });
+  await deleteTestOrganization(orgId);
 });
 
 /** Send `qty` of a batch off to the processor, the way an issue does. */
@@ -249,6 +252,128 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
     expect(Number((await balanceOf(rollFour, godownId)).qty)).toBe(0);
   });
 
+  /**
+   * 🔴 TWO ROWS NAMING ONE BATCH — the case that decides how the settle loop may
+   * read its BALANCES (2026-09-01).
+   *
+   * The guard above ("only N of it is still here") used to re-read the balance on
+   * every reduction. Those reads are now hoisted into a map the caller owns, and
+   * the map is kept RUNNING as each reversal is posted — because both rows settle
+   * the same position, and the second one has to be judged against what the first
+   * one already took out. Against a figure read once and left alone the second
+   * reduction sails through and drives the batch negative in silence, which is the
+   * exact defect `settleOpening`'s own header says it exists to prevent.
+   */
+  it('judges a repeated row against what the first one already reversed', async () => {
+    const itemId = await freshItem('batch');
+    const saved = await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 100,
+          openingStockValue: 2,
+          batches: [{ batchReference: 'ROLL-7', quantityIn: 100 }],
+        },
+      ],
+    });
+    const rollSeven = saved[0]!.batches[0]!.id!;
+
+    /* The same batch twice, each asking to end at 40 — so each settles the one
+       position from 100 down to 40, a 60 reduction, twice. The declared total
+       stays at 100 so the "batches exceed the location total" check upstream
+       lets this through and the balance guard is the thing under test. */
+    await expect(
+      itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 100,
+            openingStockValue: 2,
+            batches: [
+              { id: rollSeven, batchReference: 'ROLL-7', quantityIn: 40 },
+              { id: rollSeven, batchReference: 'ROLL-7', quantityIn: 40 },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    // Refused whole, so the batch is untouched — never driven below zero.
+    expect(Number((await balanceOf(rollSeven, godownId)).qty)).toBe(100);
+  });
+
+  /**
+   * 🔴 ONE BATCH, A POSITION AT TWO LOCATIONS — the case that decides WHEN a
+   * batch may be soft-deleted.
+   *
+   * Until 2026-09-01 the delete happened inside the settle loop, so clearing this
+   * item took the batch out at its godown position and then FAILED on its
+   * processor one, 404, on a save that was doing nothing wrong. The guard was
+   * real — nothing may post against a deleted batch — but it was catching a
+   * problem the loop had created for itself.
+   *
+   * A package level makes that untenable rather than merely unfortunate: a batch
+   * holding three takas and a loose remainder is four positions at ONE location,
+   * so a mid-run delete would break every ordinary save. The delete is now a
+   * second pass, after every settle, and the hazard is gone by construction
+   * instead of by a guard.
+   *
+   * What must stay true is the outcome: both positions reversed, the batch gone
+   * once, and no movement anywhere against a deleted batch.
+   */
+  it('clears every position of one batch, then soft-deletes it exactly once', async () => {
+    const itemId = await freshItem('batch');
+    const saved = await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 100,
+          openingStockValue: 2,
+          batches: [{ batchReference: 'ROLL-9', quantityIn: 100 }],
+        },
+      ],
+    });
+    const rollNine = saved[0]!.batches[0]!.id!;
+
+    // A second OPENING position for the same batch, at the processor. Contrived
+    // on purpose — it is the shape that makes the two implementations differ,
+    // and `openingPositions` keys on (batch, location) precisely because it can.
+    await runAsTenant(orgId, (tx) =>
+      postMovement(tx, {
+        organizationId: orgId,
+        batchId: rollNine,
+        locationId: processorId,
+        movementType: 'opening',
+        qtyIn: 25,
+        sourceDocType: 'item_opening_stock',
+        sourceDocId: itemId,
+      }),
+    );
+
+    // Dropping every row settles both positions.
+    await itemsService.saveOpeningStock(itemId, orgId, { locationRows: [] });
+
+    expect(Number((await balanceOf(rollNine, godownId)).qty)).toBe(0);
+    expect(Number((await balanceOf(rollNine, processorId)).qty)).toBe(0);
+
+    const batch = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({ where: { id: rollNine } }),
+    );
+    expect(batch.isDeleted).toBe(true);
+
+    /* 🔴 And nothing was written against it after it went. Every row this batch
+       carries is an `opening` or a `reversal` from before the delete; a movement
+       posted afterwards is the failure this ordering exists to prevent. */
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, batchId: rollNine },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true, movementType: true },
+      }),
+    );
+    expect(rows.every((row) => row.createdAt <= batch.updatedAt)).toBe(true);
+  });
+
   it('reconciles a bulk quantity for an untracked item without minting a batch each save', async () => {
     const bulkItemId = await freshItem('none');
     await itemsService.saveOpeningStock(bulkItemId, orgId, {
@@ -269,5 +394,145 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
     // every time and reversed the previous one, so the batch list grew forever.
     expect(batches).toHaveLength(1);
     expect(Number((await balanceOf(batches[0]!.id, godownId)).qty)).toBe(800);
+  });
+});
+
+/**
+ * 🔴 OPENING STOCK IS STATED AS AT THE MIGRATION DATE.
+ *
+ * Until 2026-09-10 there was no date here to state it as at: all seven posting
+ * sites fell through to `postMovement`'s `new Date()`, so the figures landed on
+ * the day somebody typed them. "Stock as on 31-Mar" therefore came back empty
+ * for a business whose books began in April, and every opening batch aged from
+ * the data-entry day rather than from the day the goods actually arrived.
+ */
+describe('opening stock — posted as at the migration date', () => {
+  const ANCHOR = new Date('2026-04-01T00:00:00.000Z');
+
+  /** The anchor applies from the moment it is set — these tests own the switch. */
+  async function withAnchor<T>(run: () => Promise<T>): Promise<T> {
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { migrationDate: ANCHOR },
+    });
+    try {
+      return await run();
+    } finally {
+      await prisma.organization.update({
+        where: { id: orgId },
+        data: { migrationDate: null },
+      });
+    }
+  }
+
+  const openingRows = (itemId: string) =>
+    runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.findMany({
+        where: { organizationId: orgId, itemId, sourceDocType: 'item_opening_stock' },
+        orderBy: { createdAt: 'asc' },
+        select: { movementType: true, postedAt: true, createdAt: true, qtyIn: true, qtyOut: true },
+      }),
+    );
+
+  it('stamps the anchor rather than the day the figures were typed', async () => {
+    const itemId = await freshItem('batch');
+
+    await withAnchor(() =>
+      itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 100,
+            openingStockValue: 10,
+            batches: [{ batchReference: `ANCH-${unique()}`, quantityIn: 100 }],
+          },
+        ],
+      }),
+    );
+
+    const rows = await openingRows(itemId);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.postedAt.toISOString()).toBe(ANCHOR.toISOString());
+      // The day it was typed is still on the row, in the column that means that.
+      expect(row.createdAt.getTime()).toBeGreaterThan(row.postedAt.getTime());
+    }
+  });
+
+  /**
+   * 🔴 THE CORRECTION CARRIES THE ANCHOR TOO, and that is the whole argument for
+   * `settleOpening` stamping BOTH its branches.
+   *
+   * An opening figure is a statement about one moment: what was here when we
+   * started. Fixing a typo in it restates that moment — it does not describe a
+   * second event that happened today. So the balance AS ON the anchor has to
+   * read the corrected figure, not "100 then, less 40 in September".
+   *
+   * This is the opposite of a bill's reversal, which undoes something that
+   * really did happen on its own day, and it costs nothing because `created_at`
+   * still records when the correction was typed.
+   */
+  it('keeps a later correction on the anchor, so the as-on figure is the corrected one', async () => {
+    const itemId = await freshItem('batch');
+
+    const balanceAsOfAnchor = await withAnchor(async () => {
+      const first = await itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 100,
+            openingStockValue: 10,
+            batches: [{ batchReference: `FIX-${unique()}`, quantityIn: 100 }],
+          },
+        ],
+      });
+      const batchId = first[0]!.batches[0]!.id!;
+
+      // The typo: it was 60 all along, not 100.
+      await itemsService.saveOpeningStock(itemId, orgId, {
+        locationRows: [
+          {
+            locationId: godownId,
+            openingStock: 60,
+            openingStockValue: 10,
+            batches: [{ id: batchId, batchReference: 'FIX', quantityIn: 60 }],
+          },
+        ],
+      });
+
+      return runAsTenant(orgId, (tx) =>
+        getBalance(tx, { organizationId: orgId, batchId, asOf: ANCHOR }),
+      );
+    });
+
+    // 100 if the reduction had been dated today — the balance as at the anchor
+    // would then keep insisting on a figure the user has already corrected.
+    expect(Number(balanceAsOfAnchor.qty)).toBe(60);
+  });
+
+  /**
+   * NULL MEANS NO ANCHOR, and every organization that predates the column reads
+   * null. Their opening stock must keep posting exactly as it did.
+   */
+  it('falls back to today when the organization never migrated', async () => {
+    const itemId = await freshItem('batch');
+    const before = Date.now();
+
+    await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 50,
+          openingStockValue: 10,
+          batches: [{ batchReference: `NOANCH-${unique()}`, quantityIn: 50 }],
+        },
+      ],
+    });
+
+    const rows = await openingRows(itemId);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.postedAt.getTime()).toBeGreaterThanOrEqual(before);
+    }
   });
 });

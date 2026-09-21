@@ -11,12 +11,39 @@ import { Input } from '../../components/ui/Input';
 import './CreateOrganizationForm.css'; // Re-use styles
 
 const preferencesSchema = z.object({
-  settings: z.object({
-    itemTrackingLabel: z.object({
-      singular: z.string().min(1, 'Required').max(30),
-      plural: z.string().min(1, 'Required').max(30),
-    }).optional()
-  }).optional(),
+  settings: z
+    .object({
+      itemTrackingLabel: z
+        .object({
+          singular: z.string().min(1, 'Required').max(30),
+          plural: z.string().min(1, 'Required').max(30),
+        })
+        .optional(),
+      /**
+       * The optional level below a batch. The two names are only REQUIRED once the
+       * level is switched on — demanding them while the toggle is off would block a
+       * save of the batch labels alone, which is the only thing most orgs ever
+       * change here.
+       */
+      batchUnit: z
+        .object({
+          enabled: z.boolean(),
+          singular: z.string().max(30),
+          plural: z.string().max(30),
+        })
+        .superRefine((value, ctx) => {
+          if (!value.enabled) return;
+          if (!value.singular.trim())
+            ctx.addIssue({ code: 'custom', path: ['singular'], message: 'Required' });
+          if (!value.plural.trim())
+            ctx.addIssue({ code: 'custom', path: ['plural'], message: 'Required' });
+        })
+        .optional(),
+    })
+    .optional(),
+
+  /** The day the books begin here — a column on the server, not a settings key. */
+  migrationDate: z.string().optional(),
 });
 
 type PreferencesData = z.infer<typeof preferencesSchema>;
@@ -37,6 +64,7 @@ export function PreferencesPage() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<PreferencesData>({
     resolver: zodResolver(preferencesSchema),
@@ -45,10 +73,21 @@ export function PreferencesPage() {
         itemTrackingLabel: {
           singular: 'Batch',
           plural: 'Batches',
-        }
-      }
+        },
+        batchUnit: {
+          enabled: false,
+          singular: 'Taka',
+          plural: 'Takas',
+        },
+      },
+      migrationDate: '',
     },
   });
+
+  /** The two name fields exist only while the level is on — see the schema. */
+  const batchUnitEnabled = watch('settings.batchUnit.enabled') ?? false;
+  /** What THIS org calls a batch, so the toggle reads in their own words. */
+  const trackingSingular = watch('settings.itemTrackingLabel.singular') || 'Batch';
 
   useEffect(() => {
     if (activeOrg) {
@@ -57,8 +96,14 @@ export function PreferencesPage() {
           itemTrackingLabel: {
             singular: activeOrg.settings?.itemTrackingLabel?.singular || 'Batch',
             plural: activeOrg.settings?.itemTrackingLabel?.plural || 'Batches',
-          }
-        }
+          },
+          batchUnit: {
+            enabled: activeOrg.settings?.batchUnit?.enabled === true,
+            singular: activeOrg.settings?.batchUnit?.singular || 'Taka',
+            plural: activeOrg.settings?.batchUnit?.plural || 'Takas',
+          },
+        },
+        migrationDate: activeOrg.migrationDate || '',
       });
     }
   }, [activeOrg, reset]);
@@ -68,64 +113,203 @@ export function PreferencesPage() {
     try {
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      toast.success('Preferences updated successfully');
     } catch (err: unknown) {
       toast.error(toApiErrorMessage(err));
     }
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: 'var(--color-bg)' }}>
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: 'var(--space-6)' }}>
-        <main>
-          <section className="org-form-card" style={{ maxWidth: '100%', padding: 'var(--space-6)' }}>
-            <div className="org-form-header" style={{ marginBottom: 'var(--space-6)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-4)' }}>
-              <h2 style={{ fontSize: '24px', color: 'var(--navy-900)', marginBottom: '8px' }}>Preferences</h2>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '14px' }}>Manage default terminology and settings for this organization.</p>
+    <div
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}
+    >
+      <header
+        style={{
+          padding: '0 32px',
+          height: '60px',
+          flexShrink: 0,
+          boxSizing: 'border-box',
+          borderBottom: '1px solid var(--color-border)',
+          backgroundColor: '#fff',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}>
+            Preferences
+          </h1>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '13px', margin: 0 }}>
+            Manage default terminology and settings for this organization.
+          </p>
+        </div>
+      </header>
+
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}
+      >
+        <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+          <div style={{ maxWidth: '800px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '24px',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <Input
+                  label="Item Tracking Label (Singular)"
+                  placeholder="e.g. Batch, Lot, Roll"
+                  error={errors.settings?.itemTrackingLabel?.singular?.message}
+                  hint="Term used for single units."
+                  {...register('settings.itemTrackingLabel.singular')}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <Input
+                  label="Item Tracking Label (Plural)"
+                  placeholder="e.g. Batches, Lots, Rolls"
+                  error={errors.settings?.itemTrackingLabel?.plural?.message}
+                  hint="Term used for multiple units."
+                  {...register('settings.itemTrackingLabel.plural')}
+                />
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="org-form-content">
-              <div
+            {/* ── The optional level BELOW a batch ──────────────────────────
+              Off by default and off for every existing organization, because
+              a level nobody asked for is a column of empty inputs on six
+              screens. Switching it on is what makes the "Add <unit>" control
+              appear inside the Add <batches> window. */}
+            <div
+              style={{
+                marginTop: '32px',
+                paddingTop: '32px',
+                borderTop: '1px solid var(--color-border)',
+              }}
+            >
+              <label
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--space-4)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  cursor: 'pointer',
                 }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <Input
-                    label="Item Tracking Label (Singular)"
-                    placeholder="e.g. Batch, Lot, Roll"
-                    error={errors.settings?.itemTrackingLabel?.singular?.message}
-                    hint="Term used for single units."
-                    {...register('settings.itemTrackingLabel.singular')}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <Input
-                    label="Item Tracking Label (Plural)"
-                    placeholder="e.g. Batches, Lots, Rolls"
-                    error={errors.settings?.itemTrackingLabel?.plural?.message}
-                    hint="Term used for multiple units."
-                    {...register('settings.itemTrackingLabel.plural')}
-                  />
-                </div>
-              </div>
+                <input
+                  type="checkbox"
+                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }}
+                  {...register('settings.batchUnit.enabled')}
+                />
+                <span>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: '15px',
+                      color: 'var(--navy-900)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Track individual units inside each {trackingSingular}
+                  </span>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      color: 'var(--color-text-muted)',
+                      marginTop: '4px',
+                    }}
+                  >
+                    Adds one more level below a {trackingSingular.toLowerCase()} — each roll, bale
+                    or piece gets its own label and quantity, so it can be issued and traced on its
+                    own.
+                  </span>
+                </span>
+              </label>
 
-              <div className="org-form-actions" style={{ marginTop: 'var(--space-6)' }}>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="org-form-submit-btn"
-                  style={{ padding: '8px 24px', fontSize: '15px' }}
+              {batchUnitEnabled && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '24px',
+                    marginTop: '24px',
+                    paddingLeft: '28px',
+                  }}
                 >
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </button>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <Input
+                      label="Unit Label (Singular)"
+                      placeholder="e.g. Taka, Roll, Bale"
+                      error={errors.settings?.batchUnit?.singular?.message}
+                      hint="Term used for a single unit."
+                      {...register('settings.batchUnit.singular')}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <Input
+                      label="Unit Label (Plural)"
+                      placeholder="e.g. Takas, Rolls, Bales"
+                      error={errors.settings?.batchUnit?.plural?.message}
+                      hint="Term used for multiple units."
+                      {...register('settings.batchUnit.plural')}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                marginTop: '32px',
+                paddingTop: '32px',
+                borderTop: '1px solid var(--color-border)',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', maxWidth: '388px' }}>
+                <Input
+                  type="date"
+                  label="Migration Date"
+                  error={errors.migrationDate?.message}
+                  hint="The day your books begin here. Opening stock is counted as at this date, and nothing can be dated before it."
+                  {...register('migrationDate')}
+                />
               </div>
-            </form>
-          </section>
+            </div>
+          </div>
         </main>
-      </div>
+
+        <footer
+          style={{
+            padding: '16px 32px',
+            borderTop: '1px solid var(--color-border)',
+            backgroundColor: '#fff',
+            display: 'flex',
+            justifyContent: 'flex-start',
+          }}
+        >
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            style={{
+              padding: '10px 24px',
+              fontSize: '15px',
+              fontWeight: 500,
+              backgroundColor: 'var(--navy-900)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.7 : 1,
+              transition: 'background-color 0.2s',
+            }}
+          >
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </button>
+        </footer>
+      </form>
     </div>
   );
 }

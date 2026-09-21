@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
 import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
@@ -12,6 +11,7 @@ export const billItemSchema = z.object({
   discountAmount: z.number().or(z.string()).nullable().optional(),
   amount: z.number().or(z.string()).optional(),
   itemTotal: z.number().or(z.string()).nullable().optional(),
+  jobReceiptId: z.string().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
   // Frontend virtual fields for display
   description: z.string().nullable().optional(),
@@ -21,6 +21,10 @@ export const billItemSchema = z.object({
   batches: z
     .array(
       z.object({
+        /** Set when the row picked a batch that already exists rather than
+         * describing a new one — the server then posts INTO that batch instead
+         * of minting a second one under the same physical tag. */
+        batchId: z.string().optional(),
         supplierBatchRef: z.string().optional(),
         manufacturerBatch: z.string().nullable().optional(),
         manufacturedDate: z.string().nullable().optional(),
@@ -28,6 +32,27 @@ export const billItemSchema = z.object({
         mrp: z.number().or(z.string()).nullable().optional(),
         sellingPrice: z.number().or(z.string()).nullable().optional(),
         quantity: z.number().or(z.string()),
+        /** The packages inside this batch, when the org runs a unit level. May
+         * total LESS than `quantity` — the rest is the untagged remainder. */
+        units: z
+          .array(
+            z.object({
+              /**
+               * 🔴 Set on a package read back from a SAVED bill — its real
+               * `batch_units.id`. The edit form carries it through as
+               * `savedUnitId` so re-saving TOPS THE PACKAGE UP instead of naming
+               * it again, which the server refuses: a label is a physical tag and
+               * two rolls in one batch may not share one.
+               *
+               * Optional because the same shape is what the form SENDS, where a
+               * package being named for the first time has no id yet.
+               */
+              batchUnitId: z.string().optional(),
+              label: z.string(),
+              quantity: z.number().or(z.string()),
+            }),
+          )
+          .optional(),
       }),
     )
     .optional(),

@@ -15,19 +15,21 @@ interface Props {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 13,
-  color: '#111',
+  color: '#4b5563',
+  fontWeight: 500,
   marginBottom: 6,
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   maxWidth: 440,
-  padding: '6px 8px',
+  padding: '8px 12px',
   fontSize: 13,
   border: '1px solid #d1d5db',
   borderRadius: 4,
   background: '#fff',
-  minHeight: 32,
+  height: 36,
+  boxSizing: 'border-box' as const,
 };
 
 const sectionHeading: React.CSSProperties = {
@@ -51,8 +53,6 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
     processorType: step.processorType,
     processorId: step.processorId,
     workCentreLocationId: step.workCentreLocationId,
-    rate: step.rate === null ? null : Number(step.rate),
-    rateBasis: step.rateBasis,
     // 🔴 The template's bill of materials (§5.7). The consumed side carries a
     // default quantity a job order copies once; the produced side carries none,
     // because what comes back is a per-run answer.
@@ -65,9 +65,9 @@ function toFormSteps(route?: Partial<Route>): RouteStepData[] {
       itemId: row.itemId,
       uomId: row.uomId,
       isPrimary: Boolean(row.isPrimary),
+      rate: num(row.rate),
     })),
     expectedYield: step.expectedYield === null ? null : Number(step.expectedYield),
-    tolerancePct: step.tolerancePct === null ? null : Number(step.tolerancePct),
     remarks: step.remarks,
   }));
 }
@@ -190,6 +190,7 @@ export function RouteForm({ initialData, onSubmit, isPending, onCancel, fieldErr
       </section>
 
       <div
+        className="form-actions-footer"
         style={{
           height: 44,
           boxSizing: 'border-box',

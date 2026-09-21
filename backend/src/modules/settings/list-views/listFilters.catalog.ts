@@ -37,8 +37,8 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'inactive', label: 'Inactive Customers', where: { status: 'inactive' } },
   ],
   item: [
-    { key: 'all', label: 'Active Items', where: { isActive: true } },
-    { key: 'all_items', label: 'All Items', where: {} },
+    { key: 'all', label: 'All Items', where: {} },
+    { key: 'active', label: 'Active Items', where: { isActive: true } },
     { key: 'inactive', label: 'Inactive Items', where: { isActive: false } },
     { key: 'goods', label: 'Goods', where: { itemType: 'goods' } },
     { key: 'services', label: 'Services', where: { itemType: 'service' } },
@@ -46,9 +46,8 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   /**
    * Users. The first entry is the default, so an admin opening Settings → Users
    * lands on **Active Users** — the people who can actually sign in today, which is
-   * what they are looking for almost every time. (Same trick the `item` list uses:
-   * the key stays `all` because it is the default slot, while the label and `where`
-   * narrow it.)
+   * what they are looking for almost every time. (The key stays `all` because it 
+   * is the default slot, while the label and `where` narrow it.)
    *
    * 🔴 `unconfirmed` is the one preset whose rows do NOT come from `memberships` —
    * an invited person has no membership row yet. `members.service.ts` branches on
@@ -97,28 +96,32 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
       where: { status: { in: ['draft', 'in_progress'] } },
     },
     { key: 'all_orders', label: 'All Job Orders', where: {} },
+    { key: 'issued', label: 'Issued (Not Draft)', where: { status: { not: 'draft' } } },
     { key: 'draft', label: 'Draft', where: { status: 'draft' } },
     { key: 'in_progress', label: 'In Progress', where: { status: 'in_progress' } },
     { key: 'completed', label: 'Completed', where: { status: 'completed' } },
     { key: 'short_closed', label: 'Closed Short', where: { status: 'short_closed' } },
   ],
   /**
-   * Issues. The default is **Open** — material that is still at a processor.
-   * That is the list someone actually chases; a closed challan is paperwork.
+   * Issues. The default is every challan that went out.
+   *
+   * 🔴 It was "Open" — `issued` or `partially_received`, i.e. not `closed` —
+   * until challan closing was removed on 2026-09-07. There is no closed state to
+   * exclude any more, so the filter says what it now means. What is still out at
+   * a processor is a LEDGER question (the balance at their location), not a
+   * status one, and this list never answered it accurately anyway: a challan went
+   * `closed` on the paperwork while its goods sat at the dyer.
    */
   job_issue: [
-    {
-      key: 'all',
-      label: 'Open Challans',
-      where: { status: { in: ['issued', 'partially_received'] } },
-    },
-    { key: 'all_issues', label: 'All Challans', where: {} },
-    { key: 'closed', label: 'Closed', where: { status: 'closed' } },
+    { key: 'all', label: 'All Challans', where: {} },
+    { key: 'issued', label: 'Issued Challans', where: { status: 'issued' } },
+    { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'rework', label: 'Rework Issues', where: { isRework: true } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],
   job_receipt: [
     { key: 'all', label: 'All Receipts', where: {} },
+    { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'with_rework', label: 'With Rework', where: { totalReworkQty: { gt: 0 } } },
     { key: 'with_scrap', label: 'With Scrap', where: { totalScrapQty: { gt: 0 } } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },

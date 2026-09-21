@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { ClipboardList, Plus, SlidersHorizontal } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
@@ -88,6 +88,7 @@ function renderCell(
 
 export function JobOrdersList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('all');
@@ -152,8 +153,12 @@ export function JobOrdersList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -205,7 +210,7 @@ export function JobOrdersList() {
               )}
               <button
                 type="button"
-                onClick={() => navigate(newPath)}
+                onClick={() => navigate(newPath, { state: { returnUrl: location.pathname + location.search } })}
                 style={{
                   background: '#186337',
                   color: 'white',
@@ -333,68 +338,70 @@ export function JobOrdersList() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th key={col.key} style={headerStyle} scope="col">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order) => (
-                    /**
-                     * The whole row opens the order. The LOCKED column stays a real
-                     * `<button>` underneath it: a row `onClick` is invisible to Tab,
-                     * so it is the mouse convenience and the button is the control
-                     * (CLAUDE.md).
-                     */
+              <div className="responsive-table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                     <tr
-                      key={order.id}
-                      onClick={() => openOrder(order.id)}
-                      style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
+                        borderBottom: '1px solid #eef0f3',
+                      }}
                     >
                       {columns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
-                        >
-                          {col.locked ? (
-                            <button
-                              type="button"
-                              onClick={() => openOrder(order.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                font: 'inherit',
-                                fontWeight: 500,
-                                color: '#0062ff',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {renderCell(order, col.key, customFieldDefs)}
-                            </button>
-                          ) : (
-                            renderCell(order, col.key, customFieldDefs)
-                          )}
-                        </td>
+                        <th key={col.key} style={headerStyle} scope="col">
+                          {col.label}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {orders.map((order) => (
+                      /**
+                       * The whole row opens the order. The LOCKED column stays a real
+                       * `<button>` underneath it: a row `onClick` is invisible to Tab,
+                       * so it is the mouse convenience and the button is the control
+                       * (CLAUDE.md).
+                       */
+                      <tr
+                        key={order.id}
+                        onClick={() => openOrder(order.id)}
+                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{ padding: '12px 16px', fontSize: 13, color: '#333' }}
+                          >
+                            {col.locked ? (
+                              <button
+                                type="button"
+                                onClick={() => openOrder(order.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  font: 'inherit',
+                                  fontWeight: 500,
+                                  color: '#0062ff',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                {renderCell(order, col.key, customFieldDefs)}
+                              </button>
+                            ) : (
+                              renderCell(order, col.key, customFieldDefs)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
@@ -414,7 +421,7 @@ export function JobOrdersList() {
         </div>
 
         {selectedId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <JobOrderOverview
               jobOrderId={selectedId}
               onClose={() => {

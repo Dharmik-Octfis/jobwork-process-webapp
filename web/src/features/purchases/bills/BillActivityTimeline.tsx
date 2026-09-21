@@ -94,11 +94,10 @@ export function BillActivityTimeline({ orgId, poId }: BillActivityTimelineProps)
                   <span style={{ fontWeight: 600, color: '#1e293b' }}>
                     {titleText.endsWith('.') ? titleText : `${titleText}.`}
                   </span>
-                  {activity.performedBy && (
-                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                      by {activity.performedBy} -{' '}
-                      <span style={{ color: '#60a5fa', cursor: 'pointer' }}>{userDisplayName}</span>
-                    </div>
+                  {userDisplayName && (
+                    <span style={{ color: '#64748b', marginLeft: '6px' }}>
+                      by - <span style={{ color: '#60a5fa', cursor: 'pointer' }}>{userDisplayName}</span>
+                    </span>
                   )}
                 </td>
               </tr>

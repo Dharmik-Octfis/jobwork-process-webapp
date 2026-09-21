@@ -15,16 +15,16 @@ import {
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+
+import { JobOrderFlow } from './JobOrderFlow';
+import { ActivityTabs } from './JobOrderStepDetail';
 import { formatDate } from '../../../lib/formatDate';
-import { IssueDialog } from '../issues/IssueDialog';
-import { ReceiveDialog } from '../receipts/ReceiveDialog';
 import {
   JOB_ORDER_STATUS_META,
   daysSince,
   formatQty,
   qtyWithUnit,
   statusMeta,
-  stepCharge,
   toNumber,
 } from '../jobwork.schemas';
 import {
@@ -34,10 +34,14 @@ import {
   completeJobOrderStep,
 } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
-import { ActivityTimeline } from './ActivityTimeline';
-import { JobOrderFlow } from './JobOrderFlow';
 import { JobOrderStepDetail } from './JobOrderStepDetail';
-import type { ActivityEvent, JobOrderOverviewData, OverviewStep } from './jobOrders.schemas';
+import type {
+  ActivityEvent,
+  JobOrderOverviewData,
+  OverviewStep,
+  JobOrder,
+  JobOrdersPage,
+} from './jobOrders.schemas';
 
 const metaItem: React.CSSProperties = { fontSize: 12, color: '#64748b' };
 
@@ -416,8 +420,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const { orgId, id: routeId } = useParams<{ orgId: string; id: string }>();
   const id = jobOrderId ?? routeId;
 
-  const [issueStep, setIssueStep] = useState<OverviewStep | null>(null);
-  const [receiveStep, setReceiveStep] = useState<OverviewStep | null>(null);
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
   const [view, setView] = useState<'step' | 'history'>('step');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
@@ -455,26 +457,65 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     [activity, selectedStep],
   );
 
-  /** `stepId → "2 · Dyeing"`, for the whole-order timeline, which interleaves them. */
-  const stepLabels = useMemo(
-    () => new Map(steps.map((step) => [step.id, `${step.seq} · ${step.processNameSnapshot}`])),
-    [steps],
-  );
-
   const shortClose = useMutation({
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
+      queryClient.setQueriesData(
+        { queryKey: ['job-orders', orgId], type: 'active' },
+        (old: JobOrdersPage | undefined) => {
+          if (!old || !old.results) return old;
+          return {
+            ...old,
+            results: old.results.map((item: JobOrder) =>
+              item.id === id ? { ...item, status: 'short_closed' } : item,
+            ),
+          };
+        },
+      );
+      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setShortCloseOpen(false);
       setShortCloseReason('');
     },
   });
 
+  /* What completing will write off (landed-cost R8). One figure only makes sense
+     for a one-input step — metres, cones and pieces cannot be added together.
+     🔴 Not certain loss: shrinkage belongs in cost, which closing the challan on its
+     last receipt does (challan-closure R10) — so the warning says so before it posts. */
+  const completeOutstanding = completeStepTarget
+    ? toNumber(completeStepTarget.totals.outstandingQty)
+    : 0;
+  const completeUom =
+    completeStepTarget && completeStepTarget.inputs.length === 1
+      ? completeStepTarget.inputs[0]?.uom
+      : null;
+  const completeWriteOff =
+    completeOutstanding <= 0
+      ? 'Nothing is still with the processor, so nothing will be written off.'
+      : `${
+          completeStepTarget && completeStepTarget.inputs.length <= 1
+            ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
+            : 'Some material is still with the processor'
+        } and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
+
   const completeStep = useMutation({
     mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
+      queryClient.setQueriesData(
+        { queryKey: ['job-orders', orgId], type: 'active' },
+        (old: JobOrdersPage | undefined) => {
+          if (!old || !old.results) return old;
+          return {
+            ...old,
+            results: old.results.map((item: JobOrder) =>
+              item.id === id ? { ...item, status: updated.jobOrder.status } : item,
+            ),
+          };
+        },
+      );
+      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setCompleteStepTarget(null);
     },
   });
@@ -523,26 +564,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   ).length;
   const donePct = steps.length > 0 ? Math.round((doneSteps / steps.length) * 100) : 0;
 
-  /**
-   * What the whole order costs to have made — the per-step charges added up.
-   *
-   * Money is the one figure on this page that CAN be summed across steps: every
-   * step bills in the same currency, unlike the quantities, which are metres and
-   * pieces and cones and must never be added (§6.5). `null` when no step has a
-   * rate at all, which is different from a total of zero.
-   */
-  const charges = steps
-    .map((step) =>
-      stepCharge({
-        rate: step.rate,
-        rateBasis: step.rateBasis,
-        issuedQty: step.totals.issuedQty,
-        receivedQty: step.totals.receivedQty,
-      }),
-    )
-    .filter((amount): amount is number => amount !== null);
-  const totalCharge = charges.length > 0 ? charges.reduce((sum, n) => sum + n, 0) : null;
-
   // Late only while there is still work to do — a finished order is not overdue,
   // it is finished.
   const isLate =
@@ -559,9 +580,26 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   };
 
   return (
-    <div style={{ background: '#f8fafc', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ background: '#fff', borderBottom: '1px solid #eef0f3', position: 'sticky', top: 0, zIndex: 10 }}>
+    <div
+      style={{
+        background: '#f8fafc',
+        minHeight: '100%',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <header
+        style={{
+          background: '#fff',
+          borderBottom: '1px solid #eef0f3',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+        }}
+      >
         <div
+          className="detail-page-header"
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -604,7 +642,15 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 14, whiteSpace: 'nowrap', overflow: 'hidden', marginTop: 5 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 14,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  marginTop: 5,
+                }}
+              >
                 <span style={metaItem}>
                   {jobOrder.inputItem?.name ?? 'No item yet'}
                   {jobOrder.inputQty !== null && ` · ${formatQty(jobOrder.inputQty)} ${unit}`}
@@ -630,6 +676,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 work and Close short. */}
             {!isClosed && (
               <button
+                className="action-btn"
                 type="button"
                 onClick={() => navigate(`${listPath}/${jobOrder.id}/edit`)}
                 style={{
@@ -645,7 +692,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   color: '#333',
                 }}
               >
-                <Pencil size={14} /> Edit
+                <Pencil size={14} /> <span className="action-btn-text">Edit</span>
               </button>
             )}
             {/* Clone and Delete apply to a closed order too — the first is the
@@ -705,62 +752,41 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         </div>
       </header>
 
-        {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
+      {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
             the four numbers on the right are what somebody checks once they have
             read it. Putting the tiles above this was the old order, and it made
             every reader derive the sentence themselves. */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 24,
-            flexWrap: 'wrap',
-            padding: '12px 24px',
-            background: position.tint,
-            borderTop: `1px solid ${position.border}`,
-            borderBottom: '1px solid #eef0f3',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
-            <span style={{ marginTop: 1, flexShrink: 0 }}>{position.icon}</span>
-            <div>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#111' }}>
-                {position.headline}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 24,
+          flexWrap: 'wrap',
+          padding: '12px 24px',
+          background: position.tint,
+          borderTop: `1px solid ${position.border}`,
+          borderBottom: '1px solid #eef0f3',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
+          <span style={{ marginTop: 1, flexShrink: 0 }}>{position.icon}</span>
+          <div>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#111' }}>
+              {position.headline}
+            </p>
+            {position.detail && (
+              <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569' }}>
+                {position.detail}
               </p>
-              {position.detail && (
-                <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569' }}>
-                  {position.detail}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
-            <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
-            <Tile
-              label="In hand"
-              value={formatQty(summary.inHandQty)}
-              note={
-                summary.costPerUnit === null ? null : `${formatQty(summary.costPerUnit)} per unit`
-              }
-            />
-            <Tile
-              label="Wastage"
-              value={summary.wastagePct === null ? '—' : `${summary.wastagePct}%`}
-              note="across closed steps"
-            />
-            <Tile
-              label="Charges"
-              value={totalCharge === null ? '—' : formatQty(totalCharge)}
-              note={
-                totalCharge === null
-                  ? 'no rates agreed'
-                  : `${charges.length} of ${steps.length} steps rated`
-              }
-            />
+            )}
           </div>
         </div>
+
+        <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
+          <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
+        </div>
+      </div>
 
       <div style={{ padding: '18px 24px' }}>
         {/* 🔴 The scale and the position, ALWAYS visible. A twelve-step route
@@ -846,8 +872,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               <JobOrderStepDetail
                 step={selectedStep}
                 activity={stepActivity}
-                onIssue={setIssueStep}
-                onReceive={setReceiveStep}
+                onIssue={(step) =>
+                  navigate(
+                    `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
+                  )
+                }
+                onReceive={(step) =>
+                  navigate(
+                    `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
+                  )
+                }
                 onComplete={setCompleteStepTarget}
                 onOpenDocument={openDocument}
               />
@@ -866,12 +900,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                     above answers "what is happening here"; this answers "what has
                     this order been through" — and the two orders of the same
                     documents are genuinely different readings. */}
-                <ActivityTimeline
-                  events={activity}
-                  stepLabels={stepLabels}
-                  onOpen={openDocument}
-                  empty="Nothing has moved on this order yet. Issue material to the first step, and every challan and receipt across every step will be listed here in the order it happened."
-                />
+                <ActivityTabs events={activity} onOpen={openDocument} />
               </div>
             )}
           </>
@@ -890,39 +919,38 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             // The list too: appending to a completed order reopens it as
             // in_progress, and the row would otherwise keep saying "Completed".
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-            queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
+            queryClient.setQueriesData(
+              { queryKey: ['job-orders', orgId], type: 'active' },
+              (old: JobOrdersPage | undefined) => {
+                if (!old || !old.results) return old;
+                return {
+                  ...old,
+                  results: old.results.map((item: JobOrder) =>
+                    item.id === id ? { ...item, status: 'in_progress' } : item,
+                  ),
+                };
+              },
+            );
+            queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
           }}
-        />
-      )}
-
-      {issueStep && (
-        <IssueDialog
-          isOpen
-          onClose={() => setIssueStep(null)}
-          jobOrder={jobOrder}
-          step={steps.find((s) => s.id === issueStep.id) ?? issueStep}
-          onIssued={() =>
-            queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
-          }
-        />
-      )}
-
-      {receiveStep && (
-        <ReceiveDialog
-          isOpen
-          onClose={() => setReceiveStep(null)}
-          jobOrder={jobOrder}
-          step={steps.find((s) => s.id === receiveStep.id) ?? receiveStep}
-          onReceived={() =>
-            queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
-          }
         />
       )}
 
       <ConfirmDialog
         isOpen={Boolean(completeStepTarget)}
         title="Complete this step"
-        message="Are you sure you want to manually complete this step? You won't be able to undo this action."
+        message={
+          <div>
+            <p style={{ margin: '0 0 12px 0', lineHeight: 1.6 }}>
+              Completing says nothing more is coming back from this step. {completeWriteOff}
+            </p>
+            <p style={{ margin: 0, lineHeight: 1.6, color: '#64748b' }}>
+              Draft challans or receipts on the step have to be posted or deleted first. This cannot
+              be undone — nothing more can be issued, received or cancelled against the step
+              afterwards.
+            </p>
+          </div>
+        }
         confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}
         onConfirm={() => {
           if (completeStepTarget) completeStep.mutate(completeStepTarget.id);
@@ -937,7 +965,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           <div>
             <p style={{ margin: '0 0 12px 0', lineHeight: 1.6 }}>
               This ends the order even though the numbers do not balance — which is a normal
-              outcome, not an error. It cannot be reopened, and a later receipt will not undo it.
+              outcome, not an error. Whatever is still with a processor on its open steps is written
+              off as job order loss. It cannot be reopened, and a later receipt will not undo it.
             </p>
             <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
               Reason

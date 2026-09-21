@@ -22,6 +22,8 @@ export const jobReceiptLineSchema = z.object({
   jobIssueLineId: z.string().nullable(),
   issuedQty: z.union([z.string(), z.number()]),
   receivedQty: z.union([z.string(), z.number()]),
+  /** This receipt closed the line's challan (challan-closure R10). */
+  closesChallan: z.boolean().default(false),
   acceptedQty: z.union([z.string(), z.number()]),
   reworkQty: z.union([z.string(), z.number()]),
   scrapQty: z.union([z.string(), z.number()]),
@@ -59,6 +61,9 @@ export const jobReceiptSchema = z.object({
   totalReworkQty: z.union([z.string(), z.number()]),
   totalScrapQty: z.union([z.string(), z.number()]),
   totalReturnedQty: z.union([z.string(), z.number()]),
+  /** What the consumes posted, and the charges on top — the receipt's cost. */
+  consumedValue: decimalString.optional(),
+  processChargeTotal: decimalString.optional(),
   status: z.string(),
   remarks: z.string().nullable(),
   lines: z.array(jobReceiptLineSchema).default([]),
@@ -83,6 +88,11 @@ export const jobReceiptSchema = z.object({
         reworkQty: decimalString,
         scrapQty: decimalString,
         isPrimary: z.boolean(),
+        /** 🔴 The cost as posted (landed-cost R5–R7), never re-derived. Zero on a
+         * draft, which has consumed nothing yet. */
+        rate: decimalString.optional(),
+        materialValue: decimalString.optional(),
+        processCharge: decimalString.optional(),
         item: itemRefSchema.nullable().optional(),
         uom: uomRefSchema.nullable().optional(),
         /** Older receipts only — the gate types free text now, which lands in
@@ -127,11 +137,12 @@ export const jobReceiptSchema = z.object({
       seq: z.number(),
       processNameSnapshot: z.string(),
       expectedYield: decimalString,
-      rate: decimalString,
-      rateBasis: z.string().nullable(),
     })
     .optional(),
-  location: namedRefSchema.nullable().optional(),
+  /** `type` is what tells an ordinary receipt from a dispatch-onward one: an
+   * external location means the goods never came back. Read it through
+   * `EXTERNAL_LOCATION_TYPES`, never by matching the name. */
+  location: namedRefSchema.extend({ type: z.string().nullable().optional() }).nullable().optional(),
   outputBatch: z
     .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
     .nullable()
@@ -140,6 +151,7 @@ export const jobReceiptSchema = z.object({
     .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
     .nullable()
     .optional(),
+  _count: z.object({ billItems: z.number() }).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -156,8 +168,6 @@ export const receivePrefillSchema = z.object({
     processNameSnapshot: z.string(),
     jobOrderId: z.string(),
     expectedYield: decimalString,
-    rate: decimalString,
-    rateBasis: z.string().nullable(),
     process: z.object({ id: z.string(), name: z.string() }),
     jobOrder: z.object({ id: z.string(), jobOrderNumber: z.string(), ownership: z.string() }),
     /** 🔴 What the step plans to consume and produce — the only source for the
@@ -173,8 +183,26 @@ export const receivePrefillSchema = z.object({
       totalQty: z.string(),
       isRework: z.boolean(),
       attemptNo: z.number(),
+      /** Who is holding these goods, and the location the challan sent them to.
+       * The pair is what lets the dialog offer "they stayed there" as a receive-
+       * into option — the one external location a receipt may name. */
+      processorName: z.string().nullable(),
+      destinationLocationId: z.string(),
+      destinationName: z.string().nullable(),
     }),
   ),
+  /** Challans a posted receipt closed — nothing more is received on them until
+   * that receipt is cancelled (challan-closure R14). */
+  closedIssues: z
+    .array(
+      z.object({
+        id: z.string(),
+        challanNumber: z.string(),
+        closedByReceiptId: z.string(),
+        closedByReceiptNumber: z.string(),
+      }),
+    )
+    .default([]),
   lines: z.array(
     z.object({
       jobIssueId: z.string(),
@@ -189,7 +217,13 @@ export const receivePrefillSchema = z.object({
       /** The label, not the internal number (2026-08-14). Null for untracked
        * stock, whose batches are not meant to be identified on screen. */
       batchReference: z.string().nullable(),
+      /** What is still out on this line. */
       issuedQty: z.string(),
+      /** The line's average cost per unit at the processor. */
+      unitCost: z.string().default('0'),
+      /** The line's FIFO layers at the processor, oldest first — the preview walks
+       * these, so it prices exactly what the receipt will post. */
+      layers: z.array(z.object({ qty: z.string(), unitCost: z.string() })).default([]),
     }),
   ),
   /**
@@ -206,6 +240,8 @@ export const receivePrefillSchema = z.object({
         uomSymbol: z.string().nullable(),
         isPrimary: z.boolean(),
         expectedQty: z.string().nullable(),
+        /** The step's agreed charge per accepted unit — the Rate box's opening value. */
+        rate: z.string().nullable().optional(),
       }),
     )
     .default([]),
@@ -221,6 +257,8 @@ export interface JobReceiptLineData {
   itemId?: string | null;
   jobIssueId?: string | null;
   jobIssueLineId?: string | null;
+  /** How much of the item this receipt USED. Omitted, the server works it out
+   * from the job order's plan (landed-cost R4). */
   issuedQty?: number;
   receivedQty: number;
   acceptedQty?: number;
@@ -240,11 +278,10 @@ export interface JobReceiptOutputData {
   reworkQty?: number;
   scrapQty?: number;
   returnedQty?: number;
-  /** Exactly one row is the main output — it absorbs the pot less whatever the
-   * by-products were given (§9.2.1). */
+  /** The row the header's six totals describe. */
   isPrimary?: boolean;
-  /** By-products only; null on the main output, which takes the remainder. */
-  valueShare?: number | null;
+  /** Charge per accepted unit for this receipt. Omitted, the step's rate applies. */
+  rate?: number | null;
   reasonId?: string | null;
   responsibility?: string | null;
   remarks?: string | null;
@@ -286,12 +323,33 @@ export interface JobReceiptBatchAllocationData {
   expiryDate?: string | null;
   sellingPrice?: number | null;
   mrp?: number | null;
+
+  /**
+   * The packages physically handed back inside this batch — takas, rolls, bales —
+   * when the org runs a unit level. Sent on BOTH kinds of row, unlike the five
+   * attributes above: an existing batch is never restamped, but three more rolls
+   * arriving into it is new goods, not a correction.
+   *
+   * May total LESS than `qty`; the rest is the batch's untagged remainder.
+   */
+  units?: (
+    /** A package arriving for the first time. `label` is OPTIONAL since
+     * 2026-09-03 — omit it and the server names it `#seq`, its position in the
+     * batch; only the quantity is required. */
+    | { label?: string; qty: number }
+    /** Adding to a package that already exists — the same roll returning again.
+     * Never both shapes on one row, which is what the server refines. */
+    | { batchUnitId: string; qty: number }
+  )[];
 }
 
 export interface CreateJobReceiptData {
   jobOrderStepId: string;
   receiptDate?: string;
   issueIds: string[];
+  /** The ticked challans this receipt closes: everything still out on each is
+   * consumed here (challan-closure R10). Each must also be in `issueIds`. */
+  closedIssueIds?: string[];
   /** @deprecated The returned set lives in `outputs`; these describe the primary
    * alone and go with Migration B. */
   outputItemId?: string | null;
@@ -307,6 +365,16 @@ export interface CreateJobReceiptData {
   reworkBatchReference?: string | null;
   remarks?: string | null;
   customFields?: Record<string, unknown>;
+  /**
+   * Which button was pressed — a MODE, not a status, exactly as on the issue
+   * side. Omitted means post.
+   *
+   * 🔴 A draft does NOT keep an output batch it is creating. There is no `batches`
+   * row for a batch that does not exist yet, and minting one to park a form is the
+   * thing this whole path avoids — so a typed batch reference is asked for again
+   * when the draft is reopened. Existing-batch top-ups survive untouched.
+   */
+  saveAsDraft?: boolean;
 }
 
 export const jobReceiptsPageSchema = paginatedSchema(jobReceiptSchema);
@@ -348,6 +416,11 @@ export const receiptBatchOptionSchema = z.object({
   internalQty: decimalString,
   externalQty: decimalString,
   byLocation: z.array(batchLocationBalanceSchema).default([]),
+  /** The packages this batch already holds, so a row can add to one instead of
+   * naming a new one. Empty unless the request asked for `withUnits`. */
+  units: z
+    .array(z.object({ batchUnitId: z.string(), seq: z.number(), label: z.string() }))
+    .default([]),
 });
 
 export type ReceiptBatchOption = z.infer<typeof receiptBatchOptionSchema>;

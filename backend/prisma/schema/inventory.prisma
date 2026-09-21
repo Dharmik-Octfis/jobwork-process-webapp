@@ -10,8 +10,9 @@
 ///   1. Batch value is DERIVED from the ledger, never stored on the batch. That is
 ///      why there is no `value` column below — `valueIn`/`valueOut` on the ledger
 ///      make value the same SUM shape as quantity.
-///   2. Valuation is SPECIFIC-BATCH, implied by batch tracking being mandatory
-///      internally.
+///   2. Valuation is FIFO per item per location (2026-09-18, replacing
+///      specific-batch). A batch is traceability only; cost lives in
+///      `stock_cost_layers` and is decided when stock leaves a place.
 ///
 /// 🔴 A BATCH IS ALWAYS CREATED, whatever `Item.batchTracking` says. That column
 /// controls only how much of it the USER sees; the ledger always has exactly one
@@ -102,7 +103,10 @@ model Batch {
   sourceDocType String? @map("source_doc_type") @db.VarChar(40)
   sourceDocId   String? @map("source_doc_id") @db.Uuid
 
-  /// open | consumed | closed
+  /// open | consumed | closed | unallocated
+  /// `unallocated`: the one batch per (item, location) holding opening stock declared
+  /// but not yet assigned to a named batch — on hand, never issuable
+  /// (`UNALLOCATED_BATCH_STATE` in stockLedger.service.ts).
   state String @default("open") @db.VarChar(20)
 
   /// 🔴 REAL COLUMNS, not `custom_fields`. Until 2026-08-13 all five lived in the
@@ -142,7 +146,15 @@ model Batch {
 
   ledgerEntries StockLedgerEntry[]
 
+  /// The packages inside this batch, when the org runs a unit level. Empty is
+  /// normal and always legal — the level is optional per §2.4.
+  batchUnits BatchUnit[]
+
   issueLines JobIssueLine[] @relation("JobIssueLineBatch")
+
+  /// The bill lines that say they received this batch. The document's own claim,
+  /// which exists for a DRAFT too — before any of it reaches `ledgerEntries`.
+  billItemBatches BillItemBatch[] @relation("BillItemBatchBatch")
 
   /// Job orders that PLAN to use this batch. A note, not a hold — see the model.
   plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchBatch")
@@ -179,6 +191,103 @@ model Batch {
   @@map("batches")
 }
 
+/// One physical package inside a batch — a taka, roll, bale, coil, plate, bundle.
+/// The level is switched on once per organization (`organizations.settings`
+/// → `batchUnit.enabled`) and its NAME is per-org too, exactly as "Batch" is.
+///
+/// 🔴 NO `qty` COLUMN, and that is the whole design. Quantity is
+/// `SUM(qty_in − qty_out)` off `stock_ledger` filtered by `batch_unit_id`, exactly
+/// as a batch's is. A stored copy would have to be updated by every path that
+/// moves stock — issue, receipt, three cancellations, assembly, `settleOpening`,
+/// scrap, adjustment — and would be silently wrong the first time one forgot,
+/// while the batch total stayed perfectly correct. Same trap as the
+/// `item_location_stocks` cache deleted 2026-08-13.
+///
+/// 🔴 No `location_id` either — a unit has no location of its own, for the same
+/// reason a batch has none. Location lives on the movement, which is what lets a
+/// unit be sitting at the dyer's.
+///
+/// 🔴 No `state` column. "Is any of it left" is a balance, not a flag.
+model BatchUnit {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  /// Denormalised from the parent batch so this table carries its OWN RLS
+  /// policy, exactly like `job_issue_lines`.
+  organizationId String @map("organization_id") @db.Uuid
+  batchId        String @map("batch_id") @db.Uuid
+
+  /// Position inside the parent batch, 1-based. Restarts at 1 in every batch —
+  /// correct here and nowhere else, because a unit has exactly one parent batch,
+  /// can never merge across batches, and cannot exist without one.
+  ///
+  /// 🔴 Also what an UNNAMED unit is CALLED, since 2026-09-03 — see `label`.
+  seq Int
+
+  /// What is printed on the physical tag. Free text — "T-1", or the supplier's own
+  /// taka number.
+  ///
+  /// 🔴 OPTIONAL TO TYPE since 2026-09-03, and still NOT NULL. Leave it blank and
+  /// `createBatchUnits` fills in `#seq`, this unit's position in the batch. The
+  /// column stays non-null because every picker, challan and error message reads
+  /// it — a package nobody can name is one nobody can pick out of a list — and
+  /// because nothing about TRACKING ever depended on it: quantity and value are
+  /// both sums over `stock_ledger.batch_unit_id`, which is a uuid. What a label
+  /// buys is the match to a physical tag, which is real but is the user's to
+  /// decide.
+  label String @db.VarChar(60)
+
+  /// Snapshot of the batch's uom, same reasoning as `Batch.uomId`.
+  uomId String? @map("uom_id") @db.Uuid
+
+  /// Unit genealogy — set only when the operation preserves packaging (dyeing:
+  /// the same roll returns; cutting: rolls are destroyed, so this stays null).
+  ///
+  /// 🔴 Present from the FIRST migration even though nothing writes it yet.
+  /// Genealogy cannot be reconstructed from history that was never recorded; the
+  /// column costs nothing empty and retrofitting it costs everything.
+  parentBatchUnitId String? @map("parent_batch_unit_id") @db.Uuid
+
+  sourceDocType String? @map("source_doc_type") @db.VarChar(40)
+  sourceDocId   String? @map("source_doc_id") @db.Uuid
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batch           Batch              @relation(fields: [batchId], references: [id])
+  uom             UnitOfMeasurement? @relation("BatchUnitUom", fields: [uomId], references: [id])
+  parentBatchUnit BatchUnit?         @relation("BatchUnitGenealogy", fields: [parentBatchUnitId], references: [id])
+  childBatchUnits BatchUnit[]        @relation("BatchUnitGenealogy")
+  createdByUser   User?              @relation("BatchUnitCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser   User?              @relation("BatchUnitUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  ledgerEntries StockLedgerEntry[]
+
+  /// The challan lines that sent this package out. Several, over its life — a
+  /// roll can go to the dyer, come back, and go to the printer.
+  issueLines JobIssueLine[] @relation("JobIssueLineBatchUnit")
+
+  /// The bill lines that say they received this package — present on a DRAFT,
+  /// where no ledger row names it yet.
+  billItemBatches BillItemBatch[] @relation("BillItemBatchUnit")
+
+  /// Job orders that PLAN to use this package. A note, not a hold — see the model.
+  plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchUnit")
+
+  /// The assembly lines that consumed material off this package. Several over its
+  /// life, and PARTIAL: an assembly cuts what it needs off a roll rather than
+  /// taking the whole thing, unlike a job issue.
+  assemblyLines ItemAssemblyLine[] @relation("ItemAssemblyLineBatchUnit")
+
+  @@unique([batchId, seq])
+  @@index([organizationId, batchId])
+  @@map("batch_units")
+}
+
 /// 🔴 EVERY MOVEMENT OF EVERY QUANTITY. Append-only.
 ///
 /// There is no `stock_balance` table and there will not be one. Availability is
@@ -197,6 +306,12 @@ model StockLedgerEntry {
 
   itemId  String @map("item_id") @db.Uuid
   batchId String @map("batch_id") @db.Uuid
+
+  /// WHICH PACKAGE inside the batch this movement is. Nullable, and the null is
+  /// load-bearing: an item with no unit level, and the untagged remainder of a
+  /// batch that has one, both post null here. So `SUM(units) ≤ batch` is an
+  /// inequality — the loose remainder is legal, and every picker shows it.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
 
   /// WHERE the stock is. Goods at a processor are OUR stock at THEIR location
   /// (§5.4) — one axis, not a location plus a separate "with-processor" state, so
@@ -252,14 +367,118 @@ model StockLedgerEntry {
   organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   item          Item               @relation(fields: [itemId], references: [id])
   batch         Batch              @relation(fields: [batchId], references: [id])
+  batchUnit     BatchUnit?         @relation(fields: [batchUnitId], references: [id])
   location      Location           @relation("StockLedgerLocation", fields: [locationId], references: [id])
   uom           UnitOfMeasurement? @relation("StockLedgerUom", fields: [uomId], references: [id])
   createdByUser User?              @relation("StockLedgerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  /// FIFO cost (docs/FIFO_COSTING_PLAN.md): the layers an inward row created, and
+  /// the layers an outward row drew on.
+  costLayers  StockCostLayer[]
+  layerDraws  StockLayerDraw[]
 
   /// The balance query's index, per §5.6. A materialised balance view comes only
   /// when a real query proves it necessary — do not pre-optimise a correctness
   /// guarantee away.
   @@index([organizationId, itemId, batchId, locationId])
   @@index([organizationId, locationId, postedAt])
+  /// Unit balances: "what is in B-1", "where is T-1", the unit picker, and the
+  /// §2.5 invariant `postMovement` checks on every outward row.
+  @@index([organizationId, batchId, batchUnitId, locationId])
+  /// 🔴 MISSING UNTIL 2026-09-01 AND NEEDED REGARDLESS OF UNITS. Every document
+  /// read-back and every CANCELLATION filtered on these columns with no index
+  /// behind them: `cancelJobReceipt` on (source_doc_type, source_doc_id),
+  /// `cancelJobIssue` on source_doc_line_id. Invisible at today's volume; a unit
+  /// level multiplies ledger rows ~50×, and that is 50 sequential scans inside
+  /// one transaction holding one pooled connection.
+  ///
+  /// Kept FULL, never partial: Prisma cannot express a `WHERE` on an index, so a
+  /// hand-written partial one reads as permanent drift to `db:check-drift`.
+  @@index([organizationId, sourceDocType, sourceDocId])
+  @@index([organizationId, sourceDocLineId])
   @@map("stock_ledger")
+}
+
+/// 🔴 FIFO COST LAYERS (docs/FIFO_COSTING_PLAN.md). One queue per item per
+/// LOCATION (D1): every costed inward row adds a layer, every costed outward row
+/// consumes the oldest ones. Only `stockLedger.service.ts` / `costLayers.ts`
+/// write here — a layer is bookkeeping derived from the ledger, not a document.
+///
+/// Invariant, per (organization, item, location), own stock on the accounting
+/// axis: `SUM(remaining_qty) = SUM(qty_in − qty_out)` and
+/// `SUM(remaining_value) = SUM(value_in − value_out)` — `checkLayerInvariant`.
+///
+/// Customer-owned and physical-only rows create and consume no layers. Like
+/// `stock_ledger`: no soft delete, no `custom_fields`, no `updated_by`.
+model StockCostLayer {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  itemId         String @map("item_id") @db.Uuid
+  locationId     String @map("location_id") @db.Uuid
+
+  /// The inward ledger row that created it. NOT unique: a transfer creates one
+  /// layer per draw at the destination, all under one `transfer_in` row. Null
+  /// only on cut-over layers built from balances (D4), which have no single row.
+  inLedgerEntryId String? @map("in_ledger_entry_id") @db.Uuid
+  /// A transfer copy points at the layer it came from.
+  originLayerId   String? @map("origin_layer_id") @db.Uuid
+  /// The `job_issue_lines.id` a processor layer belongs to (§3.4). A layer that
+  /// carries one is only ever consumed by that challan line's receipt or
+  /// write-off; plain FIFO never touches it.
+  sourceDocLineId String? @map("source_doc_line_id") @db.Uuid
+  /// Informational, never used to pick a layer — except `is_legacy` ones below.
+  batchId         String  @map("batch_id") @db.Uuid
+  /// Built by the cut-over (D4), or restored for a row posted before it. Such a
+  /// layer has no job tag, so jobwork scopes accept it by batch instead.
+  isLegacy        Boolean @default(false) @map("is_legacy")
+
+  /// FIFO order. A transfer copy KEEPS its origin's date — age travels with the goods.
+  inDate DateTime @map("in_date") @db.Timestamptz(6)
+  /// Tie-break: creation order.
+  inSeq  BigInt   @default(autoincrement()) @map("in_seq")
+
+  qty            Decimal @db.Decimal(18, 4)
+  value          Decimal @db.Decimal(18, 4)
+  remainingQty   Decimal @map("remaining_qty") @db.Decimal(18, 4)
+  remainingValue Decimal @map("remaining_value") @db.Decimal(18, 4)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inLedgerEntry StockLedgerEntry? @relation(fields: [inLedgerEntryId], references: [id], onDelete: Cascade)
+  originLayer  StockCostLayer?   @relation("StockCostLayerOrigin", fields: [originLayerId], references: [id], onDelete: SetNull)
+  copies       StockCostLayer[]  @relation("StockCostLayerOrigin")
+  draws        StockLayerDraw[]
+
+  /// The FIFO queue. Kept FULL, never partial on `remaining_qty > 0`: Prisma
+  /// cannot express a `WHERE` on an index, so a partial one reads as permanent
+  /// drift to `db:check-drift` (same call as `stock_ledger`'s indexes).
+  @@index([organizationId, itemId, locationId, inDate, inSeq])
+  @@index([inLedgerEntryId])
+  @@index([organizationId, sourceDocLineId])
+  @@map("stock_cost_layers")
+}
+
+/// What one outward ledger row took from one layer. Restoring these, exactly, is
+/// how a cancellation puts cost back where it came from.
+model StockLayerDraw {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String @map("organization_id") @db.Uuid
+  layerId          String @map("layer_id") @db.Uuid
+  outLedgerEntryId String @map("out_ledger_entry_id") @db.Uuid
+
+  qty   Decimal @db.Decimal(18, 4)
+  value Decimal @db.Decimal(18, 4)
+
+  /// Set when the outward row is reversed and this draw given back to its layer.
+  reversedAt DateTime? @map("reversed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  layer          StockCostLayer   @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  outLedgerEntry StockLedgerEntry @relation(fields: [outLedgerEntryId], references: [id], onDelete: Cascade)
+
+  @@index([layerId])
+  @@index([outLedgerEntryId])
+  @@map("stock_layer_draws")
 }

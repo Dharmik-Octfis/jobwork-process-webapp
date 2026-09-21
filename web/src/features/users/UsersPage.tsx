@@ -471,7 +471,8 @@ export function UsersPage() {
                 ))}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
                 <thead>
                   <tr
                     style={{
@@ -535,6 +536,7 @@ export function UsersPage() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 

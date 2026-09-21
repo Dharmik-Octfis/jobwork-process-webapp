@@ -1,22 +1,23 @@
 import { blurOnWheel } from '../../components/ui/blurOnWheel';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchAvailableBatches } from './batches/batches.api';
 import { AddBatchesModal } from './issues/AddBatchesModal';
-import { rowKey } from './issues/batchSelection';
+import { selectionKey } from './issues/batchSelection';
+import { InfoTip } from '../../components/ui/InfoTip';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { Select } from '../../components/ui/Select';
 import { useUoms } from '../inventory/uom/uom.api';
+import { compositeItemsApi } from '../inventory/composite-items/compositeItems.api';
 import { itemsApi } from '../items/items.api';
 import type { Item } from '../items/items.schemas';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { ProcessSelect } from './processes/ProcessSelect';
-import { RATE_BASIS_OPTIONS } from './processes/processes.schemas';
-import { useTrackingLabel } from '../../hooks/useTrackingLabel';
+import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import {
   PROCESSOR_TYPE_OPTIONS,
   derivedExpectedQty,
@@ -25,8 +26,11 @@ import {
   feedsSteps,
   formatQty,
   overPlanWarning,
+  planWarnings,
   primaryOutputIndex,
   producedByStep,
+  shareSplitRows,
+  type RecipeLookup,
   type StepGridRow,
   type StepItemRow,
 } from './jobwork.schemas';
@@ -116,12 +120,18 @@ interface Props<T extends StepGridRow> {
    * started steps after it.
    */
   lockedCount?: number;
+  /** Positions of completed or closed-short steps. A locked step's processor stays
+   * editable — it only defaults the next challan — unless the step takes no more. */
+  finishedSteps?: ReadonlySet<number>;
   /**
    * 🔴 True wherever this grid is rendered inside a `Modal` — today, the append
    * dialog. The item picker's menu is otherwise clipped by the dialog's scrolling
    * body on both axes and most of the list is unreachable (CLAUDE.md).
    */
   portalMenus?: boolean;
+  /** The blank processor option. A route defers it to the job order; a job order
+   * defers it to the Issue screen, which refuses to post without one. */
+  unassignedProcessorLabel?: string;
 }
 
 const cellInput: React.CSSProperties = {
@@ -133,6 +143,8 @@ const cellInput: React.CSSProperties = {
   background: '#fff',
   minHeight: 30,
 };
+
+const cellInputError: React.CSSProperties = { ...cellInput, borderColor: '#ef4444' };
 
 /** A value the server owns. Same box as `cellInput` so the row does not jump, but
  * flat and grey so it reads as a stated fact rather than an empty control. Not
@@ -149,15 +161,6 @@ const cellReadOnly: React.CSSProperties = {
 /** One field's caption. A `<span>`, not a `<label>`: most of these controls are
  * `Select`, which renders a button with no id to point `htmlFor` at — the control
  * carries its own `ariaLabel` instead. The native inputs do get real labels. */
-const fieldLabel: React.CSSProperties = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 600,
-  color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-  marginBottom: 4,
-};
 
 const iconButton: React.CSSProperties = {
   display: 'flex',
@@ -216,20 +219,21 @@ interface ItemListProps {
   /** 🔴 True wherever this grid sits inside a `Modal` — see `ItemComboBox`. */
   portalMenus?: boolean;
   showQty?: boolean;
+  /** Job orders only: the quantity is required before the step's first challan
+   * posts (landed-cost V4). Captioned as required, never blocks the save — a
+   * half-planned order must still save. A route's quantity is only a default. */
+  qtyRequired?: boolean;
   /** The per-item over-issue box. Job orders only — separate from `showQty`
    * because a route carries a default quantity but no tolerance. */
   showTolerance?: boolean;
-  /**
-   * 🔴 The STEP's tolerance, shown greyed inside each blank row's box.
-   *
-   * Blank on a row does not mean "no tolerance" — it means "use the step's"
-   * (`jobIssues.service.ts` resolves `row.tolerancePct ?? step.tolerancePct`), and
-   * an empty box reads as exactly the opposite. A placeholder rather than a value
-   * written into the row: a copy freezes at the moment it is made, so changing the
-   * step afterwards would strand stale numbers that nothing could distinguish from
-   * ones somebody typed deliberately.
-   */
-  stepTolerancePct?: number | null;
+  /** Outputs only: the charge per accepted unit box (landed-cost plan D1). */
+  showRate?: boolean;
+  /** Outputs, job orders only: which rows take a share of the input (R1b). Empty
+   * means the step is not split by share and the column is not shown. */
+  shareRows?: ReadonlySet<number>;
+  /** A one-line remark under the list's header — today, that a step with several
+   * inputs may only produce composites (V1). */
+  note?: string | null;
   /**
    * …and the same trick on the quantity box: what the server will store if this
    * row is left blank, or `null` when it will store nothing and the box is really
@@ -301,8 +305,11 @@ function ItemList({
   uomOptions,
   portalMenus,
   showQty,
+  qtyRequired,
   showTolerance,
-  stepTolerancePct,
+  showRate,
+  shareRows,
+  note,
   qtyPlaceholderFor,
   disabled,
   stepIndex,
@@ -317,6 +324,11 @@ function ItemList({
 }: ItemListProps) {
   const trackingLabel = useTrackingLabel();
   const isInput = side === 'inputs';
+  const showShare = !isInput && (shareRows?.size ?? 0) > 0;
+  const shareTotal = showShare
+    ? rows.reduce((sum, row, i) => sum + (shareRows!.has(i) ? (row.sharePct ?? 0) : 0), 0)
+    : 0;
+  const shareBlank = showShare && rows.some((row, i) => shareRows!.has(i) && row.sharePct == null);
   const update = (rowIndex: number, patch: Partial<StepItemRow>) =>
     onChange(rows.map((row, i) => (i === rowIndex ? { ...row, ...patch } : row)));
 
@@ -383,11 +395,7 @@ function ItemList({
               cursor: disabled || mirrorRows.length === 0 ? 'default' : 'pointer',
               whiteSpace: 'nowrap',
             }}
-            title={
-              mirrorRows.length === 0
-                ? 'List what the step consumes first, then this copies it here.'
-                : 'Copy every item from CONSUMES into PRODUCES. Each row stays editable; unticking clears them.'
-            }
+            title={mirrorRows.length === 0 ? 'Add consumed items first' : 'Copy consumed items'}
           >
             <input
               type="checkbox"
@@ -402,14 +410,97 @@ function ItemList({
       </div>
 
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {note && (
+          <p style={{ fontSize: 11, color: '#475569', margin: 0, lineHeight: 1.5 }}>{note}</p>
+        )}
         {/* 🔴 An empty list means an empty list. Nothing is added behind your
             back — what these rows say is exactly what is written. */}
         {rows.length === 0 && (
           <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>{emptyHint}</p>
         )}
 
+        {/* Same flex bases and wrap as the rows below, so each caption breaks onto
+            the same line as its box on a narrow screen. The boxes keep their own
+            screen-reader labels, hence aria-hidden on the caption TEXT — not on the
+            row, which would hide the info button while Tab still reaches it. */}
+        {rows.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+              flexWrap: 'wrap',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+            }}
+          >
+            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0 }}>
+              Item
+            </span>
+            <span aria-hidden="true" style={{ flex: '0 0 62px' }}>
+              Unit
+            </span>
+            {showQty && (
+              <span
+                style={{
+                  flex: '0 0 84px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  ...(qtyRequired ? { color: '#ef4444' } : {}),
+                }}
+              >
+                <span aria-hidden="true">
+                  {isInput ? 'Planned' : 'Expected'}
+                  {qtyRequired && '*'}
+                </span>
+                {qtyRequired && (
+                  <InfoTip label={isInput ? 'About planned quantity' : 'About expected quantity'}>
+                    {isInput
+                      ? 'Quantity you plan to send to the processor. Landed cost is calculated from it.'
+                      : 'Good quantity you expect to receive back. Landed cost is calculated from it.'}
+                  </InfoTip>
+                )}
+              </span>
+            )}
+            {showTolerance && isInput && (
+              <span aria-hidden="true" style={{ flex: '0 0 76px' }}>
+                Tolerance (%)
+              </span>
+            )}
+            {showRate && !isInput && (
+              <span aria-hidden="true" style={{ flex: '0 0 84px' }}>
+                Rate
+              </span>
+            )}
+            {showShare && (
+              <span
+                style={{
+                  flex: '0 0 76px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  color: '#ef4444',
+                }}
+              >
+                <span aria-hidden="true">Share (%)*</span>
+                <InfoTip label="About share">
+                  How much of the consumed item goes into each item produced. Material cost is split
+                  by these shares, so enter what each one really uses. Example: 100 m in, 91% for a
+                  91 m roll and 9% for a thick item made from 9 m. They must total 100%.
+                </InfoTip>
+              </span>
+            )}
+            <span aria-hidden="true" style={{ flex: '0 0 26px' }} />
+          </div>
+        )}
+
         {rows.map((row, rowIndex) => {
-          const rowError = errors?.[`steps.${stepIndex}.${side}.${rowIndex}.itemId`];
+          const rowKey = `steps.${stepIndex}.${side}.${rowIndex}`;
+          const fieldError = (field: string) => errors?.[`${rowKey}.${field}`];
+          const rowError = Object.entries(errors ?? {}).find(
+            ([key]) => key === rowKey || key.startsWith(`${rowKey}.`),
+          )?.[1];
           const unit = itemUnit(row.itemId);
           const badge = badgeFor(row, rowIndex);
           // Advisory, so it never blocks the button and never colours the box the
@@ -421,7 +512,9 @@ function ItemList({
           const qtyId = `step-${stepIndex}-${side}-${rowIndex}-qty`;
           return (
             <div key={rowIndex} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* Wraps on a phone: an output row carries item, unit, expected, rate
+                  and remove, which is wider than 390px. */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* 🔴 A SEARCHING PICKER, not a dropdown of every item in the org.
                     A plain `Select` had to be handed the whole catalogue up front,
                     which is one long request before the form is usable and an
@@ -447,7 +540,7 @@ function ItemList({
                       });
                     }}
                     placeholder="Select an item…"
-                    hasError={Boolean(rowError)}
+                    hasError={Boolean(fieldError('itemId'))}
                     disabled={disabled}
                     portal={portalMenus}
                     name={`step-${stepIndex}-${side}-${rowIndex}-item`}
@@ -471,6 +564,7 @@ function ItemList({
                       onChange={(value) => update(rowIndex, { uomId: value || null })}
                       options={uomOptions}
                       disabled={disabled}
+                      hasError={Boolean(fieldError('uomId'))}
                       ariaLabel={`Step ${stepNumber} ${isInput ? 'input' : 'output'} ${rowIndex + 1} unit`}
                       minWidth={0}
                       portal={portalMenus}
@@ -498,30 +592,33 @@ function ItemList({
                         update(rowIndex, isInput ? { plannedQty: value } : { expectedQty: value });
                       }}
                       disabled={disabled}
+                      aria-required={qtyRequired || undefined}
                       /* 🔴 Grey, never written into the row. It says what the
                          server will store if this is left blank, so an empty box
                          stops reading as "expect nothing". No placeholder means
                          the server stores nothing either and the box is genuinely
                          asking — see `derivedExpectedQty`. */
                       placeholder={
-                        derivedQty !== null ? formatQty(derivedQty) : isInput ? 'qty' : 'expected'
+                        derivedQty !== null
+                          ? formatQty(derivedQty)
+                          : isInput && !showTolerance
+                            ? 'qty'
+                            : '100'
                       }
-                      title={
-                        isInput
-                          ? 'How much of this item the step consumes'
-                          : derivedQty !== null
-                            ? `How much of this item is expected back. Left blank it plans ${formatQty(derivedQty)} — the quantity that goes in.`
-                            : 'How much of this item is expected back. It returns in a different unit from what goes in, so nothing can be assumed — state it, or the next step has no quantity to plan from.'
+                      title={isInput ? 'Quantity consumed' : 'Expected quantity'}
+                      style={
+                        fieldError(isInput ? 'plannedQty' : 'expectedQty')
+                          ? cellInputError
+                          : cellInput
                       }
-                      style={cellInput}
                     />
                   </div>
                 )}
 
-                {/* Blank means "use the step's" — fabric at 3% beside thread at
-                    25%, because small quantities vary more. */}
+                {/* Per item — fabric at 3% beside thread at 25%, because small
+                    quantities vary more. Typed here; blank means unchecked. */}
                 {showTolerance && isInput && (
-                  <div style={{ flex: '0 0 66px' }}>
+                  <div style={{ flex: '0 0 76px' }}>
                     <label htmlFor={`${qtyId}-tol`} style={srOnly}>
                       {`Step ${stepNumber} tolerance percent for row ${rowIndex + 1}`}
                     </label>
@@ -539,19 +636,77 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      /* The step's own figure, greyed. Blank here means "use the
-                         step's", and an empty box reads as "no tolerance" — the
-                         opposite of what it does. */
-                      placeholder={stepTolerancePct != null ? String(stepTolerancePct) : 'tol %'}
-                      title={
-                        stepTolerancePct != null
-                          ? `Over-issue allowance for this item. Left blank it uses the step’s ${stepTolerancePct}%.`
-                          : 'Over-issue allowance for this item. Blank uses the step’s, and the step has none set.'
-                      }
-                      style={cellInput}
+                      placeholder="tol %"
+                      title="Over-issue allowance %"
+                      style={fieldError('tolerancePct') ? cellInputError : cellInput}
                     />
                   </div>
                 )}
+
+                {/* The charge per ACCEPTED unit of this output (landed-cost plan
+                    D1–D2): blank is "not agreed yet", 0 is "done free". */}
+                {showRate && !isInput && (
+                  <div style={{ flex: '0 0 84px' }}>
+                    <label htmlFor={`${qtyId}-rate`} style={srOnly}>
+                      {`Step ${stepNumber} rate per ${unit?.label ?? 'unit'} for output ${rowIndex + 1}`}
+                    </label>
+                    <input
+                      id={`${qtyId}-rate`}
+                      type="number"
+                      onWheel={blurOnWheel}
+                      step="0.01"
+                      min="0"
+                      value={row.rate ?? ''}
+                      onChange={(e) =>
+                        update(rowIndex, {
+                          rate: e.target.value === '' ? null : Number(e.target.value),
+                        })
+                      }
+                      disabled={disabled}
+                      placeholder="10"
+                      title={`Rate per ${unit?.label ?? 'unit'}`}
+                      style={fieldError('rate') ? cellInputError : cellInput}
+                    />
+                  </div>
+                )}
+
+                {/* R1b — never defaulted: a blank stays blank until somebody says
+                    what this output takes. The leftover row takes none (R1a), so it
+                    gets a spacer that keeps the columns lined up. */}
+                {showShare &&
+                  (shareRows!.has(rowIndex) ? (
+                    <div style={{ flex: '0 0 76px' }}>
+                      <label htmlFor={`${qtyId}-share`} style={srOnly}>
+                        {`Step ${stepNumber} share percent for output ${rowIndex + 1}`}
+                      </label>
+                      <input
+                        id={`${qtyId}-share`}
+                        type="number"
+                        onWheel={blurOnWheel}
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={row.sharePct ?? ''}
+                        onChange={(e) =>
+                          update(rowIndex, {
+                            sharePct: e.target.value === '' ? null : Number(e.target.value),
+                          })
+                        }
+                        disabled={disabled}
+                        aria-required
+                        placeholder="%"
+                        title="Share of material"
+                        style={fieldError('sharePct') ? cellInputError : cellInput}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      style={{ flex: '0 0 76px', ...cellReadOnly, justifyContent: 'center' }}
+                      title="Comes back unused — takes no share"
+                    >
+                      –
+                    </div>
+                  ))}
 
                 {/* 🔴 No "Main" radio. One output absorbs the step's cost
                     (§9.2.1) and it is the FIRST row — the server's own fallback
@@ -559,7 +714,7 @@ function ItemList({
                     `primaryOutputIndex` so the chain badge says the same thing.
                     Asking decided nothing in the common case, one item back, and
                     was one more control to get wrong in the uncommon one. Same
-                    call `ReceiveDialog` already made for its returned rows. */}
+                    call the Receive form already makes for its returned rows. */}
 
                 <button
                   type="button"
@@ -585,7 +740,8 @@ function ItemList({
                     {badge.text}
                   </span>
                 )}
-                {rowError && <span style={{ fontSize: 11, color: '#e54d4d' }}>{rowError}</span>}
+                {/* No error sentence here — the field goes red and the toast carries
+                    the message (CLAUDE.md → Frontend). */}
                 {/* Amber, not red, and it sits beside the badge rather than
                     replacing it: the row is saveable exactly as it stands. */}
                 {!rowError && warning && (
@@ -608,8 +764,8 @@ function ItemList({
                     disabled={disabled || !(row.plannedQty && row.plannedQty > 0)}
                     title={
                       row.plannedQty && row.plannedQty > 0
-                        ? `Note which ${trackingLabel.plural.toLowerCase()} this is planned to come out of. Nothing is reserved.`
-                        : `Enter a quantity first — ${trackingLabel.plural.toLowerCase()} are planned against it.`
+                        ? `Plan ${trackingLabel.plural.toLowerCase()}`
+                        : 'Enter a quantity first'
                     }
                     style={{
                       padding: 0,
@@ -628,7 +784,9 @@ function ItemList({
                     {(row.plannedBatches?.length ?? 0) === 0
                       ? `Add ${trackingLabel.plural}`
                       : `${row.plannedBatches!.length} ${
-                          row.plannedBatches!.length === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()
+                          row.plannedBatches!.length === 1
+                            ? trackingLabel.singular.toLowerCase()
+                            : trackingLabel.plural.toLowerCase()
                         } planned`}
                   </button>
                 )}
@@ -636,6 +794,20 @@ function ItemList({
             </div>
           );
         })}
+
+        {/* The running total, so the 100% rule is seen while typing — not first
+            met as a refusal on the Issue screen. */}
+        {showShare && (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: !shareBlank && Math.abs(shareTotal - 100) <= 0.01 ? '#15803d' : '#b45309',
+            }}
+          >
+            {`Share total ${formatQty(shareTotal)}% of 100%`}
+          </span>
+        )}
 
         {/* Gone, not greyed, once the step is locked or the form is read-only. A
             disabled button still painted blue with a pointer cursor reads as
@@ -705,7 +877,9 @@ export function StepsGrid<T extends StepGridRow>({
   priorProducers,
   priorSpare,
   lockedCount = 0,
+  finishedSteps,
   portalMenus,
+  unassignedProcessorLabel = 'Decide per job order',
 }: Props<T>) {
   const { orgId } = useParams<{ orgId: string }>();
   const { data: uoms = [] } = useUoms(orgId!);
@@ -738,6 +912,39 @@ export function StepsGrid<T extends StepGridRow>({
   const uomById = new Map(uoms.map((u) => [u.id, u]));
 
   /**
+   * The live recipe of every composite the grid produces — the plan warnings read
+   * what each output is made from (landed-cost plan §3). One cached request per
+   * composite, on the composite pages' own key so an edit there refreshes it here.
+   * Job orders only: a route holds no quantities to warn about.
+   */
+  const compositeOutputIds = [
+    ...new Set(
+      steps
+        .flatMap((step) => (step.outputs ?? []).map((row) => row.itemId))
+        .filter((id) => id && itemById.get(id)?.itemStructure === 'composite'),
+    ),
+  ];
+  const recipeQueries = useQueries({
+    queries: compositeOutputIds.map((id) => ({
+      queryKey: ['compositeComponents', orgId, id],
+      queryFn: () => compositeItemsApi.getComponents(orgId!, id),
+      enabled: Boolean(orgId) && Boolean(showPlannedQty),
+    })),
+  });
+  const recipeByItem = new Map(
+    compositeOutputIds.map((id, i) => [id, recipeQueries[i]?.data] as const),
+  );
+  const recipeOf: RecipeLookup = (itemId) => {
+    const item = itemById.get(itemId);
+    if (!item) return undefined;
+    if (item.itemStructure !== 'composite') return null;
+    return recipeByItem.get(itemId)?.map((row) => ({
+      componentItemId: row.componentItemId,
+      qtyPerUnit: Number(row.qtyPerUnit),
+    }));
+  };
+
+  /**
    * An item's stocking unit — the id a row carries and the label it prints.
    * `null` means the item cannot answer (no stocking uom yet), and the caller
    * then shows the dropdown, which is exactly what the server does
@@ -758,12 +965,12 @@ export function StepsGrid<T extends StepGridRow>({
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId, 'processors'],
     queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId) && steps.some(s => s.processorType !== 'internal'),
+    enabled: Boolean(orgId) && steps.some((s) => s.processorType !== 'internal'),
   });
   const { data: customersPage } = useQuery({
     queryKey: ['customers', orgId],
     queryFn: () => fetchCustomers(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId) && steps.some(s => s.processorType === 'customer'),
+    enabled: Boolean(orgId) && steps.some((s) => s.processorType === 'customer'),
   });
 
   const { data: locations = [] } = useQuery({
@@ -779,6 +986,10 @@ export function StepsGrid<T extends StepGridRow>({
    * `update(stepIndex, …)`, which only this component owns.
    */
   const [planning, setPlanning] = useState<{ stepIndex: number; rowIndex: number } | null>(null);
+  /** 🔴 Gates the package level in the planner's grid. A plan may now name a
+   * roll, not just a batch — still a NOTE, holding nothing, exactly as the batch
+   * note holds nothing. */
+  const unitLabel = useBatchUnitLabel();
   const [planSearch, setPlanSearch] = useState('');
   const [planSearchDebounced, setPlanSearchDebounced] = useState('');
   // A query per keystroke would be one round trip per letter of a batch reference.
@@ -813,6 +1024,10 @@ export function StepsGrid<T extends StepGridRow>({
       ownership,
       planSearchDebounced,
       'plan',
+      // 🔴 Part of the KEY. Turning the level on has to invalidate this, or the
+      // planner serves a cached answer with no packages and every batch looks as
+      // though it has none.
+      unitLabel.enabled,
     ],
     queryFn: () =>
       fetchAvailableBatches(orgId!, {
@@ -820,6 +1035,7 @@ export function StepsGrid<T extends StepGridRow>({
         ownership,
         search: planSearchDebounced || undefined,
         limit: PLAN_BATCH_LIMIT,
+        withUnits: unitLabel.enabled,
       }),
     enabled: Boolean(orgId && planningRow?.itemId),
   });
@@ -845,22 +1061,19 @@ export function StepsGrid<T extends StepGridRow>({
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {steps.map((step, index) => {
-          /**
-           * A server error on either list is keyed to the row it landed on —
-           * over-planned quantity (§6.4), a repeated item, two primary outputs.
-           * Anything on this step turns the whole block red, so the step is
-           * findable before the row is.
-           */
-          const chainError = Object.entries(errors ?? {}).find(
-            ([key]) =>
-              key.startsWith(`steps.${index}.inputs`) || key.startsWith(`steps.${index}.outputs`),
-          )?.[1];
-          const field = (id: string) => `step-${index}-${id}`;
           // Position in the order, not in this array — they differ when appending.
           const stepNo = index + 1 + seqOffset;
           // Frozen: work has already gone out at or after this position (§6.6).
           const locked = index < lockedCount;
           const readOnly = disabled || locked;
+          // The server applies the same rule (`updateJobOrderById`).
+          const processorEditable =
+            !disabled &&
+            (!locked || (step.processorType !== 'internal' && !finishedSteps?.has(index)));
+          // Job orders only; one map per step, read by every input row below (§3).
+          const stepWarnings = showPlannedQty
+            ? planWarnings(step.inputs ?? [], step.outputs ?? [], recipeOf)
+            : new Map<string, string>();
 
           /**
            * A step that lists no inputs of its own takes what the step above
@@ -878,9 +1091,10 @@ export function StepsGrid<T extends StepGridRow>({
             <div
               key={index}
               style={{
-                border: `1px solid ${chainError ? '#fecaca' : '#eef0f3'}`,
+                // Errors colour the field they belong to, never the whole step.
+                border: '1px solid #eef0f3',
                 borderRadius: 6,
-                background: chainError ? '#fef2f2' : '#fff',
+                background: '#fff',
               }}
             >
               <div
@@ -890,7 +1104,7 @@ export function StepsGrid<T extends StepGridRow>({
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: '8px 14px',
-                  background: chainError ? '#fef2f2' : '#f9f9fb',
+                  background: '#f9f9fb',
                   borderBottom: '1px solid #eef0f3',
                   borderTopLeftRadius: 6,
                   borderTopRightRadius: 6,
@@ -902,7 +1116,9 @@ export function StepsGrid<T extends StepGridRow>({
                       with no explanation, reads as a bug in the form. */}
                   {locked && (
                     <span style={{ ...chipStyle, background: '#f1f5f9', color: '#475569' }}>
-                      Already sent out — locked
+                      {processorEditable
+                        ? 'Already sent out — only the processor can change'
+                        : 'Already sent out — locked'}
                     </span>
                   )}
                 </span>
@@ -954,193 +1170,129 @@ export function StepsGrid<T extends StepGridRow>({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                  gap: 14,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                  gap: '14px 32px',
                   padding: 14,
                 }}
               >
-                <div>
-                  <span style={{ ...fieldLabel, color: '#ef4444' }}>Process*</span>
-                  <ProcessSelect
-                    value={step.processId || null}
-                    onChange={(processId, process) =>
-                      update(index, {
-                        processId,
-                        /**
-                         * 🔴 Seeded HERE, visibly, rather than mirrored by the
-                         * server at save. A process that does not change the item
-                         * returns what it took — so the row is put in where
-                         * somebody can see it, change it, or delete it. Only when
-                         * PRODUCES is still empty: an existing list is the user's
-                         * and is never rewritten by a process change.
-                         */
-                        outputs:
-                          (step.outputs ?? []).length === 0 &&
-                          !process.itemChanges &&
-                          step.inputs?.[0]?.itemId
-                            ? [
-                                {
-                                  ...emptyStepItem(),
-                                  itemId: step.inputs[0]!.itemId,
-                                  uomId: step.inputs[0]!.uomId ?? null,
-                                },
-                              ]
-                            : step.outputs,
-                        // The process master is the first link of the default
-                        // chain (§2.5). Only blanks are filled — anything the
-                        // user already typed stays.
-                        rateBasis: step.rateBasis ?? process.rateBasis,
-                        tolerancePct:
-                          step.tolerancePct ??
-                          (process.defaultTolerancePct === null
-                            ? null
-                            : Number(process.defaultTolerancePct)),
-                        // The process's default units are NOT copied down any
-                        // more: each row takes its own item's stocking unit
-                        // (§5.1), and an org-wide "issue in KG" is a statement
-                        // about the thing being processed, not about the thread
-                        // and buttons going out beside it. The server applies it
-                        // to the principal row alone, where the item cannot
-                        // answer for itself.
-                      })
-                    }
-                    disabled={readOnly}
-                    ariaLabel={`Step ${stepNo} process`}
-                    minWidth="100%"
-                    portal={portalMenus}
-                  />
+                {/* 1. Process */}
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
+                  <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>Process*</span>
+                  <div style={{ width: '100%' }}>
+                    <ProcessSelect
+                      value={step.processId || null}
+                      onChange={(processId, process) =>
+                        update(index, {
+                          processId,
+                          outputs:
+                            (step.outputs ?? []).length === 0 &&
+                            !process.itemChanges &&
+                            step.inputs?.[0]?.itemId
+                              ? [
+                                  {
+                                    ...emptyStepItem(),
+                                    itemId: step.inputs[0]!.itemId,
+                                    uomId: step.inputs[0]!.uomId ?? null,
+                                  },
+                                ]
+                              : step.outputs,
+                        })
+                      }
+                      disabled={readOnly}
+                      ariaLabel={`Step ${stepNo} process`}
+                      minWidth="100%"
+                      portal={portalMenus}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <span style={fieldLabel}>Done by</span>
-                  <Select
-                    value={step.processorType ?? 'vendor'}
-                    onChange={(value) =>
-                      // The processor and the work centre are mutually exclusive,
-                      // so switching type clears the one that no longer applies.
-                      // Leaving a stale id behind is how a challan ends up
-                      // addressed to a vendor on an in-house step.
-                      update(index, {
-                        processorType: value,
-                        processorId: value === 'internal' ? null : step.processorId,
-                        workCentreLocationId:
-                          value === 'internal' ? step.workCentreLocationId : null,
-                      })
-                    }
-                    options={[...PROCESSOR_TYPE_OPTIONS]}
-                    disabled={readOnly}
-                    ariaLabel={`Step ${stepNo} performed by`}
-                    minWidth={0}
-                    portal={portalMenus}
-                  />
+                {/* 3. Done by */}
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
+                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>Done by</span>
+                  <div style={{ width: '100%' }}>
+                    <Select
+                      value={step.processorType ?? 'vendor'}
+                      onChange={(value) =>
+                        update(index, {
+                          processorType: value,
+                          // A vendor id is not a customer id — keeping it across a type
+                          // change saves a processor the server rejects as unknown.
+                          processorId:
+                            value === (step.processorType ?? 'vendor') ? step.processorId : null,
+                          workCentreLocationId:
+                            value === 'internal' ? step.workCentreLocationId : null,
+                        })
+                      }
+                      options={[...PROCESSOR_TYPE_OPTIONS]}
+                      disabled={readOnly}
+                      ariaLabel={`Step ${stepNo} performed by`}
+                      fullWidth
+                      portal={portalMenus}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <span style={fieldLabel}>
+                {/* 4. Processor */}
+                <div
+                  className="form-field-grid"
+                  style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: '16px' }}
+                >
+                  <span style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                     {step.processorType === 'internal' ? 'Work centre' : 'Processor'}
                   </span>
-                  {step.processorType === 'internal' ? (
-                    <Select
-                      value={step.workCentreLocationId ?? ''}
-                      onChange={(value) => update(index, { workCentreLocationId: value || null })}
-                      options={[
-                        { value: '', label: 'Select a work centre…' },
-                        ...workCentres.map((l) => ({ value: l.id, label: l.name })),
-                      ]}
-                      disabled={true}
-                      ariaLabel={`Step ${stepNo} work centre`}
-                      minWidth={0}
-                      portal={portalMenus}
-                    />
-                  ) : (
-                    <Select
-                      value={step.processorId ?? ''}
-                      onChange={(value) => update(index, { processorId: value || null })}
-                      options={[
-                        { value: '', label: 'Decide per job order' },
-                        ...(step.processorType === 'customer'
-                          ? (customersPage?.results ?? []).map((c) => ({
-                              value: c.id,
-                              label: c.companyName || c.contactName,
-                            }))
-                          : (vendorsPage?.results ?? [])
-                              .filter((v) => !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'))
-                              .map((v) => ({
-                                value: v.id,
-                                label: v.companyName || v.contactName,
+                  <div style={{ width: '100%' }}>
+                    {step.processorType === 'internal' ? (
+                      <Select
+                        value={step.workCentreLocationId ?? ''}
+                        onChange={(value) => update(index, { workCentreLocationId: value || null })}
+                        options={[
+                          { value: '', label: 'Select a work centre…' },
+                          ...workCentres.map((l) => ({ value: l.id, label: l.name })),
+                        ]}
+                        disabled={true}
+                        hasError={Boolean(errors?.[`steps.${index}.workCentreLocationId`])}
+                        ariaLabel={`Step ${stepNo} work centre`}
+                        fullWidth
+                        portal={portalMenus}
+                      />
+                    ) : (
+                      <Select
+                        value={step.processorId ?? ''}
+                        onChange={(value) => update(index, { processorId: value || null })}
+                        options={[
+                          { value: '', label: unassignedProcessorLabel },
+                          ...(step.processorType === 'customer'
+                            ? (customersPage?.results ?? []).map((c) => ({
+                                value: c.id,
+                                label: c.companyName || c.contactName,
                               }))
-                        ),
-                      ]}
-                      disabled={readOnly}
-                      ariaLabel={`Step ${stepNo} processor`}
-                      minWidth={0}
-                      portal={portalMenus}
-                    />
-                  )}
+                            : (vendorsPage?.results ?? [])
+                                .filter(
+                                  (v) =>
+                                    !v.vendorTypes?.length || v.vendorTypes.includes('job_worker'),
+                                )
+                                .map((v) => ({
+                                  value: v.id,
+                                  label: v.companyName || v.contactName,
+                                }))),
+                        ]}
+                        disabled={!processorEditable}
+                        hasError={Boolean(errors?.[`steps.${index}.processorId`])}
+                        ariaLabel={`Step ${stepNo} processor`}
+                        fullWidth
+                        portal={portalMenus}
+                      />
+                    )}
+                  </div>
                 </div>
 
-                {/* 🔴 No step-level "Planned qty" and no "Yield".
-                    Planned quantity is per item now — it lives on each row of
-                    CONSUMES below, because one number cannot cover metres, cones
-                    and pieces at once (§5.7). Yield is gone with it: one ratio
-                    cannot relate three inputs to two outputs, and every output
-                    already carries the quantity it is expected to return, which
-                    says the same thing without implying a conversion. */}
-
-                <div>
-                  <label style={fieldLabel} htmlFor={field('rate')}>
-                    Rate
-                  </label>
-                  <input
-                    id={field('rate')}
-                    type="number"
-                    onWheel={blurOnWheel}
-                    step="0.01"
-                    min="0"
-                    value={step.rate ?? ''}
-                    onChange={(e) =>
-                      update(index, { rate: e.target.value === '' ? null : Number(e.target.value) })
-                    }
-                    disabled={readOnly}
-                    style={cellInput}
-                  />
-                </div>
-
-                <div>
-                  <span style={fieldLabel}>Rate basis</span>
-                  <Select
-                    value={step.rateBasis ?? ''}
-                    onChange={(value) => update(index, { rateBasis: value || null })}
-                    options={[{ value: '', label: 'From the process' }, ...RATE_BASIS_OPTIONS]}
-                    disabled={readOnly}
-                    ariaLabel={`Step ${stepNo} rate basis`}
-                    minWidth={0}
-                    portal={portalMenus}
-                  />
-                </div>
-
-                <div>
-                  <label style={fieldLabel} htmlFor={field('tolerance')}>
-                    Tolerance % — all items
-                  </label>
-                  <input
-                    id={field('tolerance')}
-                    type="number"
-                    onWheel={blurOnWheel}
-                    step="0.001"
-                    min="0"
-                    max="100"
-                    value={step.tolerancePct ?? ''}
-                    onChange={(e) =>
-                      update(index, {
-                        tolerancePct: e.target.value === '' ? null : Number(e.target.value),
-                      })
-                    }
-                    disabled={readOnly}
-                    style={cellInput}
-                    title="How much over the plan may be issued. Any item can override it on its own row."
-                  />
-                </div>
+                {/* No step rate: each output row carries its own (landed-cost D1). */}
               </div>
 
               {/*
@@ -1178,8 +1330,8 @@ export function StepsGrid<T extends StepGridRow>({
                   uomOptions={uomOptions}
                   portalMenus={portalMenus}
                   showQty={showPlannedQty || showInputQty}
+                  qtyRequired={showPlannedQty}
                   showTolerance={showPlannedQty}
-                  stepTolerancePct={step.tolerancePct ?? null}
                   disabled={readOnly}
                   stepIndex={index}
                   stepNumber={stepNo}
@@ -1200,7 +1352,9 @@ export function StepsGrid<T extends StepGridRow>({
                      against and a note here could only be guesswork. */
                   warningFor={
                     showPlannedQty
-                      ? (row) => overPlanWarning(steps, index, row, priorSpare)
+                      ? (row) =>
+                          stepWarnings.get(row.itemId) ??
+                          overPlanWarning(steps, index, row, priorSpare)
                       : undefined
                   }
                   badgeFor={(row) => {
@@ -1230,6 +1384,15 @@ export function StepsGrid<T extends StepGridRow>({
                   portalMenus={portalMenus}
                   mirrorSource={step.inputs ?? []}
                   showQty={showPlannedQty}
+                  qtyRequired={showPlannedQty}
+                  showRate
+                  shareRows={showPlannedQty ? shareSplitRows(step) : undefined}
+                  note={
+                    (step.inputs ?? []).filter((row) => row.itemId).length > 1
+                      ? 'Several items go in, so each item listed here must be a composite whose recipe says what it is made from — unless it is one of the items going in.'
+                      : null
+                  }
+                  emptyHint="Nothing listed — this step will produce nothing."
                   /* Job orders only. A route holds no output quantities at all,
                      so there is nothing for it to preview. */
                   qtyPlaceholderFor={
@@ -1242,7 +1405,6 @@ export function StepsGrid<T extends StepGridRow>({
                   stepIndex={index}
                   stepNumber={stepNo}
                   errors={errors}
-                  emptyHint="Nothing listed — this step will produce nothing, and nothing can be received against it. Add what comes back, even if it is the same item that went in."
                   badgeFor={(row, rowIndex) => {
                     if (!row.itemId) return null;
                     // Which row is the main output is derived now, not ticked —
@@ -1298,7 +1460,20 @@ export function StepsGrid<T extends StepGridRow>({
               // is nothing to render or check a quantity against — the row drops
               // and the user re-picks. Silently keeping it would show a plan
               // against stock that no longer exists.
-              return batch ? [[rowKey(batch), { batch, qty: planned.qty }] as const] : [];
+              if (!batch) return [];
+              /* The package the plan named, matched back against what is on offer
+                 now. A roll that has since been consumed drops the same way its
+                 batch would — the plan is a note about stock that may be gone. */
+              const unit = planned.batchUnitId
+                ? (batch.units.find((u) => u.batchUnitId === planned.batchUnitId) ?? null)
+                : null;
+              if (planned.batchUnitId && !unit) return [];
+              return [
+                [
+                  selectionKey(batch, unit?.batchUnitId ?? null),
+                  { batch, unit, qty: planned.qty },
+                ] as const,
+              ];
             }),
           )}
           onSave={(rows, overwriteQty) => {
@@ -1310,6 +1485,9 @@ export function StepsGrid<T extends StepGridRow>({
               ...(overwriteQty !== null ? { plannedQty: overwriteQty } : {}),
               plannedBatches: Object.values(rows).map((sel) => ({
                 batchId: sel.batch.batchId,
+                /* Which roll was ticked, when one was. The picker already keys
+                   its selection per package, so this is a straight copy. */
+                batchUnitId: sel.unit?.batchUnitId ?? null,
                 locationId: sel.batch.locationId,
                 qty: sel.qty,
               })),

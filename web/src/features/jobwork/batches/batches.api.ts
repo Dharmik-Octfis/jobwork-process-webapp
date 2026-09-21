@@ -49,12 +49,38 @@ export const availableBatchSchema = z.object({
   ownership: z.string(),
   ownerPartyId: z.string().nullable(),
   availableQty: z.string(),
-  accumulatedValue: z.string(),
-  costPerUnit: z.string().nullable(),
   inventoryTracking: z.string(),
+
+  /**
+   * The packages inside this batch AT THIS LOCATION — takas, rolls, bales — and
+   * what is left of each. Only populated when the caller asked (`withUnits`);
+   * empty otherwise, and empty for every batch that simply has none.
+   */
+  units: z
+    .array(
+      z.object({
+        batchUnitId: z.string(),
+        seq: z.number(),
+        label: z.string(),
+        availableQty: z.string(),
+      }),
+    )
+    .default([]),
+  /**
+   * 🔴 WHAT MAY LEAVE WITHOUT NAMING A PACKAGE — the balance less everything the
+   * packages hold.
+   *
+   * Sent by the server rather than derived here, and that is deliberate: a
+   * `limit` or a `search` can trim the package list, so subtracting the ones on
+   * screen from the batch total would overstate what is loose. It is also the
+   * exact figure the server's own invariant measures against, so a row offering
+   * more than this is a row the save would refuse.
+   */
+  untaggedQty: z.string().optional(),
 });
 
 export type AvailableBatch = z.infer<typeof availableBatchSchema>;
+export type AvailableBatchUnit = AvailableBatch['units'][number];
 
 export const stockLocationSchema = z.object({
   id: z.string(),
@@ -89,7 +115,7 @@ export async function fetchAvailableBatches(
     itemId: string;
     locationId?: string;
     ownership?: string;
-    withPackages?: boolean;
+    withUnits?: boolean;
     search?: string;
     limit?: number;
   },
@@ -98,7 +124,48 @@ export async function fetchAvailableBatches(
     params: {
       ...params,
       search: params.search?.trim() || undefined,
-      withPackages: params.withPackages ? 'true' : undefined,
+      withUnits: params.withUnits ? 'true' : undefined,
+    },
+  });
+  return z.array(availableBatchSchema).parse(response.data);
+}
+
+/**
+ * The same picker query for SEVERAL items at once — the Issue dialog's opening
+ * load (2026-09-01).
+ *
+ * 🔴 Why this exists: the dialog used to call `fetchAvailableBatches` once per
+ * input item. Each of those paid a membership read, its own `runAsTenant`
+ * transaction and its own pooled connection, so a five-item step held five
+ * connections to answer one dialog — and the dev database's ceiling is 79.
+ *
+ * `limit` is still PER ITEM on the server, so adding items never shrinks any one
+ * item's picker. Rows come back FLAT and carry `itemId`; the caller groups them.
+ *
+ * There is deliberately no `search` here: each item has its own search box, so a
+ * search is a one-item question and stays on `fetchAvailableBatches` — which also
+ * keeps this cached answer alive while the user types in one row.
+ */
+export async function fetchAvailableBatchesForItems(
+  orgId: string,
+  params: {
+    itemIds: string[];
+    locationId?: string;
+    ownership?: string;
+    limit?: number;
+    /** Include each batch's packages — the Issue picker asks for them only when
+     * the org runs the level, since they cost one extra grouped query. */
+    withUnits?: boolean;
+  },
+): Promise<AvailableBatch[]> {
+  if (params.itemIds.length === 0) return [];
+  const response = await apiClient.get(endpoints.inventory.availableBatches(orgId), {
+    params: {
+      itemIds: params.itemIds.join(','),
+      locationId: params.locationId,
+      ownership: params.ownership,
+      limit: params.limit,
+      withUnits: params.withUnits ? 'true' : undefined,
     },
   });
   return z.array(availableBatchSchema).parse(response.data);

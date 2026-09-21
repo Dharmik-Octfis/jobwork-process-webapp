@@ -246,7 +246,8 @@ export function CurrenciesPage() {
                 )}
               </div>
             ) : (
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -509,6 +510,7 @@ export function CurrenciesPage() {
                   ))}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
         </div>

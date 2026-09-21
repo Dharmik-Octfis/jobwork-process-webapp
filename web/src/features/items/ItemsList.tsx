@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api.ts';
 import { Plus, Package, SlidersHorizontal, ShoppingBag } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { ItemDetail } from './ItemDetail';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -90,6 +90,7 @@ function renderItemCell(
 
 export function ItemsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemId = searchParams.get('id');
@@ -200,8 +201,9 @@ export function ItemsList() {
       }}
     >
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
         <div
+          className="master-pane"
           style={{
             flex: selectedItemId ? '0 0 320px' : 1,
             borderRight: selectedItemId ? '1px solid #eef0f3' : 'none',
@@ -235,7 +237,7 @@ export function ItemsList() {
                 filters={filters}
                 value={filter}
                 onChange={setFilter}
-                fallbackLabel="Active Items"
+                fallbackLabel="All Items"
               />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -261,7 +263,7 @@ export function ItemsList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -328,7 +330,7 @@ export function ItemsList() {
                   transactions.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -369,6 +371,9 @@ export function ItemsList() {
                           cursor: 'pointer',
                           background: selectedItemId === item.id ? '#f1f5f9' : 'transparent',
                           transition: 'background 0.1s',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
                         }}
                         onMouseEnter={(e) => {
                           if (selectedItemId !== item.id)
@@ -379,28 +384,41 @@ export function ItemsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                          <div
-                            style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              color: '#1e293b',
-                              marginBottom: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                            }}
-                          >
-                            {item.itemStructure === 'composite' && (
-                              <ShoppingBag size={14} color="#64748b" />
-                            )}
-                            <span>{item.name}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                color: '#1e293b',
+                                marginBottom: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              {item.itemStructure === 'composite' && (
+                                <ShoppingBag size={14} color="#64748b" />
+                              )}
+                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>SKU: {item.sku}</div>
                           </div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>SKU: {item.sku}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                              ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
+                            </div>
+                            {item.isActive === false && (
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                                INACTIVE
+                              </div>
+                            )}
+                          </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr
                         style={{
@@ -467,6 +485,7 @@ export function ItemsList() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -489,7 +508,7 @@ export function ItemsList() {
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
           </div>
         )}

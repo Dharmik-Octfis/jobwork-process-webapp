@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Settings } from 'lucide-react';
 import { assembliesApi, type ItemAssembly } from './assemblies.api';
@@ -70,6 +70,7 @@ function renderAssemblyCell(assembly: ItemAssembly, colKey: string) {
 
 export function AssemblyList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -143,14 +144,15 @@ export function AssemblyList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div
+      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+        <div className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
+            minWidth: 0,
           }}
         >
           {!selectedId && selectedIds.length > 0 ? (
@@ -203,7 +205,7 @@ export function AssemblyList() {
                 )}
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`)}
+                  onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`, { state: { returnUrl: location.pathname + location.search } })}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -322,7 +324,8 @@ export function AssemblyList() {
                 )}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                   <tr>
                     <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center', borderBottom: '1px solid #eef0f3' }}>
@@ -418,6 +421,7 @@ export function AssemblyList() {
                   )}
                 </tbody>
               </table>
+                  </div>
             )}
           </div>
 
@@ -436,7 +440,7 @@ export function AssemblyList() {
         </div>
 
         {selectedId && (
-          <div
+          <div className="detail-pane"
             style={{
               flex: 1,
               borderLeft: '1px solid #eef0f3',

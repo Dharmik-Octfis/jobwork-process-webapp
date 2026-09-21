@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../../api/client';
 import { fetchBills, fetchBillCount, deleteBill } from './bills.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillDetail } from './BillDetail';
@@ -28,8 +30,8 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
   if (key === 'vendor') {
     return po.vendor?.contactName || '-';
   }
-  if (key === 'totalAmount') {
-    return `₹${Number(po.totalAmount || po.totalAmount || 0).toFixed(2)}`;
+  if (key === 'totalAmount' || key === 'total') {
+    return `₹${Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(2)}`;
   }
   const value = (po as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
@@ -41,6 +43,7 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
 
 export function BillsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedPoId = searchParams.get('id');
@@ -86,6 +89,11 @@ export function BillsList() {
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       setPoToDelete(null);
     },
+    // A bill whose stock was used is refused, naming the document — say so.
+    onError: (error) => {
+      setPoToDelete(null);
+      toast.error(toApiErrorMessage(error));
+    },
   });
 
   const handleDeleteSelected = async () => {
@@ -93,9 +101,7 @@ export function BillsList() {
   };
 
   const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleAll = () => {
@@ -124,8 +130,12 @@ export function BillsList() {
         flexDirection: 'column',
       }}
     >
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedPoId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
+          className="master-pane"
           style={{
             flex: selectedPoId ? '0 0 320px' : 1,
             borderRight: selectedPoId ? '1px solid #eef0f3' : 'none',
@@ -186,7 +196,11 @@ export function BillsList() {
                 )}
 
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`)}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/bills/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -252,7 +266,11 @@ export function BillsList() {
                   {search ? `No bills match "${search}".` : "You haven't created any bills yet."}
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new`)}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/bills/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -302,89 +320,116 @@ export function BillsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
+                        {/* Status rides along here too: while the detail is open
+                            this pane is the only view of the other bills, and the
+                            table column it comes from is off screen. */}
                         <div
                           style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
                             marginBottom: '4px',
                           }}
                         >
-                          {po.billNumber}
+                          <span style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                            {po.billNumber}
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#64748b' }}>
+                            {renderBillCell(po, 'status', paymentTerms)}
+                          </span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.contactName || '-'} • ₹{po.totalAmount || po.totalAmount || 0}
+                          {po.vendor?.contactName || '-'} • ₹
+                          {(po as Record<string, unknown>).total || po.totalAmount || 0}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={bills.length > 0 && selectedIds.length === bills.length}
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bills.map((po) => (
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
                         <tr
-                          key={po.id}
-                          onClick={() => setSearchParams({ id: po.id })}
                           style={{
+                            background: '#f9f9fb',
+                            borderTop: '1px solid #eef0f3',
                             borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                            background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => {
-                            if (!selectedIds.includes(po.id))
-                              e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <th
+                            style={{
+                              width: 48,
+                              ...headerStyle,
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                          >
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(po.id)}
-                              onChange={() => toggleSelection(po.id)}
+                              checked={bills.length > 0 && selectedIds.length === bills.length}
+                              onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
-                          </td>
+                          </th>
                           {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                color: col.key === 'billNumber' ? '#0062ff' : '#333',
-                                fontSize: 13,
-                                fontWeight: col.key === 'billNumber' ? 500 : 400,
-                              }}
-                            >
-                              {renderBillCell(po, col.key, paymentTerms)}
-                            </td>
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {bills.map((po) => (
+                          <tr
+                            key={po.id}
+                            onClick={() => setSearchParams({ id: po.id })}
+                            style={{
+                              borderBottom: '1px solid #eef0f3',
+                              transition: 'background 0.1s',
+                              cursor: 'pointer',
+                              background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={(e) => {
+                              if (!selectedIds.includes(po.id))
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <td
+                              style={{
+                                width: 48,
+                                padding: '12px 16px',
+                                paddingRight: 0,
+                                textAlign: 'center',
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(po.id)}
+                                onChange={() => toggleSelection(po.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </td>
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '12px 16px',
+                                  color: col.key === 'billNumber' ? '#0062ff' : '#333',
+                                  fontSize: 13,
+                                  fontWeight: col.key === 'billNumber' ? 500 : 400,
+                                }}
+                              >
+                                {renderBillCell(po, col.key, paymentTerms)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             )}
@@ -407,7 +452,7 @@ export function BillsList() {
 
         {/* Right Panel - Detail */}
         {selectedPoId && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <BillDetail poId={selectedPoId} onClose={() => setSearchParams({})} />
           </div>
         )}
@@ -446,9 +491,7 @@ export function BillsList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(
-              selectedIds.map(id => deleteBill(orgId!, id))
-            );
+            await Promise.allSettled(selectedIds.map((id) => deleteBill(orgId!, id)));
             queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
             setSelectedIds([]);
           } finally {

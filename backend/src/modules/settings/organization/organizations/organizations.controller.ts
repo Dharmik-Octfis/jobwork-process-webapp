@@ -9,6 +9,7 @@ import { seedSystemRoles } from '../roles/roles.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
 import { composeFullName } from '../../../../lib/memberDirectory.ts';
 import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
+import { assertMigrationDateSettable, restampOpeningStock } from '../../../../lib/migrationDate.ts';
 
 import { MASTER_CURRENCIES } from '../../../seed-data/seed-data.controller.ts';
 
@@ -93,6 +94,10 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
     account_created_date: org.createdAt.toISOString(),
     industry: org.industry, // from include
     settings: org.settings,
+    // Date-only, matching what the API accepts: the client renders this straight
+    // into a `<input type="date">`, and an instant would show the wrong day to
+    // anyone east of UTC.
+    migrationDate: org.migrationDate ? org.migrationDate.toISOString().slice(0, 10) : null,
   };
 }
 
@@ -191,12 +196,9 @@ export async function createOrganization(req: Request, res: Response, next: Next
       }),
     );
 
-    // We emulate Zoho's generic envelope: { code: 0, message: "success", organization: { ... } }
-    res.status(201).json({
-      code: 0,
-      message: 'success',
-      organization: await mapToZohoFormat(organization),
-    });
+    // Same fix as `getOrganizations` below — this emitted `{ code, message,
+    // organization }`, which the strict interceptor now rejects.
+    sendSuccess(res, await mapToZohoFormat(organization), 'Organization created.', 201);
   } catch (error) {
     next(error);
   }
@@ -224,11 +226,17 @@ export async function getOrganizations(req: Request, res: Response, next: NextFu
 
     const formattedOrgs = await Promise.all(organizations.map(mapToZohoFormat));
 
-    res.status(200).json({
-      code: 0,
-      message: 'success',
-      organizations: formattedOrgs,
-    });
+    /**
+     * 🔴 THE ENVELOPE, not the hand-rolled `{ code, message, organizations }` this
+     * returned until 2026-09-09.
+     *
+     * `apiClient` now THROWS on a 2xx body that is not `{ statusCode, message,
+     * data }` (`web/src/api/envelope.ts`) instead of passing it through. This was
+     * the last GET still emitting the old shape, and it is the one every tenant
+     * route waits on: the `['organizations']` query failed, and `RequireOrganization`
+     * rendered "Failed to load workspace. Please refresh." over the whole app.
+     */
+    sendSuccess(res, formattedOrgs);
   } catch (error) {
     next(error);
   }
@@ -258,6 +266,23 @@ export async function updateOrganization(req: Request, res: Response, next: Next
     if (data.dialCode !== undefined) updateData.dialCode = data.dialCode;
     if (data.website !== undefined) updateData.website = data.website;
 
+    /**
+     * 🔴 THE ANCHOR. Resolved here, WRITTEN AT THE BOTTOM — inside the same
+     * transaction as the re-stamp that has to accompany it.
+     *
+     * Empty string clears it back to "never migrated" — no anchor, no guard.
+     * `undefined` means the form did not send the field at all, which is not the
+     * same thing and must leave the column alone.
+     */
+    const anchor =
+      data.migrationDate === undefined
+        ? undefined
+        : data.migrationDate === null || data.migrationDate === ''
+          ? null
+          : new Date(`${data.migrationDate}T00:00:00.000Z`);
+
+    if (anchor !== undefined) updateData.migrationDate = anchor;
+
     if (data.address !== undefined) {
       if (data.address.street_address1 !== undefined)
         updateData.orgAddress = data.address.street_address1;
@@ -269,23 +294,71 @@ export async function updateOrganization(req: Request, res: Response, next: Next
       if (data.address.zip !== undefined) updateData.zip = data.address.zip;
     }
 
-    if (data.settings !== undefined) {
-      updateData.settings = data.settings;
-    }
-
     updateData.updatedBy = userId;
 
-    const updatedOrg = await prisma.organization.update({
-      where: { id: orgId },
-      data: updateData,
-      include: { industry: { select: { name: true } } },
-    });
+    /**
+     * 🔴 ONE TRANSACTION, AND THE ANCHOR IS WHY.
+     *
+     * Setting a migration date is not one write. It has to be refused when a
+     * movement would fall behind the new day — the anchor's whole meaning is that
+     * nothing does — and it has to carry the opening stock onto it, or the
+     * organization asserts two dates at once and the balance as at its own anchor
+     * reads zero.
+     *
+     * Those ran in a transaction of their own until this was fixed, with the
+     * column written by a separate statement afterwards. Anything failing in
+     * between — a crash, a dropped connection — left the opening stock re-dated
+     * onto an anchor the organization does not have, silently, with no error for
+     * anyone to see. A split like that is worse than either change alone, which
+     * is the whole reason they are together now.
+     *
+     * The `settings` read joins them: it is a read-modify-write of one JSONB bag,
+     * and outside the transaction two concurrent saves could lose a key.
+     */
+    const txOptions = anchor
+      ? // The re-stamp is a bulk `updateMany` over every opening row the
+        // organization has — irreducibly larger than an ordinary settings save,
+        // which is what a budget is for. Ordinary saves keep the default.
+        { maxWait: 15_000, timeout: 30_000 }
+      : undefined;
 
-    res.status(200).json({
-      code: 0,
-      message: 'success',
-      organization: await mapToZohoFormat(updatedOrg),
-    });
+    const updatedOrg = await runAsTenant(
+      orgId,
+      async (tx) => {
+        if (anchor) {
+          await assertMigrationDateSettable(tx, { organizationId: orgId, date: anchor });
+          await restampOpeningStock(tx, { organizationId: orgId, date: anchor });
+        }
+
+        if (data.settings !== undefined) {
+          // MERGED, not replaced. `settings` is one JSONB bag shared by every
+          // preference the org has — terminology today, more later — and a form that
+          // owns one key would otherwise wipe the ones it does not render. The
+          // Preferences page sends every key it knows about, so a top-level merge
+          // loses nothing and stops the next screen from being the one that does.
+          const current = await tx.organization.findFirst({
+            where: { id: orgId, isDeleted: false },
+            select: { settings: true },
+          });
+          const existing =
+            current?.settings &&
+            typeof current.settings === 'object' &&
+            !Array.isArray(current.settings)
+              ? (current.settings as Record<string, unknown>)
+              : {};
+          updateData.settings = { ...existing, ...data.settings };
+        }
+
+        return tx.organization.update({
+          where: { id: orgId },
+          data: updateData,
+          include: { industry: { select: { name: true } } },
+        });
+      },
+      txOptions,
+    );
+
+    sendSuccess(res, await mapToZohoFormat(updatedOrg), 'Organization updated successfully.');
   } catch (error) {
     next(error);
   }

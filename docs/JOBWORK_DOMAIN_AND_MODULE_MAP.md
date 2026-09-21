@@ -216,7 +216,7 @@ Read this as the plant reads it. "Owner" is the entity that owns the record.
 | **6**   | Stock becomes available                                             | _(system)_         | —                            | One ledger row per batch-unit: `+qty`, location, ownership, value                                                                                                                         | `StockLedger`                                       |
 | **7**   | Supplier's bill arrives, prices verified                            | Accounts           | **Purchase Bill**            | Bill no/date, PO + receipt refs, rate, GST, freight → **landed cost** back onto the batch                                                                                                 | `PurchaseBill` + `PurchaseBillLine`                 |
 | **8**   | Decide the processing path                                          | Production         | **Job Order**                | JO no/date, input item + qty, route (auto from item or manual), source SO, target completion                                                                                              | `JobOrder`                                          |
-| **9**   | Route expands into steps                                            | _(system)_         | _(inside Job Order)_         | Per step: sequence, process, processor, rate + rate basis, **issue item + unit**, **receive item + unit**, expected yield, tolerance %, in-house flag                                     | `JobOrderStep`                                      |
+| **9**   | Route expands into steps                                            | _(system)_         | _(inside Job Order)_         | Per step: sequence, process, processor, **items consumed** (planned qty, tolerance % per item), **items produced** (expected qty, rate per accepted unit, recipe snapshot), in-house flag | `JobOrderStep`                                      |
 | **10**  | Material physically leaves for step 1                               | Store              | **Issue Challan**            | Challan no/date, JO + step, processor, **selected batches & batch-units**, qty per unit, total, e-way bill ref, transporter                                                               | `JobIssue` + `JobIssueLine`                         |
 | **11**  | Stock moves out of our godown, not out of our books                 | _(system)_         | —                            | `−qty` at our location, `+qty` at the **processor's location**. Ownership unchanged. Value unchanged.                                                                                     | `StockLedger`                                       |
 | **12**  | Processor performs the operation                                    | Processor          | _(their internal)_           | Nothing until receipt                                                                                                                                                                     | —                                                   |
@@ -542,8 +542,10 @@ processor again for rework) vs `theirs` (they redo at zero rate, or we debit the
 `responsibility`, on the rejection line. Without it, wastage analysis and vendor scorecards are both
 guesswork.
 
-**Scrap** is a ledger write-off, not a deletion: `−qty`, reason `scrap`, and the cost stays absorbed
-in the job order so the surviving good pieces carry the true cost of the failures.
+**Scrap** is a ledger write-off, not a deletion: `−qty`, movement `scrap`. Since 2026-09-15 it is
+posted only when a step is completed or closed short: what the plan expected to lose is already
+inside the surviving pieces' cost, and whatever is still at the processor beyond that is scrapped
+there and reported as **job order loss** (§9.2), never loaded back onto batches that have moved on.
 
 🔴 **A receipt may write into SEVERAL batches per returned row, and may add to one that already
 exists** (2026-08-21). Both follow from the same observation as decision 3: a batch is a claim about
@@ -673,9 +675,10 @@ Same test, opposite answers. That is the point.
 | One document + a column         | One table, extra field on the line                | Receipt with `disposition`         |
 | **No document — just a status** | No new record; a field changes on an existing one | Job order `in_process → completed` |
 
-The third is why a "Job Order Completion" record must not exist: completion is _derived_ from the
-last step's balance reaching zero, and a record would be a second version of the truth that can
-disagree with the first.
+The third is why a "Job Order Completion" record must not exist: a step's completion is a flag a
+human sets (§6.5), the order's status rolls up from its steps, and the only rows completion writes
+are the `scrap` movements for what was left at the processor — a separate completion document would
+be a second version of the truth that can disagree with the first.
 
 **Why keep the test and not just the list?** Because cases will arrive that this document never
 covered — sales returns, debit notes, a process type nobody mentioned, something a customer asks for
@@ -711,7 +714,7 @@ ones that look like they deserve one.
 | "Rework Order"                         | **`isRework` + `attemptNo` on a normal Issue**              | Same job order, same step, same process. Only the attempt differs                                                                |
 | "Semi-finished Sale"                   | **A normal Delivery Challan against a semi-finished batch** | Stock is stock. The ledger doesn't care which step produced the batch                                                            |
 | "Job Order Completion"                 | **A status change**                                         | Completion is derived from the last step's balance reaching zero. A record would be a second, disagreeable truth                 |
-| "Process Costing Entry"                | **Derived from step rate × received qty**                   | Storing it invites drift from the rate it was derived from                                                                       |
+| "Process Costing Entry"                | **Derived: each output's rate × accepted qty**              | Storing it invites drift from the rate it was derived from                                                                       |
 
 ### 6.3 Status vocabularies
 
@@ -825,11 +828,17 @@ hides is a rule a second tab walks straight past.
 
 ### 6.5 Step completion is measured per input item, on the input side
 
+🔴 **`completed` itself is a decision, not a sum** (2026-08-24). A human presses Mark as complete; the
+rules below decide only the statuses beneath it. And since 2026-09-15 completing **writes off**
+whatever is still at the processor as job order loss and closes the step to every document (§9.2) —
+receipts consume only what the plan says the goods used, so a finished step almost always has some
+left. Completion is refused while a draft challan or receipt is parked on the step.
+
 Two rules, and the second one gets _more_ important once §5.7 lands.
 
-**Per item.** A step is `completed` when **every** input it has issued has been fully accounted for
-by receipts. Three items in three units cannot collapse into one pair of totals — 2,910 PCS + 12
-CONE + 8,700 PCS is 11,622 of nothing.
+**Per item.** A step is past `issued` only when an input it has issued has been accounted for by
+receipts, judged item by item. Three items in three units cannot collapse into one pair of totals —
+2,910 PCS + 12 CONE + 8,700 PCS is 11,622 of nothing.
 
 **On the input side.** Completion compares _consumed against issued_, never _received against
 issued_. Both of those are in the input's own unit, so the comparison means something for every step.
@@ -900,20 +909,20 @@ hardest.
 
 ### 7.1 Masters & foundation
 
-| Module                             | Status | Scope notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Items**                          | 🔧     | Add: `nature` (raw / semi-finished / finished / consumable / scrap / service); `stockingUomId` as a real FK (today `unit` is a bare string); `inventoryTracking` (`none`/`batch`/`batch_and_unit`); `defaultRouteId`; `defaultTolerancePct`; `isJobworkInput` / `isJobworkOutput`. **Remove or back with real logic** the existing `trackInventory` / `openingStock` / `openingStockValuePerUnit` columns — they are stored today with **nothing reading them**, and opening stock must become a real ledger posting, not a column                                                                                                                                                                                                                                                                              |
-| **Units of Measurement**           | 🔧     | Exists with `symbol`, `uqc`, `unitPrecision`. Add a separate **`ItemUomConversion`** table (item, altUom, factor) for §5.1's _left_ column only, **with a batch-level override** — fabric's kg ↔ metre factor varies by that roll's GSM and width, so it is a batch property, not an item one (§5.1). Do **not** put process yields here                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| **Item Categories**                | ✅     | No change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Vendors**                        | 🔧     | Add `vendorTypes` (multi: material supplier / job worker / broker / transporter / general — the mind map's list, generalised), GSTIN, and auto-provisioning of a `processor` Location on first jobwork use. Type filters the lookups: the Issue screen must offer job workers only, the PO's broker field brokers only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| **Customers**                      | 🔧     | Add GSTIN and an `isJobworkParty` flag — a customer can also be a **processor** (goods sent to a customer for processing, per the brief) and a **principal** (shape D). Same auto-Location provisioning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **Locations**                      | 🔧     | Add `type` ∈ `godown / shopfloor / work_centre / processor / in_transit / customer_site`, plus optional `vendorId` / `customerId`. Hierarchy already exists. This is what §5.4 rests on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **Process**                        | 🆕     | Small master: name, code, `itemChanges` flag, default tolerance %, **`rateBasis`** (per issued unit / per received unit — §9.2). Mind map: `Masters → Process`. **Two flags shipped and were removed:** `preservesPackaging` on 2026-08-12 with package-level tracking (§5.2.3), and `requiresSingleBatch` on 2026-08-17 (§5.2.4 records why the rule was right and the column was the wrong home for it). **The default input/output UoM shipped and was removed on 2026-08-10:** a step transacts in its _items'_ stocking units (§5.1), so an org-wide default on the operation master was a guess about one item — and applying it is what let a challan and the stock ledger describe a single movement in two different units. Process is also **not** a custom-fields module (see the Custom Fields row) |
-| **Route** _(Job Process Template)_ | 🆕     | Header + ordered steps. Per step: process, default processor, default rate + basis, default in/out item, default in/out unit, expected yield, tolerance. Copied into a Job Order on creation and **editable there** — a template is a starting point, never a live link, or editing a template silently rewrites history                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| **Number Sequences**               | ✅     | Register the new document types. Already generic (`entityType` + `prefix` + `nextNumber`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Currencies / Payment Terms**     | ✅     | No change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Custom Fields**                  | 🔧     | Add each new module to `ENTITY_TYPES` (backend) and `CUSTOM_FIELD_MODULES` (frontend). The mind map's "may need extra fields at issue time — batch-wise pcs, cutper, meter" is exactly this — **it must not become hardcoded columns**. **`process` is deliberately NOT in either list** (removed 2026-08-10): the operation master is a short list of names an org types once and never revisits, so per-org fields on it were a form section nobody filled in. Its `custom_fields` column stays (CLAUDE.md's default block) and simply goes unwritten, and `process` moved to `LIST_ONLY_ENTITY_TYPES` so its list keeps Customize Columns without offering custom fields                                                                                                                                     |
-| **Permissions**                    | 🔧     | One catalog line per new resource in `MODULE_GROUPS`. Forgetting it fails closed (loud). Forgetting `requirePermission` on the routes fails **open and silent**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Module                             | Status | Scope notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Items**                          | 🔧     | Add: `nature` (raw / semi-finished / finished / consumable / scrap / service); `stockingUomId` as a real FK (today `unit` is a bare string); `inventoryTracking` (`none`/`batch`/`batch_and_unit`); `defaultRouteId`; `defaultTolerancePct`; `isJobworkInput` / `isJobworkOutput`. **Remove or back with real logic** the existing `trackInventory` / `openingStock` / `openingStockValuePerUnit` columns — they are stored today with **nothing reading them**, and opening stock must become a real ledger posting, not a column                                                                                                                                                                                                                                                                                                                                                                                |
+| **Units of Measurement**           | 🔧     | Exists with `symbol`, `uqc`, `unitPrecision`. Add a separate **`ItemUomConversion`** table (item, altUom, factor) for §5.1's _left_ column only, **with a batch-level override** — fabric's kg ↔ metre factor varies by that roll's GSM and width, so it is a batch property, not an item one (§5.1). Do **not** put process yields here                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Item Categories**                | ✅     | No change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Vendors**                        | 🔧     | Add `vendorTypes` (multi: material supplier / job worker / broker / transporter / general — the mind map's list, generalised), GSTIN, and auto-provisioning of a `processor` Location on first jobwork use. Type filters the lookups: the Issue screen must offer job workers only, the PO's broker field brokers only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Customers**                      | 🔧     | Add GSTIN and an `isJobworkParty` flag — a customer can also be a **processor** (goods sent to a customer for processing, per the brief) and a **principal** (shape D). Same auto-Location provisioning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Locations**                      | 🔧     | Add `type` ∈ `godown / shopfloor / work_centre / processor / in_transit / customer_site`, plus optional `vendorId` / `customerId`. Hierarchy already exists. This is what §5.4 rests on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Process**                        | 🆕     | Small master: name, code, `itemChanges` flag. **Default tolerance % and `rateBasis` were removed on 2026-09-15** with landed costing — the charge is rate × accepted on each output row, and tolerance belongs to the item (§9.2). Mind map: `Masters → Process`. **Two flags shipped and were removed:** `preservesPackaging` on 2026-08-12 with package-level tracking (§5.2.3), and `requiresSingleBatch` on 2026-08-17 (§5.2.4 records why the rule was right and the column was the wrong home for it). **The default input/output UoM shipped and was removed on 2026-08-10:** a step transacts in its _items'_ stocking units (§5.1), so an org-wide default on the operation master was a guess about one item — and applying it is what let a challan and the stock ledger describe a single movement in two different units. Process is also **not** a custom-fields module (see the Custom Fields row) |
+| **Route** _(Job Process Template)_ | 🆕     | Header + ordered steps. Per step: process, default processor, the items consumed (with the usual planned qty) and produced (with a suggested rate per accepted unit), expected yield. Copied into a Job Order on creation and **editable there** — a template is a starting point, never a live link, or editing a template silently rewrites history                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Number Sequences**               | ✅     | Register the new document types. Already generic (`entityType` + `prefix` + `nextNumber`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Currencies / Payment Terms**     | ✅     | No change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Custom Fields**                  | 🔧     | Add each new module to `ENTITY_TYPES` (backend) and `CUSTOM_FIELD_MODULES` (frontend). The mind map's "may need extra fields at issue time — batch-wise pcs, cutper, meter" is exactly this — **it must not become hardcoded columns**. **`process` is deliberately NOT in either list** (removed 2026-08-10): the operation master is a short list of names an org types once and never revisits, so per-org fields on it were a form section nobody filled in. Its `custom_fields` column stays (CLAUDE.md's default block) and simply goes unwritten, and `process` moved to `LIST_ONLY_ENTITY_TYPES` so its list keeps Customize Columns without offering custom fields                                                                                                                                                                                                                                       |
+| **Permissions**                    | 🔧     | One catalog line per new resource in `MODULE_GROUPS`. Forgetting it fails closed (loud). Forgetting `requirePermission` on the routes fails **open and silent**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### 7.2 Inventory core — the spine
 
@@ -939,14 +948,14 @@ is the ledger row it posts. Remove these and none of them can function.
 
 ### 7.4 Jobwork core
 
-| Module                  | Status                   | Scope notes                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Job Order**           | 🆕 🔴                    | Header: number, date, input item + qty, route, source SO, target date, ownership (own vs customer — shape D), status. Steps as child lines (§6.2). Owns the **Overview page** (§8.2), which is the product's centre of gravity                                                                                                                                                                                              |
-| **Job Issue**           | 🆕 🔴                    | Challan no/date, JO + step, processor + destination location, **batch/batch-unit selection with running totals**, issue qty + uom, `isRework`, `attemptNo`, e-way bill ref, transporter. Posts the location-transfer ledger pair. **Printable challan is a release-1 requirement**, not a nicety — goods cannot legally move without it                                                                                     |
-| **Job Receipt**         | 🆕 🔴                    | Receipt no/date, issue ref, a **consumed** list and a **returned** list (§5.7) — each returned item with its own qty, uom and disposition split — per-batch-unit or bulk mode (both, per the mind map), computed difference + wastage %, tolerance check, reason + responsibility. Creates **one output batch per returned item**, each with genealogy back to every batch consumed. Posts the consume/produce ledger pairs |
-| **Jobwork Bill**        | 🆕                       | Processor's invoice: covers many receipts, billed vs received qty, rate, GST, TDS. Feeds actual (not estimated) process cost into costing. Phase 2 — estimated cost from the step rate carries release 1                                                                                                                                                                                                                    |
-| **Inward Jobwork**      | 🔧 _(of Job Order)_      | **Not a separate module.** A `JobOrder` with `ownership = customer` + `ownerPartyId`. Receiving the customer's goods is a Purchase Received with `ownership = customer`; returning them is a Delivery Challan against a zero-value batch; billing is a service invoice. §5.3                                                                                                                                                |
-| **In-house processing** | 🔧 _(of Job Order Step)_ | **Not a separate module.** `processorType = internal`, destination is a work-centre location, cost is a labour/overhead rate, no challan or e-way bill                                                                                                                                                                                                                                                                      |
+| Module                  | Status                   | Scope notes                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Job Order**           | 🆕 🔴                    | Header: number, date, input item + qty, route, source SO, target date, ownership (own vs customer — shape D), status. Steps as child lines (§6.2). Owns the **Overview page** (§8.2), which is the product's centre of gravity                                                                                                                                                                                                                                           |
+| **Job Issue**           | 🆕 🔴                    | Challan no/date, JO + step, processor + destination location, **batch/batch-unit selection with running totals**, issue qty + uom, `isRework`, `attemptNo`, e-way bill ref, transporter. Posts the location-transfer ledger pair. **Printable challan is a release-1 requirement**, not a nicety — goods cannot legally move without it                                                                                                                                  |
+| **Job Receipt**         | 🆕 🔴                    | Receipt no/date, issue ref, a **consumed** list and a **returned** list (§5.7) — each returned item with its own qty, uom and disposition split — the material each input item **used** — calculated from the step's plan and editable (§9.2) — rate per accepted unit, reason + responsibility, and the stored cost breakdown. Creates **one output batch per returned item**, each with genealogy back to every batch consumed. Posts the consume/produce ledger pairs |
+| **Jobwork Bill**        | 🆕                       | Processor's invoice: covers many receipts, billed vs received qty, rate, GST, TDS. Feeds actual (not estimated) process cost into costing. Phase 2 — the output rates agreed on the job order carry release 1                                                                                                                                                                                                                                                            |
+| **Inward Jobwork**      | 🔧 _(of Job Order)_      | **Not a separate module.** A `JobOrder` with `ownership = customer` + `ownerPartyId`. Receiving the customer's goods is a Purchase Received with `ownership = customer`; returning them is a Delivery Challan against a zero-value batch; billing is a service invoice. §5.3                                                                                                                                                                                             |
+| **In-house processing** | 🔧 _(of Job Order Step)_ | **Not a separate module.** `processorType = internal`, destination is a work-centre location, cost is a labour/overhead rate, no challan or e-way bill                                                                                                                                                                                                                                                                                                                   |
 
 ### 7.5 Sales side
 
@@ -959,13 +968,13 @@ is the ledger row it posts. Remove these and none of them can function.
 
 ### 7.6 Insight
 
-| Module                    | Status | Scope notes                                                                                                                                                                                                                                                                          |
-| ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Costing & Valuation**   | 🆕 🔴  | Not a screen — a **service** every module calls. Owns §9's rules: value carried, rate derived; process cost capitalised; scrap absorbed; customer-owned = zero. Getting this into a service rather than sprinkled across modules is what stops five modules computing cost five ways |
-| **Traceability**          | 🆕     | Batch genealogy, forward + backward, rendered as a tree. One query over batch parentage (§5.2)                                                                                                                                                                                       |
-| **Reports**               | 🆕     | See §10. Ship the first six with release 1; a report nobody can run is a feature nobody bought                                                                                                                                                                                       |
-| **Print / PDF templates** | 🆕     | Per-document layouts. Issue challan and delivery challan are **mandatory** for release 1                                                                                                                                                                                             |
-| **E-way bill**            | 🆕     | Generation/reference on issues, transfers and challans. Phase 3 unless a launch customer needs it sooner — the _fields_ should exist from release 1 even if the integration does not                                                                                                 |
+| Module                    | Status | Scope notes                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Costing & Valuation**   | 🆕 🔴  | Not a screen — a **service** every module calls. Owns §9's rules: value carried, rate derived; process cost capitalised; planned loss absorbed, the rest written off as job order loss at completion; customer-owned = zero. Getting this into a service rather than sprinkled across modules is what stops five modules computing cost five ways |
+| **Traceability**          | 🆕     | Batch genealogy, forward + backward, rendered as a tree. One query over batch parentage (§5.2)                                                                                                                                                                                                                                                    |
+| **Reports**               | 🆕     | See §10. Ship the first six with release 1; a report nobody can run is a feature nobody bought                                                                                                                                                                                                                                                    |
+| **Print / PDF templates** | 🆕     | Per-document layouts. Issue challan and delivery challan are **mandatory** for release 1                                                                                                                                                                                                                                                          |
+| **E-way bill**            | 🆕     | Generation/reference on issues, transfers and challans. Phase 3 unless a launch customer needs it sooner — the _fields_ should exist from release 1 even if the integration does not                                                                                                                                                              |
 
 ---
 
@@ -1086,18 +1095,16 @@ items, in different units, of different lengths — one table cannot hold both w
 being blank on every row.
 
 1. **Header** — receipt no., date, issue ref (multi-select — one receipt can close several issues).
-2. **Consumed grid**, generated from the selected challans, never typed from scratch. **Mode** is
-   exactly as the mind map specifies, but **the process decides it, not the user** (§5.2.3);
-   `preservesPackaging` is what makes unit-wise possible at all:
-   - **Unit-wise** (dyeing: same roll out, same roll back) — a row per issued batch unit: issued qty,
-     consumed qty, difference, wastage %, and `parentBatchUnitId` recorded per row. Column totals per
-     item at the foot.
-   - **Bulk** (cutting: rolls destroyed, bundles created — no 1:1 mapping exists) — one row per item:
-     total issued, total consumed, difference, wastage %.
+2. **Material used grid** (2026-09-15), one row per input item on the selected challans: still out,
+   **used**, value. Used is calculated from the step's plan (§9.2) as the returned quantities are
+   typed, and shown as the placeholder; typing overrides it, clearing it returns to the calculation,
+   and a calculation capped at what is still out says so. 🔴 A receipt no longer settles its challans
+   in full — what the goods did not use stays at the processor until the step is completed.
 3. **Returned grid** — one row per output item, pre-filled from the step's outputs and **rows can be
    added**. The plan says what was expected; the receipt says what actually came back, and only the
    receipt is a fact. Each row: item, unit (read-only, the item's stocking unit), quantity, the
-   disposition split, and a **primary** radio — exactly one row carries it (§9.2.1).
+   disposition split, and a **rate** per accepted unit — opening with the job order's, editable (§9.2).
+   A first-pass receipt refuses an item the step's plan does not list.
    3a. **Add Batches, per returned row** (2026-08-21) — mirrors the Issue dialog's grid in look and
    keyboard behaviour, and answers a different question. The issue grid asks _"which existing stock
    am I taking, and is there enough"_ and is bounded by a balance; this one asks _"what shall this
@@ -1117,9 +1124,9 @@ expected 0.620 ⚠ −3.2%`. An observation, never a conversion factor.
    and scrap require a reason and a **responsibility** (ours / theirs). The four must sum to that
    row's received quantity; the dialog will not save otherwise. By-products get the same four columns
    — offcuts can be scrap too.
-6. **Value strip** — `consumed 297,986 + charge 115,200 = 413,186`, and what each output takes.
-   By-products default to ₹0 and the primary absorbs the rest; the strip must balance before save
-   (§9.2.1).
+6. **Cost preview, per returned row** — `material + charge = total → ₹/unit`, worked out in the
+   browser by a mirror of the server's rules (§9.2.1). The server's figure is the one stored, on the
+   receipt row, and the receipt page shows it.
 7. **Preview before post** — "creates BATCH-00091 Shirts (2,880 PCS) and BATCH-00092 Offcuts (80 KG),
    rework batch BATCH-00093 (15 PCS), closes step 4". A ledger posting is not reversible by editing; show
    what it will do.
@@ -1149,78 +1156,85 @@ The rule that makes unit changes costless:
 
 ```
 BATCH-00012  grey fabric      5,000 MTR   ₹250,000        ₹50.00 / MTR
-  → dyeing    @ ₹5 / received MTR       + ₹24,250       (4,850 × 5)
-BATCH-00040  dyed fabric      4,850 MTR   ₹274,250        ₹56.55 / MTR   ← wastage raises the rate
-  → printing  @ ₹3 / received MTR       + ₹14,550       (4,850 × 3)
+  → dyeing    @ ₹5 / accepted MTR       + ₹24,250       (4,850 × 5)
+BATCH-00040  dyed fabric      4,850 MTR   ₹274,250        ₹56.55 / MTR   ← planned shrinkage raises the rate
+  → printing  @ ₹3 / accepted MTR       + ₹14,550       (4,850 × 3)
 BATCH-00061  printed fabric   4,850 MTR   ₹288,800        ₹59.55 / MTR
-  → cutting   @ ₹2 / ISSUED MTR         + ₹9,700        (4,850 × 2)  ← different rate basis
-BATCH-00075  cut panels       2,910 PCS   ₹298,500        ₹102.58 / PCS ← unit changed, value did not
-  → stitching @ ₹40 / received PCS      + ₹115,200      (2,880 × 40)
-BATCH-00088  shirts           2,880 PCS   ₹413,700        ₹143.65 / PCS ← 30 pcs scrapped, cost absorbed
+  → cutting   @ ₹3 / accepted PCS       + ₹8,730        (2,910 × 3)
+BATCH-00075  cut panels       2,910 PCS   ₹297,530        ₹102.24 / PCS ← unit changed, value did not
+  → stitching @ ₹40 / accepted PCS      + ₹115,200      (2,880 × 40)
+BATCH-00088  shirts           2,880 PCS   ₹412,730        ₹143.31 / PCS ← 30 pcs lost as planned, cost absorbed
 ```
 
-The unit change at cutting requires **no conversion factor**. ₹298,500 is ₹298,500 whether you
+The unit change at cutting requires **no conversion factor**. ₹297,530 is ₹297,530 whether you
 divide it by metres or by pieces. Every attempt to store a per-unit cost instead breaks here.
 
-Note that cutting bills on **issued** metres while dyeing bills on **received** metres. That is not
-an inconsistency — it is why `rateBasis` is an explicit field per step rather than a convention
-(§9.2). An in-house cutting cost is driven by the fabric consumed; a dyer bills what they deliver.
+Every charge is on the **accepted** quantity of the row it pays for (§9.2). That one rule replaced
+`rateBasis` — per issued or per received unit — on 2026-09-15: lost material is never charged for,
+and a rework piece is charged once, on the receipt where it is finally accepted.
 
-**Value is conserved end to end:** `250,000 + 24,250 + 14,550 + 9,700 + 115,200 = ₹413,700`. The
-2,090 metres and 30 pieces lost along the way destroyed no value — they concentrated it into what
-survived, turning ₹50.00/MTR into ₹143.65/PCS. Appendix A works the same flow with rework branches
-and a dispatch.
+**Value is conserved end to end:** `250,000 + 24,250 + 14,550 + 8,730 + 115,200 = ₹412,730`. Every
+step here lost exactly what its plan expected, so all of it stayed in the surviving goods, turning
+₹50.00/MTR into ₹143.31/PCS. Loss **beyond** the plan is the other half of the rule: it stays at the
+processor until somebody decides what it was. **Closing the challan** on its last receipt says it was
+ordinary shrinkage and puts it into the goods' cost; **completing the step** with it still out says it
+is missing, and writes it off as job order loss (§9.2). Appendix A works
+the same flow with rework branches, a write-off and a dispatch.
 
 ### 9.2 The rules
 
-| Rule                         | Statement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Material cost**            | Landed cost from the purchase bill (or PO rate until the bill arrives), apportioned across batch units by quantity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **Process cost**             | 🔴 `qty × stepRate`, where **which qty** comes from the step's `rateBasis` — `per_issued_unit` / `per_received_unit`. There is **no default that is right**: a dyer bills what they deliver (received) while an in-house cutting cost follows what was consumed (issued). The mind map's "Rate (confusion): Pcs / Meter / Kg" is this field. Defaulted from the Process master, overridable per step. **`per_kg` and `lump_sum` were removed on 2026-08-10** and their stored values rewritten to `per_issued_unit`: `per_kg` had no weight to multiply (nothing in the system captures one, so it silently billed against the received quantity in whatever unit that was), and `lump_sum` ignored quantity entirely, so a step that received nothing still billed in full. `per_accepted_unit` was never built — a printer at fault billing only what you accepted is real, and it needs the rejection split to be a quantity on the receipt first |
-| **Wastage**                  | Not a cost line. Value stays constant while quantity falls, so the per-unit rate rises — which is exactly what wastage costs you                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **Scrap**                    | Quantity leaves, **value stays in the job order** and is absorbed by the surviving output. Otherwise good pieces look cheaper than they are                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| **Several outputs**          | 🔴 One output per step is the **primary**; it absorbs everything the others do not take. Each by-product carries an **explicit value** (default 0), which is deducted from the primary's share. See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **Rework — our fault**       | Second process charge is added to the batch. The rework child batch carries it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **Rework — their fault**     | Zero rate, or a debit note against the processor. Recorded either way                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **In-house step**            | Labour + overhead rate on the step. Same arithmetic, different rate source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **Customer-owned (shape D)** | Material value = 0, always. Process cost is expensed, not capitalised. Revenue = process charge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **Freight & overhead**       | Apportionable onto the batch at receipt or bill time by qty or value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Rule                         | Statement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Material cost**            | Landed cost from the purchase bill (or PO rate until the bill arrives), apportioned across batch units by quantity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Process cost**             | 🔴 `rate × accepted qty`, **per returned row**. The rate lives on the produced row: route step output (suggested) → job order step output (agreed) → receipt output (billed, editable at the gate). `null` = not agreed = ₹0; `0` = free. Lost material is never charged for, and a rework piece is charged once — on the receipt where it is finally accepted. The mind map's "Rate (confusion): Pcs / Meter / Kg" is answered by the row's own unit. `rateBasis` (per issued / per received unit) was removed on 2026-09-15 with this rule                                                                                                                                                                                                                                                                                                                                                                        |
+| **Material used**            | 🔴 Per input item, **calculated from the job order's own plan** and editable on the receipt (as SAP subcontracting proposes components at goods receipt). `k = planned ÷ Σ(expected × w)`, where `w` is the output's recipe quantity for that input — a composite's recipe **frozen onto the job order** — or 1 for a plain output of a single-input step, or 1 against itself for an output that is also an input and for a rework receipt. `need = (accepted + rework) × w × k`, to 4 dp. Used = the typed figure, else `min(need, still out)`, with a warning when capped. No loss % and no conversion is typed: across a unit change `k` carries the conversion too. So planned and expected quantities are required before the step's first challan posts. A challan **closed** on the receipt floors Used at everything still out on it, allocated first; `k` is never recalculated from actuals (2026-09-17) |
+| **Wastage**                  | Not a cost line. **Planned** loss is inside landed cost: planned over expected makes each good unit use more input, so the per-unit rate rises — which is exactly what wastage costs you                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Scrap**                    | Scrap is not typed on a receipt. Whatever the receipts did not use stays **still out at the processor** — for the next delivery — until a human decides. **Close the challan** on a receipt (nothing more is coming back on it) and all of it is consumed into that receipt's goods: normal loss, inside cost. **Complete the step or close the order short** with it still out, and all of it is scrapped where it stands, same batch and package, at its running cost, as **job order loss** (Ind AS 2 ¶16(a)) — which after closure means only material genuinely missing. It is never loaded back onto output batches that may already have moved on, and a completed step accepts no further document. A closed challan reopens only by cancelling the receipt that closed it                                                                                                                                  |
+| **Several outputs**          | 🔴 Each input item's consumed value is split across the rows that draw on it **by need**. A step consuming more than one item may only produce **composites**, whose recipe says what each output is made from. See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Rework — our fault**       | The rework receipt consumes the rework batch itself, 1 for 1, and charges the output's rate on what is now accepted. Rework and first-pass challans cannot share a receipt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Rework — their fault**     | Rate ₹0 on the rework receipt, or a debit note against the processor. Recorded either way                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **In-house step**            | Labour + overhead rate on the step. Same arithmetic, different rate source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Customer-owned (shape D)** | Material value = 0, always. Process cost is expensed, not capitalised. Revenue = process charge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Freight & overhead**       | Apportionable onto the batch at receipt or bill time by qty or value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 #### 9.2.1 Splitting value across several outputs
 
-A step that returns panels, offcuts and waste has one pot of value and three places to put it.
+A step that consumes cotton and silk and returns Red Cotton, Red Silk and Green Cotton has one
+consumed value **per input item**, and several rows drawing on it.
 
 ```
-pot = value of everything consumed + the process charge
-
-each by-product  → the value the user typed for it, default ₹0
-the primary      → pot − the sum of the by-product values
+material(o) = Σ over inputs i:  consumedValue(i) × need(o, i) ÷ Σ need(·, i)
+row value   = material(o) + rate(o) × accepted(o)
+accepted    ← material × accepted ÷ (accepted + rework) + the whole charge
+rework      ← the rest of the material, no charge
 ```
 
-**Apportioning by quantity is not available here, and reaching for it is the trap.** 2,910 PCS and
-80 KG have no ratio between them; inventing one is precisely the conversion §5.1 forbids, and it
-would silently move cost between two items every time the yield moved.
+**By need, per input item — and that ratio is legitimate**, because every share of one input is the
+same item in the same unit. Outputs are still never compared with each other: 2,910 PCS and 80 KG
+have no ratio (§5.1). An output made of nothing an input supplied draws nothing from it.
 
-- **Rejected:** splitting by relative sale price. It needs a price list this product does not have,
-  and it revalues finished history whenever that list changes.
-- **Rejected:** every output taking an equal share. Offcuts are not worth what panels are worth, and
-  a rule that says they are makes the panels look cheap and the scrap look valuable.
-- **Default ₹0 for a by-product is the honest answer**, not a placeholder: offcuts genuinely carry no
-  cost until somebody sells them, and the surviving primary output should carry the cost of the whole
-  operation — the same reasoning as scrap absorption above.
+- **Rejected (2026-09-15):** the pot. One primary output absorbed consumed value plus the charge, and
+  by-products took a typed value, default ₹0 — which made offcuts free and loaded their cost onto the
+  main product whatever it was actually made of.
+- **Rejected:** splitting by relative sale price, or equal shares. Both need facts this product does
+  not have, and neither says what anything was made of.
+- **No offcut or waste rows.** Every returned row draws material by need, so a row for waste would
+  take real fabric cost away from the product. What the receipts do not use is loss at completion.
 
-🔴 **Value is conserved and the service asserts it.** `sum(output values) == consumed value + charge`,
-to the paisa, exactly as the disposition split must equal the received quantity (§6.2). A step that
-does not balance does not save.
+🔴 **Value is conserved and the service asserts it.** `Σ material(o) == Σ consumedValue(i)`, to the
+paisa — `splitByQty` hands the last share the remainder — exactly as the disposition split must equal
+the received quantity (§6.2). A receipt that does not balance does not post. Each row stores its
+`rate`, `materialValue` and `processCharge` as posted, so a later change to the job order's rate
+rewrites nothing.
 
 ### 9.3 Profit & loss, at four grains
 
-| Grain                   | Question                     | Computation                                                         |
-| ----------------------- | ---------------------------- | ------------------------------------------------------------------- |
-| **Batch**               | Did this batch make money?   | `invoiced value − batch accumulated value` at dispatch              |
-| **Job order**           | Did this run make money?     | `output value − (input value + all process costs + scrap absorbed)` |
-| **Item**                | Is this product profitable?  | Aggregate over all batches of the item, over a period               |
-| **Jobwork service (D)** | Is this customer profitable? | `service invoiced − (our process cost + rework we absorbed)`        |
+| Grain                   | Question                     | Computation                                                                                                        |
+| ----------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Batch**               | Did this batch make money?   | `invoiced value − batch accumulated value` at dispatch                                                             |
+| **Job order**           | Did this run make money?     | `output value + job order loss = input value + all process charges` — the loss reported, not hidden in the batches |
+| **Item**                | Is this product profitable?  | Aggregate over all batches of the item, over a period                                                              |
+| **Jobwork service (D)** | Is this customer profitable? | `service invoiced − (our process cost + rework we absorbed)`                                                       |
 
 Every one of the four is derivable from the ledger plus batch values. None needs its own table.
 
@@ -1332,9 +1346,9 @@ architecture, to answer:
 2. **Can one issue serve several job orders?** Cheaper for the plant, materially more complex to
    cost. Recommend **no** for release 1.
 3. ~~**Can a receipt produce several output items?**~~ **DECIDED 2026-08-06 — yes, and a step also
-   consumes several.** See §5.7. The value split is **not** by quantity as this question guessed: a
-   primary output absorbs the pot and by-products carry an explicit value (§9.2.1), because two
-   outputs in two units have no ratio to apportion by.
+   consumes several.** See §5.7. The value split is **not** by quantity between outputs as this question
+   guessed — two outputs in two units have no ratio. Since 2026-09-15 each input item's value is
+   split by what each output needed of it (§9.2.1).
 4. **Sub-contracting by the processor** — do we track that our processor sent it onward? Recommend
    no in release 1; it is another party's ledger.
 5. **Partial batch-unit consumption** — can half a taka be issued? If yes, batch units need a split
@@ -1421,11 +1435,15 @@ batch units exist (§5.2.1).
 
 | #   | Process   | Processor     | Rate                  | In            | Out              |
 | --- | --------- | ------------- | --------------------- | ------------- | ---------------- |
-| 1   | Dyeing    | Sunrise Dyers | ₹5.00 / received MTR  | Grey · MTR    | Dyed · MTR       |
+| 1   | Dyeing    | Sunrise Dyers | ₹5.00 / accepted MTR  | Grey · MTR    | Dyed · MTR       |
 | 2   | Printing  | Gala Prints   | ₹3.00 / accepted MTR  | Dyed · MTR    | Printed · MTR    |
-| 3   | Cutting   | **In-house**  | ₹2.00 / issued MTR    | Printed · MTR | Panels · **PCS** |
+| 3   | Cutting   | **In-house**  | ₹3.00 / accepted PCS  | Printed · MTR | Panels · **PCS** |
 | 4   | Stitching | Vora Garments | ₹40.00 / accepted PCS | Panels · PCS  | Shirts · PCS     |
-| 5   | Packing   | **In-house**  | ₹5.00 / PCS           | Shirts · PCS  | Packed · PCS     |
+| 5   | Packing   | **In-house**  | ₹5.00 / accepted PCS  | Shirts · PCS  | Packed · PCS     |
+
+Every rate is per **accepted** unit of what the step returns (§9.2). Each step's plan — planned in,
+expected out — matches what actually came back unless a step below says otherwise, so each receipt
+uses everything sent to it.
 
 ### A.3 Dyeing — shrinkage is physics, not damage
 
@@ -1435,7 +1453,7 @@ batch units exist (§5.2.1).
 
 |                           |                                          |
 | ------------------------- | ---------------------------------------- |
-| Shrinkage                 | 150.00 MTR = **3.00%** (tolerance 5% ✓)  |
+| Shrinkage                 | 150.00 MTR = **3.00%** (as planned ✓)    |
 | Charge                    | 4,850 × ₹5 = **₹24,250**                 |
 | **BATCH-00040** Dyed Navy | 4,850.00 MTR · **₹274,250** · ₹56.55/MTR |
 
@@ -1461,69 +1479,79 @@ forces that.
 - **BATCH-00062** rework child (parent `BATCH-00040`) · 120.00 MTR · ₹6,828
 
 **Rework goes back out:** ISS-0084, `isRework = true`, `attemptNo = 2`, **rate ₹0** (their fault).
-Returns 118 m good, 2 m scrapped → **BATCH-00071** · 118.00 MTR · ₹6,828 · **₹57.86/MTR**.
+Returns 118 m good. A rework receipt draws on the rework batch itself, 1 for 1, so it uses 118 of
+the 120 m → **BATCH-00071** · 118.00 MTR · ₹6,714.20 · **₹56.90/MTR**. The 2 m that never came back
+stay at the printer until the step is completed, and then go as **₹113.80 of job order loss** — not
+into the 118 m that survived, because nobody planned to lose them.
 
-The rework batch is _cheaper per metre_ than the main batch (₹57.86 vs ₹59.90) because the processor ate
+The rework batch is _cheaper per metre_ than the main batch (₹56.90 vs ₹59.90) because the processor ate
 the reprint. The child batch makes that visible; merging it back would hide it (§5.5).
 
 ### A.5 Cutting — the unit changes
 
-Both batches merge: 4,700 + 118 = **4,818.00 MTR** · ₹288,350
+Both batches merge: 4,700 + 118 = **4,818.00 MTR** · ₹288,236.20
 
-|                            |                                                                              |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| Cutper                     | **1.65 MTR per shirt** → expected 2,920 pcs                                  |
-| Actual                     | **2,910 PCS**                                                                |
-| Charge                     | 4,818 × ₹2 = **₹9,636** _(issued basis — in-house cost follows consumption)_ |
-| **BATCH-00075** Cut Panels | 2,910 **PCS** · **₹297,986** · ₹102.40/PCS                                   |
-| Yield                      | 2,910 ÷ 4,818 = **0.604 PCS/MTR**                                            |
+|                            |                                                                 |
+| -------------------------- | --------------------------------------------------------------- |
+| Plan                       | 4,818 MTR in for **2,910 PCS** out — the job order's own cutper |
+| Actual                     | **2,910 PCS**                                                   |
+| Charge                     | 2,910 × ₹3 = **₹8,730** _(per accepted piece)_                  |
+| **BATCH-00075** Cut Panels | 2,910 **PCS** · **₹296,966.20** · ₹102.05/PCS                   |
+| Yield                      | 2,910 ÷ 4,818 = **0.604 PCS/MTR**                               |
 
-**No conversion factor was used or needed** — ₹297,986 is ₹297,986 whether divided by metres or
-pieces (§5.1, §9.1).
+**No conversion factor was used or needed** — ₹296,966.20 is ₹296,966.20 whether divided by metres
+or pieces (§5.1, §9.1). Had fewer than 2,910 pieces come back, the metres they did not need would have
+stayed at the cutting table as still out, and gone as job order loss at completion.
 
 ### A.6 Stitching
 
 - **ISS-0088** — 2,910 PCS to Vora Garments
-- **REC-0104** — 2,900 PCS back (10 lost in handling)
+- **REC-0104** — 2,895 PCS back: 10 lost in handling and 5 scrapped, both within the plan of 2,910
+  in for 2,895 out
 
-| Disposition       | Qty   | Value                             |
-| ----------------- | ----- | --------------------------------- |
-| Accepted          | 2,880 | ₹295,931                          |
-| Rework (`theirs`) | 15    | ₹1,541                            |
-| Scrap             | 5     | ₹514 → **absorbed into accepted** |
+| Disposition       | Qty   | Value                                            |
+| ----------------- | ----- | ------------------------------------------------ |
+| Accepted          | 2,880 | ₹295,427.52                                      |
+| Rework (`theirs`) | 15    | ₹1,538.68                                        |
+| Lost + scrapped   | 15    | — their cost stays in the 2,895 back, as planned |
 
-- Charge: 2,880 × ₹40 = **₹115,200** → **BATCH-00088** Shirts · 2,880 PCS · ₹411,645
-- Rework 15 pcs restitched free → 14 good → **BATCH-00095** · 14 PCS · ₹1,541
+- Charge: 2,880 × ₹40 = **₹115,200** → **BATCH-00088** Shirts · 2,880 PCS · ₹410,627.52
+- Rework 15 pcs restitched free → 14 good → **BATCH-00095** · 14 PCS · ₹1,436.10. The one piece
+  that never came back is **₹102.58 of job order loss** when the step is completed.
 
-The 5 scrapped shirts left as quantity; their ₹514 stayed. Otherwise the surviving 2,880 would look
-cheaper than they truly were (§9.2).
+The 15 planned losses left as quantity and their cost stayed. Otherwise the surviving shirts would
+look cheaper than they truly were (§9.2).
 
 ### A.7 Packing and dispatch
 
-2,880 + 14 = **2,894 PCS** · ₹413,186 + packing (2,894 × ₹5 = ₹14,470)
+2,880 + 14 = **2,894 PCS** · ₹412,063.62 + packing (2,894 × ₹5 = ₹14,470)
 
-**BATCH-00101** Packed Shirts · 2,894 PCS · **₹427,656** · **₹147.77/PCS**
+**BATCH-00101** Packed Shirts · 2,894 PCS · **₹426,533.62** · **₹147.39/PCS**
 
 **DC-0055** → 2,800 pcs to Acme · **INV-0203** → 2,800 × ₹220 = **₹616,000**
 
 ### A.8 The value check
 
-|                       | ₹             |
-| --------------------- | ------------- |
-| Material              | 250,000       |
-| Dyeing                | 24,250        |
-| Printing              | 14,100        |
-| Cutting               | 9,636         |
-| Stitching             | 115,200       |
-| Packing               | 14,470        |
-| **Total in**          | **427,656**   |
-| **BATCH-00101 value** | **427,656** ✓ |
+|                                         | ₹                |
+| --------------------------------------- | ---------------- |
+| Material                                | 250,000          |
+| Dyeing                                  | 24,250           |
+| Printing                                | 14,100           |
+| Cutting                                 | 8,730            |
+| Stitching                               | 115,200          |
+| Packing                                 | 14,470           |
+| **Total in**                            | **426,750.00**   |
+| BATCH-00101 value                       | 426,533.62       |
+| Job order loss — printing rework, 2 m   | 113.80           |
+| Job order loss — stitching rework, 1 pc | 102.58           |
+| **Accounted for**                       | **426,750.00** ✓ |
 
-Nothing leaked. 2,106 metres and 26 pieces were lost to shrinkage, wastage and scrap — **and not one
-rupee disappeared with them.** It concentrated into what survived: ₹50.00/MTR became ₹147.77/PCS.
+Nothing leaked. The loss each plan expected concentrated into what survived — ₹50.00/MTR became
+₹147.39/PCS — and the 2 m and 1 piece nobody planned to lose are not hidden inside the shirts: they
+are **₹216.38 of job order loss**, written off when their steps were completed (§9.2).
 
-**P&L:** ₹616,000 − (2,800 × ₹147.77 = ₹413,756) = **₹202,244 · 32.8%**.
-94 shirts remain in stock at ₹13,890.
+**P&L:** ₹616,000 − (2,800 × ₹147.39 = ₹412,692) = **₹203,308 · 33.0%** on the goods sold; the
+order's own result also carries its ₹216.38 of loss. 94 shirts remain in stock at ₹13,855.
 
 ### A.9 Traceability, backwards
 

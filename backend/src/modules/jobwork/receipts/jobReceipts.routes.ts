@@ -3,23 +3,32 @@ import { authenticate } from '../../../middlewares/authenticate.ts';
 import { tenantContext } from '../../../middlewares/tenantContext.ts';
 import { requirePermission } from '../../../middlewares/authorize.ts';
 import { validateBody } from '../../../middlewares/validate.ts';
-import { cancelJobReceiptSchema, createJobReceiptSchema } from './jobReceipts.schemas.ts';
+import {
+  cancelJobReceiptSchema,
+  createJobReceiptSchema,
+  updateJobReceiptSchema,
+} from './jobReceipts.schemas.ts';
 import {
   cancelReceipt,
   createJobReceipt,
+  deleteJobReceipt,
   getBatchOptions,
   getJobReceipt,
   getJobReceiptCount,
   getJobReceipts,
   getPrefill,
+  postJobReceipt,
+  updateJobReceipt,
 } from './jobReceipts.controller.ts';
 
 /**
  * Mounted at `/organizations/:orgId/jobwork/receipts`.
  *
- * No PUT, for the same reason Issues has none: a posted receipt has created batches
- * and moved stock, and the only legal correction is a cancellation that posts the
- * opposite rows.
+ * 🔴 PUT AND DELETE REACH A DRAFT ONLY, and the old rule holds underneath them
+ * exactly as on the issue side: a POSTED receipt has created batches and moved
+ * stock, and its only legal correction is a cancellation that posts the opposite
+ * rows. A draft created nothing, so there is nothing for an edit to contradict.
+ * Both handlers re-check the status inside the transaction.
  */
 const router = Router({ mergeParams: true });
 
@@ -41,6 +50,23 @@ router.get('/prefill', requirePermission('job_receipt:create'), getPrefill);
 router.get('/batch-options', requirePermission('job_receipt:create'), getBatchOptions);
 
 router.get('/:id', requirePermission('job_receipt:read'), getJobReceipt);
+
+// Editing a parked draft — `update`, granted by the catalog since the module
+// landed and enforced by nothing until now.
+router.put(
+  '/:id',
+  requirePermission('job_receipt:update'),
+  validateBody(updateJobReceiptSchema),
+  updateJobReceipt,
+);
+
+// Posting is gated on `create`, not `update`: it is what brings the goods into
+// stock and creates their batches. Correcting a draft is not that.
+router.post('/:id/post', requirePermission('job_receipt:create'), postJobReceipt);
+
+// Only ever a draft — the service refuses anything else.
+router.delete('/:id', requirePermission('job_receipt:delete'), deleteJobReceipt);
+
 router.post(
   '/:id/cancel',
   requirePermission('job_receipt:delete'),

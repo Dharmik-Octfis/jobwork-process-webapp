@@ -5,10 +5,11 @@ import {
   type UpdateVendorData,
   type VendorAddress,
   type VendorContactPerson,
+  type VendorsPage,
 } from './vendors.schemas';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, User, Settings, Plus } from 'lucide-react';
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { VendorActivityTimeline } from './VendorActivityTimeline';
 import { VendorComments } from './VendorComments';
@@ -23,6 +24,7 @@ interface VendorDetailProps {
 export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -97,9 +99,18 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       const dataToUpdate = { ...rest, status: newStatus };
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
-    onSuccess: () => {
+    onSuccess: (_, newStatus) => {
+      queryClient.setQueriesData({ queryKey: ['vendors', orgId], type: 'active' }, (old: VendorsPage | undefined) => {
+        if (!old || !old.results) return old;
+        return {
+          ...old,
+          results: old.results.map((item: Vendor) =>
+            item.id === vendorId ? { ...item, status: newStatus } : item
+          ),
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: ['vendors', orgId], type: 'inactive' });
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
     },
   });
 
@@ -397,7 +408,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone } });
+    navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone , returnUrl: location.pathname + location.search } });
   };
 
   if (isLoading) {
@@ -461,17 +472,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
             {vendor.contactName}
           </h2>
           <span
@@ -494,8 +497,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`)}
+          <button className="action-btn"
+            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -508,11 +511,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
               gap: '4px',
             }}
           >
-            <Edit size={14} /> Edit
+            <Edit size={14} /> <span className="action-btn-text">Edit</span>
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button
+            <button className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -526,7 +529,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 gap: '4px',
               }}
             >
-              More <ChevronDown size={14} />
+              <span className="action-btn-text">More</span> <ChevronDown size={14} />
             </button>
 
             {isMoreOpen && (
@@ -612,32 +615,15 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div
-        style={{
-          padding: '0 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-        }}
-      >
-        {tabs.map((tab, idx) => (
-          <Fragment key={tab}>
-            {idx > 0 && <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />}
-            <div
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '12px 0',
-                fontSize: '14px',
-                fontWeight: activeTab === tab ? 600 : 500,
-                color: activeTab === tab ? '#0062ff' : '#64748b',
-                borderBottom: activeTab === tab ? '2px solid #0062ff' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            >
-              {tab}
-            </div>
-          </Fragment>
+      <div className="detail-page-tabs">
+        {tabs.map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
         ))}
       </div>
 
@@ -651,15 +637,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
             paddingBottom: '120px',
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              gap: '0px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              borderRadius: '8px',
-              border: '1px solid #eef0f3',
-            }}
-          >
+          <div className="detail-content-layout">
             {/* Left Column */}
             <div
               style={{
@@ -780,7 +758,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                         }}
                         onMouseLeave={() => setHoveredContactSetting('Edit')}
                       >
-                        <button
+                        <button className="action-btn"
                           style={{
                             display: 'block',
                             width: '100%',
@@ -800,7 +778,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                             setIsContactSettingsOpen(false);
                           }}
                         >
-                          Edit
+                          <span className="action-btn-text">Edit</span>
                         </button>
                         <button
                           style={{
@@ -1316,7 +1294,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       overflow: 'hidden',
                                     }}
                                   >
-                                    <button
+                                    <button className="action-btn"
                                       onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
                                       onClick={() => {
                                         setContactPersonEditIndex(index);
@@ -1342,7 +1320,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                         borderRadius: '4px',
                                       }}
                                     >
-                                      Edit
+                                      <span className="action-btn-text">Edit</span>
                                     </button>
                                     <button
                                       onMouseEnter={() =>

@@ -15,7 +15,8 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  *
  * No `challanNumber` either: `NumberSequence('job_issue')` allocates it in the
  * save transaction, so an abandoned dialog burns nothing (§2.2). A gap in a
- * statutory series is a question an auditor asks.
+ * statutory series is a question an auditor asks. Saving a DRAFT is a save, so it
+ * takes a number and keeps it — re-editing the draft does not take another.
  *
  * And since 2026-08-10, no transport (`transporterId`, `vehicleNo`, `lrNo`,
  * `lrDate`, `ewayBillNo`) and no `customFields`. The four transport columns were
@@ -67,9 +68,22 @@ export const jobIssueLineSchema = z.object({
    */
   sourceLocationId: z.string().uuid().nullable().optional(),
   /**
-   * Set only for a package-granular issue. When it is set the quantity is the
-   * package's own measured quantity — ticking a taka takes ALL of it (§5.3), so
-   * `qty` is checked against the package rather than typed freely.
+   * 🔴 WHICH PACKAGE of the batch this line sends — a taka, roll or bale — when
+   * the org runs a unit level.
+   *
+   * Set only for a package-granular issue. Omitted, the line draws on the batch's
+   * UNTAGGED remainder, which is what every line written before the level existed
+   * means and what an item with no package grid always means.
+   *
+   * Three packages of one batch are three lines, exactly as three batches are.
+   */
+  batchUnitId: z.string().uuid().nullable().optional(),
+  /**
+   * When `batchUnitId` is set this is how much of THAT package goes — checked
+   * against what the package still holds, never against the batch.
+   *
+   * Part of a roll is a real answer: a roll already broken into is exactly the
+   * one an operator sends the remainder of.
    */
   qty: z.coerce.number().positive('Every line needs a quantity greater than zero.'),
 });
@@ -114,10 +128,39 @@ export const createJobIssueSchema = openApiRegistry.register(
     lines: z.array(jobIssueLineSchema).min(1, 'Pick at least one batch to issue.'),
 
     remarks: z.string().trim().max(2000).nullable().optional(),
+
+    /**
+     * 🔴 A MODE, NOT A STATUS — and the difference is the reason this is a boolean.
+     *
+     * `status` is never accepted from a request body in this domain (jobwork.types
+     * `JOB_ISSUE_STATUSES`): it is derived from the receipts underneath, and a
+     * status a user can type is one that disagrees with them. This says which
+     * BUTTON was pressed. The service turns it into `draft` or `issued` and
+     * nothing else, so no payload can ever name `closed` or `cancelled`.
+     *
+     * Absent means post, so every client written before drafts existed keeps
+     * issuing challans exactly as it did.
+     */
+    saveAsDraft: z.boolean().optional(),
   }),
 );
 
 export type CreateJobIssueInput = z.infer<typeof createJobIssueSchema>;
+
+/**
+ * Rewriting a parked draft. The same body as a create — a draft is edited by
+ * re-submitting the whole form, not patched field by field, because the lines are
+ * replaced wholesale and a partial update of a document made of lines is a shape
+ * nothing on the screen produces.
+ *
+ * The service refuses this on anything that is not still a draft.
+ */
+export const updateJobIssueSchema = openApiRegistry.register(
+  'UpdateJobIssueRequest',
+  createJobIssueSchema,
+);
+
+export type UpdateJobIssueInput = z.infer<typeof updateJobIssueSchema>;
 
 /**
  * Cancelling a challan. Not a delete and not an edit.

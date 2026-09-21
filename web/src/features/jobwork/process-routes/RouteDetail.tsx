@@ -1,9 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
-import { rateBasisLabel } from '../processes/processes.schemas';
-import { formatQty, processorTypeLabel, type StepItemRowRead } from '../jobwork.schemas';
+import {
+  formatMoney,
+  formatQty,
+  processorTypeLabel,
+  type StepItemRowRead,
+} from '../jobwork.schemas';
 import { fetchRouteById } from './processRoutes.api';
 
 interface Props {
@@ -32,6 +36,12 @@ function ItemLines({ rows }: { rows: StepItemRowRead[] }) {
           <span key={row.id} style={{ display: 'block' }}>
             {row.item?.name ?? 'Item'}
             {qty ? ` — ${qty}${unit ? ` ${unit}` : ''}` : unit ? ` (${unit})` : ''}
+            {/* Outputs only: the suggested charge per accepted unit (landed-cost D1). */}
+            {row.rate !== null && row.rate !== undefined && (
+              <span style={{ marginLeft: 6, fontSize: 11, color: '#64748b' }}>
+                {formatMoney(row.rate)} / {unit || 'unit'}
+              </span>
+            )}
             {row.isPrimary && (
               <span style={{ marginLeft: 6, fontSize: 11, color: '#047857' }}>Main</span>
             )}
@@ -55,6 +65,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function RouteDetail({ routeId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
 
   const { data: route, isLoading } = useQuery({
@@ -77,17 +88,14 @@ export function RouteDetail({ routeId, onClose }: Props) {
 
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-        }}
-      >
+      <header className="detail-page-header">
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}>{route.name}</h2>
+          <h2
+            className="detail-title"
+            style={{ fontSize: 16, fontWeight: 600, color: '#111', margin: 0 }}
+          >
+            {route.name}
+          </h2>
           <span style={{ fontSize: 12, color: '#64748b' }}>
             {route.code ? `${route.code} · ` : ''}
             {route.steps.length} step{route.steps.length === 1 ? '' : 's'}
@@ -95,9 +103,12 @@ export function RouteDetail({ routeId, onClose }: Props) {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
+            className="action-btn"
             type="button"
             onClick={() =>
-              navigate(`/organizations/${orgId}/settings/jobwork/routes/${route.id}/edit`)
+              navigate(`/organizations/${orgId}/settings/jobwork/routes/${route.id}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
             }
             style={{
               display: 'flex',
@@ -112,7 +123,7 @@ export function RouteDetail({ routeId, onClose }: Props) {
               color: '#333',
             }}
           >
-            <Pencil size={14} /> Edit
+            <Pencil size={14} /> <span className="action-btn-text">Edit</span>
           </button>
           <button
             type="button"
@@ -193,19 +204,8 @@ export function RouteDetail({ routeId, onClose }: Props) {
                 <Row label="Produces">
                   {step.outputs.length === 0 ? 'Unchanged' : <ItemLines rows={step.outputs} />}
                 </Row>
-                <Row label="Rate">
-                  {step.rate === null ? '-' : formatQty(step.rate)}
-                  {step.rateBasis && (
-                    <span style={{ display: 'block', fontSize: 11, color: '#64748b' }}>
-                      {rateBasisLabel(step.rateBasis)}
-                    </span>
-                  )}
-                </Row>
                 <Row label="Yield">
                   {step.expectedYield === null ? '-' : formatQty(step.expectedYield)}
-                </Row>
-                <Row label="Tolerance">
-                  {step.tolerancePct === null ? '-' : `${formatQty(step.tolerancePct)}%`}
                 </Row>
                 {step.remarks && <Row label="Remarks">{step.remarks}</Row>}
               </div>

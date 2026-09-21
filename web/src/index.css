@@ -72,9 +72,9 @@
   --color-surface-2: #f7f9fc;
   --color-border: #e3e8ef;
   --color-border-strong: #cdd9e8;
-  --color-text: #18222e;
-  --color-text-muted: #51607a;
-  --color-text-subtle: #8a97ab;
+  --color-text: #222222;
+  --color-text-muted: #777777;
+  --color-text-subtle: #999999;
 
   /* Primary — the petrol blue we reserve for the primary action / active state */
   --color-primary: #1c7c8c;
@@ -137,19 +137,17 @@
 html,
 body,
 #root {
-  height: 100%;
+  height: 100dvh;
   overflow: hidden;
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--color-text);
   background: var(--color-bg);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
@@ -160,6 +158,34 @@ input,
 select,
 textarea {
   font-family: inherit;
+}
+
+input:not(.no-global-focus),
+select:not(.no-global-focus),
+textarea:not(.no-global-focus),
+button[aria-haspopup='listbox']:not(.no-global-focus),
+button[role='combobox']:not(.no-global-focus) {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:not(.no-global-focus):hover:not(:disabled),
+textarea:not(.no-global-focus):hover:not(:disabled),
+select:not(.no-global-focus):hover:not(:disabled),
+button[aria-haspopup='listbox']:not(.no-global-focus):hover:not(:disabled),
+button[role='combobox']:not(.no-global-focus):hover:not(:disabled) {
+  border-color: var(--color-primary) !important;
+}
+
+input:not(.no-global-focus):focus:not(:disabled),
+textarea:not(.no-global-focus):focus:not(:disabled),
+select:not(.no-global-focus):focus:not(:disabled),
+button[aria-haspopup='listbox']:not(.no-global-focus):focus:not(:disabled),
+button[role='combobox']:not(.no-global-focus):focus:not(:disabled),
+button[aria-expanded='true']:not(.no-global-focus):not(:disabled) {
+  outline: none !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(28, 124, 140, 0.15) !important;
+  border-radius: var(--radius-sm);
 }
 
 h1,
@@ -275,3 +301,484 @@ input[type='number'] {
 
 .sidebar-nav-link:hover { background-color: rgba(255,255,255,0.08) !important; }
 .sidebar-nav-link.active:hover { background-color: #186337 !important; }
+
+/* Responsive Sidebar & AppLayout Styles */
+.mobile-header-menu-btn {
+  display: none;
+}
+
+.mobile-sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Show hamburger menu on mobile */
+  .mobile-header-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text);
+    padding: 8px;
+    margin-right: 8px;
+  }
+
+  /* Make the sidebar a drawer on mobile */
+  .app-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    z-index: 100 !important;
+    transform: translateX(-100%);
+    width: 260px !important;
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* The overlay backdrop when sidebar is open */
+  .mobile-sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 90;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .mobile-sidebar-overlay.mobile-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Responsive Master-Detail Layouts */
+.master-detail-container {
+  display: flex;
+  overflow: hidden;
+  background: #f4f5f8;
+  flex: 1;
+}
+
+.master-pane {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.detail-pane {
+  flex: 1;
+  background: #f4f5f8;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Responsive Table Wrapper */
+.responsive-table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* When detail is open on mobile, hide the master list */
+  .master-detail-container.has-selection > .master-pane {
+    display: none !important;
+  }
+  
+  /* When no selection on mobile, hide the detail pane */
+  .master-detail-container:not(.has-selection) > .detail-pane {
+    display: none !important;
+  }
+
+  /* Make sure the master pane takes full width when visible */
+  .master-pane {
+    flex: 1 !important;
+    border-right: none !important;
+    min-width: 0;
+  }
+  
+  .master-pane header {
+    flex-wrap: wrap !important;
+    gap: 12px;
+  }
+}
+
+/* Detail Page Internal Layouts */
+.detail-page-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #eef0f3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap; /* Allows wrapping on mobile */
+}
+
+.detail-page-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #eef0f3;
+  padding: 0 24px;
+  gap: 24px;
+  flex-wrap: wrap; /* Allows dropdowns to be visible and wraps tabs on small screens */
+}
+
+.detail-tab {
+  padding: 12px 0;
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  color: #777777;
+  font-weight: 400;
+  margin-bottom: -1px;
+  white-space: nowrap;
+}
+.detail-tab:hover {
+  color: #222222;
+}
+.detail-tab.active {
+  color: #222222;
+  font-weight: 500;
+}
+.detail-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: #0062ff;
+  border-radius: 3px 3px 0 0;
+}
+
+.detail-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 32px;
+  justify-content: start;
+}
+
+/* Forms */
+.form-field-grid {
+  /* Inherit template-columns from inline style on desktop, override on mobile */
+  display: grid;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Detail Split Layouts */
+.detail-content-layout {
+  display: flex;
+  gap: 0px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  border-radius: 8px;
+  border: 1px solid #eef0f3;
+}
+
+.detail-top-section {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 20px;
+  gap: 24px;
+}
+
+.detail-top-right {
+  display: flex;
+  gap: 48px;
+}
+
+.detail-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.step-movement-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 24px;
+}
+
+/* Pagination */
+.pagination-bar {
+  height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 768px) {
+  .form-field-grid {
+    grid-template-columns: 1fr !important;
+    align-items: start !important;
+  }
+  
+  .pagination-bar {
+    height: auto !important;
+    padding: 12px 16px !important;
+    flex-wrap: wrap;
+    gap: 12px !important;
+    justify-content: space-between !important;
+  }
+  
+  .pagination-per-page {
+    display: none !important;
+  }
+
+  .responsive-table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+  }
+
+  .responsive-table-wrapper table {
+    width: max-content !important;
+    min-width: 600px !important;
+  }
+  
+  .responsive-table-wrapper th,
+  .responsive-table-wrapper td {
+    white-space: nowrap !important;
+  }
+  
+  .detail-title {
+    font-size: 16px !important;
+  }
+  
+  .action-btn-text {
+    display: none !important;
+  }
+  
+  .action-btn {
+    padding: 6px 8px !important;
+  }
+  
+  .detail-overview-grid {
+    zoom: 0.9;
+  }
+  
+  .detail-content-layout {
+    flex-direction: column !important;
+  }
+  
+  .detail-content-layout > div {
+    flex: 1 1 auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .detail-top-section {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  .detail-top-right {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+  
+  .detail-status-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+  
+  .step-movement-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  .step-movement-grid > div:nth-child(2) {
+    width: 100% !important;
+    height: 1px !important;
+    margin: 8px 0;
+  }
+  
+  .app-topbar {
+    padding: 0 12px !important;
+  }
+  
+  .topbar-search-area {
+    margin-right: 8px;
+  }
+  
+  .global-search-container {
+    width: 100% !important;
+    max-width: 180px !important;
+  }
+  
+  .topbar-right-controls {
+    gap: 8px !important;
+  }
+  
+  .topbar-org-dropdown {
+    max-width: 100px;
+  }
+}
+
+@media (max-width: 768px) {
+  .form-actions-footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 100;
+  }
+
+  .detail-title {
+    font-size: 20px;
+  }
+
+  .responsive-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  .responsive-table-wrapper table {
+    min-width: 800px; /* Minimum width to prevent squishing */
+  }
+
+  .master-pane {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .detail-pane {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .detail-page-header,
+  .detail-page-content {
+    padding: 12px 16px !important;
+  }
+
+  /* 1. Prevent flexbox blowout: ensure no container expands wider than the screen on mobile, 
+        which was pushing the header (and the New button) off-screen. */
+  .detail-pane,
+  .detail-pane div {
+    max-width: 100vw;
+  }
+
+  /* 2. Automatically make any div containing a table horizontally scrollable */
+  .detail-pane div:has(> table) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+  
+  /* 3. Ensure tables are wide enough to not squish columns, which triggers the scroll */
+  .detail-pane table {
+    min-width: 800px !important;
+    table-layout: auto !important;
+  }
+
+  .detail-title {
+    font-size: 16px !important;
+  }
+  .action-btn-text {
+    display: none;
+  }
+  .action-btn {
+    padding: 6px !important;
+  }
+  
+  .master-detail-container.has-selection > .master-pane {
+    display: none !important;
+  }
+  .master-detail-container:not(.has-selection) > .detail-pane {
+    display: none !important;
+  }
+}
+
+.settings-mobile-header {
+  display: none;
+}
+@media (max-width: 768px) {
+  .settings-mobile-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: white;
+    border-bottom: 1px solid #eef0f3;
+  }
+}
+@media (max-width: 768px) {
+  .hidden-on-mobile {
+    display: none !important;
+  }
+}
+
+/* Form Page Layouts */
+.page-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  background: #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+
+.page-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #eef0f3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.page-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.page-footer {
+  height: 44px;
+  box-sizing: border-box;
+  background: #fff;
+  padding: 0 24px;
+  border-top: 1px solid #eef0f3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 100;
+  justify-content: flex-start;
+  flex-shrink: 0;
+}
+
+/* Disable scrollbar on responsive tables inside PDF view */
+.po-print-template .responsive-table-wrapper {
+  overflow-x: visible !important;
+}
+
+.table-row-hover:hover { background-color: #f8fafc !important; }
+

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Location } from '../../../configuration/locations/locations.api';
 import type { ItemOpeningStockLocationRowDto } from '../../../items/items.schemas';
+import { availableOf, stockOnHandOf } from '../../../items/stockFigures';
 
 interface WarehouseLocationsPopoverProps {
   isOpen: boolean;
@@ -266,16 +267,9 @@ export function WarehouseLocationsPopover({
             {filteredLocations.map((loc) => {
               const row = stockRows.find((r) => r.locationId === loc.id);
 
-              // Determine stock values from row or default to 0
-              // The API usually returns these fields, but we should fallback gracefully
-              let onHand = 0;
-              if (row) {
-                const batchTotal =
-                  row.batches?.reduce((acc, b) => acc + (Number(b.quantityIn) || 0), 0) || 0;
-                onHand = Number(row.stockOnHand ?? row.openingStock ?? batchTotal) || 0;
-              }
+              const onHand = row ? stockOnHandOf(row) : 0;
               const committed = Number(row?.committedStock ?? 0) || 0;
-              const available = Number(row?.availableForSale ?? onHand - committed) || 0;
+              const available = row ? availableOf(row) : 0;
 
               return (
                 <tr

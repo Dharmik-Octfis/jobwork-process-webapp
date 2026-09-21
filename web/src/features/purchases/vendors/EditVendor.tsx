@@ -8,8 +8,7 @@ import { VendorForm } from './VendorForm';
 
 export function EditVendor() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();  const queryClient = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { data: vendor, isLoading: isFetching } = useQuery({
@@ -50,7 +49,7 @@ export function EditVendor() {
   }
 
   return (
-    <div>
+    <>
       {vendor && (
         <VendorForm
           initialData={vendor as unknown as CreateVendorData} // mapping handles identical schema structure
@@ -60,6 +59,6 @@ export function EditVendor() {
           customFieldErrors={fieldErrors}
         />
       )}
-    </div>
+    </>
   );
 }

@@ -39,7 +39,9 @@ export const setNumberingPreference = async (req: Request, res: Response) => {
 };
 
 export const deleteAssemblyRoute = async (req: Request, res: Response) => {
-  await assembliesService.deleteAssembly(req.tenantId!, req.params.id as string);
+  // The acting user, so the reversal rows and the document both record who
+  // cancelled it — a cancellation is an action somebody took.
+  await assembliesService.deleteAssembly(req.tenantId!, req.params.id as string, req.user?.id);
   sendSuccess(res, null, 'Assembly deleted successfully');
 };
 

@@ -3,8 +3,8 @@ import { runAsTenant, type TenantClient } from '../../db/prisma.ts';
 /**
  * The vocabularies Sprints 2–4 share, in one file rather than five.
  *
- * Same convention as `processes/processes.types.ts`: a `String @db.VarChar(n)`
- * with a `// a | b | c` comment in the schema, and the list in code. This
+ * A `String @db.VarChar(n)` with a `// a | b | c` comment in the schema, and
+ * the list in code. This
  * codebase has zero Prisma `enum` blocks, so adding a value is a code change
  * with no migration — and the price of that is exactly this file, because the
  * database will happily store a typo.
@@ -59,9 +59,68 @@ export const JOB_ORDER_STEP_STATUSES = [
 ] as const;
 export type JobOrderStepStatus = (typeof JOB_ORDER_STEP_STATUSES)[number];
 
-/** An issue's life. `closed` means everything sent has been accounted for. */
-export const JOB_ISSUE_STATUSES = ['issued', 'partially_received', 'closed', 'cancelled'] as const;
+/**
+ * A challan's life: parked, sent, or withdrawn. Nothing else.
+ *
+ * 🔴 `partially_received` and `closed` WERE HERE and were removed on 2026-09-07.
+ * A challan does not need closing — no rule requires it, and the two derived
+ * states were answering a question the ledger already answers better: what is
+ * still at a processor is `SUM(in) − SUM(out)` at their location, per batch,
+ * whatever any document's status column says.
+ *
+ * What ticking a challan on a receipt still does is UNCHANGED, and it is the part
+ * that matters: its lines say which batch at the processor is being drawn down
+ * and by how much, so stock leaves and its cost flows into the output. Only the
+ * status label went — the arithmetic underneath it was never the label's.
+ *
+ * Every value here is now chosen rather than derived — by which button was
+ * pressed, or by a cancellation — so nothing writes this column but the action
+ * that owns it. `scripts/open-challan-statuses.ts` backfilled the rows that were
+ * already carrying the two removed values.
+ */
+export const JOB_ISSUE_STATUSES = ['draft', 'issued', 'cancelled'] as const;
 export type JobIssueStatus = (typeof JOB_ISSUE_STATUSES)[number];
+
+/**
+ * A receipt's life. It had no list in code until drafts arrived — the vocabulary
+ * lived in a schema comment and in `listFilters.catalog.ts`, which is exactly how
+ * a third value gets added in one place and missed in the other.
+ */
+export const JOB_RECEIPT_STATUSES = ['draft', 'posted', 'cancelled'] as const;
+export type JobReceiptStatus = (typeof JOB_RECEIPT_STATUSES)[number];
+
+/**
+ * 🔴 THE ONLY WAY TO ASK "DID THIS DOCUMENT ACTUALLY MOVE STOCK?"
+ *
+ * Put it in the `where` of every sum over issues or receipts. Never spell the
+ * statuses out inline, and never fall back to `{ not: 'cancelled' }` — the same
+ * reasoning as `ACTIVE_USER` in `lib/authGuards.ts`: two excluded values means
+ * two chances to exclude only one, and the one that gets forgotten is the new one.
+ *
+ * A DRAFT IS THE DANGEROUS HALF. A cancelled document has reversing ledger rows,
+ * so counting it merely double-counts a zero. A draft has LINES AND TOTALS AND NO
+ * LEDGER ROWS AT ALL — it is a challan that says 4,800 m left the godown while the
+ * ledger says nothing did. Count one and the step reports material at a processor
+ * that never went anywhere, the next step's chain guard opens on it, and the
+ * Overview and the stock report disagree with no way to tell which is lying.
+ *
+ * `jobwork.drafts.test.ts` pins this: it saves a draft on both sides and asserts
+ * the step's totals, the ledger and the job order status are all untouched.
+ */
+const NOT_POSTED: string[] = ['draft', 'cancelled'];
+export const POSTED_DOC_STATUS = { notIn: NOT_POSTED };
+
+/**
+ * "Did this document ever happen?" — a different question from the one above, and
+ * the one the ACTIVITY TIMELINE asks.
+ *
+ * A cancelled challan belongs on a timeline: it went out on the 3rd and was
+ * cancelled on the 5th, and hiding it leaves a gap between two numbers that no
+ * longer explain each other. A draft does not: nothing has happened yet, and
+ * listing one as "4,800 m issued to Sunrise Dyers" describes goods that are still
+ * in the godown.
+ */
+export const HAPPENED_DOC_STATUS = { not: 'draft' } as const;
 
 /**
  * 🔴 NOT A USER PREFERENCE. `Process.preservesPackaging` decides this, and the
@@ -102,9 +161,13 @@ export type Responsibility = (typeof RESPONSIBILITIES)[number];
  * material still out at a vendor.
  *
  * Any screen showing a per-location breakdown has to draw this line, so it is
- * drawn ONCE. `web/.../ReceiveDialog.tsx` picked the same two types
- * independently for its godown dropdown; a second copy of a rule is a second
- * chance for the two to disagree about what "in stock" means.
+ * drawn ONCE — and the warning this comment used to carry came true: a receive
+ * dialog had picked the same types independently for its godown dropdown, and
+ * the copy then drifted. The client now keeps ONE list of its own, in
+ * `web/.../configuration/locations/locations.api.ts`, and every picker filters
+ * through it; this stays the source of truth for anything the LEDGER decides.
+ * A second copy of a rule is a second chance for the two to disagree about what
+ * "in stock" means.
  */
 export const EXTERNAL_LOCATION_TYPES = ['processor', 'in_transit', 'customer_site'] as const;
 
@@ -122,6 +185,9 @@ export const SOURCE_DOC_TYPES = {
   jobOrderMaterialIn: 'job_order_material_in',
   jobIssue: 'job_issue',
   jobReceipt: 'job_receipt',
+  /** The completion write-off (landed-cost R8): `sourceDocId` is the step,
+   * `sourceDocLineId` the challan line whose remainder was scrapped. */
+  jobOrderStep: 'job_order_step',
 } as const;
 
 /**

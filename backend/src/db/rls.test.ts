@@ -20,6 +20,11 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
 const TENANT_TABLES = [
   'bills',
   'bill_items',
+  // What a bill line says it received, broken down by batch and package. Added in
+  // 20260908075034_add_bill_item_batches. It carries its own `organization_id`
+  // — denormalised from the parent bill — so it takes the direct policy form,
+  // like `job_issue_lines`, rather than `bill_items`' join through `bills`.
+  'bill_item_batches',
   'bill_activities',
   'bill_comments',
   'vendors',
@@ -51,6 +56,18 @@ const TENANT_TABLES = [
   'processes',
   'batches',
   'stock_ledger',
+  // FIFO cost layers and the draws on them, added in 20260918150000_fifo_cost_layers.
+  // Both carry their own `organization_id` (direct form). A layer holds what our
+  // stock at each place cost — never rendered as a table, so only this list
+  // would notice its policy going missing.
+  'stock_cost_layers',
+  'stock_layer_draws',
+  // The optional level below a batch — a taka/roll/bale — added in
+  // 20260901120700_add_batch_units. It carries its own `organization_id`
+  // (denormalised from the parent batch) precisely so it can hold its own
+  // policy: a unit is reachable directly by the picker's balance query, which
+  // never joins through `batches`.
+  'batch_units',
   // Sprints 2–4, added in 20260805070926_jobwork_sprints_2_to_4. The LINE tables
   // each carry their own `organizationId` and their own policy rather than being
   // scoped through their header, so a query that reads one directly is still
@@ -72,6 +89,7 @@ const TENANT_TABLES = [
   'route_step_outputs',
   'job_order_step_inputs',
   'job_order_step_outputs',
+  'job_order_step_output_components',
   'job_receipt_outputs',
   'job_receipt_output_batches',
   // Planned batch allocation, added in 20260817110021_add_job_order_step_input_batches.
@@ -87,6 +105,24 @@ const TENANT_TABLES = [
   'item_assembly_comments',
   'item_assembly_activities',
   'item_opening_stock_rows',
+  // 🔴 Gated only on 2026-09-11, in
+  // 20260911150000_enable_rls_on_purchase_orders_and_item_categories, having been
+  // cross-tenant readable until then. All five were created out-of-band — they
+  // still have no `CREATE TABLE` in `prisma/migrations` — so they never went
+  // through the "new tenant table" checklist, and being absent from THIS list is
+  // the reason nothing said so for as long as it lasted. That is the whole
+  // argument for the list existing: it is the only thing that checks.
+  //
+  // `item_categories` holds its own `organization_id` and takes the direct form.
+  // The three `purchase_order_*` children have NO `organization_id` column at
+  // all, so they scope through `purchase_orders` on `purchase_order_id` — the
+  // join-through form, like the `vendor_*` children. `purchase_orders` itself was
+  // already gated out-of-band before that migration restated it.
+  'item_categories',
+  'purchase_orders',
+  'purchase_order_items',
+  'purchase_order_activities',
+  'purchase_order_comments',
 ] as const;
 
 /**

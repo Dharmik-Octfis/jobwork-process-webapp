@@ -1,10 +1,12 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createLocation, type CreateLocationData } from './locations.api';
 import { LocationForm } from './LocationForm';
 
 export function CreateLocation() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
 
@@ -12,7 +14,10 @@ export function CreateLocation() {
     mutationFn: (data: CreateLocationData) => createLocation(orgId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locations', orgId] });
-      navigate(`/organizations/${orgId}/settings/locations`);
+      navigate(
+        (location.state as { returnUrl?: string })?.returnUrl ||
+          `/organizations/${orgId}/settings/locations`,
+      );
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
@@ -21,15 +26,54 @@ export function CreateLocation() {
   });
 
   return (
-    <div style={{ background: '#fff', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>Add Location</h1>
+    <div
+      style={{ background: '#fff', height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
+      <header
+        style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid #eef0f3',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#000', margin: 0 }}>
+          Add Location
+        </h1>
+        <button
+          type="button"
+          onClick={() =>
+            navigate(
+              (location.state as { returnUrl?: string })?.returnUrl ||
+                `/organizations/${orgId}/settings/locations`,
+            )
+          }
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </header>
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, minHeight: 0 }}>
         <LocationForm
           onSubmit={(data) => mutation.mutate(data)}
           isPending={mutation.isPending}
-          onCancel={() => navigate(`/organizations/${orgId}/settings/locations`)}
+          onCancel={() =>
+            navigate(
+              (location.state as { returnUrl?: string })?.returnUrl ||
+                `/organizations/${orgId}/settings/locations`,
+            )
+          }
         />
       </div>
     </div>

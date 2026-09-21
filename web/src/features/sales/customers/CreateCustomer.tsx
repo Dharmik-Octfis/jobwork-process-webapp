@@ -41,14 +41,12 @@ export function CreateCustomer() {
   };
 
   return (
-    <div>
-      <CustomerForm
-        initialData={initialData}
-        onSubmit={onSubmit}
-        isSubmitting={mutation.isPending}
-        isEdit={false}
-        customFieldErrors={fieldErrors}
-      />
-    </div>
+    <CustomerForm
+      initialData={initialData}
+      onSubmit={onSubmit}
+      isSubmitting={mutation.isPending}
+      isEdit={false}
+      customFieldErrors={fieldErrors}
+    />
   );
 }

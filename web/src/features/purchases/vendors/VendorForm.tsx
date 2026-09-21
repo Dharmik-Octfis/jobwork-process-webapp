@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Settings } from 'lucide-react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Plus, Trash2, Settings, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createVendorSchema, type CreateVendorData } from './vendors.schemas';
 import { fetchVendorNumberPreference, updateVendorNumberPreference } from './vendors.api';
@@ -40,6 +40,7 @@ interface VendorFormProps {
   isEdit?: boolean;
   customFieldErrors?: Record<string, string>;
   onCancel?: () => void;
+  isModal?: boolean;
 }
 
 export function VendorForm({
@@ -49,8 +50,10 @@ export function VendorForm({
   isEdit = false,
   customFieldErrors,
   onCancel,
+  isModal = false,
 }: VendorFormProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'vendor');
   const [activeTab, setActiveTab] = useState('other');
@@ -198,15 +201,19 @@ export function VendorForm({
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    color: '#111',
+    color: '#4b5563',
+    fontWeight: 500,
+    fontSize: 13,
   };
   const inputStyle = {
     width: '100%',
     maxWidth: '440px',
-    padding: '6px 8px',
+    padding: '8px 12px',
+    height: '36px',
     fontSize: '13px',
     border: '1px solid #d1d5db',
     borderRadius: '4px',
+    boxSizing: 'border-box' as const,
   };
 
   const tabBtnStyle = (isActive: boolean) => ({
@@ -221,36 +228,48 @@ export function VendorForm({
   });
 
   return (
-    <div
-      className="vendor-form-container"
-      style={{
-        padding: 0,
-        margin: 0,
-        background: '#fff',
-        width: '100%',
-        minHeight: '100vh',
-        display: 'block',
-        paddingBottom: '80px',
-      }}
-    >
+    <div className={isModal ? '' : 'page-container'} style={isModal ? { background: '#fff' } : undefined}>
       {/* Header */}
-      <div style={{ padding: '24px 32px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 400, margin: 0, color: '#000' }}>
-          {isEdit ? 'Edit Vendor' : 'New Vendor'}
-        </h1>
-      </div>
+      {!isModal && (
+        <div className="page-header">
+          <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
+            {isEdit ? 'Edit Vendor' : 'New Vendor'}
+          </h1>
+          <button
+            type="button"
+            onClick={() => {
+              if (onCancel) onCancel();
+              else navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/purchases/vendors`);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              borderRadius: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
 
-      <form onSubmit={handleSubmit((data) => {
+      <div className={isModal ? '' : 'page-body'}>
+      <form id="vendor-form" style={{ maxWidth: '900px' }} onSubmit={handleSubmit((data) => {
         const cleanedData = {
           ...data,
-          contactPersons: data.contactPersons?.filter(cp =>
+          contactPersons: data.contactPersons?.filter(cp => 
             cp.firstName?.trim() || cp.lastName?.trim() || cp.email?.trim() || cp.phone?.trim() || cp.mobile?.trim()
           )
         };
         onSubmit(cleanedData);
-      })} style={{ padding: '32px' }}>
+      })}>
         {/* Main Details Section */}
-        <div
+        <div className="form-field-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: '200px 1fr',
@@ -454,7 +473,7 @@ export function VendorForm({
         <div style={{ marginBottom: '60px', minHeight: '300px' }}>
           {/* Other Details Tab */}
           {activeTab === 'other' && (
-            <div
+            <div className="form-field-grid"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '200px 1fr',
@@ -496,16 +515,12 @@ export function VendorForm({
                 <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '24px' }}>
                   BILLING ADDRESS
                 </h3>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '140px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                     rowGap: '16px',
                     columnGap: '16px',
                     alignItems: 'start',
                     fontSize: '13px',
-                  }}
-                >
+                   }}>
                   <label style={labelStyle}>Attention</label>
                   <input {...register('billingAttention')} style={inputStyle} />
 
@@ -633,16 +648,12 @@ export function VendorForm({
                     ( ↓ Copy billing address )
                   </button>
                 </h3>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '140px 1fr',
+                <div className="form-field-grid" style={{ gridTemplateColumns: '140px 1fr',
                     rowGap: '16px',
                     columnGap: '16px',
                     alignItems: 'start',
                     fontSize: '13px',
-                  }}
-                >
+                   }}>
                   <label style={labelStyle}>Attention</label>
                   <input {...register('shippingAttention')} style={inputStyle} />
 
@@ -747,7 +758,8 @@ export function VendorForm({
           {/* Contact Persons Tab */}
           {activeTab === 'contact' && (
             <div>
-              <table
+              <div className="responsive-table-wrapper">
+                    <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -863,6 +875,7 @@ export function VendorForm({
                   )}
                 </tbody>
               </table>
+                  </div>
 
               <button
                 type="button"
@@ -919,58 +932,55 @@ export function VendorForm({
             </div>
           )}
         </div>
+      </form>
+      </div>
 
-        <div
+      <div className={`form-actions-footer ${isModal ? '' : 'page-footer'}`} style={isModal ? { position: 'sticky', bottom: 0, backgroundColor: '#fff', padding: '16px 20px', borderTop: '1px solid #e2e8f0', zIndex: 10, margin: '0 -20px -20px -20px' } : undefined}>
+        <button
+          form="vendor-form"
+          type="submit"
+          disabled={isSubmitting}
           style={{
-            height: '44px',
-            boxSizing: 'border-box',
-            position: 'fixed',
-            bottom: 0,
-            left: 220,
-            right: 0,
-            background: '#fff',
-            padding: '0 24px',
-            borderTop: '1px solid #eef0f3',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            zIndex: 100,
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
           }}
         >
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              padding: '6px 20px',
-              background: '#0062ff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={() => (onCancel ? onCancel() : navigate(-1))}
-            style={{
-              padding: '6px 20px',
-              background: 'white',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+          {isSubmitting ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (onCancel) {
+              onCancel();
+            } else {
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }
+          }}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
 
       <VendorNumberConfigModal
         isOpen={isNumberConfigOpen}

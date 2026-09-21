@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Settings, Info, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
+import { Settings, Info, Image as ImageIcon, Plus, Trash2, X } from 'lucide-react';
 import { useForm, Controller, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'react-hot-toast';
@@ -13,17 +13,26 @@ import { Select } from '../../../components/ui/Select';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { assembliesApi, createAssemblySchema, type CreateAssemblyDto } from './assemblies.api';
 import { compositeItemsApi } from '../composite-items/compositeItems.api';
-import { fetchLocations } from '../../configuration/locations/locations.api';
+import { fetchLocations, isOwnLocation } from '../../configuration/locations/locations.api';
+import { fetchAvailableBatches } from '../../jobwork/batches/batches.api';
+import { AddBatchesModal } from '../../jobwork/issues/AddBatchesModal';
+import type { BatchSelection } from '../../jobwork/issues/batchSelection';
+import type { CompositeComponent } from '../composite-items/compositeItems.api';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 import { AssemblyNumberConfigModal } from './AssemblyNumberConfigModal';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export function CreateAssemblyPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams] = useSearchParams();
   const defaultItemId = searchParams.get('itemId');
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
+  /** The level below a batch. Off, and the component picker shows no packages. */
+  const unitLabel = useBatchUnitLabel();
 
   const form = useForm<CreateAssemblyDto>({
     resolver: zodResolver(createAssemblySchema),
@@ -46,6 +55,22 @@ export function CreateAssemblyPage() {
   } = form;
   const compositeItemId = useWatch({ control, name: 'compositeItemId' });
   const qty = useWatch({ control, name: 'qty' });
+  /** 🔴 Which godown this assembly happens in. Both sides post there, so it also
+   * scopes every batch picker below — a component standing somewhere else is not
+   * material this assembly can consume. */
+  const locationId = useWatch({ control, name: 'locationId' });
+
+  /**
+   * Batches picked per COMPONENT ROW, keyed by the recipe row's id. Empty for a
+   * component nobody picked for, which the server then allocates FIFO — so this
+   * being empty is a valid answer, not an unfinished one.
+   */
+  const [componentBatches, setComponentBatches] = useState<
+    Record<string, Record<string, BatchSelection>>
+  >({});
+  /** Which component's picker is open. Null when none is. */
+  const [pickingComponentId, setPickingComponentId] = useState<string | null>(null);
+  const [pickSearch, setPickSearch] = useState('');
 
   const { data: compositeItemsResponse } = useQuery({
     queryKey: ['compositeItems', orgId],
@@ -116,6 +141,56 @@ export function CreateAssemblyPage() {
     return components?.filter((c) => c.component?.type?.toLowerCase() !== 'service') || [];
   }, [components]);
 
+  /** The component whose picker is open, and what it needs. */
+  const pickingComponent = useMemo(
+    () => goodsComponents.find((c) => c.id === pickingComponentId) ?? null,
+    [goodsComponents, pickingComponentId],
+  );
+
+  /**
+   * What one component row requires in total — the recipe ratio times the header
+   * quantity, unless the user overrode it. The picker allocates against this, and
+   * the server checks the picked batches add up to exactly it.
+   */
+  const requiredFor = (comp: CompositeComponent) => {
+    const override = overrides[comp.id];
+    const base = Number(qty) || 1;
+    if (override) {
+      return override.type === 'total'
+        ? parseFloat(override.value) || 0
+        : (parseFloat(override.value) || 0) * base;
+    }
+    return Number(comp.qtyPerUnit) * base;
+  };
+
+  /**
+   * The batches on offer for the open picker: this component's item, at the
+   * assembly's own location. Scoped to one component because the picker is —
+   * asking about all of them would offer rows the wrong row could take.
+   */
+  const { data: pickBatches = [], isLoading: pickBatchesLoading } = useQuery({
+    queryKey: [
+      'available-batches',
+      orgId,
+      pickingComponent?.componentItemId,
+      locationId,
+      pickSearch,
+      'assembly',
+      // 🔴 Part of the KEY. Turning the level on has to invalidate this, or the
+      // picker serves a cached answer with no packages in it.
+      unitLabel.enabled,
+    ],
+    queryFn: () =>
+      fetchAvailableBatches(orgId!, {
+        itemId: pickingComponent!.componentItemId,
+        locationId,
+        search: pickSearch || undefined,
+        limit: 200,
+        withUnits: unitLabel.enabled,
+      }),
+    enabled: Boolean(orgId && pickingComponent && locationId),
+  });
+
   const serviceComponents = useMemo(() => {
     return components?.filter((c) => c.component?.type?.toLowerCase() === 'service') || [];
   }, [components]);
@@ -166,9 +241,9 @@ export function CreateAssemblyPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: CreateAssemblyDto) => assembliesApi.createAssembly({ orgId: orgId!, data }),
+    meta: { suppressToast: true },
     onSuccess: (resData) => {
       queryClient.invalidateQueries({ queryKey: ['assembly-number-preference', orgId] });
-      toast.success('Assembly created successfully');
       navigate(`/organizations/${orgId}/inventory/assembly?id=${resData.id}`);
     },
     onError: (error: unknown) => {
@@ -193,14 +268,41 @@ export function CreateAssemblyPage() {
         }
       }
 
+      /**
+       * 🔴 THE BATCHES THIS COMPONENT COMES OUT OF, when the user picked any.
+       *
+       * Omitted, the server allocates FIFO from what is at the assembly's
+       * location — which is what every untracked component gets and what a
+       * batch-tracked one gets if nobody picked. Sent, they must add up to the
+       * requirement; the server refuses a mismatch rather than guessing.
+       */
+      const picked = Object.values(componentBatches[comp.id] ?? {});
+
       return {
         itemId: comp.componentItemId,
         qtyRequired: finalQtyRequired,
+        ...(picked.length > 0
+          ? {
+              batches: picked.map((sel) => ({
+                batchId: sel.batch.batchId,
+                // Which roll the material was cut off, when one was named.
+                batchUnitId: sel.unit?.batchUnitId ?? null,
+                qty: sel.qty,
+              })),
+            }
+          : {}),
       };
     });
 
-    const validServices = services.filter((s) => s.itemId);
-    const validExtraItems = extraItems.filter((i) => i.itemId);
+    /* An extra item or a service carries its own cost. A service moves no stock,
+       so `unitValue` is the only way its money reaches the composite — the
+       server rolls it into `additionalCost` on the produced batch. */
+    const validServices = services
+      .filter((s) => s.itemId)
+      .map((s) => ({ ...s, unitValue: s.costPrice ?? 0 }));
+    const validExtraItems = extraItems
+      .filter((i) => i.itemId)
+      .map((i) => ({ ...i, unitValue: i.costPrice ?? 0 }));
     const combinedLines = [...lines, ...validExtraItems, ...validServices];
 
     if (combinedLines.length === 0) {
@@ -220,24 +322,40 @@ export function CreateAssemblyPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
+    <div className="page-container">
       {/* Header */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}
-      >
-        <PackageIcon />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
-          New Assembly
-        </h1>
+      <div className="page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <PackageIcon />
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
+            New Assembly
+          </h1>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            navigate(
+              (location.state as { returnUrl?: string })?.returnUrl ||
+                `/organizations/${orgId}/inventory/assemblies`,
+            )
+          }
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+            borderRadius: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+      <div className="page-body">
         <form
           id="create-assembly-form"
           onSubmit={handleSubmit(onSubmit, onValidationError)}
@@ -245,6 +363,7 @@ export function CreateAssemblyPage() {
         >
           {/* Header Form */}
           <div
+            className="form-field-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: '200px 1fr',
@@ -296,6 +415,7 @@ export function CreateAssemblyPage() {
             }}
           >
             <div
+              className="form-field-grid"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '200px 1fr',
@@ -429,7 +549,11 @@ export function CreateAssemblyPage() {
                     <Select
                       value={field.value}
                       onChange={field.onChange}
-                      options={(locations || []).map((l) => ({ value: l.id, label: l.name }))}
+                      // Ours only: an assembly consumes and produces on our own
+                      // floor, never in a jobworker's shed.
+                      options={(locations || [])
+                        .filter(isOwnLocation)
+                        .map((l) => ({ value: l.id, label: l.name }))}
                       placeholder="Add Location"
                       hasError={!!errors.locationId}
                     />
@@ -484,424 +608,474 @@ export function CreateAssemblyPage() {
                 </div>
               </div>
 
-              <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  border: '1px solid #d1d5db',
-                  fontSize: '13px',
-                }}
-              >
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontWeight: 500,
-                        color: '#475569',
-                        borderRight: '1px solid #d1d5db',
-                      }}
-                    >
-                      Item Details
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'right',
-                        fontWeight: 500,
-                        color: '#475569',
-                        borderRight: '1px solid #d1d5db',
-                        width: '160px',
-                      }}
-                    >
-                      Quantity Required
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'right',
-                        fontWeight: 500,
-                        color: '#475569',
-                        borderRight: '1px solid #d1d5db',
-                        width: '140px',
-                      }}
-                    >
-                      Total Qty required
-                    </th>
-                    <th
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'right',
-                        fontWeight: 500,
-                        color: '#475569',
-                        width: '140px',
-                      }}
-                    >
-                      Quantity Available
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {componentsLoading ? (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
+              <div className="responsive-table-wrapper">
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #d1d5db',
+                    fontSize: '13px',
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'left',
+                          fontWeight: 500,
+                          color: '#475569',
+                          borderRight: '1px solid #d1d5db',
+                        }}
                       >
-                        Loading components...
-                      </td>
-                    </tr>
-                  ) : !goodsComponents || goodsComponents.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
+                        Item Details
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'right',
+                          fontWeight: 500,
+                          color: '#475569',
+                          borderRight: '1px solid #d1d5db',
+                          width: '160px',
+                        }}
                       >
-                        Select a composite item to view components.
-                      </td>
+                        Quantity Required
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'right',
+                          fontWeight: 500,
+                          color: '#475569',
+                          borderRight: '1px solid #d1d5db',
+                          width: '140px',
+                        }}
+                      >
+                        Total Qty required
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'right',
+                          fontWeight: 500,
+                          color: '#475569',
+                          width: '140px',
+                        }}
+                      >
+                        Qty Available (All Locations)
+                      </th>
                     </tr>
-                  ) : (
-                    goodsComponents.map((comp) => {
-                      const override = overrides[comp.id];
-                      const baseQty = Number(qty) || 1;
+                  </thead>
+                  <tbody>
+                    {componentsLoading ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
+                        >
+                          Loading components...
+                        </td>
+                      </tr>
+                    ) : !goodsComponents || goodsComponents.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
+                        >
+                          Select a composite item to view components.
+                        </td>
+                      </tr>
+                    ) : (
+                      goodsComponents.map((comp) => {
+                        const override = overrides[comp.id];
+                        const baseQty = Number(qty) || 1;
 
-                      let requiredPerUnitStr: string | number = Number(comp.qtyPerUnit);
-                      let totalRequiredStr: string | number = requiredPerUnitStr * baseQty;
+                        let requiredPerUnitStr: string | number = Number(comp.qtyPerUnit);
+                        let totalRequiredStr: string | number = requiredPerUnitStr * baseQty;
 
-                      if (override) {
-                        if (override.type === 'perUnit') {
-                          requiredPerUnitStr = override.value;
-                          totalRequiredStr = (parseFloat(override.value) || 0) * baseQty;
-                        } else {
-                          totalRequiredStr = override.value;
-                          // Optional: recalculate perUnit based on total, or just let it be.
-                          // It's usually better to just show the recalculated value.
-                          requiredPerUnitStr = (parseFloat(override.value) || 0) / baseQty;
+                        if (override) {
+                          if (override.type === 'perUnit') {
+                            requiredPerUnitStr = override.value;
+                            totalRequiredStr = (parseFloat(override.value) || 0) * baseQty;
+                          } else {
+                            totalRequiredStr = override.value;
+                            // Optional: recalculate perUnit based on total, or just let it be.
+                            // It's usually better to just show the recalculated value.
+                            requiredPerUnitStr = (parseFloat(override.value) || 0) / baseQty;
+                          }
                         }
-                      }
 
-                      return (
-                        <React.Fragment key={comp.id}>
-                          <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                            <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
-                              <div
-                                style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
+                        return (
+                          <React.Fragment key={comp.id}>
+                            <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                              <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
+                                <div
+                                  style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
+                                >
+                                  <div
+                                    style={{
+                                      width: '40px',
+                                      height: '40px',
+                                      background: '#f1f5f9',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: '4px',
+                                      border: '1px solid #eef0f3',
+                                    }}
+                                  >
+                                    <ImageIcon size={20} color="#94a3b8" />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 500, color: '#1e293b' }}>
+                                      {comp.component?.name}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: '11px',
+                                        color: '#64748b',
+                                        marginTop: '2px',
+                                      }}
+                                    >
+                                      SKU: {comp.component?.sku || '-'}
+                                    </div>
+
+                                    {/* ── WHICH BATCHES THIS COMPONENT COMES OUT OF ──
+                                      🔴 Only for a batch-tracked component. An
+                                      untracked one has no batch anybody is meant
+                                      to identify, so it gets no picker and the
+                                      server allocates it oldest-first — the same
+                                      rule the Issue dialog follows.
+
+                                      Picking is OPTIONAL even here: leave it and
+                                      FIFO applies. The link says which of the two
+                                      will happen. */}
+                                    {comp.component?.inventoryTracking === 'batch' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPickSearch('');
+                                          setPickingComponentId(comp.id);
+                                        }}
+                                        disabled={!locationId}
+                                        title={
+                                          locationId
+                                            ? undefined
+                                            : 'Choose the location first — batches are offered from it.'
+                                        }
+                                        style={{
+                                          marginTop: 6,
+                                          padding: 0,
+                                          border: 'none',
+                                          background: 'none',
+                                          fontSize: 11.5,
+                                          fontWeight: 500,
+                                          color: locationId ? '#0062ff' : '#94a3b8',
+                                          cursor: locationId ? 'pointer' : 'not-allowed',
+                                        }}
+                                      >
+                                        {Object.keys(componentBatches[comp.id] ?? {}).length > 0
+                                          ? `${Object.keys(componentBatches[comp.id]!).length} ${trackingLabel.plural.toLowerCase()} picked`
+                                          : `+ Add ${trackingLabel.plural}`}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div style={{ marginTop: '16px' }}>
+                                  <input
+                                    type="text"
+                                    placeholder="Add a description to your item"
+                                    style={{
+                                      width: '100%',
+                                      border: 'none',
+                                      background: 'transparent',
+                                      outline: 'none',
+                                      fontSize: '13px',
+                                      color: '#475569',
+                                    }}
+                                  />
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'right',
+                                  borderRight: '1px solid #eef0f3',
+                                  verticalAlign: 'top',
+                                }}
                               >
                                 <div
                                   style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    background: '#f1f5f9',
                                     display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    borderRadius: '4px',
-                                    border: '1px solid #eef0f3',
+                                    flexDirection: 'column',
+                                    alignItems: 'flex-end',
+                                    gap: '4px',
                                   }}
                                 >
-                                  <ImageIcon size={20} color="#94a3b8" />
-                                </div>
-                                <div>
-                                  <div style={{ fontWeight: 500, color: '#1e293b' }}>
-                                    {comp.component?.name}
-                                  </div>
-                                  <div
-                                    style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}
-                                  >
-                                    SKU: {comp.component?.sku || '-'}
-                                  </div>
-                                </div>
-                              </div>
-                              <div style={{ marginTop: '16px' }}>
-                                <input
-                                  type="text"
-                                  placeholder="Add a description to your item"
-                                  style={{
-                                    width: '100%',
-                                    border: 'none',
-                                    background: 'transparent',
-                                    outline: 'none',
-                                    fontSize: '13px',
-                                    color: '#475569',
-                                  }}
-                                />
-                              </div>
-                            </td>
-                            <td
-                              style={{
-                                padding: '16px',
-                                textAlign: 'right',
-                                borderRight: '1px solid #eef0f3',
-                                verticalAlign: 'top',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'flex-end',
-                                  gap: '4px',
-                                }}
-                              >
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  value={requiredPerUnitStr}
-                                  onChange={(e) => {
-                                    setOverrides((prev) => ({
-                                      ...prev,
-                                      [comp.id]: { type: 'perUnit', value: e.target.value },
-                                    }));
-                                  }}
-                                  style={{
-                                    width: '80px',
-                                    padding: '6px',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '4px',
-                                    outline: 'none',
-                                    textAlign: 'right',
-                                  }}
-                                />
-                                <div style={{ fontSize: '11px', color: '#64748b' }}>
-                                  x {qty || 1} assemblies
-                                </div>
-                              </div>
-                            </td>
-                            <td
-                              style={{
-                                padding: '16px',
-                                textAlign: 'right',
-                                borderRight: '1px solid #eef0f3',
-                                verticalAlign: 'top',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'flex-end',
-                                }}
-                              >
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  value={totalRequiredStr}
-                                  onChange={(e) => {
-                                    setOverrides((prev) => ({
-                                      ...prev,
-                                      [comp.id]: { type: 'total', value: e.target.value },
-                                    }));
-                                  }}
-                                  style={{
-                                    width: '90px',
-                                    padding: '6px',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '4px',
-                                    outline: 'none',
-                                    textAlign: 'right',
-                                    fontWeight: 500,
-                                    color: '#1e293b',
-                                  }}
-                                />
-                                {Number(totalRequiredStr) > (comp.component?.stockOnHand || 0) && (
-                                  <div
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={requiredPerUnitStr}
+                                    onChange={(e) => {
+                                      setOverrides((prev) => ({
+                                        ...prev,
+                                        [comp.id]: { type: 'perUnit', value: e.target.value },
+                                      }));
+                                    }}
                                     style={{
-                                      marginTop: '6px',
-                                      color: '#ef4444',
-                                      fontSize: '14px',
-                                      display: 'flex',
-                                      justifyContent: 'center',
-                                      width: '90px', // aligns with input width
-                                      position: 'relative',
-                                      cursor: 'pointer',
+                                      width: '80px',
+                                      padding: '6px',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '4px',
+                                      outline: 'none',
+                                      textAlign: 'right',
                                     }}
-                                    onMouseEnter={(e) => {
-                                      const tooltip = e.currentTarget.querySelector(
-                                        '.warning-tooltip',
-                                      ) as HTMLElement;
-                                      if (tooltip) {
-                                        tooltip.style.visibility = 'visible';
-                                        tooltip.style.opacity = '1';
-                                      }
+                                  />
+                                  <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                    x {qty || 1} assemblies
+                                  </div>
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'right',
+                                  borderRight: '1px solid #eef0f3',
+                                  verticalAlign: 'top',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'flex-end',
+                                  }}
+                                >
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={totalRequiredStr}
+                                    onChange={(e) => {
+                                      setOverrides((prev) => ({
+                                        ...prev,
+                                        [comp.id]: { type: 'total', value: e.target.value },
+                                      }));
                                     }}
-                                    onMouseLeave={(e) => {
-                                      const tooltip = e.currentTarget.querySelector(
-                                        '.warning-tooltip',
-                                      ) as HTMLElement;
-                                      if (tooltip) {
-                                        tooltip.style.visibility = 'hidden';
-                                        tooltip.style.opacity = '0';
-                                      }
+                                    style={{
+                                      width: '90px',
+                                      padding: '6px',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '4px',
+                                      outline: 'none',
+                                      textAlign: 'right',
+                                      fontWeight: 500,
+                                      color: '#1e293b',
                                     }}
-                                  >
-                                    ⚠️
+                                  />
+                                  {Number(totalRequiredStr) >
+                                    (comp.component?.stockOnHand || 0) && (
                                     <div
-                                      className="warning-tooltip"
                                       style={{
-                                        visibility: 'hidden',
-                                        opacity: 0,
-                                        transition: 'opacity 0.2s, visibility 0.2s',
-                                        position: 'absolute',
-                                        bottom: '100%',
-                                        left: '50%',
-                                        transform: 'translateX(-50%)',
-                                        marginBottom: '8px',
-                                        width: 'max-content',
-                                        maxWidth: '250px',
-                                        backgroundColor: '#1e293b',
-                                        color: '#fff',
-                                        textAlign: 'center',
-                                        padding: '8px 12px',
-                                        borderRadius: '6px',
-                                        fontSize: '12px',
-                                        fontWeight: 400,
-                                        zIndex: 50,
-                                        boxShadow:
-                                          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                                        lineHeight: 1.4,
+                                        marginTop: '6px',
+                                        color: '#ef4444',
+                                        fontSize: '14px',
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        width: '90px', // aligns with input width
+                                        position: 'relative',
+                                        cursor: 'pointer',
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        const tooltip = e.currentTarget.querySelector(
+                                          '.warning-tooltip',
+                                        ) as HTMLElement;
+                                        if (tooltip) {
+                                          tooltip.style.visibility = 'visible';
+                                          tooltip.style.opacity = '1';
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        const tooltip = e.currentTarget.querySelector(
+                                          '.warning-tooltip',
+                                        ) as HTMLElement;
+                                        if (tooltip) {
+                                          tooltip.style.visibility = 'hidden';
+                                          tooltip.style.opacity = '0';
+                                        }
                                       }}
                                     >
-                                      The available stock for this item is less than the total
-                                      quantity required for this assembly.
+                                      ⚠️
                                       <div
+                                        className="warning-tooltip"
                                         style={{
-                                          content: '""',
+                                          visibility: 'hidden',
+                                          opacity: 0,
+                                          transition: 'opacity 0.2s, visibility 0.2s',
                                           position: 'absolute',
-                                          top: '100%',
+                                          bottom: '100%',
                                           left: '50%',
-                                          marginLeft: '-5px',
-                                          borderWidth: '5px',
-                                          borderStyle: 'solid',
-                                          borderColor:
-                                            '#1e293b transparent transparent transparent',
+                                          transform: 'translateX(-50%)',
+                                          marginBottom: '8px',
+                                          width: 'max-content',
+                                          maxWidth: '250px',
+                                          backgroundColor: '#1e293b',
+                                          color: '#fff',
+                                          textAlign: 'center',
+                                          padding: '8px 12px',
+                                          borderRadius: '6px',
+                                          fontSize: '12px',
+                                          fontWeight: 400,
+                                          zIndex: 50,
+                                          boxShadow:
+                                            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                                          lineHeight: 1.4,
                                         }}
-                                      />
+                                      >
+                                        The global stock for this item is less than the total
+                                        quantity required. Note: Even if global stock is sufficient,
+                                        you must ensure the stock is physically present at the selected location.
+                                        <div
+                                          style={{
+                                            content: '""',
+                                            position: 'absolute',
+                                            top: '100%',
+                                            left: '50%',
+                                            marginLeft: '-5px',
+                                            borderWidth: '5px',
+                                            borderStyle: 'solid',
+                                            borderColor:
+                                              '#1e293b transparent transparent transparent',
+                                          }}
+                                        />
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td
-                              style={{
-                                padding: '16px',
-                                textAlign: 'right',
-                                borderRight: '1px solid #eef0f3',
-                                verticalAlign: 'top',
+                                  )}
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'right',
+                                  borderRight: '1px solid #eef0f3',
+                                  verticalAlign: 'top',
+                                }}
+                              >
+                                <div style={{ fontSize: '13px', color: '#1e293b' }}>
+                                  {comp.component?.stockOnHand || 0} {comp.component?.unit || ''}
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'center',
+                                  verticalAlign: 'top',
+                                  color: '#64748b',
+                                }}
+                              >
+                                <span style={{ fontSize: 11 }}>(From Recipe)</span>
+                              </td>
+                            </tr>
+                            {/* Cost Price row */}
+                            <tr
+                              style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}
+                            >
+                              <td
+                                colSpan={5}
+                                style={{ padding: '4px 16px', fontSize: '11px', color: '#64748b' }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>Tag</span> Cost Price : -
+                                </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                    {extraItems.map((item, idx) => {
+                      const costPrice = item.costPrice || 0;
+                      const totalCost = costPrice * (item.qtyRequired || 0);
+                      return (
+                        <tr key={`extra-${idx}`} style={{ borderBottom: '1px solid #eef0f3' }}>
+                          <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
+                            <ItemComboBox
+                              orgId={orgId!}
+                              filter="goods"
+                              value={item.itemId}
+                              onChange={(opt) => {
+                                handleExtraItemChange(idx, 'itemId', opt?.id || '');
+                                handleExtraItemChange(idx, 'costPrice', opt?.costPrice || 0);
                               }}
-                            >
-                              <div style={{ fontSize: '13px', color: '#1e293b' }}>
-                                {comp.component?.stockOnHand || 0} {comp.component?.unit || ''}
-                              </div>
-                            </td>
-                            <td
+                              placeholder="Select an item"
+                            />
+                          </td>
+                          <td
+                            colSpan={2}
+                            style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}
+                          >
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={item.qtyRequired}
+                              onChange={(e) =>
+                                handleExtraItemChange(
+                                  idx,
+                                  'qtyRequired',
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
                               style={{
-                                padding: '16px',
-                                textAlign: 'center',
-                                verticalAlign: 'top',
-                                color: '#64748b',
+                                width: '100%',
+                                padding: '6px',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '4px',
+                                outline: 'none',
                               }}
-                            >
-                              <span style={{ fontSize: 11 }}>(From Recipe)</span>
-                            </td>
-                          </tr>
-                          {/* Cost Price row */}
-                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
-                            <td
-                              colSpan={5}
-                              style={{ padding: '4px 16px', fontSize: '11px', color: '#64748b' }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span>Tag</span> Cost Price : -
-                              </div>
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-                  {extraItems.map((item, idx) => {
-                    const costPrice = item.costPrice || 0;
-                    const totalCost = costPrice * (item.qtyRequired || 0);
-                    return (
-                      <tr key={`extra-${idx}`} style={{ borderBottom: '1px solid #eef0f3' }}>
-                        <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
-                          <ItemComboBox
-                            orgId={orgId!}
-                            filter="goods"
-                            value={item.itemId}
-                            onChange={(opt) => {
-                              handleExtraItemChange(idx, 'itemId', opt?.id || '');
-                              handleExtraItemChange(idx, 'costPrice', opt?.costPrice || 0);
-                            }}
-                            placeholder="Select an item"
-                          />
-                        </td>
-                        <td
-                          colSpan={2}
-                          style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}
-                        >
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            value={item.qtyRequired}
-                            onChange={(e) =>
-                              handleExtraItemChange(
-                                idx,
-                                'qtyRequired',
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
+                            />
+                          </td>
+                          <td
                             style={{
-                              width: '100%',
-                              padding: '6px',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '4px',
-                              outline: 'none',
-                            }}
-                          />
-                        </td>
-                        <td
-                          style={{
-                            padding: '16px',
-                            textAlign: 'right',
-                            borderRight: '1px solid #eef0f3',
-                            verticalAlign: 'top',
-                          }}
-                        >
-                          <div style={{ fontWeight: 500, color: '#1e293b' }}>{costPrice}</div>
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                            Total Cost:
-                            <br />₹ {totalCost.toLocaleString('en-IN')}
-                          </div>
-                        </td>
-                        <td style={{ padding: '16px', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveExtraItem(idx)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#ef4444',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: '4px',
-                              borderRadius: '4px',
+                              padding: '16px',
+                              textAlign: 'right',
+                              borderRight: '1px solid #eef0f3',
+                              verticalAlign: 'top',
                             }}
                           >
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            <div style={{ fontWeight: 500, color: '#1e293b' }}>{costPrice}</div>
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                              Total Cost:
+                              <br />₹ {totalCost.toLocaleString('en-IN')}
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExtraItem(idx)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '4px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
               <button
                 type="button"
                 onClick={handleAddExtraItem}
@@ -938,125 +1112,249 @@ export function CreateAssemblyPage() {
                 <div style={{ fontSize: '13px', fontWeight: 500, color: '#dc2626' }}>
                   Associate Services*
                 </div>
-                <table
-                  style={{
-                    width: '100%',
-                    borderCollapse: 'collapse',
-                    border: '1px solid #d1d5db',
-                    fontSize: '13px',
-                    marginTop: '8px',
-                  }}
-                >
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'left',
-                          fontWeight: 500,
-                          color: '#475569',
-                          borderRight: '1px solid #d1d5db',
-                        }}
-                      >
-                        Service Details
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'right',
-                          fontWeight: 500,
-                          color: '#475569',
-                          borderRight: '1px solid #d1d5db',
-                          width: '160px',
-                        }}
-                      >
-                        Quantity Required
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'right',
-                          fontWeight: 500,
-                          color: '#475569',
-                          borderRight: '1px solid #d1d5db',
-                          width: '140px',
-                        }}
-                      >
-                        Total Qty required
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'right',
-                          fontWeight: 500,
-                          color: '#475569',
-                          borderRight: '1px solid #d1d5db',
-                          width: '140px',
-                        }}
-                      >
-                        Cost per unit
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'center',
-                          fontWeight: 500,
-                          color: '#475569',
-                          width: '40px',
-                        }}
-                      ></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {serviceComponents.map((comp) => {
-                      const requiredPerUnit = Number(comp.qtyPerUnit);
-                      const totalRequired = requiredPerUnit * (Number(qty) || 0);
-                      return (
-                        <React.Fragment key={comp.id}>
-                          <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                            <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
-                              <div
-                                style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
-                              >
+                <div className="responsive-table-wrapper">
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      marginTop: '8px',
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
+                        <th
+                          style={{
+                            padding: '12px 16px',
+                            textAlign: 'left',
+                            fontWeight: 500,
+                            color: '#475569',
+                            borderRight: '1px solid #d1d5db',
+                          }}
+                        >
+                          Service Details
+                        </th>
+                        <th
+                          style={{
+                            padding: '12px 16px',
+                            textAlign: 'right',
+                            fontWeight: 500,
+                            color: '#475569',
+                            borderRight: '1px solid #d1d5db',
+                            width: '160px',
+                          }}
+                        >
+                          Quantity Required
+                        </th>
+                        <th
+                          style={{
+                            padding: '12px 16px',
+                            textAlign: 'right',
+                            fontWeight: 500,
+                            color: '#475569',
+                            borderRight: '1px solid #d1d5db',
+                            width: '140px',
+                          }}
+                        >
+                          Total Qty required
+                        </th>
+                        <th
+                          style={{
+                            padding: '12px 16px',
+                            textAlign: 'right',
+                            fontWeight: 500,
+                            color: '#475569',
+                            borderRight: '1px solid #d1d5db',
+                            width: '140px',
+                          }}
+                        >
+                          Cost per unit
+                        </th>
+                        <th
+                          style={{
+                            padding: '12px 16px',
+                            textAlign: 'center',
+                            fontWeight: 500,
+                            color: '#475569',
+                            width: '40px',
+                          }}
+                        ></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {serviceComponents.map((comp) => {
+                        const requiredPerUnit = Number(comp.qtyPerUnit);
+                        const totalRequired = requiredPerUnit * (Number(qty) || 0);
+                        return (
+                          <React.Fragment key={comp.id}>
+                            <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                              <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
                                 <div
-                                  style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    background: '#f1f5f9',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    borderRadius: '4px',
-                                    border: '1px solid #eef0f3',
-                                  }}
+                                  style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}
                                 >
-                                  <ImageIcon size={20} color="#94a3b8" />
-                                </div>
-                                <div>
-                                  <div style={{ fontWeight: 500, color: '#1e293b' }}>
-                                    {comp.component?.name}
-                                  </div>
                                   <div
-                                    style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}
+                                    style={{
+                                      width: '40px',
+                                      height: '40px',
+                                      background: '#f1f5f9',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: '4px',
+                                      border: '1px solid #eef0f3',
+                                    }}
                                   >
-                                    SKU: {comp.component?.sku || '-'}
+                                    <ImageIcon size={20} color="#94a3b8" />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 500, color: '#1e293b' }}>
+                                      {comp.component?.name}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: '11px',
+                                        color: '#64748b',
+                                        marginTop: '2px',
+                                      }}
+                                    >
+                                      SKU: {comp.component?.sku || '-'}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                              <div style={{ marginTop: '16px' }}>
-                                <input
-                                  type="text"
-                                  placeholder="Add a description to your service"
-                                  style={{
-                                    width: '100%',
-                                    border: 'none',
-                                    background: 'transparent',
-                                    outline: 'none',
-                                    fontSize: '13px',
-                                    color: '#475569',
-                                  }}
-                                />
-                              </div>
+                                <div style={{ marginTop: '16px' }}>
+                                  <input
+                                    type="text"
+                                    placeholder="Add a description to your service"
+                                    style={{
+                                      width: '100%',
+                                      border: 'none',
+                                      background: 'transparent',
+                                      outline: 'none',
+                                      fontSize: '13px',
+                                      color: '#475569',
+                                    }}
+                                  />
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'right',
+                                  borderRight: '1px solid #eef0f3',
+                                  verticalAlign: 'top',
+                                }}
+                              >
+                                <div style={{ fontWeight: 500, color: '#1e293b' }}>
+                                  {requiredPerUnit}
+                                </div>
+                                <div
+                                  style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}
+                                >
+                                  x 1 assemblies
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'right',
+                                  borderRight: '1px solid #eef0f3',
+                                  verticalAlign: 'top',
+                                  fontWeight: 500,
+                                  color: '#1e293b',
+                                }}
+                              >
+                                {totalRequired}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'right',
+                                  borderRight: '1px solid #eef0f3',
+                                  verticalAlign: 'top',
+                                }}
+                              >
+                                <div style={{ fontWeight: 500, color: '#1e293b' }}>
+                                  {comp.component?.costPrice || 0}
+                                </div>
+                                <div
+                                  style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}
+                                >
+                                  Total Cost:
+                                  <br />₹{' '}
+                                  {(
+                                    (comp.component?.costPrice || 0) * totalRequired
+                                  ).toLocaleString('en-IN')}
+                                </div>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '16px',
+                                  textAlign: 'center',
+                                  verticalAlign: 'top',
+                                  color: '#64748b',
+                                }}
+                              >
+                                <span style={{ fontSize: 11 }}>(From Recipe)</span>
+                              </td>
+                            </tr>
+                            {/* Cost Price row */}
+                            <tr
+                              style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}
+                            >
+                              <td
+                                colSpan={5}
+                                style={{ padding: '4px 16px', fontSize: '11px', color: '#64748b' }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>Tag</span> Cost Price : -
+                                </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })}
+                      {services.map((svc, idx) => {
+                        const costPrice = svc.costPrice || 0;
+                        const totalCost = costPrice * (svc.qtyRequired || 0);
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #eef0f3' }}>
+                            <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
+                              <ItemComboBox
+                                orgId={orgId!}
+                                filter="services"
+                                value={svc.itemId}
+                                onChange={(item) => {
+                                  handleServiceChange(idx, 'itemId', item?.id || '');
+                                  handleServiceChange(idx, 'costPrice', item?.costPrice || 0);
+                                }}
+                                placeholder="Select a service"
+                              />
+                            </td>
+                            <td
+                              colSpan={2}
+                              style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}
+                            >
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                value={svc.qtyRequired}
+                                onChange={(e) =>
+                                  handleServiceChange(
+                                    idx,
+                                    'qtyRequired',
+                                    parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                                style={{
+                                  width: '100%',
+                                  padding: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '4px',
+                                  outline: 'none',
+                                }}
+                              />
                             </td>
                             <td
                               style={{
@@ -1066,148 +1364,36 @@ export function CreateAssemblyPage() {
                                 verticalAlign: 'top',
                               }}
                             >
-                              <div style={{ fontWeight: 500, color: '#1e293b' }}>
-                                {requiredPerUnit}
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                                x 1 assemblies
-                              </div>
-                            </td>
-                            <td
-                              style={{
-                                padding: '16px',
-                                textAlign: 'right',
-                                borderRight: '1px solid #eef0f3',
-                                verticalAlign: 'top',
-                                fontWeight: 500,
-                                color: '#1e293b',
-                              }}
-                            >
-                              {totalRequired}
-                            </td>
-                            <td
-                              style={{
-                                padding: '16px',
-                                textAlign: 'right',
-                                borderRight: '1px solid #eef0f3',
-                                verticalAlign: 'top',
-                              }}
-                            >
-                              <div style={{ fontWeight: 500, color: '#1e293b' }}>
-                                {comp.component?.costPrice || 0}
-                              </div>
+                              <div style={{ fontWeight: 500, color: '#1e293b' }}>{costPrice}</div>
                               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                                 Total Cost:
-                                <br />₹{' '}
-                                {((comp.component?.costPrice || 0) * totalRequired).toLocaleString(
-                                  'en-IN',
-                                )}
+                                <br />₹ {totalCost.toLocaleString('en-IN')}
                               </div>
                             </td>
-                            <td
-                              style={{
-                                padding: '16px',
-                                textAlign: 'center',
-                                verticalAlign: 'top',
-                                color: '#64748b',
-                              }}
-                            >
-                              <span style={{ fontSize: 11 }}>(From Recipe)</span>
+                            <td style={{ padding: '16px', textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveService(idx)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '100%',
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
                             </td>
                           </tr>
-                          {/* Cost Price row */}
-                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #d1d5db' }}>
-                            <td
-                              colSpan={5}
-                              style={{ padding: '4px 16px', fontSize: '11px', color: '#64748b' }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span>Tag</span> Cost Price : -
-                              </div>
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      );
-                    })}
-                    {services.map((svc, idx) => {
-                      const costPrice = svc.costPrice || 0;
-                      const totalCost = costPrice * (svc.qtyRequired || 0);
-                      return (
-                        <tr key={idx} style={{ borderBottom: '1px solid #eef0f3' }}>
-                          <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
-                            <ItemComboBox
-                              orgId={orgId!}
-                              filter="services"
-                              value={svc.itemId}
-                              onChange={(item) => {
-                                handleServiceChange(idx, 'itemId', item?.id || '');
-                                handleServiceChange(idx, 'costPrice', item?.costPrice || 0);
-                              }}
-                              placeholder="Select a service"
-                            />
-                          </td>
-                          <td
-                            colSpan={2}
-                            style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}
-                          >
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
-                              value={svc.qtyRequired}
-                              onChange={(e) =>
-                                handleServiceChange(
-                                  idx,
-                                  'qtyRequired',
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                              style={{
-                                width: '100%',
-                                padding: '6px',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '4px',
-                                outline: 'none',
-                              }}
-                            />
-                          </td>
-                          <td
-                            style={{
-                              padding: '16px',
-                              textAlign: 'right',
-                              borderRight: '1px solid #eef0f3',
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            <div style={{ fontWeight: 500, color: '#1e293b' }}>{costPrice}</div>
-                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                              Total Cost:
-                              <br />₹ {totalCost.toLocaleString('en-IN')}
-                            </div>
-                          </td>
-                          <td style={{ padding: '16px', textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveService(idx)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                width: '100%',
-                              }}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -1248,44 +1434,45 @@ export function CreateAssemblyPage() {
       </div>
 
       {/* Footer Actions */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderTop: '1px solid #eef0f3',
-          display: 'flex',
-          gap: '12px',
-          background: '#f9f9fb',
-        }}
-      >
+      <div className="form-actions-footer page-footer">
         <button
           type="submit"
           form="create-assembly-form"
           disabled={createMutation.isPending}
           style={{
-            padding: '8px 16px',
+            padding: '6px 20px',
             background: '#0062ff',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            fontSize: '13px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
             fontWeight: 500,
-            cursor: 'pointer',
+            fontSize: '13px',
+            opacity: createMutation.isPending ? 0.7 : 1,
           }}
         >
           {createMutation.isPending ? 'Saving...' : 'Save'}
         </button>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          disabled={createMutation.isPending}
+          onClick={() => {
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
           style={{
-            padding: '8px 16px',
+            padding: '6px 20px',
             background: 'white',
-            color: '#1e293b',
+            color: createMutation.isPending ? '#94a3b8' : '#333',
             border: '1px solid #d1d5db',
             borderRadius: '4px',
-            fontSize: '13px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
             fontWeight: 500,
-            cursor: 'pointer',
+            fontSize: '13px',
           }}
         >
           Cancel
@@ -1301,6 +1488,38 @@ export function CreateAssemblyPage() {
         initialPrefix={preference?.prefix}
         initialNextNumber={preference?.nextNumber.toString().padStart(5, '0')}
       />
+
+      {/* ── WHICH BATCHES ONE COMPONENT COMES OUT OF ────────────────────────
+          🔴 The SAME grid the Issue dialog uses, deliberately. The question is
+          identical — "which existing stock am I taking, and is there enough" —
+          and a second grid answering it would be a second place for the
+          availability rules to drift.
+
+          Keyed and mounted only while open: it seeds its rows once, on mount,
+          so a stale instance would show the previous component's picks. */}
+      {pickingComponent && (
+        <AddBatchesModal
+          key={pickingComponent.id}
+          isOpen
+          onClose={() => setPickingComponentId(null)}
+          itemName={pickingComponent.component?.name ?? 'Component'}
+          sku={pickingComponent.component?.sku ?? null}
+          uomLabel={pickingComponent.component?.unit ?? ''}
+          locationName={locations?.find((l) => l.id === locationId)?.name ?? null}
+          plannedQty={null}
+          lineQty={requiredFor(pickingComponent)}
+          selection={componentBatches[pickingComponent.id] ?? {}}
+          onSave={(rows) => {
+            setComponentBatches((prev) => ({ ...prev, [pickingComponent.id]: rows }));
+            setPickingComponentId(null);
+          }}
+          batches={pickBatches}
+          search={pickSearch}
+          onSearchChange={setPickSearch}
+          isLoading={pickBatchesLoading}
+          isCapped={pickBatches.length >= 200}
+        />
+      )}
     </div>
   );
 }

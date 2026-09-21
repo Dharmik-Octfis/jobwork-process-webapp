@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense } from 'react';
+import { useState, useRef, useEffect, Suspense, type SVGProps } from 'react';
 import { createPortal } from 'react-dom';
 import {
   NavLink,
@@ -31,6 +31,8 @@ import {
   Plus,
   Copy,
   Check,
+  Menu,
+  BarChart2,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
@@ -56,6 +58,7 @@ import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
  */
 const ROUTE_MAP: Record<string, string> = {
   DASHBOARD: '',
+  REPORTS: '/reports',
   PURCHASES: '/purchases',
   VENDORS: '/purchases/vendors',
   PO: '/purchases/purchase-orders',
@@ -117,6 +120,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   ClipboardList,
   Send,
   PackageCheck,
+  BarChart2,
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -315,7 +319,11 @@ function GlobalSearch() {
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: 320 }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: 320 }}
+      className="global-search-container"
+    >
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <Search
           size={16}
@@ -414,20 +422,33 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
+  const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
+  const activeOrg =
+    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
+
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [prevPathname, setPrevPathname] = useState(location.pathname);
   const [prevModulesLength, setPrevModulesLength] = useState(0);
   const [logoError, setLogoError] = useState(false);
   const [prevOrgId, setPrevOrgId] = useState(activeOrgId);
+  const [prevLogoUrl, setPrevLogoUrl] = useState(activeOrg?.logo_url);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (activeOrgId !== prevOrgId) {
     setPrevOrgId(activeOrgId);
     setLogoError(false);
   }
 
+  if (activeOrg?.logo_url !== prevLogoUrl) {
+    setPrevLogoUrl(activeOrg?.logo_url);
+    setLogoError(false);
+  }
+
   if (location.pathname !== prevPathname || modules.length !== prevModulesLength) {
     setPrevPathname(location.pathname);
     setPrevModulesLength(modules.length);
+    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
     const effectiveOrgId = activeOrgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
     const activeModule = modules.find((m) =>
       m.children?.some((c) => {
@@ -440,7 +461,8 @@ export function AppLayout() {
     }
   }
 
-  const isSidebarCollapsed = location.pathname.endsWith('/opening-stock');
+  const isSidebarCollapsed =
+    location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
@@ -455,9 +477,6 @@ export function AppLayout() {
    * refetches on its own. The old code called `queryClient.invalidateQueries()`
    * with no key, nuking every cache in the app including master data.
    */
-  const rememberedOrgId = localStorage.getItem(LAST_ORG_KEY);
-  const effectiveOrgId = activeOrgId || rememberedOrgId || organizations?.[0]?.organizationId;
-
   const switchOrg = (nextOrgId: string) => {
     if (!activeOrgId) {
       navigate(`/organizations/${nextOrgId}`);
@@ -470,20 +489,27 @@ export function AppLayout() {
     navigate(nextPath);
   };
 
-  const activeOrg =
-    organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
-
   return (
     <div
-      style={{
-        display: 'flex',
-        height: '100vh',
-        overflow: 'hidden',
-        background: 'var(--color-bg)',
-      }}
+      style={
+        {
+          display: 'flex',
+          height: '100dvh', // Use dynamic viewport height to prevent mobile browser UI from cutting off the bottom
+          overflow: 'hidden',
+          background: 'var(--color-bg)',
+          '--sidebar-width': isSidebarCollapsed ? '72px' : '220px',
+        } as React.CSSProperties
+      }
     >
+      {/* Mobile Overlay */}
+      <div
+        className={`mobile-sidebar-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`}
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+
       {/* Sidebar */}
       <aside
+        className={`app-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}
         style={{
           width: isSidebarCollapsed ? 72 : 220,
           transition: 'width 0.3s ease',
@@ -575,6 +601,7 @@ export function AppLayout() {
           >
             <NavLink
               to={`/organizations/${effectiveOrgId}/settings`}
+              state={{ returnUrl: location.pathname + location.search }}
               style={({ isActive }) => ({
                 width: '100%',
                 display: 'flex',
@@ -615,18 +642,34 @@ export function AppLayout() {
             top: 0,
             zIndex: 50,
           }}
+          className="app-topbar"
         >
           {/* Global Search — one box, context-aware per module (see GlobalSearch) */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+          <div
+            style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+            className="topbar-search-area"
+          >
+            <button
+              className="mobile-header-menu-btn"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu size={20} />
+            </button>
             <GlobalSearch />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-            <OrgDropdown
-              organizations={organizations || []}
-              activeOrgId={effectiveOrgId ?? null}
-              onSelectOrg={switchOrg}
-            />
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}
+            className="topbar-right-controls"
+          >
+            <div className="topbar-org-dropdown">
+              <OrgDropdown
+                organizations={organizations || []}
+                activeOrgId={effectiveOrgId ?? null}
+                onSelectOrg={switchOrg}
+              />
+            </div>
             <ProfileDropdown
               user={user}
               logoutMutation={logoutMutation}
@@ -637,8 +680,21 @@ export function AppLayout() {
 
         {/* Page Content. Suspense sits INSIDE <main> so a route chunk still
             loading swaps only this area — the sidebar and header stay on screen.
-            Every page under this layout is lazy (see app/router.tsx). */}
-        <main id="app-main-content" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+            Every page under this layout is lazy (see app/router.tsx).
+            A page that scrolls with <main> needs `flexShrink: 0` on its root: this is a
+            flex column, so without it the root is squeezed to the viewport and the
+            content below the fold spills out of its background as a grey strip. */}
+        <main
+          id="app-main-content"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            overflow: 'auto',
+            position: 'relative',
+          }}
+        >
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>
@@ -647,6 +703,24 @@ export function AppLayout() {
     </div>
   );
 }
+
+const ToteBagIcon = ({ size = 24, ...props }: SVGProps<SVGSVGElement> & { size?: number | string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="4" y="8" width="16" height="13" rx="2" />
+    <path d="M8 8V6a4 4 0 0 1 8 0v2" />
+  </svg>
+);
 
 function ModuleNavGroup({
   module,
@@ -661,7 +735,7 @@ function ModuleNavGroup({
   onToggle?: (id: string) => void;
   isSidebarCollapsed?: boolean;
 }) {
-  const Icon = module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText;
+  const Icon = module.code === 'INVENTORY' ? ToteBagIcon : (module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText);
   const { orgId } = useParams<{ orgId: string }>();
   const effectiveOrgId = orgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
   const to = navPath(module.code, effectiveOrgId);
@@ -725,8 +799,8 @@ function ModuleNavGroup({
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '8px 14px',
-              paddingLeft: 14 + depth * 12,
+              padding: '8px 4px',
+              paddingLeft: 4,
               borderRadius: 'var(--radius-md)',
               background: 'transparent',
               border: 'none',
@@ -743,7 +817,7 @@ function ModuleNavGroup({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
+                gap: 4,
                 width: '100%',
               }}
             >
@@ -752,7 +826,8 @@ function ModuleNavGroup({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 16,
+                  width: 14,
+                  marginLeft: depth * 20,
                   transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s ease',
                 }}
@@ -760,7 +835,7 @@ function ModuleNavGroup({
                 <ChevronRight size={14} />
               </div>
               {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
             </div>
           </button>
 
@@ -799,7 +874,7 @@ function ModuleNavGroup({
       e.preventDefault();
       e.stopPropagation();
       if (to !== '#') {
-        navigate(`${to}/new`);
+        navigate(`${to}/new`, { state: { returnUrl: location.pathname + location.search } });
       }
     };
 
@@ -813,8 +888,8 @@ function ModuleNavGroup({
         style={({ isActive }) => ({
           display: 'flex',
           alignItems: 'center',
-          padding: '8px 14px',
-          paddingLeft: 14 + depth * 12,
+          padding: '8px 4px',
+          paddingLeft: 4,
           paddingRight: '36px',
           justifyContent: 'space-between',
           borderRadius: 'var(--radius-md)',
@@ -834,40 +909,46 @@ function ModuleNavGroup({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
+                gap: 4,
                 justifyContent: 'flex-start',
               }}
             >
-              <div style={{ width: 16 }}></div>
+              <div style={{ width: 14 + depth * 20 }}></div>
               {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 4 }}>{module.name}</span>
+              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
             </div>
-            
-            {(isHovered || isActive) && (
-              <button
-                onClick={handlePlusClick}
-                title={`Create new ${module.name.toLowerCase()}`}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: '32px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: 'none',
-                  borderTopRightRadius: 'var(--radius-md)',
-                  borderBottomRightRadius: 'var(--radius-md)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
-              >
-                <Plus size={16} color="#fff" strokeWidth={2.5} />
-              </button>
-            )}
+
+            {(isHovered || isActive) &&
+              module.code !== 'DASHBOARD' &&
+              module.code !== 'REPORTS' && (
+                <button
+                  onClick={handlePlusClick}
+                  title={`Create new ${module.name.toLowerCase()}`}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '32px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: 'none',
+                    borderTopRightRadius: 'var(--radius-md)',
+                    borderBottomRightRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                  }
+                >
+                  <Plus size={16} color="#fff" strokeWidth={2.5} />
+                </button>
+              )}
           </>
         )}
       </NavLink>
@@ -880,7 +961,7 @@ function ModuleNavGroup({
       e.preventDefault();
       e.stopPropagation();
       if (to !== '#') {
-        navigate(`${to}/new`);
+        navigate(`${to}/new`, { state: { returnUrl: location.pathname + location.search } });
       }
     };
 
@@ -919,31 +1000,37 @@ function ModuleNavGroup({
         {({ isActive }) => (
           <>
             <span>{module.name}</span>
-            {(isHovered || isActive) && (
-              <button
-                onClick={handlePlusClick}
-                title={`Create new ${module.name.toLowerCase()}`}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: '32px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: 'none',
-                  borderTopRightRadius: '4px',
-                  borderBottomRightRadius: '4px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
-              >
-                <Plus size={16} color="#fff" strokeWidth={2.5} />
-              </button>
-            )}
+            {(isHovered || isActive) &&
+              module.code !== 'DASHBOARD' &&
+              module.code !== 'REPORTS' && (
+                <button
+                  onClick={handlePlusClick}
+                  title={`Create new ${module.name.toLowerCase()}`}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: '32px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: 'none',
+                    borderTopRightRadius: '4px',
+                    borderBottomRightRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                  }
+                >
+                  <Plus size={16} color="#fff" strokeWidth={2.5} />
+                </button>
+              )}
           </>
         )}
       </NavLink>
@@ -1354,16 +1441,21 @@ function OrgDropdown({
           fontWeight: 500,
           cursor: 'pointer',
           color: 'var(--color-text)',
+          whiteSpace: 'nowrap',
+          maxWidth: '100%',
         }}
       >
-        <span>
-          {activeOrg?.name
-            ? activeOrg.name.length > 15
-              ? activeOrg.name.substring(0, 15) + '...'
-              : activeOrg.name
-            : 'Select Organization'}
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            display: 'block',
+          }}
+        >
+          {activeOrg?.name || 'Select Organization'}
         </span>
-        <span style={{ fontSize: 10 }}>▼</span>
+        <span style={{ fontSize: 10, flexShrink: 0 }}>▼</span>
       </button>
 
       {isOpen && (

@@ -23,10 +23,7 @@ export const routeStepSchema = z.object({
   processorType: z.string(),
   processorId: z.string().nullable(),
   workCentreLocationId: z.string().nullable(),
-  rate: decimalString,
-  rateBasis: z.string().nullable(),
   expectedYield: decimalString,
-  tolerancePct: decimalString,
   remarks: z.string().nullable(),
 
   /** 🔴 What the step consumes and produces (§5.7). The only place the items live
@@ -67,8 +64,6 @@ export interface RouteStepData {
   processorType?: string;
   processorId?: string | null;
   workCentreLocationId?: string | null;
-  rate?: number | null;
-  rateBasis?: string | null;
   /** 🔴 The two lists (§5.7). Sent, they are what the step consumes and
    * produces; left empty, the server derives one row per side from the template's
    * own defaults.
@@ -79,7 +74,6 @@ export interface RouteStepData {
   inputs?: StepItemRow[];
   outputs?: StepItemRow[];
   expectedYield?: number | null;
-  tolerancePct?: number | null;
   remarks?: string | null;
 }
 
