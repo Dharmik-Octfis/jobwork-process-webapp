@@ -176,9 +176,8 @@ export function LoginPage() {
 
         There is no signup link beside it either, and that is not an omission.
         Accounts are created at the identity provider — its own sign-in page carries
-        the link — and jobwork is invite-only regardless (`provisionOrRefuse`), so a
-        "create account" here would offer a door that refuses everyone who walks
-        through it.
+        the link, and a new account comes back here to create its organization — so a
+        second "create account" here would only be a door jobwork has to keep working.
 
         The rollback §13 step 4 asks for is still `SSO_ENABLED=false`, which brings
         this whole form back and unmounts the SSO routes. The switch is wholesale

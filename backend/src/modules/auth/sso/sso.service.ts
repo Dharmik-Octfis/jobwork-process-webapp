@@ -82,57 +82,31 @@ export interface IdTokenClaims {
 }
 
 /**
- * 🔴 Per-app entitlement — §9.3, the one genuinely new problem.
+ * 🔴 Per-app entitlement — §9.3. jobwork is SELF-SIGNUP (decided 2026-09-22), the
+ * standard multi-tenant model: accounts decides WHO you are, and any verified
+ * identity gets a local user here. What it can SEE is decided by memberships —
+ * `tenantContext`, RLS and `requirePermission` are unchanged — so a new user owns
+ * nothing and reaches nothing until they create an organization (`OrgRedirect` →
+ * `/organizations/new`) or accept an invitation into one.
  *
- * Before SSO, holding a jobwork account MEANT being a jobwork user. After it,
- * everyone in the estate can reach this app's login and obtain a perfectly valid
- * token, so this app has to decide for itself whether that person gets in.
+ * This replaced invite-only, which arrived with the SSO cutover when it removed
+ * jobwork's own `/auth/signup`: a new customer could no longer start at all. If
+ * trials or plans ever gate who may use jobwork, gate ORGANIZATION CREATION, not
+ * sign-in — refusing here only strands people who could not see any data anyway.
  *
- * jobwork's policy is INVITE-ONLY, and this is the ONE way to say yes: a pending
- * invitation, addressed to an email the identity provider has verified. Everything
- * else refuses. An app that auto-provisions here silently turns every identity in
- * the estate into one of its users — the same failure shape as a route with no
- * `requirePermission`, and just as quiet.
+ * 🔴 `emailVerified` stays mandatory. Invitations are addressed to an ADDRESS, so an
+ * unproven address must never become the local user an invitation is accepted by.
  *
- * 🔴 `emailVerified` is the whole security of this check. The invitation is
- * addressed to an ADDRESS, so anyone able to register that address at accounts
- * without proving they own it could walk into the organization it was meant for.
- * Refuse rather than trust an unverified claim.
- *
- * What this deliberately does NOT do is accept the invitation. It creates the local
- * user — password-less, stamped with `identityUserId` — and stops. Joining the
- * organization stays in `invitations.service.ts`, which already owns the membership
- * name, the role and the permission template; duplicating that here would be a
- * second implementation of the one thing that grants access.
+ * It does NOT accept an invitation or join anything: joining stays in
+ * `invitations.service.ts`, the one implementation of the thing that grants access.
  */
-async function provisionOrRefuse(claims: IdTokenClaims) {
-  const refuse = (): never => {
-    throw new ApiError(
-      403,
-      "You don't have access to this app. Ask your administrator to invite you.",
-    );
-  };
-
-  if (!claims.emailVerified || !claims.email) return refuse();
-
-  const invitation = await prisma.invitation.findFirst({
-    where: {
-      email: claims.email,
-      status: 'pending',
-      isDeleted: false,
-      acceptedAt: null,
-      declinedAt: null,
-      expiresAt: { gt: new Date() },
-      // An invitation into a deleted organization is not an invitation.
-      organization: { isDeleted: false },
-    },
-    select: { id: true },
-  });
-
-  if (!invitation) return refuse();
+async function provisionLocalUser(claims: IdTokenClaims) {
+  if (!claims.emailVerified || !claims.email) {
+    throw new ApiError(403, 'Confirm your email address at Octfis Accounts, then sign in again.');
+  }
 
   // No `passwordHash`: this account exists only through the identity provider, and
-  // giving it a local password would quietly reopen the login this cutover closes.
+  // giving it a local password would quietly reopen the login the cutover closed.
   return prisma.user.create({
     data: {
       email: claims.email,
@@ -185,7 +159,7 @@ export async function linkOrCreateLocalUser(claims: IdTokenClaims) {
     }
   }
 
-  return provisionOrRefuse(claims);
+  return provisionLocalUser(claims);
 }
 
 /**

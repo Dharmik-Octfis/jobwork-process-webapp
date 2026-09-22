@@ -982,51 +982,26 @@ id           | email                    | identity_user_id | password_hash
 > people change addresses, `sub` is forever. This whole branch gets deleted once every
 > active user is linked.
 
-#### Branch 3 — no local user at all: invitation, or refusal (`provisionOrRefuse`)
+#### Branch 3 — no local user at all: create one (`provisionLocalUser`)
 
 Before SSO, _having a jobwork account_ meant _being a jobwork user_. Now everyone in the
 company can reach jobwork's login and get a perfectly valid token — so jobwork must decide
-for itself. **jobwork's policy is invite-only.**
+for itself. **jobwork's policy is self-signup** (since 2026-09-22; it was invite-only from the
+cutover until then, which left a brand-new customer no way in): any **verified** identity gets
+a local user. Who you are is decided at accounts; what you can see is decided by memberships,
+which this step never touches.
 
 `email_verified` is checked **again** here, independently of branch 2's gate:
 
 ```ts
-if (!claims.emailVerified || !claims.email) return refuse();
+if (!claims.emailVerified || !claims.email) throw new ApiError(403, …);
 ```
 
-Two separate checks of the same claim, in two functions, on purpose: branch 2 protects
-_existing_ accounts from takeover, branch 3 protects the _invitation_ lookup from being
-answered for an address the caller has not proven they own.
+Two checks of the same claim, on purpose: branch 2 protects _existing_ accounts from takeover,
+branch 3 stops an address nobody proved from becoming the user an invitation to that address is
+later accepted by.
 
-```sql
-SELECT id FROM invitations
- WHERE email = 'james.walker@example.com'
-   AND status = 'pending' AND accepted_at IS NULL AND declined_at IS NULL
-   AND is_deleted = false AND expires_at > now()
-   -- an invitation into a deleted organization is not an invitation
-   AND organization_id IN (SELECT id FROM organizations WHERE is_deleted = false);
-```
-
-Every clause is doing work: an invitation that was accepted, declined, withdrawn, expired, or
-issued by an org that has since been deleted is **not** an entitlement.
-
-No pending invitation → **403**, and no account is created:
-
-```jsonc
-{
-  "statusCode": 403,
-  "message": "You don't have access to this app. Ask your administrator to invite you.",
-  "data": null,
-}
-```
-
-> 🔴 **Both refusals return that identical message** — unverified email and no-invitation are
-> indistinguishable from outside. `refuse()` is one function called from two places precisely
-> so they cannot drift apart. Two different messages would turn this endpoint into a way to
-> ask _"does this address have a pending invitation at this company?"_ and get a straight
-> answer, without any credential at all.
-
-With an invitation → a **password-less** user row is created:
+Verified → a **password-less** user row is created:
 
 ```sql
 INSERT INTO users (email, identity_user_id, first_name, last_name, full_name, password_hash)
@@ -1038,29 +1013,27 @@ The name is split out of the ID token's `name` claim — first word to `first_na
 identity provider, and giving it a local password would quietly reopen the very login the
 cutover closes (§6.2).
 
-> Note what this deliberately does **not** do: it does not accept the invitation or create a
+> Note what this deliberately does **not** do: it does not accept an invitation or create a
 > membership. Joining an organization stays in `invitations.service.ts`, which owns the role
 > and permission template. Duplicating that here would be a second implementation of the one
 > thing that grants access.
 
-**Reads (jobwork DB):** `users`, and `invitations` + `organizations` on branch 3 only.
+**Reads (jobwork DB):** `users`.
 **Writes (jobwork DB):** branch 1 nothing · branch 2 one `UPDATE` · branch 3 one `INSERT`.
 **Returns:** the jobwork `users` row — from here on, the `sub` is not used again except to be
 recorded on the session at step 9.
 
-> **Three ways to be refused, all 403, all at this step.** Worth seeing together, because they
-> fail for completely different reasons:
+> **Two ways to be refused, both 403, both at this step:**
 >
-> |                           | Refused because                                                                                          | Fix                       |
-> | ------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------- |
-> | branch 1 or 2             | the local account is disabled                                                                            | re-enable in jobwork      |
-> | fell past 2, refused by 3 | email not verified at accounts — so branch 2's gate never opened, and branch 3 refused on the same claim | verify the address        |
-> | branch 3                  | no pending invitation                                                                                    | have an admin invite them |
+> |               | Refused because                | Fix                  |
+> | ------------- | ------------------------------ | -------------------- |
+> | branch 1 or 2 | the local account is disabled  | re-enable in jobwork |
+> | branch 3      | email not verified at accounts | verify the address   |
 >
-> And a fourth outcome that is **not** a refusal: signing in works, but there is no membership.
-> Authenticated, entitled to the app, in no organization. Step 10 lands them on their `returnTo`
-> when they came from an invitation link — which is the usual way this happens — and otherwise
-> on `/organizations` and its empty state.
+> And the usual outcome for a new person, which is **not** a refusal: signed in, in no
+> organization. Step 10 sends them to their `returnTo` when they came from an invitation link,
+> and otherwise to `/`, where `OrgRedirect` sends a member of nothing to
+> `/organizations/new` to create their own.
 
 ---
 
@@ -1463,8 +1436,8 @@ either**. The sign-in screen is one button, `Access Jobwork`, and nothing beside
 Accounts are created at the identity provider, and its own sign-in page is where that link
 lives. jobwork publishing a second one bought nothing and cost two things: a route
 (`GET /api/auth/sso/signup`) that existed only to redirect, and a door that skipped the step
-deciding whether the person gets in at all — jobwork is invite-only
-(`provisionOrRefuse`), so anyone arriving through it was refused after registering.
+deciding whether the person gets in at all. A new account made on the provider's page comes
+back to jobwork's callback like any other sign-in, and lands on "Create organization".
 
 `/signup` in the SPA still exists for the SSO-off rollback; with SSO on it redirects to
 `/login`, carrying `next` so an invitee still lands back on their invitation.

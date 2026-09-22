@@ -789,8 +789,8 @@ export async function acceptInvitation(
    *
    * 🔴 It is a refusal, not a redirect to a local signup, and the path it refuses
    * to is already built. The invitee signs in through the provider; the SSO
-   * callback's `provisionOrRefuse` (`sso.service.ts`) looks for exactly this
-   * pending invitation, creates the local user WITHOUT a password, and `returnTo`
+   * callback's `provisionLocalUser` (`sso.service.ts`) creates the local user
+   * WITHOUT a password, and `returnTo`
    * brings them back here as Case A. Nothing new is needed — this branch was
    * duplicating, badly, work that path already does properly.
    *

@@ -113,92 +113,50 @@ afterAll(async () => {
   await prisma.user.deleteMany({ where: { id: { in: created } } });
 });
 
-describe('§9.3 — per-app entitlement fails closed', () => {
-  it('refuses an identity with no local user, and creates nothing', async () => {
+describe('§9.3 — self-signup: a verified identity gets a user, and nothing else', () => {
+  it('provisions a password-less user with no invitation and no membership', async () => {
     const sub = unknownIdentity();
-    const email = `sso-stranger-${process.hrtime.bigint().toString(36)}@example.invalid`;
+    const email = `sso-newcomer-${process.hrtime.bigint().toString(36)}@example.invalid`;
 
-    await expect(linkOrCreateLocalUser({ sub, email, emailVerified: true })).rejects.toThrow(
-      ApiError,
-    );
-
-    // The assertion that actually matters. An app that auto-provisions here turns
-    // every identity in the estate into one of its users, silently.
-    expect(
-      await prisma.user.count({ where: { OR: [{ email }, { identityUserId: sub }] } }),
-      'provisionOrRefuse must not create a local user',
-    ).toBe(0);
-  });
-
-  it('refuses with 403, not 401 — authenticated, but not entitled', async () => {
-    await expect(
-      linkOrCreateLocalUser({ sub: unknownIdentity(), emailVerified: false }),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-});
-
-describe('§9.3 — a pending invitation is the ONE way in', () => {
-  it('provisions a password-less user when the verified email holds a pending invite', async () => {
-    const invite = await makeInvitation();
-
-    const sub = crypto.randomUUID();
     const user = await linkOrCreateLocalUser({
       sub,
-      email: invite.email,
+      email,
       emailVerified: true,
-      name: 'Invited Person',
+      name: 'New Person',
     });
     created.push(user.id);
 
     expect(user.identityUserId).toBe(sub);
     // 🔴 No local password. Giving one would quietly reopen the login the cutover
-    // is closing, for an account that only ever existed through the provider.
+    // closed, for an account that only ever existed through the provider.
     expect(user.passwordHash, 'an SSO-provisioned user must have no password').toBeNull();
+    // What keeps self-signup safe: a new user reaches NO tenant until they create
+    // an organization or accept an invitation into one.
+    expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(0);
   });
 
-  it('🔴 refuses the same invitation when the email is NOT verified', async () => {
-    const invite = await makeInvitation();
+  it('🔴 refuses an unverified identity with 403, and creates nothing', async () => {
+    const sub = unknownIdentity();
+    const email = `sso-unverified-${process.hrtime.bigint().toString(36)}@example.invalid`;
 
-    // The invite is addressed to an ADDRESS. Without this check, anyone who can
-    // register that address without proving they own it walks into the org.
-    await expect(
-      linkOrCreateLocalUser({
-        sub: crypto.randomUUID(),
-        email: invite.email,
-        emailVerified: false,
-      }),
-    ).rejects.toMatchObject({ status: 403 });
+    // An address nobody proved must never become the user an invitation to that
+    // address is later accepted by.
+    await expect(linkOrCreateLocalUser({ sub, email, emailVerified: false })).rejects.toMatchObject(
+      { status: 403 },
+    );
 
-    expect(await prisma.user.count({ where: { email: invite.email } })).toBe(0);
+    expect(await prisma.user.count({ where: { OR: [{ email }, { identityUserId: sub }] } })).toBe(
+      0,
+    );
   });
 
-  it('refuses an expired invitation', async () => {
-    const invite = await makeInvitation({ expiresAt: new Date(Date.now() - 1000) });
-
+  it('refuses an identity with no email at all', async () => {
     await expect(
-      linkOrCreateLocalUser({ sub: crypto.randomUUID(), email: invite.email, emailVerified: true }),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  it('refuses an already-accepted invitation, so it cannot be reused', async () => {
-    const invite = await makeInvitation({ status: 'accepted', acceptedAt: new Date() });
-
-    await expect(
-      linkOrCreateLocalUser({ sub: crypto.randomUUID(), email: invite.email, emailVerified: true }),
+      linkOrCreateLocalUser({ sub: unknownIdentity(), emailVerified: true }),
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  it('refuses a revoked (soft-deleted) invitation', async () => {
-    const invite = await makeInvitation({ isDeleted: true });
-
-    // Revoking an invite has to actually revoke it — otherwise "uninvite" is a
-    // button that does nothing.
-    await expect(
-      linkOrCreateLocalUser({ sub: crypto.randomUUID(), email: invite.email, emailVerified: true }),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  it('does NOT join the organization — that stays in the invitations module', async () => {
+  it('an invitee gets in too, and is NOT joined to the organization here', async () => {
     const invite = await makeInvitation();
 
     const user = await linkOrCreateLocalUser({
@@ -341,7 +299,7 @@ describe('§5.4 — a refused sign-in lands on /no-access', () => {
     return { redirect, next };
   }
 
-  it('redirects a not-invited refusal to the app page', async () => {
+  it('redirects an unverified-email refusal to the app page', async () => {
     // The real refusal, from the real function: unverified email, nothing to link.
     const refusal = await linkOrCreateLocalUser({ sub: randomUUID(), emailVerified: false }).catch(
       (e: unknown) => e,

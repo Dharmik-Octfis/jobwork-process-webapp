@@ -52,10 +52,9 @@ export function accountRouter(): Router {
    * `?email=` prefills the address, and it matters more than a convenience.
    *
    * The person arriving here usually came from an invitation addressed to ONE
-   * address, and an app grants access by matching that address (jobwork's
-   * `provisionOrRefuse`). Register a different one and everything succeeds —
-   * account created, email verified, signed in — and then the app refuses them,
-   * with no way to tell them why without leaking who is invited where.
+   * address, and the app joins them to the organization by matching that address.
+   * Register a different one and everything succeeds — account created, email
+   * verified, signed in — except the invitation, which that account cannot accept.
    *
    * Only ever a default: it is an editable field, and nothing downstream trusts
    * it. Entitlement is decided against the address the user actually VERIFIES.

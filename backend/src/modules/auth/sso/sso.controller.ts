@@ -122,9 +122,9 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
    *
    * This exists for the invitation path. An invitee has no account at the provider
    * yet, and an invitation grants access to ONE address; if they register a
-   * different one, sign-in succeeds and then `provisionOrRefuse` refuses them — a
-   * dead end that cannot be explained to them without disclosing who is invited.
-   * Handing the address forward removes the chance to get it wrong.
+   * different one, they get in as a stranger to that organization and the
+   * invitation page can only say "signed in with a different email". Handing the
+   * address forward removes the chance to get it wrong.
    *
    * 🔴 A hint, not an assertion. It comes from the query string, so it is whatever
    * the browser sent; it prefills a field the user can edit and authorises nothing.
@@ -271,9 +271,8 @@ export async function callback(req: Request, res: Response): Promise<void> {
  * shows the browser raw JSON with the address bar stuck on the callback URL — which
  * reads as sign-in being broken.
  *
- * - 403 → `/no-access`. Every 403 here is a refusal from `linkOrCreateLocalUser` (not
- *   invited, unverified email, or disabled in jobwork); all three get the same page
- *   and words, so this adds no way to tell them apart.
+ * - 403 → `/no-access`. Every 403 here is a refusal from `linkOrCreateLocalUser`
+ *   (unverified email, or disabled in jobwork); both get the same page and words.
  * - Anything else → the sign-in page with a retry button: an expired or missing flow
  *   cookie, a code for a flow this browser no longer holds (a second tab started
  *   another sign-in), a replayed callback URL. `sso=manual`, never an automatic

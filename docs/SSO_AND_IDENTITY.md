@@ -636,11 +636,11 @@ must make it **explicitly and fail closed** — an app with no entitlement check
 identity in the estate into one of its users. Same failure shape as a route with no
 `requirePermission`.
 
-| Policy          | Behaviour                                                                           | Fits                                                                                                                                          |
-| --------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Open**        | auto-provision anyone with an account                                               | internal tools                                                                                                                                |
-| **Invite-only** | no local row → _"You don't have access to this app. Ask your admin to invite you."_ | 🟢 **jobwork** — done. The invitations module stopped creating passwords on 2026-08-31 (§9.5) and `provisionOrRefuse` stamps `identityUserId` |
-| **Org-gated**   | in if any of your orgs has this app enabled                                         | needs the central directory we deliberately did not build (§5)                                                                                |
+| Policy          | Behaviour                                                                                                                                     | Fits                                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Self-signup** | auto-provision any **verified** identity; it has no memberships, so it sees nothing until it creates an organization or accepts an invitation | 🟢 **jobwork** since 2026-09-22 (`provisionLocalUser`). The standard multi-tenant SaaS model; tenant isolation lives in memberships + RLS, not here |
+| **Invite-only** | no local row → _"You don't have access to this app. Ask your admin to invite you."_                                                           | jobwork from the cutover until 2026-09-22 — replaced because the cutover had removed jobwork's own signup, leaving a new customer no way in         |
+| **Org-gated**   | in if any of your orgs has this app enabled                                                                                                   | needs the central directory we deliberately did not build (§5)                                                                                      |
 
 ### 9.5 🔴 One way in, enforced by the router
 

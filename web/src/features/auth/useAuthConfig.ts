@@ -60,7 +60,8 @@ export function useAuthConfig() {
  * know who is arriving — today, an invitee following their link. It prefills the
  * provider's sign-in and signup fields so someone with no account yet registers the
  * address they were actually invited at; registering a different one gets them
- * signed in and then refused. It is a default in an editable field, nothing more.
+ * signed in as an account the invitation cannot be accepted by. It is a default in
+ * an editable field, nothing more.
  */
 export function startSsoLogin(returnTo?: string, email?: string): void {
   const url = new URL(`${window.location.origin}/api/auth/sso/login`);

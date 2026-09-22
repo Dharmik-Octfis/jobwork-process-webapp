@@ -142,8 +142,8 @@ points `/` at `/home`.
 - **Not an OIDC client.** Never register it in `oidc_clients`. It never needs a code, a token, or an
   identity, and registering it would put identity plumbing on a public marketing origin for no gain.
 - **Not told anything about entitlement.** `signedIn: true` means "has an accounts session", never
-  "has jobwork". Jobwork is invite-only, so some visitors will click through and be refused — that is
-  §5.4's job, not the website's.
+  "has jobwork". Since 2026-09-22 jobwork is self-signup, so a visitor with no organization lands
+  on "Create organization"; only a disabled account is refused, and that is §5.4's job.
 
 ---
 

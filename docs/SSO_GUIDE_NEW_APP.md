@@ -257,14 +257,15 @@ Reference: `linkOrCreateLocalUser` in `backend/src/modules/auth/sso/sso.service.
 
 🔴 Step 2 **requires** `email_verified === true`. Without it, anyone who registers someone
 else's address at accounts takes over that person's account in your app.
-🔴 Step 3 must **fail closed**. Pick one:
+🔴 Step 3 is a decision you make **explicitly**. Pick one:
 
-- **Invite-only** (jobwork): create only if a pending, unexpired invitation exists for this
-  verified email. Else refuse.
-- **Open**: create for anyone signed in (internal tools only).
-
-Every refusal uses **one** message ("You don't have access to this app. Ask your administrator
-to invite you.") so it never reveals who is invited.
+- **Self-signup** (jobwork, the standard multi-tenant SaaS model): create a user for any
+  **verified** identity. Safe only because that user has **no memberships** — it sees nothing
+  until it creates its own organization or accepts an invitation. Your tenant checks (membership,
+  RLS, permissions) are the security, not this step. Gate trials/plans at organization creation.
+- **Invite-only**: create only if a pending, unexpired invitation exists for this verified
+  email; else refuse with one message ("You don't have access to this app. Ask your
+  administrator to invite you.") so it never reveals who is invited.
 
 ---
 
@@ -304,7 +305,7 @@ Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `NoAccessP
 
 ---
 
-## 9. Invitations (invite-only apps)
+## 9. Invitations (joining an existing organization)
 
 **Your app sends the invitation; accounts knows nothing about it.**
 
