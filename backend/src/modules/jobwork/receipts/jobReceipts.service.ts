@@ -127,7 +127,14 @@ const RECEIPT_INCLUDE = {
     orderBy: { seq: 'asc' },
     include: {
       item: {
-        select: { id: true, name: true, sku: true, itemType: true, trackInventory: true, inventoryTracking: true },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          itemType: true,
+          trackInventory: true,
+          inventoryTracking: true,
+        },
       },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },

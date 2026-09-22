@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
 import { format, endOfDay } from 'date-fns';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
@@ -22,14 +22,8 @@ import { fetchLocations, isOwnLocation } from '../configuration/locations/locati
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
-const STATUS_OPTIONS = [
-  { label: 'All', value: 'all' },
-  { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-];
-
 const TRACKING_MODE_OPTIONS = [
-  { label: 'Bills', value: 'bills' },
+  { label: 'Bills', value: 'bills_and_invoices' },
   { label: 'Jobwork Receives', value: 'jobwork' },
 ];
 
@@ -37,21 +31,67 @@ const TRACKING_MODE_OPTIONS = [
 
 export function StockSummaryReportPage() {
   const navigate = useNavigate();
+  const { orgId } = useParams<{ orgId: string }>();
+  const [searchParams] = useSearchParams();
 
-  const [dateRange, setDateRange] = useState('Today');
-  const [asOfDate, setAsOfDate] = useState<Date>(new Date());
+  const initialMode = searchParams.get('mode') || 'bills_and_invoices';
+
+  const initialState = useMemo(() => {
+    if (!orgId) return null;
+    const key = `stockSummaryState_${orgId}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        
+        const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+          if (!val) return fallback;
+          const d = new Date(val);
+          return isNaN(d.getTime()) ? fallback : d;
+        };
+        
+        parsed.fromDate = safeDate(parsed.fromDate, new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+        parsed.toDate = safeDate(parsed.toDate, new Date());
+        
+        if (parsed.appliedFilters) {
+          parsed.appliedFilters.fromDate = safeDate(parsed.appliedFilters.fromDate, new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+          parsed.appliedFilters.toDate = safeDate(parsed.appliedFilters.toDate, new Date());
+        }
+        
+        return parsed;
+      }
+    } catch (_e) {
+      // ignore parse errors and fallback to default state
+    }
+    return null;
+  }, [orgId]);
+
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [stockFilter] = useState('none');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [trackingMode, setTrackingMode] = useState('bills');
-  const [conditions, setConditions] = useState<FilterCondition[]>([]);
+  const [trackingMode, setTrackingMode] = useState(initialState?.trackingMode || initialMode);
+  const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
 
-  const [appliedFilters, setAppliedFilters] = useState({
-    asOfDate: new Date(),
+  const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
+    fromDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    toDate: new Date(),
     stockFilter: 'none',
-    statusFilter: 'all',
-    trackingMode: 'bills',
+    trackingMode: 'bills_and_invoices',
     conditions: [] as FilterCondition[],
   });
+
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.setItem(`stockSummaryState_${orgId}`, JSON.stringify({
+      dateRange,
+      fromDate,
+      toDate,
+      trackingMode,
+      conditions,
+      appliedFilters
+    }));
+  }, [dateRange, fromDate, toDate, trackingMode, conditions, appliedFilters, orgId]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
@@ -63,9 +103,8 @@ export function StockSummaryReportPage() {
     'closingStock',
   ]);
 
-  const formattedAsOfDate = format(appliedFilters.asOfDate, 'dd-MM-yyyy');
-
-  const { orgId } = useParams<{ orgId: string }>();
+  const formattedFromDate = format(appliedFilters.fromDate, 'dd-MM-yyyy');
+  const formattedToDate = format(appliedFilters.toDate, 'dd-MM-yyyy');
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
@@ -181,9 +220,9 @@ export function StockSummaryReportPage() {
     if (!orgId) return;
     try {
       const query: StockSummaryQuery = {
-        toDate: endOfDay(appliedFilters.asOfDate).toISOString(),
-        mode: appliedFilters.trackingMode as 'bills' | 'jobwork',
-        status: appliedFilters.statusFilter as 'all' | 'active' | 'inactive',
+        fromDate: appliedFilters.fromDate.toISOString(),
+        toDate: endOfDay(appliedFilters.toDate).toISOString(),
+        mode: appliedFilters.trackingMode as 'bills' | 'bills_and_invoices' | 'jobwork',
         page,
         perPage,
       };
@@ -304,7 +343,7 @@ export function StockSummaryReportPage() {
             >
               Stock Summary Report
               <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
-                • As of {formattedAsOfDate}
+                • From {formattedFromDate} To {formattedToDate}
               </span>
             </div>
           </div>
@@ -355,11 +394,14 @@ export function StockSummaryReportPage() {
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
           <ReportDateFilter
+            isRange={true}
             value={dateRange}
-            onChange={(label, date) => {
+            onChangeRange={(label, start, end) => {
               setDateRange(label);
-              setAsOfDate(date);
+              setFromDate(start);
+              setToDate(end);
             }}
+            labelPrefix=""
           />
 
           <SearchableSelect
@@ -386,29 +428,7 @@ export function StockSummaryReportPage() {
             )}
           />
 
-          <SearchableSelect
-            options={STATUS_OPTIONS}
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 'max-content' }}
-            triggerStyle={{
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              height: 'auto',
-              minHeight: '0',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-            }}
-            dropdownWidth="200px"
-            renderValue={(opt) => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#6b7280' }}>Status :</span>
-                <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
-              </div>
-            )}
-          />
+
 
           <AdvancedFilter
             fields={filterFields}
@@ -424,7 +444,7 @@ export function StockSummaryReportPage() {
           />
           <button
             type="button"
-            onClick={() => setAppliedFilters({ asOfDate, stockFilter, statusFilter, trackingMode, conditions })}
+            onClick={() => setAppliedFilters({ fromDate, toDate, stockFilter, trackingMode, conditions })}
             style={{
               padding: '6px 12px',
               background: '#2563eb',
@@ -520,7 +540,7 @@ export function StockSummaryReportPage() {
             >
               Stock Summary Report
             </h2>
-            <div style={{ fontSize: '13px', color: '#4b5563' }}>As of {formattedAsOfDate}</div>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>From {formattedFromDate} To {formattedToDate}</div>
           </div>
 
           {/* Data Table */}
@@ -697,7 +717,7 @@ export function StockSummaryReportPage() {
                                 style={{ color: '#0062ff', cursor: 'pointer' }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward`);
+                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward&mode=${appliedFilters.trackingMode}&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`);
                                 }}
                               >
                                 {(row.quantityIn || 0).toFixed(2)}
@@ -715,7 +735,7 @@ export function StockSummaryReportPage() {
                                 style={{ color: '#0062ff', cursor: 'pointer' }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward`);
+                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward&mode=${appliedFilters.trackingMode}&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`);
                                 }}
                               >
                                 {(row.quantityOut || 0).toFixed(2)}

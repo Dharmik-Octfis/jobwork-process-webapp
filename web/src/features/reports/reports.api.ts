@@ -40,7 +40,7 @@ export interface PaginatedInventoryValuationResponse {
 export interface StockSummaryQuery {
   fromDate?: string;
   toDate?: string;
-  mode?: 'bills' | 'jobwork';
+  mode?: 'bills' | 'bills_and_invoices' | 'jobwork';
   status?: 'all' | 'active' | 'inactive';
   itemName?: string;
   categoryName?: string;
@@ -169,7 +169,9 @@ export interface StockMovementRow {
   id: string;
   transactionDate: string;
   transactionNumber: string;
+  itemId: string;
   itemName: string;
+  createdAt: string;
   transactionType: string;
   movementType: 'Inward' | 'Outward';
   source: string;

@@ -22,9 +22,13 @@ billsRouter.get('/debug-receipts', async (req, res) => {
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
   const receipts = await prisma.jobReceipt.findMany({
-    select: { receiptNumber: true, processChargeTotal: true, outputs: { select: { processCharge: true, rate: true } } },
+    select: {
+      receiptNumber: true,
+      processChargeTotal: true,
+      outputs: { select: { processCharge: true, rate: true } },
+    },
     take: 5,
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: 'desc' },
   });
   res.json(receipts);
 });
@@ -51,7 +55,11 @@ billsRouter.post(
 );
 billsRouter.get('/attachments/signed-url', requirePermission('bill:read'), ctrl.getSignedUrl);
 billsRouter.get('/:id', requirePermission('bill:read'), ctrl.getBill);
-billsRouter.get('/open-job-receipts/:vendorId', requirePermission('bill:read'), ctrl.getOpenJobReceipts);
+billsRouter.get(
+  '/open-job-receipts/:vendorId',
+  requirePermission('bill:read'),
+  ctrl.getOpenJobReceipts,
+);
 billsRouter.get('/:id/activities', requirePermission('bill:read'), ctrl.getBillActivitiesRoute);
 billsRouter.get('/:id/comments', requirePermission('bill:read'), ctrl.getBillCommentsRoute);
 billsRouter.post('/:id/comments', requirePermission('bill:update'), ctrl.createBillCommentRoute);

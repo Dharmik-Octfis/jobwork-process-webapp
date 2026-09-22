@@ -16,7 +16,9 @@ export interface StockMovementRow {
   id: string;
   transactionDate: Date;
   transactionNumber: string;
+  itemId: string;
   itemName: string;
+  createdAt: Date;
   transactionType: string;
   movementType: 'Inward' | 'Outward';
   source: string;

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom';
-import { Menu,Filter } from 'lucide-react';
+import { Menu, Filter, X } from 'lucide-react';
 import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { reportsApi, type PaginatedStockMovementResponse, type StockMovementRow } from './reports.api';
 
 const TRACKING_MODE_OPTIONS = [
-  { label: 'Bills', value: 'bills' },
+  { label: 'Bills', value: 'bills_and_invoices' },
   { label: 'Jobwork Receives', value: 'jobwork' },
 ];
 
@@ -16,20 +16,28 @@ export function StockMovementReportPage() {
   const [searchParams] = useSearchParams();
   const { orgId } = useParams<{ orgId: string }>();
 
-  const itemId = searchParams.get('itemId') || undefined;
+  const initialItemId = searchParams.get('itemId') || '';
   const initialMovementType = searchParams.get('movementType') as 'inward' | 'outward' | 'all' || 'all';
+  const initialMode = searchParams.get('mode') || 'bills_and_invoices';
+  const initialFromDateStr = searchParams.get('fromDate');
+  const initialToDateStr = searchParams.get('toDate');
 
-  const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
-  const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const initialFromDate = initialFromDateStr ? new Date(initialFromDateStr) : startOfMonth(new Date());
+  const initialToDate = initialToDateStr ? new Date(initialToDateStr) : new Date();
+
+  const [dateRangeLabel, setDateRangeLabel] = useState(initialFromDateStr && initialToDateStr ? 'Custom' : 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialFromDate);
+  const [toDate, setToDate] = useState<Date>(initialToDate);
   const [movementType, _setMovementType] = useState(initialMovementType);
-  const [mode, setMode] = useState('bills');
+  const [mode, setMode] = useState(initialMode);
+  const [_itemIdFilter, _setItemIdFilter] = useState(initialItemId);
 
   const [appliedFilters, setAppliedFilters] = useState({
-    fromDate: startOfMonth(new Date()),
-    toDate: new Date(),
+    fromDate: initialFromDate,
+    toDate: initialToDate,
     movementType: initialMovementType,
-    mode: 'bills',
+    mode: initialMode,
+    itemId: initialItemId,
   });
 
   const [data, setData] = useState<PaginatedStockMovementResponse | null>(null);
@@ -41,7 +49,7 @@ export function StockMovementReportPage() {
       setLoading(true);
       try {
         const response = await reportsApi.getStockMovement(orgId, {
-          itemId,
+          itemId: appliedFilters.itemId || undefined,
           fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
           toDate: endOfDay(appliedFilters.toDate).toISOString(),
           movementType: appliedFilters.movementType as 'all' | 'inward' | 'outward',
@@ -58,7 +66,7 @@ export function StockMovementReportPage() {
     };
 
     loadData();
-  }, [orgId, itemId, appliedFilters]);
+  }, [orgId, appliedFilters]);
 
   const getDocLink = (row: StockMovementRow) => {
     // Basic mapping, assuming standard routes
@@ -140,6 +148,23 @@ export function StockMovementReportPage() {
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#ef4444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px',
+          }}
+        >
+          <X size={20} />
+        </button>
       </div>
 
       {/* Filter Bar */}
@@ -196,13 +221,13 @@ export function StockMovementReportPage() {
             renderValue={(opt) => (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ color: '#6b7280' }}>Mode of Stock tracking:</span>
-                <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
+                <span style={{ fontWeight: 500, color: '#111827' }}>{opt?.label || 'All'}</span>
               </div>
             )}
           />
           <button
             type="button"
-            onClick={() => setAppliedFilters({ fromDate, toDate, movementType, mode })}
+            onClick={() => setAppliedFilters({ fromDate, toDate, movementType, mode, itemId: initialItemId })}
             style={{
               padding: '6px 12px',
               background: '#2563eb',
@@ -289,7 +314,9 @@ export function StockMovementReportPage() {
               ) : (
                 data?.results.map((row) => (
                   <tr key={row.id} className="table-row-hover" style={{ borderBottom: '1px solid #f9fafb' }}>
-                    <td style={tdStyle}>{format(new Date(row.transactionDate), 'dd-MM-yyyy')}</td>
+                    <td style={tdStyle}>
+                      {format(new Date(row.transactionDate), 'dd-MM-yyyy')}
+                    </td>
                     <td style={tdStyle}>
                       {getDocLink(row) ? (
                         <Link to={getDocLink(row)!} className="hover-underline" style={{ color: '#0062ff', textDecoration: 'none' }}>
@@ -300,7 +327,7 @@ export function StockMovementReportPage() {
                       )}
                     </td>
                     <td style={tdStyle}>
-                      <span className="hover-underline" style={{ color: '#0062ff', cursor: 'pointer' }} onClick={() => navigate(`/organizations/${orgId}/items?id=${itemId}`)}>
+                      <span className="hover-underline" style={{ color: '#0062ff', cursor: 'pointer' }} onClick={() => navigate(`/organizations/${orgId}/items?id=${row.itemId}`)}>
                         {row.itemName}
                       </span>
                     </td>

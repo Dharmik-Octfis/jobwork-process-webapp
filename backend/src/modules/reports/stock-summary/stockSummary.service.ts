@@ -41,24 +41,94 @@ export async function getStockSummaryReport(
       itemCustomFields,
     } = query;
 
+    const COUNTED_SOURCE = Prisma.sql`
+      (
+        (
+          l.source_doc_type != 'job_receipt'
+          AND (
+            l.source_doc_type != 'bill'
+            OR NOT EXISTS (
+              SELECT 1 FROM bill_items bi
+              WHERE bi.bill_id = l.source_doc_id
+                AND bi.item_id = l.item_id
+                AND bi.job_receipt_id IS NOT NULL
+                AND bi.is_deleted = false
+            )
+          )
+        )
+        OR (
+          l.source_doc_type = 'job_receipt'
+          AND EXISTS (
+            SELECT 1 FROM bill_items bi
+            JOIN bills b ON b.id = bi.bill_id
+            WHERE bi.job_receipt_id = l.source_doc_id
+              AND bi.item_id = l.item_id
+              AND bi.is_deleted = false
+              AND b.is_deleted = false
+              AND LOWER(b.status) = 'open'
+          )
+        )
+      )`;
+
     let countedSourceFilter = Prisma.sql`true`;
     if (mode === 'bills') {
-      countedSourceFilter = Prisma.sql`l.source_doc_type = 'bill'`;
+      countedSourceFilter = Prisma.sql`
+        (
+          (
+            l.source_doc_type IN ('bill', 'item_opening_stock', 'stock_transfer', 'job_issue')
+            AND (
+              l.source_doc_type != 'bill'
+              OR NOT EXISTS (
+                SELECT 1 FROM bill_items bi
+                WHERE bi.bill_id = l.source_doc_id
+                  AND bi.item_id = l.item_id
+                  AND bi.job_receipt_id IS NOT NULL
+                  AND bi.is_deleted = false
+              )
+            )
+          )
+          OR (
+            l.source_doc_type = 'job_receipt'
+            AND EXISTS (
+              SELECT 1 FROM bill_items bi
+              JOIN bills b ON b.id = bi.bill_id
+              WHERE bi.job_receipt_id = l.source_doc_id
+                AND bi.item_id = l.item_id
+                AND bi.is_deleted = false
+                AND b.is_deleted = false
+                AND LOWER(b.status) = 'open'
+            )
+          )
+        )
+      `;
+    } else if (mode === 'bills_and_invoices') {
+      countedSourceFilter = COUNTED_SOURCE;
     } else if (mode === 'jobwork') {
-      countedSourceFilter = Prisma.sql`l.source_doc_type IN ('job_issue', 'job_receipt')`;
+      countedSourceFilter = Prisma.sql`
+        (
+          l.source_doc_type != 'bill'
+          OR NOT EXISTS (
+            SELECT 1 FROM bill_items bi
+            WHERE bi.bill_id = l.source_doc_id
+              AND bi.item_id = l.item_id
+              AND bi.job_receipt_id IS NOT NULL
+              AND bi.is_deleted = false
+          )
+        )
+      `;
     }
 
     const fromDateFilter = fromDate
-      ? Prisma.sql`l.posted_at >= ${new Date(fromDate)}::timestamptz`
-      : Prisma.sql`true`;
-
-    const toDateFilter = toDate
-      ? Prisma.sql`l.posted_at <= ${new Date(toDate)}::timestamptz`
+      ? Prisma.sql`l.posted_at::date >= ${new Date(fromDate)}::timestamptz::date`
       : Prisma.sql`true`;
 
     const beforeFromDateFilter = fromDate
-      ? Prisma.sql`l.posted_at < ${new Date(fromDate)}::timestamptz`
+      ? Prisma.sql`l.posted_at::date < ${new Date(fromDate)}::timestamptz::date`
       : Prisma.sql`false`;
+
+    const toDateFilter = toDate
+      ? Prisma.sql`l.posted_at::date <= ${new Date(toDate)}::timestamptz::date`
+      : Prisma.sql`true`;
 
     // In/Out net each document per location first: an edited bill keeps its
     // superseded postings and their reversals, so summing raw qty_in/qty_out
@@ -89,8 +159,8 @@ export async function getStockSummaryReport(
         i.custom_fields AS "customFields",
         u.unit_name AS "uomName",
         COALESCE(SUM(d.opening), 0) AS "openingStock",
-        COALESCE(SUM(GREATEST(d.period_net, 0)), 0) AS "quantityIn",
-        COALESCE(SUM(GREATEST(-d.period_net, 0)), 0) AS "quantityOut",
+        COALESCE(SUM(CASE WHEN d.period_net > 0 THEN d.period_net ELSE 0 END), 0) AS "quantityIn",
+        COALESCE(SUM(CASE WHEN d.period_net < 0 THEN -d.period_net ELSE 0 END), 0) AS "quantityOut",
         COALESCE(SUM(d.closing), 0) AS "closingStock"
       FROM items i
       LEFT JOIN units_of_measurement u ON i.stocking_uom_id = u.id
@@ -131,7 +201,8 @@ export async function getStockSummaryReport(
 
     q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.unit_name`;
 
-    // Removed HAVING clause to show all matching items even with 0 stock/movement
+    q = Prisma.sql`${q} HAVING COALESCE(SUM(d.opening), 0) != 0 OR COALESCE(SUM(CASE WHEN d.period_net > 0 THEN d.period_net ELSE 0 END), 0) != 0 OR COALESCE(SUM(CASE WHEN d.period_net < 0 THEN -d.period_net ELSE 0 END), 0) != 0 OR COALESCE(SUM(d.closing), 0) != 0`;
+
     q = Prisma.sql`${q} ORDER BY i.name ASC`;
 
     const rawRows = await tx.$queryRaw<RawRow[]>`${q}`;
