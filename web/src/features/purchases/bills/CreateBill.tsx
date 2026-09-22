@@ -124,6 +124,8 @@ export function CreateBill() {
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
   const fromJobReceipt = searchParams.get('fromJobReceipt');
+  const initialVendorId = searchParams.get('vendorId');
+  const jobReceiptId = searchParams.get('jobReceiptId');
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
 
