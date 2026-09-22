@@ -42,18 +42,60 @@ const STATUS_OPTIONS = [
 export function InventoryValuationSummaryPage() {
   const navigate = useNavigate();
 
-  const [dateRange, setDateRange] = useState('Today');
-  const [asOfDate, setAsOfDate] = useState<Date>(new Date());
-  const [stockFilter, setStockFilter] = useState('none');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [conditions, setConditions] = useState<FilterCondition[]>([]);
+  const { orgId } = useParams<{ orgId: string }>();
 
-  const [appliedFilters, setAppliedFilters] = useState({
+  const initialState = useMemo(() => {
+    if (!orgId) return null;
+    const key = `inventoryValuationSummaryState_${orgId}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        
+        const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+          if (!val) return fallback;
+          const d = new Date(val);
+          return isNaN(d.getTime()) ? fallback : d;
+        };
+        
+        parsed.asOfDate = safeDate(parsed.asOfDate, new Date());
+        
+        if (parsed.appliedFilters) {
+          parsed.appliedFilters.asOfDate = safeDate(parsed.appliedFilters.asOfDate, new Date());
+        }
+        
+        return parsed;
+      }
+    } catch (_e) {
+      // ignore parse errors and fallback to default state
+    }
+    return null;
+  }, [orgId]);
+
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'Today');
+  const [asOfDate, setAsOfDate] = useState<Date>(initialState?.asOfDate || new Date());
+  const [stockFilter, setStockFilter] = useState(initialState?.stockFilter || 'none');
+  const [statusFilter, setStatusFilter] = useState(initialState?.statusFilter || 'all');
+  const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
+
+  const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
     asOfDate: new Date(),
     stockFilter: 'none',
     statusFilter: 'all',
     conditions: [] as FilterCondition[],
   });
+
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.setItem(`inventoryValuationSummaryState_${orgId}`, JSON.stringify({
+      dateRange,
+      asOfDate,
+      stockFilter,
+      statusFilter,
+      conditions,
+      appliedFilters
+    }));
+  }, [dateRange, asOfDate, stockFilter, statusFilter, conditions, appliedFilters, orgId]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
@@ -63,8 +105,6 @@ export function InventoryValuationSummaryPage() {
   ]);
 
   const formattedAsOfDate = format(appliedFilters.asOfDate, 'dd-MM-yyyy');
-
-  const { orgId } = useParams<{ orgId: string }>();
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
@@ -363,6 +403,8 @@ export function InventoryValuationSummaryPage() {
             options={STOCK_OPTIONS}
             value={stockFilter}
             onChange={setStockFilter}
+            keepOpenOnSelect={true}
+            showIndicator={stockFilter !== 'none'}
             style={{ width: 'max-content' }}
             triggerStyle={{
               border: '1px solid #d1d5db',
@@ -387,6 +429,8 @@ export function InventoryValuationSummaryPage() {
             options={STATUS_OPTIONS}
             value={statusFilter}
             onChange={setStatusFilter}
+            keepOpenOnSelect={true}
+            showIndicator={statusFilter !== 'all'}
             style={{ width: 'max-content' }}
             triggerStyle={{
               border: '1px solid #d1d5db',

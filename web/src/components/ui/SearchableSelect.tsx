@@ -41,6 +41,8 @@ interface SearchableSelectProps {
    * it, and measuring the anchor is not free.
    */
   portal?: boolean;
+  keepOpenOnSelect?: boolean;
+  showIndicator?: boolean;
 }
 
 export function SearchableSelect({
@@ -58,6 +60,8 @@ export function SearchableSelect({
   footerAction,
   dropdownWidth,
   portal = false,
+  keepOpenOnSelect = false,
+  showIndicator = false,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -184,7 +188,9 @@ export function SearchableSelect({
         const opt = filteredOptions[focusedIndex];
         if (!opt.disabled) {
           onChange(opt.value);
-          setIsOpen(false);
+          if (!keepOpenOnSelect) {
+            setIsOpen(false);
+          }
         }
       }
     } else if (e.key === 'Escape') {
@@ -230,6 +236,7 @@ export function SearchableSelect({
         tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         style={{
+          position: 'relative',
           padding: '8px 12px',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--color-border)',
@@ -283,6 +290,21 @@ export function SearchableSelect({
           <ChevronUp size={16} color="var(--color-text-muted)" />
         ) : (
           <ChevronDown size={16} color="var(--color-text-muted)" />
+        )}
+        {showIndicator && (
+          <span 
+            style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              width: '10px',
+              height: '10px',
+              backgroundColor: '#f97316',
+              borderRadius: '50%',
+              border: '2px solid #fff',
+              zIndex: 1,
+            }}
+          />
         )}
       </div>
 
@@ -396,7 +418,9 @@ export function SearchableSelect({
                       onClick={() => {
                         if (opt.disabled) return;
                         onChange(opt.value);
-                        setIsOpen(false);
+                        if (!keepOpenOnSelect) {
+                          setIsOpen(false);
+                        }
                         setSearchTerm('');
                       }}
                       style={{

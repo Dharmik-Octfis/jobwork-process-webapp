@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment,useEffect,useMemo } from 'react';
 import { format, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter, History } from 'lucide-react';
@@ -67,22 +67,65 @@ export function FifoCostLotTrackingPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
 
+  const initialState = useMemo(() => {
+    if (!orgId) return null;
+    const key = `fifoCostLotTrackingState_${orgId}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+
+        const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+          if (!val) return fallback;
+          const d = new Date(val);
+          return isNaN(d.getTime()) ? fallback : d;
+        };
+
+        parsed.fromDate = parsed.fromDate ? safeDate(parsed.fromDate, startOfMonth(new Date())) : undefined;
+        parsed.toDate = parsed.toDate ? safeDate(parsed.toDate, endOfDay(new Date())) : undefined;
+
+        if (parsed.appliedFilters) {
+          parsed.appliedFilters.fromDate = parsed.appliedFilters.fromDate ? safeDate(parsed.appliedFilters.fromDate, startOfMonth(new Date())) : undefined;
+          parsed.appliedFilters.toDate = parsed.appliedFilters.toDate ? safeDate(parsed.appliedFilters.toDate, endOfDay(new Date())) : undefined;
+        }
+
+        return parsed;
+      }
+    } catch (_e) {
+      // ignore parse errors and fallback to default state
+    }
+    return null;
+  }, [orgId]);
+
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
-  const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
-  const [toDate, setToDate] = useState<Date | undefined>(endOfDay(new Date()));
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [locationId, setLocationId] = useState<string>('');
-  const [isProductOut, setIsProductOut] = useState(false);
+  const [dateRangeLabel, setDateRangeLabel] = useState(initialState?.dateRangeLabel || 'This Month');
+  const [fromDate, setFromDate] = useState<Date | undefined>(initialState?.fromDate || startOfMonth(new Date()));
+  const [toDate, setToDate] = useState<Date | undefined>(initialState?.toDate || endOfDay(new Date()));
+  const [selectedItem, setSelectedItem] = useState<Item | null>(initialState?.selectedItem || null);
+  const [locationId, setLocationId] = useState<string>(initialState?.locationId || '');
+  const [isProductOut, setIsProductOut] = useState(initialState?.isProductOut || false);
 
-  const [appliedFilters, setAppliedFilters] = useState({
+  const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
     fromDate: startOfMonth(new Date()) as Date | undefined,
     toDate: endOfDay(new Date()) as Date | undefined,
     itemName: undefined as string | undefined,
     locationName: undefined as string | undefined,
     reportBasis: 'product_in' as 'product_in' | 'product_out',
   });
+
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.setItem(`fifoCostLotTrackingState_${orgId}`, JSON.stringify({
+      dateRangeLabel,
+      fromDate,
+      toDate,
+      selectedItem,
+      locationId,
+      isProductOut,
+      appliedFilters
+    }));
+  }, [dateRangeLabel, fromDate, toDate, selectedItem, locationId, isProductOut, appliedFilters, orgId]);
 
   const [hasInitializedLoc, setHasInitializedLoc] = useState(false);
 
@@ -400,6 +443,8 @@ export function FifoCostLotTrackingPage() {
               orgId={orgId!}
               value={selectedItem?.id}
               onChange={(item) => setSelectedItem(item)}
+              keepOpenOnSelect={true}
+              showIndicator={!!selectedItem}
               placeholder="Item Name : All Items"
               renderValue={(item) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -418,6 +463,8 @@ export function FifoCostLotTrackingPage() {
               options={locationOptions}
               value={locationId}
               onChange={setLocationId}
+              keepOpenOnSelect={true}
+              showIndicator={!!locationId}
               style={{ width: 'max-content' }}
               triggerStyle={filterTriggerStyle}
               renderValue={(opt) => (
