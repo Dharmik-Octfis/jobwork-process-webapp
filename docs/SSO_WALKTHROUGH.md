@@ -5,9 +5,12 @@ redirect, every row written, with real payloads. If you want the design reasonin
 rejected alternatives, that is `SSO_AND_IDENTITY.md`. If you want to know what happens when
 someone clicks **Sign in**, you are in the right file.
 
-> **Status:** built and running locally. `SSO_ENABLED` is **off** in every deployed
-> environment, so password login is still the only way in today. Everything below is what
-> happens when the flag is on — which it is on a developer machine.
+> **Status:** live in production since 2026-08-31 — `accounts.octfis.com` is the issuer and
+> `SSO_ENABLED=true` in `backend/.env` and `.env.production`, so local dev and production both
+> sign in through it. Staging is configured the same way but not deployed yet. Since
+> 2026-09-21 a sign-in usually starts from the product site
+> (`https://www.octfis.com/job-work-1`, see `SSO_WEBSITE_ENTRY_PLAN.md`); from step 1 on the
+> flow below is the same.
 
 ---
 
@@ -230,18 +233,18 @@ All three go into **one cookie**, so the callback can check what this browser ac
 ```http
 Set-Cookie: sso_flow={"state":"xQ8vN2mK...","nonce":"pL4tR9wZ...",
                       "codeVerifier":"mB7cX3qW...","returnTo":"/organizations"};
-            HttpOnly; SameSite=Lax; Path=/api/auth/sso; Max-Age=600
+            HttpOnly; SameSite=Lax; Path=/api/auth/sso; Max-Age=1800
 ```
 
 Every attribute on that cookie is doing a job:
 
-| Attribute            | Job                                                                          | If you get it wrong                                                                                                                          |
-| -------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HttpOnly`           | JavaScript cannot read the verifier                                          | an XSS anywhere in the app can steal it                                                                                                      |
-| `Secure` (prod only) | HTTPS only                                                                   | the verifier crosses the network in clear                                                                                                    |
-| `SameSite=Lax`       | accounts sends the browser back with a **top-level GET**, which `Lax` allows | 🔴 **`Strict` drops it and _every_ login fails** with "sign-in expired" — and it reads as the design being broken, not as a cookie attribute |
-| `Path=/api/auth/sso` | sent only to the two SSO endpoints                                           | it rides along on every API request for no reason                                                                                            |
-| `Max-Age=600`        | 10 min — long enough to type a password                                      | an abandoned tab leaves a usable verifier lying around                                                                                       |
+| Attribute            | Job                                                                               | If you get it wrong                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HttpOnly`           | JavaScript cannot read the verifier                                               | an XSS anywhere in the app can steal it                                                                                                      |
+| `Secure` (prod only) | HTTPS only                                                                        | the verifier crosses the network in clear                                                                                                    |
+| `SameSite=Lax`       | accounts sends the browser back with a **top-level GET**, which `Lax` allows      | 🔴 **`Strict` drops it and _every_ login fails** with "sign-in expired" — and it reads as the design being broken, not as a cookie attribute |
+| `Path=/api/auth/sso` | sent only to the two SSO endpoints                                                | it rides along on every API request for no reason                                                                                            |
+| `Max-Age=1800`       | 30 min — matches accounts' interaction TTL, so it outlives an emailed signup code | an abandoned tab leaves a usable verifier lying around                                                                                       |
 
 #### Where each value goes — this split _is_ PKCE
 
@@ -1243,7 +1246,7 @@ POST /api/auth/refresh-token      (the refreshToken cookie rides along automatic
 ```jsonc
 {
   "statusCode": 200,
-  "message": "Success",
+  "message": "Session refreshed.",
   "data": {
     "accessToken": "eyJhbGciOiJIUzI1NiIs…",
     "user": { "id": "3c9d5e21-…", "email": "james.walker@example.com", "fullName": "James Walker" },
