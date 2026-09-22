@@ -30,20 +30,26 @@ export function useLogout() {
       await logout();
     },
     onSettled: () => {
-      // Runs whether the call succeeded or failed: local state is cleared either
-      // way, because a user who pressed "log out" must not stay logged in here.
-      clearSession();
-      queryClient.clear();
-
       if (ssoEnabled) {
         /**
          * A full navigation, not `navigate()`. The point is to leave this origin
          * for the provider — a client-side route change would never reach it.
+         *
+         * 🔴 And NOT preceded by `clearSession()`. Clearing re-renders
+         * `ProtectedRoute` → `/login`, whose auto sign-in calls `location.assign`
+         * too — and the later assign cancels this one. The sign-out never left the
+         * browser, the accounts session survived, and the user was signed straight
+         * back in. The page unloads here, so local state goes with it; the server
+         * revokes the session inside /auth/sso/logout.
          */
         window.location.assign('/api/auth/sso/logout');
         return;
       }
 
+      // Runs whether the call succeeded or failed: local state is cleared either
+      // way, because a user who pressed "log out" must not stay logged in here.
+      clearSession();
+      queryClient.clear();
       navigate('/login', { replace: true });
     },
   });
