@@ -356,7 +356,9 @@ Each step is independently deployable and leaves the estate working.
 2. **`loadExistingGrant`** (§4.4) — must precede §5.2, or silent auth looks broken for first-time users.
 3. **`/home`, `/no-access`, `/` → `/home`** (§5.1, §5.4) — routes, plus the callback's refusal
    (a 403 from `linkOrCreateLocalUser`) redirecting to `/no-access` instead of showing the JSON
-   envelope. ✅ Built 2026-09-21 (`redirectRefusedSignIn` in `sso.controller.ts`), not deployed.
+   envelope. ✅ Built 2026-09-21 (`redirectFailedSignIn` in `sso.controller.ts`), not deployed.
+   Since 2026-09-22 every other callback failure (expired flow cookie, failed code exchange) also
+   redirects, to `/login?sso=manual&error=signin_failed`, instead of showing a raw JSON 500.
 4. **`prompt=none` + error branch + loop guard + invite carve-out** (§5.2, §5.3, §5.5) — the change
    that alters what an unauthenticated visitor sees. One deploy, tested across real hostnames.
    ✅ Built 2026-09-21, not deployed. As built:

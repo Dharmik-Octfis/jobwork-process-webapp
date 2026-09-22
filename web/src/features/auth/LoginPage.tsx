@@ -46,6 +46,8 @@ export function LoginPage() {
    *   throw away the toast explaining why.
    */
   const manual = params.get('sso') === 'manual' || locationState?.signedOut === true;
+  // Set by the SSO callback when a sign-in could not be completed (sso.controller.ts).
+  const signInFailed = params.get('error') === 'signin_failed';
 
   const {
     register,
@@ -184,6 +186,9 @@ export function LoginPage() {
       */}
       {ssoOnly ? (
         <div className={styles.ssoBlock}>
+          {signInFailed && (
+            <FormErrorBanner message="That sign-in didn't complete. Please try again." />
+          )}
           {/*
             `invitedEmail` is the `?email=` an invitation link carries. Passing it
             on prefills the provider's sign-in — and its signup, which is the case

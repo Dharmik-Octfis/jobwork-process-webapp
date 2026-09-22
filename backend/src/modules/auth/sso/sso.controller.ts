@@ -264,31 +264,38 @@ export async function callback(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Error handler for `/callback` ONLY: a refused sign-in lands on the app's
- * `/no-access` page instead of the envelope. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.4.
+ * Error handler for `/callback` ONLY: a failed sign-in lands on an app page, never
+ * on the envelope. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.4.
  *
  * The callback is a top-level navigation, not an XHR, so the normal `errorHandler`
- * shows the browser a raw JSON 403 with the address bar stuck on the callback URL —
- * which reads as sign-in being broken, not as "you are not invited". Once the website's
- * "Access Jobwork" button exists, any signed-in identity can press it, so an
- * unentitled visitor is an ordinary path rather than an edge case.
+ * shows the browser raw JSON with the address bar stuck on the callback URL — which
+ * reads as sign-in being broken.
  *
- * 🔴 403 only, and every 403 here is a refusal from `linkOrCreateLocalUser` (not
- * invited, unverified email, or disabled in jobwork). All three go to the same page
- * with the same words, so this adds no way to tell them apart. Anything else — an
- * expired flow cookie (400), a failed code exchange — is still the ordinary error.
+ * - 403 → `/no-access`. Every 403 here is a refusal from `linkOrCreateLocalUser` (not
+ *   invited, unverified email, or disabled in jobwork); all three get the same page
+ *   and words, so this adds no way to tell them apart.
+ * - Anything else → the sign-in page with a retry button: an expired or missing flow
+ *   cookie, a code for a flow this browser no longer holds (a second tab started
+ *   another sign-in), a replayed callback URL. `sso=manual`, never an automatic
+ *   restart — if the failure repeats, an automatic retry is a redirect loop.
  */
-export function redirectRefusedSignIn(
+export function redirectFailedSignIn(
   err: unknown,
   _req: Request,
   res: Response,
   next: NextFunction,
 ): void {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
   if (err instanceof ApiError && err.status === 403) {
     res.redirect(`${env.appUrl}/no-access`);
     return;
   }
-  next(err);
+  // Still logged: a real fault (database down in issueTokens) must stay visible.
+  console.error('[sso callback]', err);
+  res.redirect(`${env.appUrl}/login?sso=manual&error=signin_failed`);
 }
 
 /**

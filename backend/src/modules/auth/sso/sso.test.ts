@@ -4,7 +4,7 @@ import { describe, it, expect, afterAll, vi } from 'vitest';
 import { env } from '../../../config/env.ts';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
-import { redirectRefusedSignIn } from './sso.controller.ts';
+import { redirectFailedSignIn } from './sso.controller.ts';
 import { landingPathFor, linkOrCreateLocalUser, safeReturnTo } from './sso.service.ts';
 
 /**
@@ -332,7 +332,12 @@ describe('§5.4 — a refused sign-in lands on /no-access', () => {
   function run(err: unknown) {
     const redirect = vi.fn();
     const next = vi.fn();
-    redirectRefusedSignIn(err, {} as Request, { redirect } as unknown as Response, next);
+    redirectFailedSignIn(
+      err,
+      {} as Request,
+      { redirect, headersSent: false } as unknown as Response,
+      next,
+    );
     return { redirect, next };
   }
 
@@ -354,13 +359,18 @@ describe('§5.4 — a refused sign-in lands on /no-access', () => {
     expect(redirect).toHaveBeenCalledWith(`${env.appUrl}/no-access`);
   });
 
+  /**
+   * These used to reach `errorHandler` and show raw JSON — a 500 when a second tab
+   * had started another sign-in and the code no longer matched this browser's flow.
+   */
   it.each([
     ['an expired flow cookie', ApiError.badRequest('Sign-in expired. Please try again.')],
     ['a failed code exchange', new Error('invalid_grant')],
-  ])('leaves %s to the ordinary error handler', (_label, err) => {
+  ])('sends %s to the sign-in page with a retry button', (_label, err) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     const { redirect, next } = run(err);
 
-    expect(redirect).not.toHaveBeenCalled();
-    expect(next).toHaveBeenCalledWith(err);
+    expect(redirect).toHaveBeenCalledWith(`${env.appUrl}/login?sso=manual&error=signin_failed`);
+    expect(next).not.toHaveBeenCalled();
   });
 });

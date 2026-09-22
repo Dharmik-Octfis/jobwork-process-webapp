@@ -17,8 +17,8 @@ export const ssoRouter = Router();
 
 if (env.sso.enabled) {
   ssoRouter.get('/login', ssoController.startLogin);
-  // Route-level error handler: a refusal becomes a redirect to /no-access.
-  ssoRouter.get('/callback', ssoController.callback, ssoController.redirectRefusedSignIn);
+  // Route-level error handler: a failure redirects to an app page, never raw JSON.
+  ssoRouter.get('/callback', ssoController.callback, ssoController.redirectFailedSignIn);
   ssoRouter.get('/logout', ssoController.startLogout);
 
   /**
