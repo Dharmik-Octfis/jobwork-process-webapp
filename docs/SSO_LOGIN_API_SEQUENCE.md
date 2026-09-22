@@ -2,7 +2,8 @@
 
 Every request a first-time SSO sign-in makes, in the order it makes them, with the request and
 the response. This is the reference card. For why each step exists, what it writes and what
-breaks it, read `SSO_WALKTHROUGH.md` (same step order, same example values).
+breaks it, read [`SSO_WALKTHROUGH.md`](SSO_WALKTHROUGH.md) (same example values; its steps are finer
+grained, so the numbers differ).
 
 **Hosts.** Production values below. Locally, the jobwork UI is `http://localhost:5173` (it proxies
 `/api` to `:3000`), the jobwork API is `http://localhost:3000`, and accounts is

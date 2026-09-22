@@ -3,7 +3,9 @@
 **Start here.** This is the worked example: one person, one sign-in, every request, every
 redirect, every row written, with real payloads. If you want the design reasoning and the
 rejected alternatives, that is `SSO_AND_IDENTITY.md`. If you want to know what happens when
-someone clicks **Sign in**, you are in the right file.
+someone clicks **Sign in**, you are in the right file. If you only need the API calls in order,
+with request and response and none of the reasoning, that is
+[`SSO_LOGIN_API_SEQUENCE.md`](SSO_LOGIN_API_SEQUENCE.md).
 
 > **Status:** live in production since 2026-08-31 — `accounts.octfis.com` is the issuer and
 > `SSO_ENABLED=true` in `backend/.env` and `.env.production`, so local dev and production both
