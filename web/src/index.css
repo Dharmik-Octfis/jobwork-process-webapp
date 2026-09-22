@@ -302,28 +302,10 @@ input[type='number'] {
 }
 
 .sidebar-nav-link:hover {
-  background-color: rgba(255, 255, 255, 0.06) !important;
-  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
 }
-.sidebar-nav-link.active,
 .sidebar-nav-link.active:hover {
-  background: linear-gradient(135deg, #00b4d8 0%, #0284c7 100%) !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 10px rgba(0, 180, 216, 0.35) !important;
-}
-
-.app-sidebar nav::-webkit-scrollbar {
-  width: 4px;
-}
-.app-sidebar nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-.app-sidebar nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-}
-.app-sidebar nav::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background-color: #186337 !important;
 }
 
 /* Responsive Sidebar & AppLayout Styles */
