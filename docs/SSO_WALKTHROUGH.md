@@ -1112,8 +1112,13 @@ id             | user_id     | expires_at | revoked_at | idp_session_id      | i
 ```
 
 ```http
-Set-Cookie: refreshToken=eyJhbGciOiJIUzI1NiIs…; HttpOnly; SameSite=Lax; Path=/
+Set-Cookie: refreshToken=eyJhbGciOiJIUzI1NiIs…; HttpOnly; SameSite=Lax; Path=/api/auth;
+            Expires=<refresh_tokens.expires_at>
 ```
+
+`Path=/api/auth` keeps the cookie off ordinary API calls — the browser sends it only to
+`/api/auth/*` (`refresh-token`, `logout`, the SSO routes). In production it is also `Secure` and `SameSite=None`
+(`lib/cookies.ts`); the values above are local dev.
 
 #### The only two columns that remember SSO happened
 

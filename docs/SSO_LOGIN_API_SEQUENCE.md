@@ -223,7 +223,8 @@ password-less), writes a `refresh_tokens` row, and redirects:
 ```http
 302 Found
 Set-Cookie: sso_flow=; Path=/api/auth/sso; Expires=Thu, 01 Jan 1970 00:00:00 GMT
-Set-Cookie: refreshToken=eyJhbGciOiJIUzI1NiIs…; HttpOnly; Secure; SameSite=Lax; Path=/
+Set-Cookie: refreshToken=eyJhbGciOiJIUzI1NiIs…; HttpOnly; Secure; SameSite=None; Path=/api/auth;
+            Expires=<session expiry, 7 days after sign-in>
 Location: https://jobwork.octfis.com/            (or the returnTo path from step 1)
 ```
 
