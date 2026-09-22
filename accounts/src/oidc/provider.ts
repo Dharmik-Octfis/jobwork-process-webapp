@@ -110,7 +110,15 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
        * prefix requires no Domain attribute, which is already the default below.
        */
       long: { signed: true, httpOnly: true, sameSite: 'lax', secure: env.isProduction, path: '/' },
-      short: { signed: true, httpOnly: true, sameSite: 'lax', secure: env.isProduction, path: '/' },
+      /**
+       * 🔴 No `path` here. The library scopes `_interaction` to `/interaction/<uid>`,
+       * then spreads these options over it — so a `path` here made one site-wide
+       * cookie, and every login form finished whichever sign-in started LAST. Two
+       * tabs, or an app starting a sign-in while the portal form was open, sent the
+       * user to the wrong app (jobwork 500) or showed "This sign-in has expired".
+       * portal.flow.test.ts → "two sign-ins in one browser".
+       */
+      short: { signed: true, httpOnly: true, sameSite: 'lax', secure: env.isProduction },
     },
 
     features: {

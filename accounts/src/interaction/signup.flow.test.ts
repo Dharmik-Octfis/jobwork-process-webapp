@@ -57,7 +57,7 @@ beforeAll(async () => {
     cookies: {
       keys: ['test-cookie-secret-that-is-at-least-32-chars'],
       long: { signed: true, httpOnly: true, sameSite: 'lax', path: '/' },
-      short: { signed: true, httpOnly: true, sameSite: 'lax', path: '/' },
+      short: { signed: true, httpOnly: true, sameSite: 'lax' },
     },
     findAccount: (_ctx, sub) => ({ accountId: sub, claims: () => ({ sub }) }),
     scopes: ['openid', 'email', 'profile'],

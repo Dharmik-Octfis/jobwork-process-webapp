@@ -41,7 +41,7 @@ async function startProvider(extra: Partial<Configuration>) {
     cookies: {
       keys: [COOKIE_KEY],
       long: { signed: true, httpOnly: true, sameSite: 'lax', path: '/' },
-      short: { signed: true, httpOnly: true, sameSite: 'lax', path: '/' },
+      short: { signed: true, httpOnly: true, sameSite: 'lax' },
     },
     findAccount: (_ctx, sub) => ({ accountId: sub, claims: () => ({ sub }) }),
     claims: { openid: ['sub'], email: ['email', 'email_verified'], profile: ['name', 'picture'] },

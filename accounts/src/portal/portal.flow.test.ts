@@ -58,7 +58,8 @@ beforeAll(async () => {
     cookies: {
       keys: ['test-cookie-secret-that-is-at-least-32-chars'],
       long: { signed: true, httpOnly: true, sameSite: 'lax', path: '/' },
-      short: { signed: true, httpOnly: true, sameSite: 'lax', path: '/' },
+      // No `path` — must match provider.ts, see the two-tabs test below.
+      short: { signed: true, httpOnly: true, sameSite: 'lax' },
     },
     findAccount: (_ctx, sub) => ({ accountId: sub, claims: () => ({ sub }) }),
     scopes: ['openid', 'email', 'profile'],
@@ -84,26 +85,43 @@ afterAll(() => {
   server.close();
 });
 
+/**
+ * A cookie jar that honours `Path` the way a browser does — the most specific path is
+ * sent first — because the interaction cookie is only correct if it is path-scoped.
+ */
 function browser() {
-  const jar = new Map<string, string>();
+  const jar = new Map<string, { name: string; value: string; path: string }>();
 
   async function request(
     path: string,
     init: { method?: string; form?: Record<string, string> } = {},
   ) {
+    const pathname = new URL(path, base).pathname;
+    const sent = [...jar.values()]
+      .filter((c) => pathname === c.path || pathname.startsWith(c.path.replace(/\/?$/, '/')))
+      .sort((a, b) => b.path.length - a.path.length);
     const res = await fetch(new URL(path, base), {
       method: init.method ?? 'GET',
       redirect: 'manual',
       headers: {
-        cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; '),
+        cookie: sent.map((c) => `${c.name}=${c.value}`).join('; '),
         ...(init.form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
       },
       ...(init.form ? { body: new URLSearchParams(init.form).toString() } : {}),
     });
     for (const line of res.headers.getSetCookie()) {
-      const [pair] = line.split(';');
+      const [pair, ...attrs] = line.split(';');
       const i = pair!.indexOf('=');
-      jar.set(pair!.slice(0, i).trim(), pair!.slice(i + 1));
+      const name = pair!.slice(0, i).trim();
+      const value = pair!.slice(i + 1);
+      const cookiePath =
+        attrs
+          .map((a) => a.trim())
+          .find((a) => /^path=/i.test(a))
+          ?.slice(5) ?? '/';
+      const expired = attrs.some((a) => /expires=Thu, 01 Jan 1970/i.test(a));
+      if (expired) jar.delete(`${name};${cookiePath}`);
+      else jar.set(`${name};${cookiePath}`, { name, value, path: cookiePath });
     }
     return res;
   }
@@ -167,6 +185,36 @@ describe('accounts.octfis.com — the My Account portal', () => {
     const again = await b.request('/');
 
     expect(again.headers.get('location')).toBe('/account');
+  });
+
+  /**
+   * 🔴 Two sign-ins open in one browser — two tabs, or an app starting its own
+   * sign-in while the portal's form is on screen. With `path: '/'` on the short
+   * cookies there was ONE `_interaction` cookie, so each form finished whichever
+   * sign-in started last: the portal's form landed on jobwork's callback with a
+   * code for a flow jobwork no longer held (500), and the other tab's form said
+   * "This sign-in has expired".
+   */
+  it('two sign-ins in one browser: each form finishes its own', async () => {
+    const b = browser();
+    const { path: first } = await b.follow(await b.request('/'));
+    const { path: second } = await b.follow(await b.request('/'));
+    expect(first).not.toBe(second);
+
+    const firstUid = first.split('/').pop();
+    const submitFirst = await b.request(`${first}/login`, {
+      method: 'POST',
+      form: { email: EMAIL, password: PASSWORD },
+    });
+    expect(submitFirst.headers.get('location')).toMatch(new RegExp(`/auth/${firstUid}$`));
+    expect((await b.follow(submitFirst)).path).toBe('/account');
+
+    const submitSecond = await b.request(`${second}/login`, {
+      method: 'POST',
+      form: { email: EMAIL, password: PASSWORD },
+    });
+    expect(submitSecond.status).toBe(303);
+    expect((await b.follow(submitSecond)).path).toBe('/account');
   });
 
   it('the account page without a session sends you back to /', async () => {
