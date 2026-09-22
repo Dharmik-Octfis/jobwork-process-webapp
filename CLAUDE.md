@@ -512,7 +512,7 @@ npx vitest run
 # Deploy — a deploy must name BOTH its target and its service. Neither is ever defaulted:
 # staging and production are DIFFERENT Zoho accounts, and this repo holds more than one AppSail.
 npm run deploy:staging:api        # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
-npm run deploy:production:api     # `deploy:staging` / `deploy:production` alias the :api pair
+npm run deploy:production:api     # no short `deploy:production` — it hid which service it deployed
 npm run deploy:staging:accounts   # the identity service. NEVER DEPLOYED YET: accounts/.env.<target>
 npm run deploy:production:accounts  # does not exist, so both stop at the env-file check
 # 🔴 The logged-in Zoho account is machine-wide (%APPDATA%\zcatalyst-cli-nodejs\), NOT a repo file,

@@ -148,7 +148,8 @@ shared settings.
 ```bash
 npm run deploy:staging:api        # target + service, both explicit
 npm run deploy:production:api
-# `deploy:staging` / `deploy:production` remain as aliases for the :api pair.
+# There is no short `deploy:staging` / `deploy:production`: removed 2026-09-22 because they
+# picked the api without saying so, which reads as "deploy everything".
 ```
 
 Neither dimension is ever defaulted. A default target deploys to the wrong account; a default
@@ -880,7 +881,7 @@ mv backend/.env .env.backup      # ...and put it back in Step 19
 From the repo root:
 
 ```bash
-npm run deploy:staging       # or: npm run deploy:production
+npm run deploy:staging:api       # or: npm run deploy:production:api
 ```
 
 **What this does, precisely:**
@@ -975,7 +976,7 @@ If anything fails, go to **AppSail → Logs** in the console. `server.ts:37` pri
 Once Parts 2–3 are done, a normal deploy is **one command that names its destination**:
 
 ```bash
-npm run deploy:staging       # or: npm run deploy:production
+npm run deploy:staging:api       # or: npm run deploy:production:api
 ```
 
 `scripts/deploy.mjs` (§1.5b) does the whole sequence: verify the Zoho account → verify the env file
