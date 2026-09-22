@@ -25,6 +25,23 @@ Visitor ──► your app ──► accounts.octfis.com (password, once) ──
 The protocol is **OpenID Connect (OIDC)**, Authorization Code flow with **PKCE**. Use a library
 (jobwork uses `openid-client`). Never hand-roll token checks.
 
+**What you build, in one list** — this guide is enough on its own; the jobwork file named in each
+section is there to copy from, not required reading:
+
+| Where    | What                                                                                    | Section |
+| -------- | --------------------------------------------------------------------------------------- | ------- |
+| backend  | 5 SSO routes: config, login, callback, logout, back-channel logout                      | §5      |
+| backend  | your own session: refresh cookie + short access token, `refresh-token`, `me`, `session` | §5.6    |
+| database | 4 columns on your users / sessions tables                                               | §4      |
+| frontend | `/login` redirector, `/no-access`, restore-on-load, logout button                       | §7      |
+| accounts | one registration per environment, done by the accounts admin                            | §2      |
+
+🔴 **Your web app and your API must be served from ONE origin** (e.g. `myapp.octfis.com` serving
+both the pages and `/api/...`). Everything below relies on it: the frontend reaches
+`/api/auth/sso/*` by relative URL, and the session lives in a cookie scoped to `/api/auth`. With
+the API on a separate host the cookies are silently not sent and every sign-in "works" and then
+shows you signed out. In development, proxy `/api` from your dev server to the API (§12).
+
 ---
 
 ## 2. What you get from the accounts admin (and what you give them)
@@ -93,6 +110,11 @@ All live under `/api/auth/sso/`. Mount them **only when `SSO_ENABLED=true`**, an
 password — and any invite-accept that creates a password). Reference:
 `backend/src/modules/auth/sso/sso.routes.ts`, `sso.controller.ts`.
 
+Your OIDC library needs only the issuer: it reads everything else (the `/auth`, `/token`, `/jwks`,
+`/session/end` URLs and the signing keys) from
+`https://accounts.octfis.com/.well-known/openid-configuration`. Cache that result for the life of
+the process — fetching it on every sign-in puts accounts on your critical path for nothing.
+
 ### 5.1 `GET /api/auth/config` — tell the frontend how to sign in
 
 ```jsonc
@@ -118,6 +140,11 @@ already exists on accounts. Your library builds that URL (`openid-client`'s
 
 What it does:
 
+0. **Loop guard (silent only).** If `prompt=none` and the `sso_silent` cookie is present → 302 to
+   your own `/login?sso=manual` and stop. Otherwise, for a silent attempt, set `sso_silent=1`
+   (`HttpOnly; SameSite=Lax; Path=/api/auth/sso; Max-Age=30`). Do **not** clear it on success —
+   success that does not stick (a dropped cookie) is exactly what loops the browser between your
+   app and accounts forever. This is backend work; the frontend cannot do it.
 1. Makes 3 random values: `state`, `nonce`, `code_verifier`.
 2. Saves them + `returnTo` (+ `silent: true` if `prompt=none`) in a cookie:
    `sso_flow` — `HttpOnly; SameSite=Lax; Secure; Path=/api/auth/sso; Max-Age=1800` (30 min).
@@ -192,9 +219,12 @@ grant_type=authorization_code&code=<code>&redirect_uri=<SSO_REDIRECT_URI>&code_v
 decides those on every request from its own database.
 
 6. Find or create the local user (§6). Refused → **302 to `/no-access`**.
-7. Create **your own** session (refresh cookie + access token) and store `sid` →
-   `idp_session_id`, `sub` → `idp_subject`.
-8. 302 to `APP_URL + (returnTo ?? '/home')`. Do **not** put any token in the URL.
+7. Create **your own** session (§5.6): a session row with `sid` → `idp_session_id`, `sub` →
+   `idp_subject`, and the refresh cookie on this response.
+8. 302 to `APP_URL + (returnTo ?? '/home')`. Do **not** put any token in the URL — not the query,
+   not the `#fragment`. The page that loads calls `POST /api/auth/refresh-token` on start-up (§7,
+   "App start") and gets its access token from the cookie you just set. That is the same path a
+   page reload uses, so there is exactly one way to obtain an access token.
 
 🔴 **The callback never answers with JSON** — it is a page load, so JSON is a raw error in the
 address bar. Give the route its own error handler (jobwork: `redirectFailedSignIn`): a refusal
@@ -243,11 +273,49 @@ Then revoke: `sid` → sessions where `idp_session_id = sid`; only `sub` → all
 
 🔴 Cannot be tested against `localhost` — accounts refuses to POST to local addresses.
 
-### 5.6 Your own session routes (unchanged by SSO)
+### 5.6 Your own session — build it if your app has none
 
-`POST /api/auth/refresh-token` (refresh cookie → new access token), `GET /api/auth/me`, and
-optionally `GET /api/auth/session` → `{ "active": true, "reason": null }` for a tab to notice it
-was signed out. Refresh never calls accounts.
+After the callback your app **never talks to accounts again** until the next sign-in. It runs on
+its own two-token session. Values below are jobwork's; the shape is what matters. Reference:
+`backend/src/lib/cookies.ts`, `lib/jwt.ts`, `modules/auth/auth.service.ts` (`issueTokens`,
+`refresh`), `middlewares/authenticate.ts`.
+
+| Token             | Where it lives                                                                                                          | Lifetime                 | Carries                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------- |
+| **Refresh token** | cookie `refreshToken`: `HttpOnly; Secure; Path=/api/auth; Expires=<session expiry>` — JavaScript can never read it      | 7 days, fixed at sign-in | a signed JWT: `sub` = your `users.id`, random `jti`      |
+| **Access token**  | **memory only** in the SPA (never `localStorage`, never a cookie); sent as `Authorization: Bearer <token>` on API calls | 15 minutes               | JWT: `sub` = your `users.id`, `sid` = the session row id |
+
+One **session row** per sign-in (jobwork: `refresh_tokens`): `id`, `user_id`, `token` (the refresh
+token, looked up on each refresh), `expires_at`, `created_at`, `last_used_at`, `revoked_at`,
+`revoked_reason`, `user_agent`, plus the two SSO columns from §4. 🔴 **Never delete a row to end a session — stamp `revoked_at`**, and every
+live-session read filters `revoked_at IS NULL`. Back-channel logout (§5.5) depends on this.
+
+`POST /api/auth/refresh-token` — no body; the cookie is the credential.
+
+```jsonc
+// 200 — the row exists, is NOT revoked, belongs to the token's user, is unexpired, and the user
+// is active. Anything else → 401, and the SPA treats the visitor as signed out.
+{
+  "statusCode": 200,
+  "message": "Session refreshed.",
+  "data": {
+    "user": { "id": "…", "email": "riya@example.com", "fullName": "Riya Shah" },
+    "accessToken": "eyJ…",
+  },
+}
+```
+
+🔴 This endpoint is the **whole** enforcement point: a disabled user or a revoked session must be
+refused here, because your per-request auth only verifies the access token's signature. So a
+revocation (logout, back-channel logout, disabling the user) takes effect within the access
+token's 15 minutes, at the next refresh. Do **not** rotate the refresh token on each call — an
+interrupted refresh then leaves the browser holding a token the server already replaced, and the
+user is logged out at random.
+
+`GET /api/auth/me` (Bearer) → `{ "data": { "user": { … } } }`. `GET /api/auth/session` (Bearer,
+optional) → `{ "data": { "active": false, "reason": "sso_logout" } }` — polled by an open tab so
+it can say _"You were signed out from another app"_ instead of failing on the next click.
+`reason` is one of `revoked | expired | account_disabled | sso_logout`.
 
 ---
 
@@ -277,13 +345,14 @@ else's address at accounts takes over that person's account in your app.
 
 ## 7. Frontend rules
 
-| Page             | Behaviour                                                                                                                                                                                                                                                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/login`         | With SSO on it is a **redirector**, not a form: home-type visit (`/`, `/home`) → silent sign-in `…/sso/login?prompt=none&returnTo=/home`; a deep link or `?email=` → normal sign-in `…/sso/login?returnTo=<link>&email=<email>`. Show a manual "Access MyApp" button only for `?sso=manual` or after the session was ended elsewhere. |
-| `/home`          | Your app's one "home" decision (jobwork: last organization used). Every entry point lands here.                                                                                                                                                                                                                                       |
-| `/no-access`     | Public page for refused sign-ins: short message + "Sign out and use another account" → `/api/auth/sso/logout`.                                                                                                                                                                                                                        |
-| Protected routes | No session → send to `/login` (which decides silent vs normal).                                                                                                                                                                                                                                                                       |
-| Logout button    | `window.location.assign('/api/auth/sso/logout')` — full navigation. 🔴 Do **not** clear the local session first: that re-renders into `/login`, whose own redirect cancels the sign-out, and the user is signed straight back in. The page unloads anyway; the server revokes the session.                                            |
+| Page             | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App start        | Before rendering any route, call `POST /api/auth/refresh-token` once. 200 → keep `accessToken` in memory and the `user` in state: signed in. 401 → signed out. Do the same, once, whenever an API call returns 401, then retry that call. This is how the app gets its token after the §5.3 callback **and** after a reload.                                                                                                                               |
+| `/login`         | With SSO on it is a **redirector**, not a form: home-type visit (`/`, `/home`) → silent sign-in `…/sso/login?prompt=none&returnTo=/home`; a deep link or `?email=` → normal sign-in `…/sso/login?returnTo=<link>&email=<email>`. Show a manual "Access MyApp" button only for `?sso=manual` or after the session was ended elsewhere. With `?error=signin_failed` also show one line above the button: _"That sign-in didn't complete. Please try again."_ |
+| `/home`          | Your app's one "home" decision (jobwork: last organization used). Every entry point lands here.                                                                                                                                                                                                                                                                                                                                                            |
+| `/no-access`     | Public page for refused sign-ins: short message + "Sign out and use another account" → `/api/auth/sso/logout`.                                                                                                                                                                                                                                                                                                                                             |
+| Protected routes | No session → send to `/login` (which decides silent vs normal).                                                                                                                                                                                                                                                                                                                                                                                            |
+| Logout button    | `window.location.assign('/api/auth/sso/logout')` — full navigation. 🔴 Do **not** clear the local session first: that re-renders into `/login`, whose own redirect cancels the sign-out, and the user is signed straight back in. The page unloads anyway; the server revokes the session.                                                                                                                                                                 |
 
 🔴 **Always a full navigation** (`window.location.assign`) to `/api/auth/sso/*`, never `fetch`
 and never a router `navigate()`. The browser itself must visit accounts so it can present its
@@ -291,10 +360,11 @@ cookie.
 🔴 **Silent sign-in only for visitors with no destination.** A deep link (above all an
 invitation) must use normal sign-in, or a failed silent attempt bounces to the website and the
 link is lost.
-🔴 **Loop guard:** each silent attempt sets a 30-second `sso_silent` cookie; a second silent
-attempt inside it goes to `/login?sso=manual` instead (stops an app ↔ accounts bounce).
+🔴 **The loop guard is on the server** (§5.2 step 0). The frontend's only part is honouring
+`?sso=manual`: show the button, never start another silent attempt.
 
-Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `NoAccessPage.tsx`,
+Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `useLogout.ts`,
+`NoAccessPage.tsx`, `web/src/api/client.ts` (refresh on start-up and on 401),
 `web/src/app/router.tsx`.
 
 ---
@@ -326,7 +396,8 @@ Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `NoAccessP
    - **Has an account** → types password (or no screen if already signed in).
    - **No account** → "Create Account" (email prefilled) → name + password → 6-digit code by email
      → code accepted = **signed in**, straight back to your app. No second password.
-5. Callback: rule 3 of §6 finds the pending invitation → creates the user (no password).
+5. Callback: rule 3 of §6 creates the user (no password). Under invite-only, this is where the
+   pending invitation is checked; under self-signup it is not needed here.
 6. Back on the invite page, signed in with the invited email → **accept automatically** →
    create the membership → mark invitation accepted → into the organization.
 
@@ -348,13 +419,15 @@ Reference: `web/src/features/invitations/AcceptInvitePage.tsx`,
 - [ ] PKCE S256 on every sign-in; `state` and `nonce` checked on callback.
 - [ ] `sso_flow` cookie: `HttpOnly`, `SameSite=Lax`, `Secure` in production, path-scoped, 30 min, deleted on callback.
 - [ ] ID token: signature, `iss`, `aud`, `exp`, `nonce` all checked.
-- [ ] `email_verified === true` required before linking by email and before invitation lookup.
+- [ ] `email_verified === true` required before linking by email and before creating a user.
 - [ ] Callback URL rebuilt from `SSO_REDIRECT_URI`, never from the request's Host.
 - [ ] `returnTo` must start with `/` and not `//`.
 - [ ] No `offline_access` scope. No tokens in URLs. Client secret never reaches the browser.
 - [ ] Password routes unmounted when SSO is on (grep for every place a `password_hash` is written).
 - [ ] Back-channel logout: signature, `iss`, `aud`, recent `iat`, `events`, no `nonce`.
-- [ ] Entitlement fails closed; one refusal message.
+- [ ] Entitlement rule chosen on purpose (§6); a new self-signup user has **no** memberships.
+- [ ] Access token in memory only; refresh cookie `HttpOnly`; refresh refuses a revoked row or a disabled user.
+- [ ] Callback failures redirect to a page (never JSON); loop guard in the login route.
 - [ ] Your whole app sends `X-Robots-Tag: noindex, nofollow` (the website page should be the search result).
 
 ---
@@ -373,3 +446,40 @@ password and must use "Forgot password" once.
 new invitee (no account) · existing account · already signed in (silent) · disabled account →
 `/no-access` · two sign-in tabs at once · logout ends every app (and does not sign straight back
 in) · back-channel logout (real hostnames only).
+
+---
+
+## 12. Local development
+
+Run accounts on your machine rather than pointing at `accounts.octfis.com` — production accounts
+would need your `http://localhost` URLs in its registry, and those do not belong there.
+
+1. **Start accounts locally** (`cd accounts && npm run dev` → `http://localhost:3100`; its env is in
+   `SSO_GUIDE_ACCOUNTS.md` §5).
+2. **Register a dev client** there, exactly like production but with localhost URLs
+   (`SSO_GUIDE_ACCOUNTS.md` §6):
+   `--id myapp --redirect http://localhost:3000/api/auth/sso/callback --post-logout http://localhost:5173/`
+   (no `--backchannel` — see 5). Restart accounts: the registry is read at startup.
+3. **Your backend `.env`** (jobwork's values):
+
+   ```bash
+   SSO_ENABLED=true
+   SSO_ISSUER=http://localhost:3100
+   SSO_CLIENT_ID=myapp
+   SSO_CLIENT_SECRET=<printed once by step 2>
+   SSO_REDIRECT_URI=http://localhost:3000/api/auth/sso/callback
+   SSO_POST_LOGOUT_REDIRECT_URI=http://localhost:5173/
+   APP_URL=http://localhost:5173
+   # SSO_WEBSITE_URL unset → a signed-out visitor gets your own sign-in button
+   ```
+
+4. **Plain HTTP is refused by `openid-client`** unless you opt in. Opt in only when the issuer is
+   literally `localhost`/`127.0.0.1` **and** `NODE_ENV` is not production (jobwork:
+   `client.allowInsecureRequests` in `sso.service.ts` `ssoConfig`), so it can never be switched on
+   for a real hostname. Cookies are not `Secure` outside production for the same reason.
+5. **Proxy `/api` from your dev server to the API** (Vite: `server.proxy['/api'] →
+http://localhost:3000`) so the page and the API share an origin, as in production. Cookies
+   ignore ports, so the callback on `:3000` and the page on `:5173` see the same cookies.
+6. **What cannot be tested locally:** back-channel logout — accounts refuses to POST to a private
+   address by design. Test it on real hostnames; locally, logout still ends your own session and
+   the accounts session through §5.4.

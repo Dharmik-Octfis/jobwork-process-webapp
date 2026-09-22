@@ -163,6 +163,9 @@ No tenants, no RLS, no `custom_fields` — every row is global.
    - New client → prints the **secret once**. Give it to the app team for `SSO_CLIENT_SECRET`.
    - Existing client → updates URLs, **secret unchanged** (`--rotate-secret` to replace it).
    - 🔴 The lists are **replaced**, not appended — repeat every URL you want to keep.
+   - **Local development** uses a separate client (e.g. `myapp`) registered on the developer's
+     own accounts at `http://localhost:3100`, with `http://localhost` URLs and no `--backchannel`
+     (`SSO_GUIDE_NEW_APP.md` §12). Never add `localhost` URLs to a production client.
 3. **Deploy accounts** (`npm run deploy:production:accounts`). 🔴 The registry and the CSP
    `form-action` list are read **only at startup** — skip this and sign-in dies at the form with a
    CSP error, or sign-out says the return URL is not allowed.
