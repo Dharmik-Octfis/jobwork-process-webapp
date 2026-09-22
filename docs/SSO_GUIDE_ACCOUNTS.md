@@ -48,6 +48,17 @@ Identity only — never organizations or roles.
 it is the same browser. When it is missing or the sign-in expired (30 min), every route below
 answers "This sign-in has expired. Go back to the app and sign in again." (400).
 
+🔴 **Never put a `path` in `cookies.short`** (`oidc/provider.ts`). The library spreads those
+options _over_ the per-sign-in path, so a `path: '/'` there leaves the browser ONE `_interaction`
+cookie, and the library picks the sign-in by that cookie, not by the `:uid` in the URL. Every
+login form then finishes whichever sign-in started last: with two tabs, or an app starting a
+sign-in while this form is open, the user is sent to the wrong app or told the sign-in expired.
+Shipped that way until 2026-09-22; `portal.flow.test.ts` → "two sign-ins in one browser" guards it.
+
+A new account made on these screens finishes the sign-in that started it — so it goes **back to
+that app** (jobwork: straight to "Create organization"), and to `/account` only when the sign-in
+began at accounts.octfis.com itself.
+
 | Method + path                   | Form fields                                    | Result                                                                                                                                                                                |
 | ------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /interaction/:uid`         | —                                              | Login form (email prefilled from `login_hint`).                                                                                                                                       |
@@ -164,8 +175,9 @@ No tenants, no RLS, no `custom_fields` — every row is global.
 ## 7. Operating notes
 
 - **Deploy order:** accounts first, then the app, whenever both change.
-- **Deploys** go through `node scripts/deploy.mjs <target> <service>` only; it checks the Zoho login,
-  keeps `.env` and `backups/` (database dumps) out of the upload.
+- **Deploys** go through `node scripts/deploy.mjs <target> <service>` only
+  (`npm run deploy:production:accounts`; there is no bare `deploy:production`); it checks the Zoho
+  login, keeps `.env` and `backups/` (database dumps) out of the upload.
 - **`db:apply` writes a full dump** to `accounts/backups/` — gitignored and excluded from deploys;
   never commit one.
 - **Localhost:** back-channel logout cannot reach `localhost` apps (the library blocks private

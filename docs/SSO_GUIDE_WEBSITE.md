@@ -18,6 +18,10 @@ It carries **one button** that is the way into the app.
 Both labels use the **same link**. The label comes from a small check in the visitor's browser.
 If the check fails for any reason, the button says **Sign In** and still works.
 
+"Into the app" means the app decides what comes next — for jobwork, someone with no organization
+yet (a brand-new account, including one created from the Sign In screen) lands on **Create
+organization**. The website never needs to know which.
+
 The page is also where the app sends people who are **signed out** or **not signed in** — so it
 must be **public** (no IP restriction) before the app team points at it.
 

@@ -623,18 +623,25 @@ async function linkOrCreateLocalUser(claims: IdTokenClaims) {
     }
   }
 
-  return provisionOrRefuse(claims);
+  return provisionLocalUser(claims); // §9.3 — self-signup: verified email required
 }
 ```
+
+**Every callback failure lands on a page, never on JSON** — the callback is a top-level
+navigation. A refusal (403 from `linkOrCreateLocalUser`: disabled here, or unverified email) →
+`/no-access`; anything else (expired or missing `sso_flow`, a failed code exchange) →
+`/login?sso=manual&error=signin_failed`, a retry button with a one-line message. Manual, never an
+automatic retry, so a repeating failure cannot loop. `redirectFailedSignIn` in `sso.controller.ts`.
 
 ### 9.3 🔴 Per-app entitlement — the one genuinely new problem
 
 Today, having an account in jobwork **means** you are a jobwork user. After SSO, everyone in the
 identity system can reach every app's login and obtain a valid token. Each app must independently
-decide whether this person gets in. `provisionOrRefuse` is where that decision lives, and every app
-must make it **explicitly and fail closed** — an app with no entitlement check silently turns every
-identity in the estate into one of its users. Same failure shape as a route with no
-`requirePermission`.
+decide whether this person gets in, and must make that decision **explicitly** — an app that
+never thinks about it silently turns every identity in the estate into one of its users. In
+jobwork it lives in `provisionLocalUser` (`sso.service.ts`), and the answer is self-signup:
+safe because a new user holds no membership, so the tenant checks — not this step — decide what
+it can see.
 
 | Policy          | Behaviour                                                                                                                                     | Fits                                                                                                                                                |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -664,8 +671,8 @@ never looked. Counting routes in one file is not the same as counting the ways a
 be written: `grep` for the write (`passwordHash:`), not for the door.
 
 It is now a refusal (`401 SIGN_IN_REQUIRED`), and nothing was needed to replace it — the
-invitee signs in through the provider, and `provisionOrRefuse` already creates their local
-user **from that same pending invitation**, without a password. The anonymous branch was
+invitee signs in through the provider, and `provisionLocalUser` already creates their local
+user without a password; `returnTo` then brings them back to the invitation to accept it. The anonymous branch was
 duplicating, badly, a path that existed. `invitations.sso.test.ts` pins it, and that test was
 checked to fail when the guard is removed.
 

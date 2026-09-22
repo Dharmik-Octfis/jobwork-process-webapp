@@ -49,7 +49,7 @@ checking the real site:
 | §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                             |
 | §7 traps                           | —                     | 🔴 read before implementing                                                                                                                         |
 | §8 build order                     | —                     | ❌                                                                                                                                                  |
-| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy drafted, awaiting review                                                              |
+| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy decided 2026-09-22                                                                    |
 | §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                         |
 
 _Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
@@ -64,7 +64,9 @@ survives completely. None of this is touched:
 
 - the code exchange, PKCE, `state`/`nonce`, the `sso_flow` cookie (`sso.controller.ts:55,115`)
 - `issueTokens` / `refresh_tokens` / `authenticate` / `tenantContext` / `requirePermission`
-- `linkOrCreateLocalUser`, `provisionOrRefuse`, the invitation entitlement check
+- `linkOrCreateLocalUser`, `provisionOrRefuse`, the invitation entitlement check _(true for this
+  plan; separately on 2026-09-22 the entitlement check was replaced by self-signup —
+  `provisionLocalUser`, `SSO_AND_IDENTITY.md` §9.3)_
 - back-channel logout and `useSessionWatch`
 
 The risky half of SSO stays where it is. What moves is the front door.
@@ -285,6 +287,10 @@ identity can see, so an unentitled visitor clicking it is an ordinary path, not 
 `provisionOrRefuse`'s 403 needs somewhere real to land, with a sign-out link — otherwise silent auth
 turns a 403 into a raw error or a loop.
 
+_Since self-signup (2026-09-22) an unentitled visitor is no longer ordinary: a verified account with
+no organization lands on "Create organization". `/no-access` now only serves an unverified email or
+an account disabled in jobwork._
+
 ### 5.5 `/login` becomes a redirector
 
 Keep the route (`router.tsx:242`) — the `SSO_ENABLED=false` rollback still needs the password form —
@@ -401,10 +407,11 @@ front of this, not part of it.
    (§5.1). Not a new landing page.
 2. ~~**`loadExistingGrant`**~~ — decided 2026-09-21: first-party auto-grant, built in
    `oidc/firstPartyGrant.ts` (§4.4).
-3. **`/no-access` copy** — drafted 2026-09-21, awaiting review: title _"No access to Jobwork"_,
-   _"This account doesn't have access to Jobwork. If it should, ask your administrator to invite
-   you."_, and one button, _"Sign out and use another account"_. One wording for every refusal
-   (not invited, unverified, disabled), so the page cannot tell anyone which it was.
+3. ~~**`/no-access` copy**~~ — decided 2026-09-22, with self-signup: title _"No access to
+   Jobwork"_, _"This account can't use Jobwork right now. It may have been disabled by your
+   organization's administrator — ask them to restore it."_, _"Or sign out and sign in with a
+   different account."_, and one button, _"Sign out and use another account"_. The "ask to be
+   invited" wording went with invite-only.
 4. **The status endpoint's answer** — boolean only, now and later? (§4.1)
 
 _Decided:_ **the website URL** — `https://www.octfis.com/job-work-1`, kept as is for now

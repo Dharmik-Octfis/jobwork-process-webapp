@@ -776,7 +776,12 @@ if (!raw) throw ApiError.badRequest('Sign-in expired. Please try again.');
 
 The clear is **unconditional and comes first**, so even a failed attempt destroys the
 verifier. It is single-use; a leftover one is a second chance for whoever caused the failure.
-No cookie → _"Sign-in expired."_
+No cookie → a failure, and the callback's route-level handler (`redirectFailedSignIn`) turns
+every failure into a page, never JSON: a 403 refusal → `/no-access`; anything else — no cookie,
+a `state` that no longer matches (another tab started a sign-in since), a failed or replayed code
+exchange — is logged and sent to `/login?sso=manual&error=signin_failed`, which shows _"That
+sign-in didn't complete. Please try again."_ above the button. Until 2026-09-22 these showed a
+raw `{"statusCode":500,…}` in the address bar.
 
 #### b) Three values were minted at step 2. Each is now matched against a different thing
 
@@ -1489,7 +1494,7 @@ invite email → /invite/accept?token=…  →  not signed in  →  /login?email
              →  interactive sign-in (never silent)  →  accounts, invited address prefilled
              →  "Create Account" → /interaction/:uid/signup  →  6-digit code → /interaction/:uid/verify
              →  code confirmed = SIGNED IN (interactionFinished)  →  jobwork callback:
-                provisionOrRefuse finds THIS pending invitation, creates the local user, NO password
+                provisionLocalUser creates the local user (verified email), NO password
              →  returnTo lands back on /invite/accept  →  Case A auto-accepts  →  membership
 ```
 
@@ -1511,6 +1516,14 @@ Logging out of jobwork alone is **not a logout**. The local session ends, the br
 to the login screen, and the SSO cookie at accounts is still live — so the next sign-in
 completes silently and instantly. It looks like the button did nothing, and on a shared
 machine the previous person is one click from being signed back in.
+
+🔴 **The button must navigate BEFORE touching local state.** `useLogout` does
+`window.location.assign('/api/auth/sso/logout')` and nothing else under SSO. Until 2026-09-22 it
+called `clearSession()` first: that re-rendered `ProtectedRoute` → `/login`, whose automatic
+sign-in called `location.assign` too, and the later navigation cancelled the sign-out. The
+request below never left the browser, the accounts session survived, and the user was signed
+straight back in — exactly the symptom this section exists to prevent. The page unloads anyway;
+step 1 is what ends the session.
 
 ```
 GET /api/auth/sso/logout
@@ -1538,8 +1551,10 @@ clearTokenCookies(res);
 ```
 
 Two ways in, because a logout can arrive either way: with an `Authorization: Bearer` header
-(the SPA's normal case — `readSessionId` pulls the `sid`, which is the row's primary key), or
-with only the `refreshToken` cookie (a plain navigation, no JS). Whichever is present wins.
+(`readSessionId` pulls the `sid`, which is the row's primary key), or with only the
+`refreshToken` cookie. The button is a page navigation, which cannot carry a header, so the
+cookie (scoped to `/api/auth`, which covers this route) is the normal case. Whichever is present
+wins.
 
 🔴 **This is one of the very few legitimate `catch` blocks in the codebase** (CLAUDE.md
 forbids them in controllers). It qualifies because it _changes behaviour and writes no
@@ -1767,15 +1782,16 @@ memberships and permissions — which is exactly the coupling the whole design e
 
 ## 8. Who is allowed in
 
-| Situation                                              | Result                                                 |
-| ------------------------------------------------------ | ------------------------------------------------------ |
-| Linked identity, active local user                     | ✅ in                                                  |
-| Linked identity, local user disabled                   | ❌ 403 _"This account has been disabled."_             |
-| No link, verified email matches an existing user       | ✅ in, and linked from now on                          |
-| No link, **unverified** email matches an existing user | ❌ 403                                                 |
-| No link, no match, pending invitation                  | ✅ in — user created, still needs to accept the invite |
-| No link, no match, no invitation                       | ❌ 403 _"Ask your administrator to invite you."_       |
-| Valid identity, no membership anywhere                 | ✅ signed in, lands on `/` → `OrgRedirect`             |
+| Situation                                              | Result                                               |
+| ------------------------------------------------------ | ---------------------------------------------------- |
+| Linked identity, active local user                     | ✅ in                                                |
+| Linked identity, local user disabled                   | ❌ 403 _"This account has been disabled."_           |
+| No link, verified email matches an existing user       | ✅ in, and linked from now on                        |
+| No link, **unverified** email matches an existing user | ❌ 403                                               |
+| No link, no match, **verified** email                  | ✅ in — user created (self-signup, since 2026-09-22) |
+| No link, no match, **unverified** email                | ❌ 403 — confirm the address at accounts first       |
+| Valid identity, no membership anywhere                 | ✅ signed in → `OrgRedirect` → `/organizations/new`  |
+| …arriving from an invitation link                      | ✅ `returnTo` → the invitation, accepted there       |
 
 ---
 
@@ -2187,16 +2203,16 @@ back-channel logout (§6.4).
 
 Authentication says _who you are_; this table is most of _may you be here at all_.
 
-| Column                                   | Type               | What it is for                                                                                                                                                                                              |
-| ---------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `organization_id`                        | uuid               | Which org is inviting.                                                                                                                                                                                      |
-| `email`                                  | citext             | 🔴 **The join key at step 8.** A brand-new identity is only allowed to create a local user if a **pending** row here matches their verified address. No row ⇒ 403 _"Ask your administrator to invite you."_ |
-| `token_hash`                             | text unique        | The emailed link, hashed — the plaintext is never stored.                                                                                                                                                   |
-| `status`                                 | varchar(20)        | `pending` by default. Only `pending` counts at step 8.                                                                                                                                                      |
-| `expires_at` `accepted_at` `declined_at` | timestamptz        | Lifecycle. An expired invite is not an entitlement.                                                                                                                                                         |
-| `permission_template_id`                 | uuid, **required** | What access they get on acceptance — decided at invite time, not at sign-in.                                                                                                                                |
-| `role_id`                                | uuid?              | Their job title. Grants nothing (see `memberships`).                                                                                                                                                        |
-| `first_name` `last_name`                 | varchar?           | Nullable **on purpose** — invites predating 2026-07-30 have none, and inventing names from an email local-part would be fabricated data in a customer's org.                                                |
+| Column                                   | Type               | What it is for                                                                                                                                                                                           |
+| ---------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `organization_id`                        | uuid               | Which org is inviting.                                                                                                                                                                                   |
+| `email`                                  | citext             | The address the invitation is for. Accepting requires being signed in AS this verified address. (Until 2026-09-22 it also gated who could create a local user at step 8; since self-signup it does not.) |
+| `token_hash`                             | text unique        | The emailed link, hashed — the plaintext is never stored.                                                                                                                                                |
+| `status`                                 | varchar(20)        | `pending` by default. Only `pending` can be accepted.                                                                                                                                                    |
+| `expires_at` `accepted_at` `declined_at` | timestamptz        | Lifecycle. An expired invite cannot be accepted.                                                                                                                                                         |
+| `permission_template_id`                 | uuid, **required** | What access they get on acceptance — decided at invite time, not at sign-in.                                                                                                                             |
+| `role_id`                                | uuid?              | Their job title. Grants nothing (see `memberships`).                                                                                                                                                     |
+| `first_name` `last_name`                 | varchar?           | Nullable **on purpose** — invites predating 2026-07-30 have none, and inventing names from an email local-part would be fabricated data in a customer's org.                                             |
 
 `@@unique([organizationId, email])` — one open invitation per person per org.
 
@@ -2263,9 +2279,10 @@ disabled _account_ takes up to 15 minutes (§3).
 
 ## 10. When it goes wrong
 
-**"Sign-in expired. Please try again."**
-The `sso_flow` cookie is missing. Either more than 10 minutes passed on the login screen, or
-the cookie was blocked. If it happens on _every_ attempt, check `SameSite` — `Strict` drops
+**"That sign-in didn't complete. Please try again."** (on `/login?sso=manual&error=signin_failed`)
+The callback failed; the real error is in the api log as `[sso callback]`. Usually the `sso_flow`
+cookie is missing or no longer matches: more than 30 minutes passed on the login screen, another
+tab started a sign-in, or the cookie was blocked. If it happens on _every_ attempt, check `SameSite` — `Strict` drops
 the cookie on the way back from accounts and every login fails.
 
 **No email arrives — invitation, signup OTP, or password reset.**

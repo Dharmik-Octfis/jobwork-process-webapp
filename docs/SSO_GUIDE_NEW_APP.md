@@ -76,7 +76,7 @@ store passwords any more.
 | `users`                          | `password_hash`    | make it **nullable**             | SSO users have no password in your app.                                                                     |
 | `refresh_tokens` (your sessions) | `idp_session_id`   | `varchar(64)`, nullable, indexed | The `sid` from the ID token. 🔴 **Not a uuid** — it is a 43-char random string; a `uuid` column rejects it. |
 | `refresh_tokens`                 | `idp_subject`      | `uuid`, nullable, indexed        | The `sub`, for "log this person out everywhere".                                                            |
-| `invitations`                    | (if invite-only)   | see §9                           | Pending invitations decide who may create a user.                                                           |
+| `invitations`                    | (if you have orgs) | see §9                           | Pending invitations decide who may join an existing organization.                                           |
 
 🔴 **Keep your own `users.id` as the foreign key everywhere.** Store the accounts id _beside_
 it (`identity_user_id`), never instead of it.
@@ -148,7 +148,7 @@ Accounts sends the browser back here:
 
 Steps (in this order):
 
-1. Read and **delete** the `sso_flow` cookie. Missing → 400 "Sign-in expired. Please try again."
+1. Read and **delete** the `sso_flow` cookie. Missing → a failure (see the note after step 8).
 2. If the flow was **silent** and `?error=` is present and `state` matches → **302 to
    `SSO_WEBSITE_URL`** (or your own `/login?sso=manual` if unset). Do not exchange.
 3. Otherwise exchange the code — **server to server**:
@@ -191,11 +191,17 @@ grant_type=authorization_code&code=<code>&redirect_uri=<SSO_REDIRECT_URI>&code_v
 🔴 The token is **identity only** — no organizations, roles or permissions, ever. Your app
 decides those on every request from its own database.
 
-6. Find or create the local user (§6). Refused → **302 to `/no-access`** (not a JSON 403 — this
-   is a page load).
+6. Find or create the local user (§6). Refused → **302 to `/no-access`**.
 7. Create **your own** session (refresh cookie + access token) and store `sid` →
    `idp_session_id`, `sub` → `idp_subject`.
 8. 302 to `APP_URL + (returnTo ?? '/home')`. Do **not** put any token in the URL.
+
+🔴 **The callback never answers with JSON** — it is a page load, so JSON is a raw error in the
+address bar. Give the route its own error handler (jobwork: `redirectFailedSignIn`): a refusal
+(403) → `/no-access`; **anything else** — missing/expired `sso_flow`, a `state` that no longer
+matches because another tab started a sign-in, a failed or replayed code exchange → log it and
+302 to `/login?sso=manual&error=signin_failed`, which shows a one-line message and the sign-in
+button. Manual, never an automatic retry: if the failure repeats, a retry is a redirect loop.
 
 ### 5.4 `GET /api/auth/sso/logout` — sign out everywhere
 
@@ -300,7 +306,9 @@ Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `NoAccessP
 | Types `myapp.octfis.com`, signed in at accounts  | Straight into the app, no screen.                                           |
 | Types `myapp.octfis.com`, not signed in anywhere | Sent to `www.octfis.com/my-app` (like `books.zoho.com` → `zoho.com/books`). |
 | Clicks the website button, not signed in         | Accounts sign-in form → back into the app.                                  |
-| Signed in at accounts but not entitled           | `/no-access`.                                                               |
+| Signed in at accounts, no account in your app    | Self-signup: a user is created → your "create organization" page.           |
+| Account disabled in your app                     | `/no-access`.                                                               |
+| Sign-in could not complete (stale tab, expired)  | Your sign-in page with a short message and the sign-in button.              |
 | Logs out                                         | Signed out of every Octfis app; lands on the website page.                  |
 
 ---
@@ -361,6 +369,7 @@ Reference: `web/src/features/invitations/AcceptInvitePage.tsx`,
 **Rollback:** `SSO_ENABLED=false` + redeploy. Password login returns. Users created by SSO have no
 password and must use "Forgot password" once.
 
-**Test before calling it done:** new invitee (no account) · existing account · already signed in
-(silent) · wrong email → `/no-access` · logout ends every app · back-channel logout (real
-hostnames only).
+**Test before calling it done:** brand-new account (created at accounts) → create organization ·
+new invitee (no account) · existing account · already signed in (silent) · disabled account →
+`/no-access` · two sign-in tabs at once · logout ends every app (and does not sign straight back
+in) · back-channel logout (real hostnames only).
