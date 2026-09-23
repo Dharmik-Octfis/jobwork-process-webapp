@@ -14,7 +14,12 @@ interface CategorySelectDropdownProps {
   hideManageButton?: boolean;
 }
 
-export function CategorySelectDropdown({ value, onChange, error, hideManageButton }: CategorySelectDropdownProps) {
+export function CategorySelectDropdown({
+  value,
+  onChange,
+  error,
+  hideManageButton,
+}: CategorySelectDropdownProps) {
   const { orgId } = useParams<{ orgId: string }>();
   const [search, setSearch] = useState('');
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
@@ -106,16 +111,24 @@ export function CategorySelectDropdown({ value, onChange, error, hideManageButto
               width: '100%',
               padding: '8px 12px',
               borderRadius: '4px',
-              border: error ? '1px solid #ef4444' : '1px solid #d1d5db',
+              border: error
+                ? '1px solid #ef4444'
+                : isOpen
+                  ? '1px solid #0284c7'
+                  : '1px solid #d1d5db',
+              boxShadow: isOpen ? '0 0 0 1px #0284c7' : 'none',
               background: '#fff',
               cursor: 'pointer',
               fontSize: 13,
               minHeight: '36px',
               textAlign: 'left',
+              transition: 'all 0.15s ease',
             },
           })}
         >
-          <span style={{ color: value ? '#000' : '#6b7280' }}>{value || 'Select a category'}</span>
+          <span style={{ color: value ? '#0f172a' : '#6b7280' }}>
+            {value || 'Select a category'}
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {value && (
               <div
@@ -131,7 +144,7 @@ export function CategorySelectDropdown({ value, onChange, error, hideManageButto
             )}
             <ChevronDown
               size={14}
-              color="#6b7280"
+              color={isOpen ? '#0284c7' : '#6b7280'}
               style={{
                 transform: isOpen ? 'rotate(180deg)' : 'none',
                 transition: 'transform 0.2s',
@@ -167,23 +180,37 @@ export function CategorySelectDropdown({ value, onChange, error, hideManageButto
                     display: 'flex',
                     alignItems: 'center',
                     background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '4px',
-                    padding: '4px 8px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    gap: 8,
+                    transition: 'all 0.15s ease',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = '#0284c7';
+                    e.currentTarget.style.backgroundColor = '#ffffff';
+                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(2, 132, 199, 0.15)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = '#cbd5e1';
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  <Search size={14} color="#94a3b8" />
+                  <Search size={14} color="#64748b" style={{ flexShrink: 0 }} />
                   <input
                     {...getInputProps({
-                      placeholder: 'Search',
+                      className: 'no-global-focus',
+                      placeholder: 'Search category...',
                       autoFocus: true,
                       style: {
                         border: 'none',
                         background: 'transparent',
                         outline: 'none',
-                        fontSize: 12,
-                        marginLeft: 6,
+                        fontSize: 13,
+                        color: '#0f172a',
                         width: '100%',
+                        padding: 0,
                       },
                     })}
                   />
@@ -204,11 +231,12 @@ export function CategorySelectDropdown({ value, onChange, error, hideManageButto
                           padding: '8px 12px',
                           paddingLeft: `${12 + level * 16}px`,
                           fontSize: 13,
-                          color: isSelected ? '#2563eb' : '#334155',
+                          color: isSelected ? '#0284c7' : '#334155',
+                          fontWeight: isSelected ? 500 : 400,
                           background: isHighlighted
                             ? '#f8fafc'
                             : isSelected
-                              ? '#eff6ff'
+                              ? '#f0f7fd'
                               : 'transparent',
                           cursor: 'pointer',
                           display: 'flex',
@@ -255,12 +283,22 @@ export function CategorySelectDropdown({ value, onChange, error, hideManageButto
                       width: '100%',
                       padding: '8px',
                       border: 'none',
+                      borderRadius: '4px',
                       background: 'transparent',
-                      color: '#2563eb',
+                      color: '#0284c7',
                       fontSize: 13,
                       fontWeight: 500,
                       cursor: 'pointer',
                       textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f0f7fd';
+                      e.currentTarget.style.color = '#0369a1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#0284c7';
                     }}
                   >
                     <Settings size={14} />

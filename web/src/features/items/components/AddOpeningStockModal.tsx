@@ -675,7 +675,7 @@ export function AddOpeningStockModal({
               style={{
                 padding: '8px 24px',
                 border: 'none',
-                background: isSaving ? '#93c5fd' : '#0062ff',
+                background: isSaving ? '#93c5fd' : '#0284c7',
                 color: '#fff',
                 borderRadius: '4px',
                 cursor: isSaving ? 'not-allowed' : 'pointer',
@@ -730,7 +730,7 @@ export function AddOpeningStockModal({
                             style={{
                               background: 'none',
                               border: 'none',
-                              color: '#0062ff',
+                              color: '#0284c7',
                               fontSize: '10px',
                               fontWeight: 700,
                               cursor: 'pointer',
@@ -766,7 +766,7 @@ export function AddOpeningStockModal({
                             style={{
                               background: 'none',
                               border: 'none',
-                              color: '#0062ff',
+                              color: '#0284c7',
                               fontSize: '10px',
                               fontWeight: 700,
                               cursor: 'pointer',
@@ -822,7 +822,7 @@ export function AddOpeningStockModal({
                           placeholder="0"
                           onChange={(e) => updateLocation(loc.id, 'openingStock', e.target.value)}
                           style={rightAlignStyle}
-                          onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                          onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                           onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                         />
                       </td>
@@ -842,7 +842,7 @@ export function AddOpeningStockModal({
                             updateLocation(loc.id, 'openingStockValue', e.target.value)
                           }
                           style={rightAlignStyle}
-                          onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                          onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                           onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                         />
                       </td>
@@ -1073,7 +1073,7 @@ export function AddOpeningStockModal({
                             value={loc.openingStock}
                             onChange={(e) => updateLocation(loc.id, 'openingStock', e.target.value)}
                             style={rightAlignStyle}
-                            onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                            onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                             onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                           />
                         </td>
@@ -1092,7 +1092,7 @@ export function AddOpeningStockModal({
                               updateLocation(loc.id, 'openingStockValue', e.target.value)
                             }
                             style={rightAlignStyle}
-                            onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                            onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                             onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                           />
                         </td>
@@ -1170,7 +1170,7 @@ export function AddOpeningStockModal({
                                     updateLocation(loc.id, 'openingStock', e.target.value)
                                   }
                                   style={rightAlignStyle}
-                                  onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                                  onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                                   onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                                 />
                               </td>
@@ -1189,7 +1189,7 @@ export function AddOpeningStockModal({
                                     updateLocation(loc.id, 'openingStockValue', e.target.value)
                                   }
                                   style={rightAlignStyle}
-                                  onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                                  onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                                   onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                                 />
                               </td>
@@ -1215,7 +1215,7 @@ export function AddOpeningStockModal({
                                   : {}),
                               }}
                               onFocus={(e) =>
-                                !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                                !batch.isExisting && (e.target.style.borderColor = '#0284c7')
                               }
                               onBlur={(e) =>
                                 !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
@@ -1242,7 +1242,7 @@ export function AddOpeningStockModal({
                                   : {}),
                               }}
                               onFocus={(e) =>
-                                !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                                !batch.isExisting && (e.target.style.borderColor = '#0284c7')
                               }
                               onBlur={(e) =>
                                 !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
@@ -1292,7 +1292,7 @@ export function AddOpeningStockModal({
                                   : {}),
                               }}
                               onFocus={(e) =>
-                                !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                                !batch.isExisting && (e.target.style.borderColor = '#0284c7')
                               }
                               onBlur={(e) =>
                                 !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
@@ -1316,7 +1316,7 @@ export function AddOpeningStockModal({
                                   : {}),
                               }}
                               onFocus={(e) =>
-                                !batch.isExisting && (e.target.style.borderColor = '#0062ff')
+                                !batch.isExisting && (e.target.style.borderColor = '#0284c7')
                               }
                               onBlur={(e) =>
                                 !batch.isExisting && (e.target.style.borderColor = '#cbd5e1')
@@ -1331,7 +1331,7 @@ export function AddOpeningStockModal({
                                 updateBatch(loc.id, batch.id, 'quantityIn', e.target.value)
                               }
                               style={rightAlignStyle}
-                              onFocus={(e) => (e.target.style.borderColor = '#0062ff')}
+                              onFocus={(e) => (e.target.style.borderColor = '#0284c7')}
                               onBlur={(e) => (e.target.style.borderColor = '#cbd5e1')}
                             />
                           </td>
@@ -1428,7 +1428,7 @@ export function AddOpeningStockModal({
                               display: 'flex',
                               alignItems: 'center',
                               gap: '6px',
-                              color: '#0062ff',
+                              color: '#0284c7',
                               background: 'none',
                               border: 'none',
                               cursor: 'pointer',
@@ -1496,7 +1496,7 @@ export function AddOpeningStockModal({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                color: '#0062ff',
+                color: '#0284c7',
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',

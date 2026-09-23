@@ -511,116 +511,99 @@ export function AppLayout() {
       <aside
         className={`app-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}
         style={{
-          width: isSidebarCollapsed ? 72 : 224,
-          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          background: 'linear-gradient(180deg, #f0f7ff 0%, #e6f1fc 40%, #edf5fc 100%)',
+          width: isSidebarCollapsed ? 72 : 220,
+          transition: 'width 0.3s ease',
+          background: '#ffffff',
           color: '#1e293b',
           display: 'flex',
           flexDirection: 'column',
-          borderRight: '1px solid rgba(2, 132, 199, 0.15)',
-          boxShadow: '2px 0 12px rgba(2, 132, 199, 0.04), inset -1px 0 0 rgba(255, 255, 255, 0.8)',
+          borderRight: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.04)',
           zIndex: 20,
         }}
       >
-        {/* Organization Brand Header - Floating Modern Card */}
+        {/* Organization Brand Header */}
         <div
           style={{
-            padding: isSidebarCollapsed ? '10px 8px' : '10px 10px 4px 10px',
+            height: '52px',
             boxSizing: 'border-box',
+            padding: isSidebarCollapsed ? '0 8px' : '0 16px',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+            overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid rgba(2, 132, 199, 0.15)',
-              borderRadius: '10px',
-              padding: isSidebarCollapsed ? '6px' : '8px 10px',
-              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.06)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
-              gap: '9px',
-              overflow: 'hidden',
-              height: '42px',
-              boxSizing: 'border-box',
-            }}
-          >
-            {activeOrg?.logo_url && !logoError ? (
-              <img
-                src={activeOrg.logo_url}
-                alt={activeOrg.name}
-                onError={() => setLogoError(true)}
+          {activeOrg?.logo_url && !logoError ? (
+            <img
+              src={activeOrg.logo_url}
+              alt={activeOrg.name}
+              onError={() => setLogoError(true)}
+              style={{
+                maxWidth: isSidebarCollapsed ? 40 : 180,
+                maxHeight: 36,
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+                transition: 'max-width 0.3s ease',
+              }}
+            />
+          ) : activeOrg?.name ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                overflow: 'hidden',
+              }}
+            >
+              <div
                 style={{
-                  maxWidth: isSidebarCollapsed ? 30 : 160,
-                  maxHeight: 28,
-                  width: 'auto',
-                  height: 'auto',
-                  objectFit: 'contain',
-                  display: 'block',
+                  width: 28,
+                  height: 28,
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                  flexShrink: 0,
                 }}
-              />
-            ) : activeOrg?.name ? (
-              <>
-                <div
+              >
+                {activeOrg.name.charAt(0).toUpperCase()}
+              </div>
+              {!isSidebarCollapsed && (
+                <span
                   style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: '6px',
-                    background: 'linear-gradient(135deg, #0284c7 0%, #00b4d8 100%)',
-                    color: '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    color: '#0f172a',
                     fontWeight: 700,
-                    fontSize: 13,
-                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
-                    flexShrink: 0,
+                    fontSize: 15,
+                    letterSpacing: '-0.01em',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                   }}
                 >
-                  {activeOrg.name.charAt(0).toUpperCase()}
-                </div>
-                {!isSidebarCollapsed && (
-                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                    <span
-                      style={{
-                        color: '#0f172a',
-                        fontWeight: 700,
-                        fontSize: 13.5,
-                        lineHeight: 1.2,
-                        letterSpacing: '-0.01em',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {activeOrg.name}
-                    </span>
-                    <span
-                      style={{
-                        color: '#0284c7',
-                        fontSize: '10.5px',
-                        fontWeight: 600,
-                        letterSpacing: '0.2px',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Workspace
-                    </span>
-                  </div>
-                )}
-              </>
-            ) : null}
-          </div>
+                  {activeOrg.name}
+                </span>
+              )}
+            </div>
+          ) : null}
         </div>
 
-        {/* Navigation Links */}
         <nav
           style={{
             flex: 1,
-            padding: '8px 10px',
+            padding: '12px 10px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '4px',
+            gap: '3px',
             overflowY: 'auto',
             overflowX: 'hidden',
           }}
@@ -636,69 +619,53 @@ export function AppLayout() {
           ))}
         </nav>
 
-        {/* Bottom Settings Link - Floating Modern Card */}
+        {/* Bottom Settings Link */}
         {effectiveOrgId && (
           <div
             style={{
-              padding: isSidebarCollapsed ? '8px' : '0 10px 10px 10px',
+              height: isSidebarCollapsed ? '52px' : '48px',
               boxSizing: 'border-box',
+              padding: isSidebarCollapsed ? '0 8px' : '0 10px',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+              background: '#f8fafc',
             }}
           >
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid rgba(2, 132, 199, 0.14)',
-                borderRadius: '10px',
-                padding: '4px',
-                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.05)',
-              }}
+            <NavLink
+              to={`/organizations/${effectiveOrgId}/settings`}
+              state={{ returnUrl: location.pathname + location.search }}
+              style={({ isActive }) => ({
+                width: '100%',
+                display: 'flex',
+                flexDirection: isSidebarCollapsed ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                gap: isSidebarCollapsed ? '4px' : '8px',
+                padding: isSidebarCollapsed ? '6px 4px' : '7px 10px',
+                borderRadius: '8px',
+                textDecoration: 'none',
+                color: isActive ? '#ffffff' : '#475569',
+                background: isActive
+                  ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                  : 'transparent',
+                fontWeight: isActive ? 600 : 500,
+                fontSize: 13.5,
+                transition: 'all 0.15s ease',
+                boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+              })}
             >
-              <NavLink
-                to={`/organizations/${effectiveOrgId}/settings`}
-                state={{ returnUrl: location.pathname + location.search }}
-                style={({ isActive }) => ({
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: isSidebarCollapsed ? 'column' : 'row',
-                  alignItems: 'center',
-                  justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
-                  gap: isSidebarCollapsed ? '4px' : '8px',
-                  padding: isSidebarCollapsed ? '6px 4px' : '6px 10px',
-                  borderRadius: '7px',
-                  textDecoration: 'none',
-                  color: isActive ? '#ffffff' : '#334155',
-                  background: isActive
-                    ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
-                    : 'transparent',
-                  fontWeight: isActive ? 600 : 500,
-                  fontSize: 13,
-                  transition: 'all 0.15s ease',
-                  boxShadow: isActive ? '0 2px 8px rgba(2, 132, 199, 0.3)' : 'none',
-                })}
-              >
-                {({ isActive }) => (
-                  <>
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '5px',
-                        background: isActive
-                          ? 'rgba(255, 255, 255, 0.2)'
-                          : 'rgba(2, 132, 199, 0.08)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Settings size={15} color={isActive ? '#ffffff' : '#0284c7'} />
-                    </div>
-                    {!isSidebarCollapsed && <span>Settings</span>}
-                  </>
-                )}
-              </NavLink>
-            </div>
+              {({ isActive }) => (
+                <>
+                  <Settings
+                    size={isSidebarCollapsed ? 20 : 17}
+                    color={isActive ? '#ffffff' : '#64748b'}
+                  />
+                  {!isSidebarCollapsed && <span>Settings</span>}
+                </>
+              )}
+            </NavLink>
           </div>
         )}
       </aside>
@@ -875,49 +842,43 @@ function ModuleNavGroup({
   }
 
   if (!isSidebarCollapsed) {
-    // --- MODERN ACCORDION STYLE (DESIGN 3: DUAL-TONE ICE WITH MICRO-BADGES) ---
+    // --- MODERN ACCORDION STYLE ---
     if (isParent) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
           <button
             onClick={handleToggle}
             className="sidebar-nav-link"
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '6px 8px',
+              padding: '7px 8px',
               borderRadius: '8px',
-              background: isExpanded ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
-              border: isExpanded ? '1px solid rgba(2, 132, 199, 0.15)' : '1px solid transparent',
-              color: isChildActive || isExpanded ? '#0f172a' : '#334155',
+              background: isExpanded ? '#f1f5f9' : 'transparent',
+              border: 'none',
+              color: isChildActive || isExpanded ? '#0f172a' : '#475569',
               fontWeight: isChildActive || isExpanded ? 600 : 500,
               cursor: 'pointer',
               width: '100%',
               textAlign: 'left',
-              transition: 'all 0.15s ease',
+              transition: 'background-color 0.2s ease',
               whiteSpace: 'nowrap',
               boxShadow: isExpanded ? '0 1px 4px rgba(2, 132, 199, 0.06)' : 'none',
             }}
             onMouseEnter={(e) => {
-              if (!isExpanded) {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
-                e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.1)';
-              }
+              if (!isExpanded) e.currentTarget.style.background = '#f8fafc';
               e.currentTarget.style.color = '#0f172a';
             }}
             onMouseLeave={(e) => {
-              if (!isExpanded) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = 'transparent';
-              }
-              if (!isChildActive && !isExpanded) e.currentTarget.style.color = '#334155';
+              if (!isExpanded) e.currentTarget.style.background = 'transparent';
+              if (!isChildActive && !isExpanded) e.currentTarget.style.color = '#475569';
             }}
           >
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 7,
+                gap: 6,
                 width: '100%',
               }}
             >
@@ -926,36 +887,16 @@ function ModuleNavGroup({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 14,
+                  width: 16,
                   marginLeft: depth * 14,
                   transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s ease',
-                  color: isExpanded ? '#0284c7' : '#94a3b8',
                 }}
               >
                 <ChevronRight size={13} />
               </div>
-              {depth === 0 && (
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: '6px',
-                    background:
-                      isChildActive || isExpanded
-                        ? 'rgba(2, 132, 199, 0.12)'
-                        : 'rgba(255, 255, 255, 0.65)',
-                    border: '1px solid rgba(2, 132, 199, 0.12)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon size={14} color={isChildActive || isExpanded ? '#0284c7' : '#64748b'} />
-                </div>
-              )}
-              <span style={{ fontSize: 13, marginLeft: 1, flex: 1 }}>{module.name}</span>
+              {depth === 0 && <Icon size={17} color={isChildActive ? '#0284c7' : '#64748b'} />}
+              <span style={{ fontSize: 13.5, marginLeft: 2, flex: 1 }}>{module.name}</span>
             </div>
           </button>
 
@@ -974,7 +915,7 @@ function ModuleNavGroup({
                 gap: '2px',
                 marginLeft: '19px',
                 paddingLeft: '10px',
-                borderLeft: '2px solid rgba(2, 132, 199, 0.2)',
+                borderLeft: '1.5px solid #e2e8f0',
                 marginTop: '2px',
                 marginBottom: '2px',
               }}
@@ -1013,25 +954,24 @@ function ModuleNavGroup({
         style={({ isActive }) => ({
           display: 'flex',
           alignItems: 'center',
-          padding: '6px 8px',
+          padding: '7px 8px',
           paddingRight: '34px',
           justifyContent: 'space-between',
-          borderRadius: '8px',
+          borderRadius: 'var(--radius-md)',
           textDecoration: 'none',
-          color: isActive ? '#ffffff' : '#334155',
+          color: isActive ? '#ffffff' : '#475569',
           background: isActive
             ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
             : isHovered
-              ? 'rgba(255, 255, 255, 0.7)'
+              ? '#f0f7fd'
               : 'transparent',
           fontWeight: isActive ? 600 : 500,
-          fontSize: 13,
+          fontSize: 13.5,
           transition: 'all 0.15s ease',
           whiteSpace: 'nowrap',
           position: 'relative',
           overflow: 'hidden',
-          boxShadow: isActive ? '0 3px 10px rgba(2, 132, 199, 0.3)' : 'none',
-          border: isActive ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid transparent',
+          boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
         })}
       >
         {({ isActive }) => (
@@ -1040,51 +980,26 @@ function ModuleNavGroup({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 7,
+                gap: 8,
                 justifyContent: 'flex-start',
               }}
             >
               {depth === 0 ? (
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: '6px',
-                    background: isActive
-                      ? 'rgba(255, 255, 255, 0.22)'
-                      : 'rgba(255, 255, 255, 0.65)',
-                    border: isActive
-                      ? '1px solid rgba(255, 255, 255, 0.25)'
-                      : '1px solid rgba(2, 132, 199, 0.12)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon
-                    size={14}
-                    color={isActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b'}
-                  />
-                </div>
+                <Icon size={17} color={isActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b'} />
               ) : (
                 <div
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: 5,
+                    height: 5,
                     borderRadius: '50%',
-                    backgroundColor: isActive
-                      ? '#ffffff'
-                      : isHovered
-                        ? '#0284c7'
-                        : 'rgba(2, 132, 199, 0.35)',
-                    marginRight: 4,
+                    backgroundColor: isActive ? '#ffffff' : isHovered ? '#0284c7' : '#cbd5e1',
+                    marginRight: 2,
                     marginLeft: 2,
                     transition: 'background-color 0.15s ease',
                   }}
                 />
               )}
-              <span style={{ fontSize: 13 }}>{module.name}</span>
+              <span style={{ fontSize: 13.5 }}>{module.name}</span>
             </div>
 
             {(isHovered || isActive) &&
@@ -1098,29 +1013,30 @@ function ModuleNavGroup({
                     right: 4,
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    width: '22px',
-                    height: '22px',
-                    background: isActive ? 'rgba(255, 255, 255, 0.25)' : 'rgba(2, 132, 199, 0.1)',
-                    borderRadius: '5px',
+                    width: '24px',
+                    height: '24px',
+                    background: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(2, 132, 199, 0.1)',
+                    borderRadius: '6px',
                     border: 'none',
+                    borderTopRightRadius: 'var(--radius-md)',
+                    borderBottomRightRadius: 'var(--radius-md)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) =>
                     (e.currentTarget.style.background = isActive
-                      ? 'rgba(255, 255, 255, 0.35)'
+                      ? 'rgba(255, 255, 255, 0.3)'
                       : 'rgba(2, 132, 199, 0.2)')
                   }
                   onMouseLeave={(e) =>
                     (e.currentTarget.style.background = isActive
-                      ? 'rgba(255, 255, 255, 0.25)'
+                      ? 'rgba(255, 255, 255, 0.2)'
                       : 'rgba(2, 132, 199, 0.1)')
                   }
                 >
-                  <Plus size={13} color={isActive ? '#ffffff' : '#0284c7'} strokeWidth={2.5} />
+                  <Plus size={14} color={isActive ? '#ffffff' : '#0284c7'} strokeWidth={2.5} />
                 </button>
               )}
           </>
@@ -1129,7 +1045,7 @@ function ModuleNavGroup({
     );
   }
 
-  // --- COMPACT FLYOUT (when isSidebarCollapsed is true) ---
+  // --- NEW ZOHO-STYLE COMPACT FLYOUT (when isSidebarCollapsed is true) ---
   if (depth > 0) {
     const handlePlusClick = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -1147,32 +1063,31 @@ function ModuleNavGroup({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '8px 14px',
-          paddingRight: '34px',
+          padding: '10px 16px',
+          paddingRight: '36px',
           textDecoration: 'none',
-          color: isActive ? '#ffffff' : '#334155',
+          color: isActive ? '#ffffff' : '#475569',
           background: isActive
             ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
             : 'transparent',
           fontSize: '13px',
-          fontWeight: isActive ? 600 : 500,
-          transition: 'all 0.15s ease',
-          borderRadius: '6px',
-          margin: '0 6px 2px 6px',
+          fontWeight: 500,
+          transition: 'all 0.2s ease',
+          borderRadius: '4px',
+          margin: '0 8px 4px 8px',
           position: 'relative',
           overflow: 'hidden',
-          boxShadow: isActive ? '0 2px 8px rgba(2, 132, 199, 0.25)' : 'none',
+          boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
         })}
         onMouseEnter={(e) => {
-          if (!e.currentTarget.style.background.includes('gradient')) {
-            e.currentTarget.style.background = '#f0f7fd';
-            e.currentTarget.style.color = '#0284c7';
+          if (e.currentTarget.style.background !== '#186337') {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
           }
         }}
         onMouseLeave={(e) => {
-          if (!e.currentTarget.style.background.includes('gradient')) {
+          if (e.currentTarget.style.background !== '#186337') {
             e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = '#334155';
+            e.currentTarget.style.color = '#475569';
           }
         }}
       >
@@ -1192,9 +1107,10 @@ function ModuleNavGroup({
                     transform: 'translateY(-50%)',
                     width: '22px',
                     height: '22px',
-                    background: isActive ? 'rgba(255, 255, 255, 0.25)' : 'rgba(2, 132, 199, 0.1)',
+                    background: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(2, 132, 199, 0.1)',
                     border: 'none',
-                    borderRadius: '4px',
+                    borderTopRightRadius: '4px',
+                    borderBottomRightRadius: '4px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -1202,16 +1118,16 @@ function ModuleNavGroup({
                   }}
                   onMouseEnter={(e) =>
                     (e.currentTarget.style.background = isActive
-                      ? 'rgba(255, 255, 255, 0.35)'
+                      ? 'rgba(255, 255, 255, 0.3)'
                       : 'rgba(2, 132, 199, 0.2)')
                   }
                   onMouseLeave={(e) =>
                     (e.currentTarget.style.background = isActive
-                      ? 'rgba(255, 255, 255, 0.25)'
+                      ? 'rgba(255, 255, 255, 0.2)'
                       : 'rgba(2, 132, 199, 0.1)')
                   }
                 >
-                  <Plus size={13} color={isActive ? '#ffffff' : '#0284c7'} strokeWidth={2.5} />
+                  <Plus size={14} color={isActive ? '#ffffff' : '#0284c7'} strokeWidth={2.5} />
                 </button>
               )}
           </>
@@ -1241,40 +1157,19 @@ function ModuleNavGroup({
             justifyContent: 'center',
             padding: '10px 4px',
             gap: '4px',
-            borderRadius: '8px',
+            borderRadius: 'var(--radius-md)',
             textDecoration: 'none',
-            color: reallyActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b',
-            background: reallyActive
-              ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
-              : isHovered
-                ? 'rgba(255, 255, 255, 0.8)'
-                : 'transparent',
-            boxShadow: reallyActive ? '0 2px 8px rgba(2, 132, 199, 0.25)' : 'none',
+            color: reallyActive || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
+            background: reallyActive ? '#186337' : isHovered ? '#f0f7fd' : 'transparent',
+            boxShadow: reallyActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
             transition: 'all 0.15s ease',
           };
         }}
       >
-        {({ isActive }) => {
-          const reallyActive = (!isParent && isActive) || isChildActive;
-          return (
-            <>
-              <Icon
-                size={20}
-                color={reallyActive ? '#ffffff' : isHovered ? '#0284c7' : '#64748b'}
-              />
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: reallyActive ? 600 : 500,
-                  textAlign: 'center',
-                  lineHeight: 1.2,
-                }}
-              >
-                {module.name}
-              </span>
-            </>
-          );
-        }}
+        <Icon size={20} />
+        <span style={{ fontSize: '11px', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>
+          {module.name}
+        </span>
       </NavLink>
 
       {isParent &&
@@ -1288,10 +1183,10 @@ function ModuleNavGroup({
               position: 'fixed',
               top: Math.max(
                 10,
-                Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 50)),
+                Math.min(rect.top, window.innerHeight - (module.children!.length * 40 + 40)),
               ),
-              left: rect.right + 6,
-              paddingLeft: '4px',
+              left: rect.right,
+              paddingLeft: '16px',
               zIndex: 9999,
             }}
           >
@@ -1300,23 +1195,22 @@ function ModuleNavGroup({
                 width: '210px',
                 background: '#ffffff',
                 borderRadius: '8px',
-                boxShadow: '0 10px 25px -5px rgba(2,132,199,0.15), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.12), 0 4px 6px -2px rgba(0,0,0,0.05)',
                 padding: '8px 0',
                 display: 'flex',
                 flexDirection: 'column',
-                border: '1px solid rgba(2, 132, 199, 0.15)',
+                border: '1px solid #e2e8f0',
               }}
             >
               <div
                 style={{
-                  padding: '6px 16px 8px',
+                  padding: '4px 16px 8px',
                   fontSize: '11px',
                   fontWeight: 700,
                   color: '#0284c7',
                   textTransform: 'uppercase',
-                  letterSpacing: '0.6px',
-                  borderBottom: '1px solid #f1f5f9',
-                  marginBottom: '6px',
+                  letterSpacing: '0.5px',
+                  marginBottom: '4px',
                 }}
               >
                 {module.name}

@@ -36,22 +36,23 @@ export function BulkActionBar({
         display: 'flex',
         alignItems: 'center',
         padding: '12px 24px',
-        background: '#fff',
-        borderBottom: '1px solid #eef0f3',
-        gap: '12px',
+        background: '#ffffff',
+        borderBottom: '1px solid #e2e8f0',
+        gap: '10px',
         width: '100%',
-        minHeight: '63px', // Match the height of the normal header
+        minHeight: '63px',
       }}
     >
       <button
         style={{
-          background: '#f1f5f9',
-          color: '#1e293b',
+          background: '#f8fafc',
+          color: '#94a3b8',
           border: '1px solid #e2e8f0',
-          padding: '6px 12px',
-          borderRadius: '4px',
+          padding: '6px 14px',
+          borderRadius: '6px',
           fontWeight: 500,
           fontSize: '13px',
+          cursor: 'not-allowed',
         }}
         disabled
       >
@@ -63,15 +64,30 @@ export function BulkActionBar({
           onClick={onMarkActive}
           disabled={isProcessing}
           style={{
-            background: '#fff',
-            color: '#1e293b',
-            border: '1px solid #e2e8f0',
-            padding: '6px 12px',
-            borderRadius: '4px',
+            background: '#ffffff',
+            color: '#334155',
+            border: '1px solid #cbd5e1',
+            padding: '6px 14px',
+            borderRadius: '6px',
             fontWeight: 500,
             fontSize: '13px',
             cursor: isProcessing ? 'not-allowed' : 'pointer',
             opacity: isProcessing ? 0.5 : 1,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isProcessing) {
+              e.currentTarget.style.background = '#f8fafc';
+              e.currentTarget.style.borderColor = '#94a3b8';
+              e.currentTarget.style.color = '#0f172a';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isProcessing) {
+              e.currentTarget.style.background = '#ffffff';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+              e.currentTarget.style.color = '#334155';
+            }
           }}
         >
           Mark as Active
@@ -83,15 +99,30 @@ export function BulkActionBar({
           onClick={onMarkInactive}
           disabled={isProcessing}
           style={{
-            background: '#fff',
-            color: '#1e293b',
-            border: '1px solid #e2e8f0',
-            padding: '6px 12px',
-            borderRadius: '4px',
+            background: '#ffffff',
+            color: '#334155',
+            border: '1px solid #cbd5e1',
+            padding: '6px 14px',
+            borderRadius: '6px',
             fontWeight: 500,
             fontSize: '13px',
             cursor: isProcessing ? 'not-allowed' : 'pointer',
             opacity: isProcessing ? 0.5 : 1,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isProcessing) {
+              e.currentTarget.style.background = '#f8fafc';
+              e.currentTarget.style.borderColor = '#94a3b8';
+              e.currentTarget.style.color = '#0f172a';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isProcessing) {
+              e.currentTarget.style.background = '#ffffff';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+              e.currentTarget.style.color = '#334155';
+            }
           }}
         >
           Mark as Inactive
@@ -103,15 +134,28 @@ export function BulkActionBar({
           onClick={onDelete}
           disabled={isProcessing}
           style={{
-            background: '#fff',
-            color: '#ef4444',
-            border: '1px solid #e2e8f0',
-            padding: '6px 12px',
-            borderRadius: '4px',
+            background: '#ffffff',
+            color: '#dc2626',
+            border: '1px solid #fca5a5',
+            padding: '6px 14px',
+            borderRadius: '6px',
             fontWeight: 500,
             fontSize: '13px',
             cursor: isProcessing ? 'not-allowed' : 'pointer',
             opacity: isProcessing ? 0.5 : 1,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isProcessing) {
+              e.currentTarget.style.background = '#fef2f2';
+              e.currentTarget.style.borderColor = '#ef4444';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isProcessing) {
+              e.currentTarget.style.background = '#ffffff';
+              e.currentTarget.style.borderColor = '#fca5a5';
+            }
           }}
         >
           Delete
@@ -132,9 +176,10 @@ export function BulkActionBar({
       >
         <span
           style={{
-            background: '#e0e7ff',
-            color: '#3730a3',
-            padding: '2px 8px',
+            background: '#f0f7fd',
+            color: '#0284c7',
+            border: '1px solid rgba(2, 132, 199, 0.25)',
+            padding: '2px 9px',
             borderRadius: '12px',
             fontSize: '12px',
             fontWeight: 600,
@@ -152,12 +197,20 @@ export function BulkActionBar({
             gap: '4px',
             background: 'transparent',
             border: 'none',
-            color: '#ef4444',
+            color: '#dc2626',
             cursor: isProcessing ? 'not-allowed' : 'pointer',
             padding: '4px 8px',
             fontSize: '13px',
             fontWeight: 500,
             opacity: isProcessing ? 0.5 : 1,
+            borderRadius: '4px',
+            transition: 'background 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isProcessing) e.currentTarget.style.background = '#fef2f2';
+          }}
+          onMouseLeave={(e) => {
+            if (!isProcessing) e.currentTarget.style.background = 'transparent';
           }}
         >
           Esc <X size={14} />

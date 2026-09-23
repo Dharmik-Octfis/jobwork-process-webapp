@@ -203,7 +203,12 @@ export function CustomizeColumnsModal({
                     type="checkbox"
                     checked={row.checked}
                     onChange={() => toggle(row.key)}
-                    style={{ width: 15, height: 15, cursor: 'pointer' }}
+                    style={{
+                      width: 15,
+                      height: 15,
+                      cursor: 'pointer',
+                      accentColor: '#0284c7',
+                    }}
                   />
                 )}
                 <span style={{ fontSize: 13, color: '#1e293b' }}>{row.label}</span>
@@ -231,15 +236,23 @@ export function CustomizeColumnsModal({
             onClick={handleSave}
             disabled={isSaving}
             style={{
-              background: '#0062ff',
+              background: '#0284c7',
               color: '#fff',
               border: 'none',
               padding: '8px 20px',
-              borderRadius: 4,
+              borderRadius: 6,
               fontSize: 13,
               fontWeight: 500,
               cursor: isSaving ? 'default' : 'pointer',
               opacity: isSaving ? 0.7 : 1,
+              boxShadow: '0 1px 2px rgba(2, 132, 199, 0.2)',
+              transition: 'background-color 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSaving) e.currentTarget.style.backgroundColor = '#0369a1';
+            }}
+            onMouseLeave={(e) => {
+              if (!isSaving) e.currentTarget.style.backgroundColor = '#0284c7';
             }}
           >
             {isSaving ? 'Saving…' : 'Save'}
@@ -252,9 +265,18 @@ export function CustomizeColumnsModal({
               color: '#334155',
               border: '1px solid #e2e8f0',
               padding: '8px 20px',
-              borderRadius: 4,
+              borderRadius: 6,
               fontSize: 13,
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f8fafc';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#fff';
+              e.currentTarget.style.borderColor = '#e2e8f0';
             }}
           >
             Cancel

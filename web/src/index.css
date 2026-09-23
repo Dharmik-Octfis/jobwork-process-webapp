@@ -76,13 +76,13 @@
   --color-text-muted: #777777;
   --color-text-subtle: #999999;
 
-  /* Primary — the petrol blue we reserve for the primary action / active state */
-  --color-primary: #1c7c8c;
-  --color-primary-hover: #176a79;
-  --color-primary-active: #11525f;
+  /* Primary — cerulean / ocean blue matching our modern sidebar active theme */
+  --color-primary: #0284c7;
+  --color-primary-hover: #0369a1;
+  --color-primary-active: #075985;
   --color-primary-contrast: #ffffff;
-  --color-primary-soft: #e8f3fc;
-  --color-focus-ring: rgba(28, 124, 140, 0.35);
+  --color-primary-soft: #f0f7fd;
+  --color-focus-ring: rgba(2, 132, 199, 0.35);
 
   /* Granted — the deep green a ticked checkbox carries. Kept distinct from
      --color-primary so "this is switched on" never reads as "this is the button
@@ -139,6 +139,10 @@ body,
 #root {
   height: 100dvh;
   overflow: hidden;
+}
+
+input[type='checkbox'] {
+  accent-color: #0284c7;
 }
 
 body {
@@ -452,8 +456,8 @@ input[type='number'] {
   color: #222222;
 }
 .detail-tab.active {
-  color: #222222;
-  font-weight: 500;
+  color: #0284c7;
+  font-weight: 600;
 }
 .detail-tab.active::after {
   content: '';
@@ -462,7 +466,7 @@ input[type='number'] {
   left: 0;
   right: 0;
   height: 3px;
-  background-color: #0062ff;
+  background-color: #0284c7;
   border-radius: 3px 3px 0 0;
 }
 

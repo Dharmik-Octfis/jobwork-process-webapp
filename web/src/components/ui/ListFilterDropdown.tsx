@@ -68,9 +68,13 @@ export function ListFilterDropdown({
         </h1>
         <ChevronDown
           size={16}
-          color="#0062ff"
+          color="#0284c7"
           strokeWidth={2.5}
-          style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', flexShrink: 0 }}
+          style={{
+            transform: open ? 'rotate(180deg)' : undefined,
+            transition: 'transform 0.15s',
+            flexShrink: 0,
+          }}
         />
       </button>
 
@@ -96,44 +100,48 @@ export function ListFilterDropdown({
               fontWeight: 600,
               color: '#64748b',
               textTransform: 'uppercase',
-              background: '#f9f9fb',
-              borderBottom: '1px solid #eef0f3',
+              background: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
             }}
           >
             Filters
           </div>
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => {
-                onChange(f.key);
-                setOpen(false);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                width: '100%',
-                textAlign: 'left',
-                padding: '10px 14px',
-                border: 'none',
-                background: f.key === value ? '#f1f5f9' : 'transparent',
-                fontSize: 13,
-                color: '#1e293b',
-                cursor: 'pointer',
-              }}
-              onMouseEnter={(e) => {
-                if (f.key !== value) e.currentTarget.style.background = '#f8fafc';
-              }}
-              onMouseLeave={(e) => {
-                if (f.key !== value) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              {f.label}
-              {f.key === value && <Check size={15} color="#0062ff" />}
-            </button>
-          ))}
+          {filters.map((f) => {
+            const isSelected = f.key === value;
+            return (
+              <button
+                key={f.key}
+                onClick={() => {
+                  onChange(f.key);
+                  setOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: isSelected ? '#f0f7fd' : 'transparent',
+                  fontSize: 13,
+                  fontWeight: isSelected ? 600 : 400,
+                  color: isSelected ? '#0284c7' : '#1e293b',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                {f.label}
+                {isSelected && <Check size={15} color="#0284c7" strokeWidth={2.5} />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

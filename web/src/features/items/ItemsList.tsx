@@ -59,15 +59,20 @@ function renderItemCell(
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (key === 'type') {
+    const isGoods = item.itemType === 'goods';
     return (
       <span
         style={{
-          padding: '2px 8px',
-          background: item.itemType === 'goods' ? '#e0e7ff' : '#dcfce7',
-          color: item.itemType === 'goods' ? '#3730a3' : '#166534',
+          padding: '2.5px 9px',
+          background: isGoods ? '#f0f7fd' : '#ecfdf5',
+          color: isGoods ? '#0284c7' : '#047857',
+          border: `1px solid ${isGoods ? 'rgba(2, 132, 199, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
           borderRadius: 12,
-          fontSize: 12,
-          fontWeight: 500,
+          fontSize: 11.5,
+          fontWeight: 600,
+          letterSpacing: '0.02em',
+          textTransform: 'capitalize',
+          display: 'inline-block',
         }}
       >
         {item.itemType}
@@ -78,7 +83,7 @@ function renderItemCell(
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         {item.itemStructure === 'composite' && <ShoppingBag size={14} color="#64748b" />}
-        {item.name}
+        <span style={{ color: '#0284c7', fontWeight: 500 }}>{item.name}</span>
       </div>
     );
   }
@@ -141,8 +146,9 @@ export function ItemsList() {
   const headerStyle = {
     padding: '12px 16px',
     fontWeight: 600,
-    fontSize: 11,
-    color: '#64748b',
+    fontSize: 11.5,
+    color: '#475569',
+    letterSpacing: '0.04em',
     textTransform: 'uppercase' as const,
   };
 
@@ -150,7 +156,9 @@ export function ItemsList() {
     setIsProcessing(true);
     try {
       await Promise.allSettled(
-        selectedIds.map((id) => itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }))
+        selectedIds.map((id) =>
+          itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }),
+        ),
       );
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setSelectedIds([]);
@@ -163,7 +171,9 @@ export function ItemsList() {
     setIsProcessing(true);
     try {
       await Promise.allSettled(
-        selectedIds.map((id) => itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }))
+        selectedIds.map((id) =>
+          itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }),
+        ),
       );
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setSelectedIds([]);
@@ -177,9 +187,7 @@ export function ItemsList() {
   };
 
   const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleAll = () => {
@@ -201,12 +209,15 @@ export function ItemsList() {
       }}
     >
       {/* Main Content Area */}
-      <div className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
           className="master-pane"
           style={{
             flex: selectedItemId ? '0 0 320px' : 1,
-            borderRight: selectedItemId ? '1px solid #eef0f3' : 'none',
+            borderRight: selectedItemId ? '1px solid #e2e8f0' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
@@ -230,7 +241,7 @@ export function ItemsList() {
                 alignItems: 'center',
                 padding: '16px 24px',
                 background: '#fff',
-                borderBottom: '1px solid #eef0f3',
+                borderBottom: '1px solid #e2e8f0',
               }}
             >
               <ListFilterDropdown
@@ -240,7 +251,7 @@ export function ItemsList() {
                 fallbackLabel="All Items"
               />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {!selectedItemId && (
                   <button
                     onClick={() => setIsColumnsOpen(true)}
@@ -250,33 +261,58 @@ export function ItemsList() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: 30,
-                      height: 30,
-                      borderRadius: 4,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
                       border: '1px solid #e2e8f0',
                       background: '#fff',
                       cursor: 'pointer',
                       color: '#64748b',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.color = '#0284c7';
+                      e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff';
+                      e.currentTarget.style.color = '#64748b';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
                     }}
                   >
                     <SlidersHorizontal size={15} />
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/items/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
-                    background: '#186337',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                     color: 'white',
                     border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '4px',
-                    fontWeight: 500,
+                    padding: '7px 14px',
+                    borderRadius: '6px',
+                    fontWeight: 600,
                     fontSize: '13px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 4,
+                    gap: 5,
                     whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+                    e.currentTarget.style.transform = 'none';
                   }}
                 >
                   <Plus size={16} /> New
@@ -330,16 +366,30 @@ export function ItemsList() {
                   transactions.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/items/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
-                    background: '#28a745',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                     color: 'white',
                     border: 'none',
                     padding: '10px 24px',
-                    borderRadius: '4px',
+                    borderRadius: '6px',
                     fontWeight: 600,
                     fontSize: 14,
                     cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(2, 132, 199, 0.35)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(2, 132, 199, 0.25)';
+                    e.currentTarget.style.transform = 'none';
                   }}
                 >
                   Create Item
@@ -351,45 +401,48 @@ export function ItemsList() {
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <div
                       style={{
-                        padding: '8px 16px',
+                        padding: '10px 16px',
                         fontSize: '12px',
                         fontWeight: 600,
                         color: '#64748b',
-                        background: '#f9f9fb',
-                        borderBottom: '1px solid #eef0f3',
+                        background: '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        letterSpacing: '0.03em',
+                        textTransform: 'uppercase',
                       }}
                     >
                       {filters.find((f) => f.key === filter)?.label ?? 'Active Items'}
                     </div>
-                    {items.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => setSearchParams({ id: item.id })}
-                        style={{
-                          padding: '12px 16px',
-                          borderBottom: '1px solid #eef0f3',
-                          cursor: 'pointer',
-                          background: selectedItemId === item.id ? '#f1f5f9' : 'transparent',
-                          transition: 'background 0.1s',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedItemId !== item.id)
-                            e.currentTarget.style.background = '#f8fafc';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedItemId !== item.id)
-                            e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
+                    {items.map((item) => {
+                      const isSelected = selectedItemId === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => setSearchParams({ id: item.id })}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                            background: isSelected ? '#f0f7fd' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
+                            transition: 'all 0.12s ease',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div
                               style={{
                                 fontSize: '13px',
-                                fontWeight: 500,
-                                color: '#1e293b',
+                                fontWeight: isSelected ? 600 : 500,
+                                color: isSelected ? '#0284c7' : '#1e293b',
                                 marginBottom: '4px',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -399,92 +452,144 @@ export function ItemsList() {
                               {item.itemStructure === 'composite' && (
                                 <ShoppingBag size={14} color="#64748b" />
                               )}
-                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                              <span
+                                style={{
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                }}
+                              >
+                                {item.name}
+                              </span>
                             </div>
-                            <div style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>SKU: {item.sku}</div>
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                color: '#64748b',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              SKU: {item.sku}
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-end',
+                              marginLeft: '12px',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
                               ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
                             </div>
                             {item.isActive === false && (
-                              <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                              <div
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 500,
+                                  color: '#94a3b8',
+                                  marginTop: '4px',
+                                }}
+                              >
                                 INACTIVE
                               </div>
                             )}
                           </div>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={items.length > 0 && selectedIds.length === items.length}
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item) => (
+                      <thead>
                         <tr
-                          key={item.id}
-                          onClick={() => setSearchParams({ id: item.id })}
                           style={{
-                            borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                            background: selectedIds.includes(item.id) ? '#f8fafc' : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => {
-                            if (!selectedIds.includes(item.id))
-                              e.currentTarget.style.background = 'transparent';
+                            background: '#f8fafc',
+                            borderTop: '1px solid #e2e8f0',
+                            borderBottom: '1px solid #e2e8f0',
                           }}
                         >
-                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <th
+                            style={{
+                              width: 48,
+                              ...headerStyle,
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                          >
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(item.id)}
-                              onChange={() => toggleSelection(item.id)}
-                              style={{ cursor: 'pointer' }}
+                              checked={items.length > 0 && selectedIds.length === items.length}
+                              onChange={toggleAll}
+                              style={{ cursor: 'pointer', accentColor: '#0284c7' }}
                             />
-                          </td>
+                          </th>
                           {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                fontSize: 13,
-                                // The locked column is the identity you click through on.
-                                color: col.locked ? '#0062ff' : '#333',
-                                fontWeight: col.locked ? 500 : 400,
-                              }}
-                            >
-                              {renderItemCell(item, col.key, customFieldsDef)}
-                            </td>
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => {
+                          const isChecked = selectedIds.includes(item.id);
+                          return (
+                            <tr
+                              key={item.id}
+                              onClick={() => setSearchParams({ id: item.id })}
+                              style={{
+                                borderBottom: '1px solid #f1f5f9',
+                                transition: 'background 0.12s ease',
+                                cursor: 'pointer',
+                                background: isChecked ? '#f0f7fd' : 'transparent',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isChecked) e.currentTarget.style.background = '#f8fafc';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isChecked) e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              <td
+                                style={{
+                                  width: 48,
+                                  padding: '12px 16px',
+                                  paddingRight: 0,
+                                  textAlign: 'center',
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleSelection(item.id)}
+                                  style={{ cursor: 'pointer', accentColor: '#0284c7' }}
+                                />
+                              </td>
+                              {columns.map((col) => (
+                                <td
+                                  key={col.key}
+                                  style={{
+                                    padding: '12px 16px',
+                                    fontSize: 13,
+                                    color: col.locked ? '#0284c7' : '#334155',
+                                    fontWeight: col.locked ? 600 : 400,
+                                  }}
+                                >
+                                  {renderItemCell(item, col.key, customFieldsDef)}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -544,9 +649,7 @@ export function ItemsList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(
-              selectedIds.map(id => itemsApi.deleteItem(orgId!, id))
-            );
+            await Promise.allSettled(selectedIds.map((id) => itemsApi.deleteItem(orgId!, id)));
             queryClient.invalidateQueries({ queryKey: ['items', orgId] });
             setSelectedIds([]);
           } finally {

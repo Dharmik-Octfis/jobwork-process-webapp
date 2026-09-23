@@ -611,269 +611,326 @@ export function ItemImageGallery({
     <>
       <div
         style={{
-          border: '1px solid #eef0f3',
-          borderRadius: '12px',
-          padding: '16px',
-          display: 'flex',
-          gap: '16px',
-          background: '#fff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          padding: '20px 24px',
+          background: '#ffffff',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
           boxSizing: 'border-box',
-          height: '252px',
         }}
       >
-        {/* Left Column (Front & Rear) */}
+        <div
+          style={{
+            fontSize: '15px',
+            fontWeight: 600,
+            color: '#0f172a',
+            paddingBottom: '12px',
+            borderBottom: '1px solid #f1f5f9',
+            marginBottom: '16px',
+          }}
+        >
+          Item Images
+        </div>
+
         <div
           style={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            width: '140px',
-            flexShrink: 0,
+            gap: '16px',
           }}
         >
-          <div>
-            <div
-              style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}
-            >
-              Front View
-            </div>
-            <input
-              type="file"
-              ref={frontImageRef}
-              onChange={handleFrontImageUpload}
-              style={{ display: 'none' }}
-              accept="image/*"
-            />
-            <div
-              style={{
-                height: '85px',
-                border: '1px solid #eef0f3',
-                borderRadius: '8px',
-                overflow: 'hidden',
-                position: 'relative',
-                background: '#fafafa',
-              }}
-            >
-              {frontKey ? (
-                <ImageThumbnail
-                  orgId={orgId}
-                  itemId={itemId}
-                  imageKey={frontKey}
-                  onClick={() => openViewer(frontKey)}
-                  onDelete={handleDeleteFrontImage}
-                  maxImgHeight="75px"
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => frontImageRef.current?.click()}
-                  disabled={uploadImagesMutation.isPending}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: '1px dashed #cbd5e1',
-                    borderRadius: '8px',
-                    background: '#ffffff',
-                    color: '#0062ff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>↑</span>
-                  <span style={{ fontSize: 12, fontWeight: 500 }}>Upload</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <div
-              style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}
-            >
-              Rear View
-            </div>
-            <input
-              type="file"
-              ref={rearImageRef}
-              onChange={handleRearImageUpload}
-              style={{ display: 'none' }}
-              accept="image/*"
-            />
-            <div
-              style={{
-                height: '85px',
-                border: '1px solid #eef0f3',
-                borderRadius: '8px',
-                overflow: 'hidden',
-                position: 'relative',
-                background: '#fafafa',
-              }}
-            >
-              {rearKey ? (
-                <ImageThumbnail
-                  orgId={orgId}
-                  itemId={itemId}
-                  imageKey={rearKey}
-                  onClick={() => openViewer(rearKey)}
-                  onDelete={handleDeleteRearImage}
-                  maxImgHeight="75px"
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => rearImageRef.current?.click()}
-                  disabled={uploadImagesMutation.isPending}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: '1px dashed #cbd5e1',
-                    borderRadius: '8px',
-                    background: '#ffffff',
-                    color: '#0062ff',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 2,
-                    cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>↑</span>
-                  <span style={{ fontSize: 11, fontWeight: 500 }}>Upload Rear</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column (Other Images) */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ fontSize: '13px', marginBottom: '6px', color: '#1e293b', fontWeight: 500 }}>
-            Other Images
-          </div>
-          <input
-            type="file"
-            ref={otherImagesRef}
-            onChange={handleOtherImagesUpload}
-            style={{ display: 'none' }}
-            accept="image/*"
-            multiple
-          />
-
+          {/* Left Column (Front & Rear) */}
           <div
             style={{
-              height: '194px',
-              border: '1px solid #eef0f3',
-              borderRadius: '8px',
-              padding: '8px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '8px',
-              background: '#fafafa',
-              boxSizing: 'border-box',
+              gap: '12px',
+              width: '140px',
+              flexShrink: 0,
             }}
           >
-            {/* Main large image inside Other Images */}
-            <div
-              style={{
-                height: '128px',
-                width: '100%',
-                borderRadius: '6px',
-                overflow: 'hidden',
-                border: '1px solid #e2e8f0',
-                background: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-              }}
-            >
-              {activeOtherKey ? (
-                <ImageThumbnail
-                  orgId={orgId}
-                  itemId={itemId}
-                  imageKey={activeOtherKey}
-                  onClick={() => openViewer(activeOtherKey)}
-                  onDelete={() => handleDeleteOtherImage(activeOtherIndex)}
-                  maxImgHeight="115px"
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#94a3b8',
-                    fontSize: 12,
-                    background: '#f8fafc',
-                  }}
-                >
-                  No extra images
-                </div>
-              )}
-            </div>
-
-            {/* Thumbnail row */}
-            <div
-              style={{
-                display: 'flex',
-                gap: '6px',
-                overflowX: 'auto',
-                alignItems: 'center',
-                paddingBottom: '2px',
-              }}
-            >
-              {otherImagesList.map((imgItem, idx: number) => {
-                const imgKey = getImageKey(imgItem);
-                if (!imgKey) return null;
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => setSelectedOtherIndex(idx)}
+            <div>
+              <div
+                style={{ fontSize: '13px', marginBottom: '6px', color: '#64748b', fontWeight: 500 }}
+              >
+                Front View
+              </div>
+              <input
+                type="file"
+                ref={frontImageRef}
+                onChange={handleFrontImageUpload}
+                style={{ display: 'none' }}
+                accept="image/*"
+              />
+              <div
+                style={{
+                  height: '85px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  background: '#fafafa',
+                }}
+              >
+                {frontKey ? (
+                  <ImageThumbnail
+                    orgId={orgId}
+                    itemId={itemId}
+                    imageKey={frontKey}
+                    onClick={() => openViewer(frontKey)}
+                    onDelete={handleDeleteFrontImage}
+                    maxImgHeight="75px"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => frontImageRef.current?.click()}
+                    disabled={uploadImagesMutation.isPending}
                     style={{
-                      width: '38px',
-                      height: '38px',
-                      flexShrink: 0,
-                      border: idx === activeOtherIndex ? '2px solid #0062ff' : '1px solid #e2e8f0',
-                      borderRadius: '6px',
-                      padding: '1px',
-                      cursor: 'pointer',
-                      overflow: 'hidden',
-                      background: '#fff',
+                      width: '100%',
+                      height: '100%',
+                      border: '1.5px dashed rgba(2, 132, 199, 0.35)',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      color: '#0284c7',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 2,
+                      cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!uploadImagesMutation.isPending) {
+                        e.currentTarget.style.background = '#f0f7fd';
+                        e.currentTarget.style.borderColor = '#0284c7';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!uploadImagesMutation.isPending) {
+                        e.currentTarget.style.background = '#ffffff';
+                        e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
+                      }
                     }}
                   >
-                    <ImageThumbnail orgId={orgId} itemId={itemId} imageKey={imgKey} />
-                  </div>
-                );
-              })}
+                    <span style={{ fontSize: 16 }}>↑</span>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>Upload Front</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
-              {/* Add More Button */}
-              <button
-                type="button"
-                onClick={() => otherImagesRef.current?.click()}
-                disabled={uploadImagesMutation.isPending}
+            <div>
+              <div
+                style={{ fontSize: '13px', marginBottom: '6px', color: '#64748b', fontWeight: 500 }}
+              >
+                Rear View
+              </div>
+              <input
+                type="file"
+                ref={rearImageRef}
+                onChange={handleRearImageUpload}
+                style={{ display: 'none' }}
+                accept="image/*"
+              />
+              <div
                 style={{
-                  width: '38px',
-                  height: '38px',
-                  flexShrink: 0,
-                  border: '1.5px dashed #0062ff',
+                  height: '85px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  background: '#fafafa',
+                }}
+              >
+                {rearKey ? (
+                  <ImageThumbnail
+                    orgId={orgId}
+                    itemId={itemId}
+                    imageKey={rearKey}
+                    onClick={() => openViewer(rearKey)}
+                    onDelete={handleDeleteRearImage}
+                    maxImgHeight="75px"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => rearImageRef.current?.click()}
+                    disabled={uploadImagesMutation.isPending}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      border: '1.5px dashed rgba(2, 132, 199, 0.35)',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      color: '#0284c7',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 2,
+                      cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!uploadImagesMutation.isPending) {
+                        e.currentTarget.style.background = '#f0f7fd';
+                        e.currentTarget.style.borderColor = '#0284c7';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!uploadImagesMutation.isPending) {
+                        e.currentTarget.style.background = '#ffffff';
+                        e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
+                      }
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>↑</span>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>Upload Rear</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column (Other Images) */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <div
+              style={{ fontSize: '13px', marginBottom: '6px', color: '#64748b', fontWeight: 500 }}
+            >
+              Other Images
+            </div>
+            <input
+              type="file"
+              ref={otherImagesRef}
+              onChange={handleOtherImagesUpload}
+              style={{ display: 'none' }}
+              accept="image/*"
+              multiple
+            />
+
+            <div
+              style={{
+                height: '194px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                background: '#fafafa',
+                boxSizing: 'border-box',
+              }}
+            >
+              {/* Main large image inside Other Images */}
+              <div
+                style={{
+                  height: '128px',
+                  width: '100%',
                   borderRadius: '6px',
+                  overflow: 'hidden',
+                  border: '1px solid #e2e8f0',
                   background: '#ffffff',
-                  color: '#0062ff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                  position: 'relative',
                 }}
-                title="Add Images"
               >
-                <Plus size={18} strokeWidth={2.5} />
-              </button>
+                {activeOtherKey ? (
+                  <ImageThumbnail
+                    orgId={orgId}
+                    itemId={itemId}
+                    imageKey={activeOtherKey}
+                    onClick={() => openViewer(activeOtherKey)}
+                    onDelete={() => handleDeleteOtherImage(activeOtherIndex)}
+                    maxImgHeight="115px"
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#94a3b8',
+                      fontSize: 12,
+                      background: '#f8fafc',
+                    }}
+                  >
+                    No extra images
+                  </div>
+                )}
+              </div>
+
+              {/* Thumbnail row */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '6px',
+                  overflowX: 'auto',
+                  alignItems: 'center',
+                  paddingBottom: '2px',
+                }}
+              >
+                {otherImagesList.map((imgItem, idx: number) => {
+                  const imgKey = getImageKey(imgItem);
+                  if (!imgKey) return null;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedOtherIndex(idx)}
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        flexShrink: 0,
+                        border:
+                          idx === activeOtherIndex ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '1px',
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                        background: '#fff',
+                      }}
+                    >
+                      <ImageThumbnail orgId={orgId} itemId={itemId} imageKey={imgKey} />
+                    </div>
+                  );
+                })}
+
+                {/* Add More Button */}
+                <button
+                  type="button"
+                  onClick={() => otherImagesRef.current?.click()}
+                  disabled={uploadImagesMutation.isPending}
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    flexShrink: 0,
+                    border: '1.5px dashed #0284c7',
+                    borderRadius: '6px',
+                    background: '#ffffff',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: uploadImagesMutation.isPending ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!uploadImagesMutation.isPending)
+                      e.currentTarget.style.background = '#f0f7fd';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!uploadImagesMutation.isPending)
+                      e.currentTarget.style.background = '#ffffff';
+                  }}
+                  title="Add Images"
+                >
+                  <Plus size={18} strokeWidth={2.5} />
+                </button>
+              </div>
             </div>
           </div>
         </div>

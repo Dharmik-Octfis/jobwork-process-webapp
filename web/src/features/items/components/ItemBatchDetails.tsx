@@ -457,7 +457,7 @@ export function ItemBatchDetails({
                               key={col.key}
                               style={{
                                 padding: '12px 16px',
-                                color: b.isInactive ? '#64748b' : '#0062ff',
+                                color: b.isInactive ? '#64748b' : '#0284c7',
                                 fontWeight: 500,
                                 whiteSpace: 'nowrap',
                                 textDecoration: b.isInactive ? 'line-through' : 'none',
@@ -741,7 +741,7 @@ export function ItemBatchDetails({
                                 padding: '4px 2px',
                                 borderRadius: 4,
                                 cursor: 'pointer',
-                                color: '#0062ff',
+                                color: '#0284c7',
                                 fontSize: 12,
                                 fontWeight: 500,
                               }}

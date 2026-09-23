@@ -396,6 +396,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       gap: 6,
                       fontSize: 13,
                       cursor: 'pointer',
+                      fontWeight: formData.itemType === 'goods' ? 500 : 400,
+                      color: formData.itemType === 'goods' ? '#0f172a' : '#475569',
                     }}
                   >
                     <input
@@ -404,6 +406,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       value="goods"
                       checked={formData.itemType === 'goods'}
                       onChange={() => handleRadioChange('itemType', 'goods')}
+                      style={{ accentColor: '#0284c7', cursor: 'pointer' }}
                     />{' '}
                     Goods
                   </label>
@@ -414,6 +417,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       gap: 6,
                       fontSize: 13,
                       cursor: 'pointer',
+                      fontWeight: formData.itemType === 'service' ? 500 : 400,
+                      color: formData.itemType === 'service' ? '#0f172a' : '#475569',
                     }}
                   >
                     <input
@@ -422,6 +427,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       value="service"
                       checked={formData.itemType === 'service'}
                       onChange={() => handleRadioChange('itemType', 'service')}
+                      style={{ accentColor: '#0284c7', cursor: 'pointer' }}
                     />{' '}
                     Service
                   </label>
@@ -556,15 +562,26 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                               gap: '8px',
                               width: '100%',
                               padding: '8px 12px',
-                              color: '#0062ff',
+                              color: '#0284c7',
                               background: 'transparent',
                               border: 'none',
+                              borderRadius: '4px',
                               cursor: 'pointer',
                               fontSize: 13,
+                              fontWeight: 500,
                               textAlign: 'left',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f0f7fd';
+                              e.currentTarget.style.color = '#0369a1';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.color = '#0284c7';
                             }}
                           >
-                            <Plus size={14} /> New Unit Group
+                            <Plus size={14} strokeWidth={2.5} /> New Unit Group
                           </button>
                         }
                       />
@@ -603,17 +620,20 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             <div
               style={{
                 width: '360px',
-                border: '1px solid #e5e7eb',
+                border: '1px solid #e2e8f0',
                 borderRadius: '8px',
                 padding: '16px',
                 display: 'flex',
                 gap: '12px',
                 background: '#ffffff',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Front View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#475569', fontWeight: 500 }}>
+                    Front View
+                  </div>
                   <input
                     type="file"
                     ref={frontImageRef}
@@ -627,7 +647,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     style={{
                       width: '100%',
                       padding: '18px 16px',
-                      border: '1px dashed #cbd5e1',
+                      border: '1.5px dashed rgba(2, 132, 199, 0.35)',
                       borderRadius: '6px',
                       background: '#ffffff',
                       display: 'flex',
@@ -636,11 +656,20 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       justifyContent: 'center',
                       gap: 6,
                       cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.borderColor = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
                     }}
                   >
                     <div
                       style={{
-                        color: '#0062ff',
+                        color: '#0284c7',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -654,6 +683,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       style={{
                         fontSize: 12,
                         color: '#1e293b',
+                        fontWeight: 500,
                         textAlign: 'center',
                         wordBreak: 'break-all',
                       }}
@@ -668,7 +698,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Rear View</div>
+                  <div style={{ fontSize: 12, marginBottom: 6, color: '#475569', fontWeight: 500 }}>
+                    Rear View
+                  </div>
                   <input
                     type="file"
                     ref={rearImageRef}
@@ -682,7 +714,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     style={{
                       width: '100%',
                       padding: '32px 16px',
-                      border: '1px dashed #cbd5e1',
+                      border: '1.5px dashed rgba(2, 132, 199, 0.35)',
                       borderRadius: '6px',
                       background: '#ffffff',
                       display: 'flex',
@@ -691,11 +723,20 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       justifyContent: 'center',
                       gap: 6,
                       cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.borderColor = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#ffffff';
+                      e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
                     }}
                   >
                     <div
                       style={{
-                        color: '#0062ff',
+                        color: '#0284c7',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -709,6 +750,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       style={{
                         fontSize: 12,
                         color: '#1e293b',
+                        fontWeight: 500,
                         textAlign: 'center',
                         wordBreak: 'break-all',
                       }}
@@ -724,7 +766,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Other Images</div>
+                <div style={{ fontSize: 12, marginBottom: 6, color: '#475569', fontWeight: 500 }}>
+                  Other Images
+                </div>
                 <input
                   type="file"
                   ref={otherImagesRef}
@@ -741,7 +785,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     flex: 1,
                     minHeight: '180px',
                     padding: '24px 16px',
-                    border: '1px dashed #cbd5e1',
+                    border: '1.5px dashed rgba(2, 132, 199, 0.35)',
                     borderRadius: '6px',
                     background: '#ffffff',
                     display: 'flex',
@@ -750,20 +794,31 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     justifyContent: 'center',
                     gap: 6,
                     cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f0f7fd';
+                    e.currentTarget.style.borderColor = '#0284c7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
                   }}
                 >
                   <div
                     style={{
-                      width: 24,
-                      height: 24,
+                      width: 26,
+                      height: 26,
                       borderRadius: '50%',
-                      background: '#0062ff',
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                       color: 'white',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: 12,
+                      fontSize: 13,
+                      fontWeight: 'bold',
                       marginBottom: 4,
+                      boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
                     }}
                   >
                     ↑
@@ -843,6 +898,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       name="isSalesInfo"
                       checked={formData.isSalesInfo}
                       onChange={handleChange}
+                      style={{ accentColor: '#0284c7', cursor: 'pointer' }}
                     />
                     Sales Information
                   </label>
@@ -942,6 +998,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       name="isPurchaseInfo"
                       checked={formData.isPurchaseInfo}
                       onChange={handleChange}
+                      style={{ accentColor: '#0284c7', cursor: 'pointer' }}
                     />
                     Purchase Information
                   </label>
@@ -1057,7 +1114,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   name="trackInventory"
                   checked={formData.trackInventory}
                   onChange={handleChange}
-                  style={{ marginTop: 2 }}
+                  style={{ marginTop: 2, accentColor: '#0284c7', cursor: 'pointer' }}
                 />
                 <div>
                   Track Inventory for this item
@@ -1101,6 +1158,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           value="none"
                           checked={formData.inventoryTracking === 'none'}
                           onChange={() => handleRadioChange('inventoryTracking', 'none')}
+                          style={{ accentColor: '#0284c7', cursor: 'pointer' }}
                         />{' '}
                         None
                       </label>
@@ -1120,6 +1178,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             value="batch"
                             checked={formData.inventoryTracking === 'batch'}
                             onChange={() => handleRadioChange('inventoryTracking', 'batch')}
+                            style={{ accentColor: '#0284c7', cursor: 'pointer' }}
                           />{' '}
                           {singular}
                         </label>
@@ -1246,14 +1305,17 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
           type="submit"
           disabled={createMutation.isPending}
           style={{
-            padding: '6px 20px',
-            background: '#0062ff',
+            padding: '7px 24px',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
             color: 'white',
             border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
+            borderRadius: '6px',
+            cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
             fontSize: '13px',
+            opacity: createMutation.isPending ? 0.7 : 1,
+            transition: 'all 0.15s ease',
           }}
         >
           {createMutation.isPending ? 'Saving...' : 'Save'}
@@ -1273,14 +1335,25 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             }
           }}
           style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
+            padding: '7px 20px',
+            background: '#ffffff',
+            color: '#334155',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
             cursor: 'pointer',
             fontWeight: 500,
             fontSize: '13px',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.borderColor = '#94a3b8';
+            e.currentTarget.style.color = '#0f172a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+            e.currentTarget.style.color = '#334155';
           }}
         >
           Cancel

@@ -106,11 +106,12 @@ export function ItemLocations({
                 gap: '4px',
                 padding: '4px 8px',
                 height: '32px',
-                border: '1px solid #cbd5e1',
+                border: isSettingsMenuOpen ? '1px solid #0284c7' : '1px solid #cbd5e1',
                 borderRadius: '6px',
-                background: '#f8fafc',
+                background: isSettingsMenuOpen ? '#f0f7fd' : '#f8fafc',
                 cursor: 'pointer',
-                color: '#334155',
+                color: isSettingsMenuOpen ? '#0284c7' : '#334155',
+                transition: 'all 0.15s ease',
               }}
             >
               <Settings size={15} />
@@ -147,7 +148,7 @@ export function ItemLocations({
                       width: '100%',
                       padding: '8px 16px',
                       textAlign: 'center',
-                      background: '#3b82f6',
+                      background: '#0284c7',
                       border: 'none',
                       borderRadius: '6px',
                       fontSize: '13px',
@@ -155,14 +156,14 @@ export function ItemLocations({
                       color: '#ffffff',
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
-                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                      boxShadow: '0 1px 2px rgba(2, 132, 199, 0.2)',
                       transition: 'background-color 0.15s ease',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#2563eb';
+                      e.currentTarget.style.backgroundColor = '#0369a1';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#3b82f6';
+                      e.currentTarget.style.backgroundColor = '#0284c7';
                     }}
                   >
                     Add Opening Stock
@@ -176,8 +177,8 @@ export function ItemLocations({
         <div
           style={{
             display: 'flex',
-            border: '1px solid #0062ff',
-            borderRadius: '4px',
+            border: '1px solid #0284c7',
+            borderRadius: '6px',
             overflow: 'hidden',
           }}
         >
@@ -187,12 +188,12 @@ export function ItemLocations({
             style={{
               padding: '6px 16px',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
               border: 'none',
-              background: stockType === 'accounting' ? '#0062ff' : '#fff',
-              color: stockType === 'accounting' ? '#fff' : '#0062ff',
+              background: stockType === 'accounting' ? '#0284c7' : '#fff',
+              color: stockType === 'accounting' ? '#fff' : '#0284c7',
               cursor: 'pointer',
-              transition: 'background 0.2s',
+              transition: 'all 0.15s ease',
             }}
           >
             Accounting Stock
@@ -203,13 +204,13 @@ export function ItemLocations({
             style={{
               padding: '6px 16px',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
               border: 'none',
-              borderLeft: '1px solid #0062ff',
-              background: stockType === 'physical' ? '#0062ff' : '#fff',
-              color: stockType === 'physical' ? '#fff' : '#0062ff',
+              borderLeft: '1px solid #0284c7',
+              background: stockType === 'physical' ? '#0284c7' : '#fff',
+              color: stockType === 'physical' ? '#fff' : '#0284c7',
               cursor: 'pointer',
-              transition: 'background 0.2s',
+              transition: 'all 0.15s ease',
             }}
           >
             Physical Stock

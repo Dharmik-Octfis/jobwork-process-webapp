@@ -200,12 +200,13 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             </h2>
             <span
               style={{
-                background: item.isActive !== false ? '#3b82f6' : '#94a3b8',
-                color: 'white',
-                fontSize: '11px',
-                padding: '2px 8px',
+                background: item.isActive !== false ? '#f0f7fd' : '#f1f5f9',
+                color: item.isActive !== false ? '#0284c7' : '#64748b',
+                border: `1px solid ${item.isActive !== false ? 'rgba(2, 132, 199, 0.25)' : '#e2e8f0'}`,
+                fontSize: '11.5px',
+                padding: '2.5px 9px',
                 borderRadius: '12px',
-                fontWeight: 500,
+                fontWeight: 600,
                 marginTop: '4px',
               }}
             >
@@ -221,17 +222,19 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)
               }
               style={{
-                padding: '6px 12px',
+                padding: '7px 14px',
                 border: 'none',
-                background: 'var(--color-check)',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
                 color: 'white',
-                borderRadius: '4px',
+                borderRadius: '6px',
                 fontSize: '13px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                fontWeight: 500,
+                fontWeight: 600,
+                transition: 'all 0.15s ease',
               }}
               className="action-btn"
             >
@@ -271,18 +274,40 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
-                border: '1px solid var(--color-border)',
-                background: '#f8fafc',
-                color: 'var(--color-text)',
-                borderRadius: '4px',
+                border: isMoreOpen ? '1px solid #0284c7' : '1px solid #e2e8f0',
+                background: isMoreOpen ? '#f0f7fd' : '#f8fafc',
+                color: isMoreOpen ? '#0284c7' : '#1e293b',
+                borderRadius: '6px',
                 fontSize: '13px',
+                fontWeight: 500,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isMoreOpen) {
+                  e.currentTarget.style.backgroundColor = '#f1f5f9';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isMoreOpen) {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                }
               }}
             >
-              More <ChevronDown size={14} />
+              More{' '}
+              <ChevronDown
+                size={14}
+                color={isMoreOpen ? '#0284c7' : '#64748b'}
+                style={{
+                  transform: isMoreOpen ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s',
+                }}
+              />
             </button>
             {isMoreOpen && (
               <div
@@ -290,26 +315,35 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   position: 'absolute',
                   top: '100%',
                   right: 0,
-                  marginTop: '4px',
+                  marginTop: '6px',
                   background: 'white',
-                  border: '1px solid #eef0f3',
+                  border: '1px solid #e2e8f0',
                   borderRadius: '6px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                  zIndex: 10,
+                  boxShadow:
+                    '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+                  zIndex: 20,
                   minWidth: '160px',
-                  padding: '4px 0',
+                  padding: '4px',
                 }}
               >
                 <div
                   onClick={handleClone}
                   style={{
-                    padding: '8px 16px',
+                    padding: '8px 12px',
                     fontSize: '13px',
+                    borderRadius: '4px',
                     cursor: 'pointer',
                     color: '#1e293b',
+                    transition: 'all 0.15s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.color = '#0284c7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#1e293b';
+                  }}
                 >
                   Clone
                 </div>
@@ -318,13 +352,21 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     toggleActiveMutation.mutate(item.isActive === false ? true : false)
                   }
                   style={{
-                    padding: '8px 16px',
+                    padding: '8px 12px',
                     fontSize: '13px',
+                    borderRadius: '4px',
                     cursor: 'pointer',
                     color: '#1e293b',
+                    transition: 'all 0.15s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.color = '#0284c7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#1e293b';
+                  }}
                 >
                   Mark as {item.isActive !== false ? 'Inactive' : 'Active'}
                 </div>
@@ -334,10 +376,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     setShowDeleteConfirm(true);
                   }}
                   style={{
-                    padding: '8px 16px',
+                    padding: '8px 12px',
                     fontSize: '13px',
+                    borderRadius: '4px',
                     cursor: 'pointer',
                     color: '#dc2626',
+                    transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fef2f2')}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
@@ -408,76 +452,76 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         ) : effectiveActiveTab === 'Overview' ? (
           <div className="detail-overview-grid">
             {/* Primary Info (Left) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-              <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '20px 24px',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                }}
+              >
                 <div
                   style={{
-                    fontSize: '16px',
-                    fontWeight: 500,
-                    color: 'var(--color-text)',
+                    fontSize: '15px',
+                    fontWeight: 600,
+                    color: '#0f172a',
+                    paddingBottom: '12px',
+                    borderBottom: '1px solid #f1f5f9',
                     marginBottom: '16px',
                   }}
                 >
                   Primary Details
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                      Item Name
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Item Name</div>
+                    <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                       {item.name}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>SKU</div>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>SKU</div>
+                    <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                       {item.sku}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Unit</div>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Unit</div>
+                    <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                       {item.unit}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                      Category
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Category</div>
+                    <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                       {item.category || '-'}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>Type</div>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Type</div>
+                    <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                       {item.itemType}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                      Item Type
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>Item Type</div>
+                    <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                       {item.itemStructure}
                     </div>
                   </div>
 
                   {item.hsnCode && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                        HSN Code
-                      </div>
-                      <div
-                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
-                      >
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b' }}>HSN Code</div>
+                      <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                         {item.hsnCode}
                       </div>
                     </div>
@@ -486,25 +530,31 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               </div>
 
               {item.isPurchaseInfo && (
-                <div>
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '20px 24px',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                  }}
+                >
                   <div
                     style={{
-                      fontSize: '16px',
-                      fontWeight: 500,
-                      color: 'var(--color-text)',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                      paddingBottom: '12px',
+                      borderBottom: '1px solid #f1f5f9',
                       marginBottom: '16px',
                     }}
                   >
                     Purchase Information
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                        Cost Price
-                      </div>
-                      <div
-                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
-                      >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b' }}>Cost Price</div>
+                      <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                         ₹{item.costPrice ? Number(item.costPrice).toFixed(2) : '0.00'}
                       </div>
                     </div>
@@ -513,25 +563,31 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               )}
 
               {item.isSalesInfo && (
-                <div>
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '20px 24px',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                  }}
+                >
                   <div
                     style={{
-                      fontSize: '16px',
-                      fontWeight: 500,
-                      color: 'var(--color-text)',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                      paddingBottom: '12px',
+                      borderBottom: '1px solid #f1f5f9',
                       marginBottom: '16px',
                     }}
                   >
                     Sales Information
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr' }}>
-                      <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                        Selling Price
-                      </div>
-                      <div
-                        style={{ fontSize: '13px', color: 'var(--color-text)', fontWeight: 400 }}
-                      >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b' }}>Selling Price</div>
+                      <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 500 }}>
                         ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
                       </div>
                     </div>
@@ -541,17 +597,18 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             </div>
 
             {/* Right Column: Images & Stock */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Image Gallery & Upload */}
               <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
 
               {/* Opening Stock & Inventory Detailed Summary Card */}
               <div
                 style={{
-                  background: '#f8fafc',
+                  background: '#ffffff',
                   padding: '20px 24px',
                   borderRadius: '8px',
-                  border: '1px solid #f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '20px',
@@ -559,8 +616,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               >
                 {/* Opening Stock Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Building2 size={16} color="#0062ff" />
-                  <span style={{ fontSize: '14px', color: '#0062ff', fontWeight: 500 }}>
+                  <Building2 size={16} color="#0284c7" />
+                  <span style={{ fontSize: '14px', color: '#0284c7', fontWeight: 600 }}>
                     Opening Stock
                   </span>
                   <span
@@ -629,7 +686,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                         Stock on Hand
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0062ff' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0284c7' }}>
                         {ownPremisesStock.onHand.toFixed(2)}
                       </span>
                     </div>
@@ -804,7 +861,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       height="16"
                       viewBox="0 0 24 24"
                       fill="none"
-                      stroke="#0062ff"
+                      stroke="#0284c7"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -814,7 +871,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       <path d="M6 14h12"></path>
                       <rect width="12" height="12" x="6" y="10"></rect>
                     </svg>
-                    <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>
+                    <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#0284c7', margin: 0 }}>
                       Opening Stock Summary
                     </h3>
                   </div>

@@ -191,9 +191,9 @@ export function ManageCategoriesModal({
               <Folder
                 size={16}
                 style={{
-                  color: '#3b82f6',
+                  color: '#0284c7',
                   marginRight: 8,
-                  fill: isExpanded || !hasChildren ? '#eff6ff' : 'transparent',
+                  fill: isExpanded || !hasChildren ? '#f0f7fd' : 'transparent',
                   flexShrink: 0,
                 }}
               />
@@ -244,7 +244,7 @@ export function ManageCategoriesModal({
                   alignItems: 'center',
                   gap: 4,
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#2563eb')}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#0284c7')}
                 onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
               >
                 Apply this Category
@@ -265,7 +265,7 @@ export function ManageCategoriesModal({
                 alignItems: 'center',
                 gap: 4,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#2563eb')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#0284c7')}
               onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
             >
               <Edit2 size={12} />
@@ -425,7 +425,7 @@ export function ManageCategoriesModal({
                       width: '100%',
                       padding: '8px 12px',
                       borderRadius: '6px',
-                      border: '1px solid #93c5fd',
+                      border: '1px solid #0284c7',
                       outline: 'none',
                       fontSize: 13,
                       color: '#334155',
@@ -475,14 +475,22 @@ export function ManageCategoriesModal({
                   onClick={handleSubmit(onSubmit)}
                   disabled={isSubmitting}
                   style={{
-                    background: '#166534',
+                    background: '#0284c7',
                     color: 'white',
                     padding: '6px 16px',
-                    borderRadius: '4px',
+                    borderRadius: '6px',
                     border: 'none',
                     fontSize: 13,
+                    fontWeight: 500,
                     cursor: isSubmitting ? 'not-allowed' : 'pointer',
                     opacity: isSubmitting ? 0.7 : 1,
+                    transition: 'background-color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0369a1';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0284c7';
                   }}
                 >
                   Save
@@ -494,7 +502,7 @@ export function ManageCategoriesModal({
                     background: '#f8fafc',
                     color: '#334155',
                     padding: '6px 16px',
-                    borderRadius: '4px',
+                    borderRadius: '6px',
                     border: '1px solid #e2e8f0',
                     fontSize: 13,
                     cursor: 'pointer',
@@ -528,14 +536,17 @@ export function ManageCategoriesModal({
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#3b82f6',
+                  color: '#0284c7',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
                   fontSize: 13,
                   fontWeight: 500,
                   cursor: 'pointer',
+                  transition: 'color 0.15s ease',
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#0369a1')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#0284c7')}
               >
                 <Plus size={16} />
                 Add New Category
