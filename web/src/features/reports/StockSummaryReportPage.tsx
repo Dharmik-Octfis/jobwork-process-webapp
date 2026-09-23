@@ -71,7 +71,12 @@ export function StockSummaryReportPage() {
   const [stockFilter] = useState('none');
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
 
-  const [appliedFilters, setAppliedFilters] = useState(
+  const [appliedFilters, setAppliedFilters] = useState<{
+    fromDate: Date;
+    toDate: Date;
+    stockFilter: string;
+    conditions: FilterCondition[];
+  }>(
     initialState?.appliedFilters || {
       fromDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       toDate: new Date(),

@@ -117,13 +117,19 @@ export function FifoCostLotTrackingPage() {
   const [locationId, setLocationId] = useState<string>(initialState?.locationId || '');
   const [isProductOut, setIsProductOut] = useState(initialState?.isProductOut || false);
 
-  const [appliedFilters, setAppliedFilters] = useState(
+  const [appliedFilters, setAppliedFilters] = useState<{
+    fromDate: Date | undefined;
+    toDate: Date | undefined;
+    itemName: string | undefined;
+    locationName: string | undefined;
+    reportBasis: 'product_in' | 'product_out';
+  }>(
     initialState?.appliedFilters || {
-      fromDate: startOfMonth(new Date()) as Date | undefined,
-      toDate: endOfDay(new Date()) as Date | undefined,
-      itemName: undefined as string | undefined,
-      locationName: undefined as string | undefined,
-      reportBasis: 'product_in' as 'product_in' | 'product_out',
+      fromDate: startOfMonth(new Date()),
+      toDate: endOfDay(new Date()),
+      itemName: undefined,
+      locationName: undefined,
+      reportBasis: 'product_in',
     },
   );
 
