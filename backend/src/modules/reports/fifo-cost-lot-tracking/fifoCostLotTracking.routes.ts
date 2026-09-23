@@ -8,10 +8,6 @@ const router = Router({ mergeParams: true });
 
 router.use(authenticate, tenantContext);
 
-router.get(
-  '/',
-  requirePermission('reports:read'),
-  getFifoCostLotTrackingController
-);
+router.get('/', requirePermission('reports:read'), getFifoCostLotTrackingController);
 
 export default router;

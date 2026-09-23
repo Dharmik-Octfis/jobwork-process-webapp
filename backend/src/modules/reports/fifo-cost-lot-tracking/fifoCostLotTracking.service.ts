@@ -12,8 +12,8 @@ import { format, differenceInDays } from 'date-fns';
  *
  * This report used to pair inward and outward quantities by replaying FIFO in
  * JavaScript, and never priced an outflow at all. Now every row is fact: a lot is
- * one `stock_cost_layers` row, and what it dispersed is exactly the draws the
- * postings made on it — at the lot's real cost.
+ * one document's `stock_cost_layers` at one cost (see `Lot` below), and what it
+ * dispersed is exactly the draws the postings made on them — at the lot's real cost.
  *
  * Only own stock at our own places has layers, so customer-owned and physical-only
  * movements no longer appear (valuation never counted them either). A document's
@@ -134,9 +134,22 @@ export async function getFifoCostLotTracking(
     const inRange = (date: Date) => date.getTime() >= from && date.getTime() <= to;
     const qty = (value: Prisma.Decimal) => Number(value.toDecimalPlaces(4));
 
-    const rows: FifoCostLotTrackingRow[] = [];
-    let currentItemId = '';
-
+    /**
+     * 🔴 A LOT IS ONE DOCUMENT'S STOCK AT ONE COST, not one layer (2026-09-23). A
+     * receipt or bill putting 100 into two batches writes two layers of 50; listing
+     * them separately showed "50" beside a Summary saying 100 (JR-00085). Layers of
+     * the same item, document, date and unit cost are one lot; a different cost stays
+     * its own lot. Cut-over balances carry no document and stay one per layer.
+     */
+    interface Lot {
+      key: string;
+      layer: LayerRow;
+      unitCost: Prisma.Decimal;
+      qty: Prisma.Decimal;
+      remaining: Prisma.Decimal;
+      dispersals: DrawRow[];
+    }
+    const lots = new Map<string, Lot>();
     for (const layer of layers) {
       // A document taking back its own layer is a correction of itself, not a
       // dispersal: an edited bill's old lot, a cancelled receipt's output.
@@ -148,20 +161,57 @@ export async function getFifoCostLotTracking(
         .reduce((sum, draw) => sum.plus(draw.qty), new Prisma.Decimal(0));
       const lotQty = layer.qty.minus(selfTaken);
       if (!lotQty.greaterThan(0)) continue;
-      const dispersals = layerDraws.filter((draw) => !own(draw));
 
-      const inDoc = describe(layer.inDocType, layer.inDocId);
       const unitCost = layer.qty.isZero()
         ? new Prisma.Decimal(0)
         : layer.value.dividedBy(layer.qty);
+      const key = layer.inDocId
+        ? [
+            layer.itemId,
+            layer.inDocType,
+            layer.inDocId,
+            layer.inDate.toISOString(),
+            unitCost.toFixed(4),
+          ].join('|')
+        : layer.id;
+      const lot = lots.get(key) ?? {
+        key,
+        layer,
+        unitCost,
+        qty: new Prisma.Decimal(0),
+        remaining: new Prisma.Decimal(0),
+        dispersals: [],
+      };
+      lot.qty = lot.qty.plus(lotQty);
+      lot.remaining = lot.remaining.plus(layer.remainingQty);
+      for (const draw of layerDraws.filter((row) => !own(row))) {
+        // One challan drawing on both layers of a lot is one dispersal of that lot.
+        const same = draw.outDocId
+          ? lot.dispersals.find(
+              (row) => row.outDocType === draw.outDocType && row.outDocId === draw.outDocId,
+            )
+          : undefined;
+        if (same) same.qty = same.qty.plus(draw.qty);
+        else lot.dispersals.push({ ...draw });
+      }
+      lots.set(key, lot);
+    }
+
+    const rows: FifoCostLotTrackingRow[] = [];
+    let currentItemId = '';
+
+    for (const { key, layer, unitCost, qty: lotQty, remaining, dispersals } of lots.values()) {
+      dispersals.sort((a, b) => a.outDate.getTime() - b.outDate.getTime());
+      const inDoc = describe(layer.inDocType, layer.inDocId);
       const age = differenceInDays(new Date(), layer.inDate);
       const inCols = {
+        lotKey: key,
         inDate: format(layer.inDate, 'dd-MM-yyyy'),
         inTransaction: inDoc.transaction,
         inReceivedFrom: inDoc.partyName,
         inQty: qty(lotQty),
         inQtyUnit: layer.uomName ?? 'unit',
-        inQtyRemaining: qty(layer.remainingQty),
+        inQtyRemaining: qty(remaining),
         inAge: age > 0 ? `${age} Days` : '',
         inCost: unitCost.toFixed(2),
         inTotal: unitCost.times(lotQty).toFixed(2),

@@ -11,6 +11,8 @@ import type { CreateBillPayload } from './bills.schemas.ts';
 import { createBatch, postMovement } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import { getInventoryValuationSummary } from '../../reports/inventory-valuation/inventoryValuation.service.ts';
 import { getStockSummaryReport } from '../../reports/stock-summary/stockSummary.service.ts';
+import { getFifoCostLotTracking } from '../../reports/fifo-cost-lot-tracking/fifoCostLotTracking.service.ts';
+import type { FifoCostLotTrackingQuery } from '../../reports/fifo-cost-lot-tracking/fifoCostLotTracking.schemas.ts';
 import { SOURCE_DOC_TYPES, runAsDocument } from '../../jobwork/jobwork.types.ts';
 import { createNewProcess } from '../../jobwork/processes/processes.service.ts';
 import { createNewJobOrder } from '../../jobwork/job-orders/jobOrders.service.ts';
@@ -81,8 +83,9 @@ async function stockIn(itemId: string, qty: number, value: number) {
   });
 }
 
-/** 100 m fabric @ ₹50 sent to the dyer and received back as 100 m dyed at ₹10/m. */
-async function receivedDyedFabric() {
+/** 100 m fabric @ ₹50 sent to the dyer and received back as 100 m dyed at ₹10/m —
+ * in one batch, or split across two batches of 50. */
+async function receivedDyedFabric(opts: { twoBatches?: boolean } = {}) {
   const fabric = await makeItem('Fabric');
   const dyed = await makeItem('Dyed');
   const batch = await stockIn(fabric.id, 100, 5000);
@@ -114,7 +117,14 @@ async function receivedDyedFabric() {
         isPrimary: true,
         receivedQty: 100,
         acceptedQty: 100,
-        batchReference: `OUT-${unique()}`,
+        ...(opts.twoBatches
+          ? {
+              batches: [
+                { batchReference: `OUT-A-${unique()}`, qty: 50 },
+                { batchReference: `OUT-B-${unique()}`, qty: 50 },
+              ],
+            }
+          : { batchReference: `OUT-${unique()}` }),
       },
     ],
   });
@@ -248,6 +258,19 @@ describe('a job receipt counts when it posts', { timeout: 120_000 }, () => {
       perPage: 25,
     });
     expect(summary.results[0]!.closingStock).toBe(100);
+  });
+
+  it('FIFO lot tracking shows a receipt split over two batches as one lot of 100 (JR-00085)', async () => {
+    const { dyed, receipt } = await receivedDyedFabric({ twoBatches: true });
+    const report = await getFifoCostLotTracking(orgId, {
+      itemName: dyed.name,
+      reportBasis: 'product_in',
+      page: 1,
+      perPage: 25,
+    } as FifoCostLotTrackingQuery);
+    const lots = report.results.filter((row) => row.inDocId === receipt.id);
+    expect(lots).toHaveLength(1);
+    expect(lots[0]).toMatchObject({ inQty: 100, inQtyRemaining: 100, inTotal: '6000.00' });
   });
 
   it('a bill at a different rate changes nothing in stock', async () => {
