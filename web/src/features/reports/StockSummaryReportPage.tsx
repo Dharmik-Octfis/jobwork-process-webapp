@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
 import { format, endOfDay } from 'date-fns';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
@@ -11,8 +11,8 @@ import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
 import {
   reportsApi,
-  type InventoryValuationQuery,
-  type PaginatedInventoryValuationResponse,
+  type StockSummaryQuery,
+  type PaginatedStockSummaryResponse,
 } from './reports.api';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
@@ -22,31 +22,23 @@ import { fetchLocations, isOwnLocation } from '../configuration/locations/locati
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
-const STOCK_OPTIONS = [
-  { label: 'No criteria', value: 'none' },
-  { label: 'Greater than zero', value: 'gt' },
-  { label: 'Less than or equal to zero', value: 'lte' },
-  { label: 'Less than zero', value: 'lt' },
-  { label: 'Equal to zero', value: 'eq' },
-  { label: 'Not equal to zero', value: 'neq' },
-];
-
-const STATUS_OPTIONS = [
-  { label: 'All', value: 'all' },
-  { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+const TRACKING_MODE_OPTIONS = [
+  { label: 'Bills', value: 'bills_and_invoices' },
+  { label: 'Jobwork Receives', value: 'jobwork' },
 ];
 
 // Filter fields are now dynamically generated in the component to access orgId
 
-export function InventoryValuationSummaryPage() {
+export function StockSummaryReportPage() {
   const navigate = useNavigate();
-
   const { orgId } = useParams<{ orgId: string }>();
+  const [searchParams] = useSearchParams();
+
+  const initialMode = searchParams.get('mode') || 'bills_and_invoices';
 
   const initialState = useMemo(() => {
     if (!orgId) return null;
-    const key = `inventoryValuationSummaryState_${orgId}`;
+    const key = `stockSummaryState_${orgId}`;
     try {
       const stored = sessionStorage.getItem(key);
       if (stored) {
@@ -58,10 +50,12 @@ export function InventoryValuationSummaryPage() {
           return isNaN(d.getTime()) ? fallback : d;
         };
         
-        parsed.asOfDate = safeDate(parsed.asOfDate, new Date());
+        parsed.fromDate = safeDate(parsed.fromDate, new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+        parsed.toDate = safeDate(parsed.toDate, new Date());
         
         if (parsed.appliedFilters) {
-          parsed.appliedFilters.asOfDate = safeDate(parsed.appliedFilters.asOfDate, new Date());
+          parsed.appliedFilters.fromDate = safeDate(parsed.appliedFilters.fromDate, new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+          parsed.appliedFilters.toDate = safeDate(parsed.appliedFilters.toDate, new Date());
         }
         
         return parsed;
@@ -72,39 +66,45 @@ export function InventoryValuationSummaryPage() {
     return null;
   }, [orgId]);
 
-  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'Today');
-  const [asOfDate, setAsOfDate] = useState<Date>(initialState?.asOfDate || new Date());
-  const [stockFilter, setStockFilter] = useState(initialState?.stockFilter || 'none');
-  const [statusFilter, setStatusFilter] = useState(initialState?.statusFilter || 'all');
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
+  const [stockFilter] = useState('none');
+  const [trackingMode, setTrackingMode] = useState(initialState?.trackingMode || initialMode);
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
 
   const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
-    asOfDate: new Date(),
+    fromDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    toDate: new Date(),
     stockFilter: 'none',
-    statusFilter: 'all',
+    trackingMode: 'bills_and_invoices',
     conditions: [] as FilterCondition[],
   });
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(`inventoryValuationSummaryState_${orgId}`, JSON.stringify({
+    sessionStorage.setItem(`stockSummaryState_${orgId}`, JSON.stringify({
       dateRange,
-      asOfDate,
-      stockFilter,
-      statusFilter,
+      fromDate,
+      toDate,
+      trackingMode,
       conditions,
       appliedFilters
     }));
-  }, [dateRange, asOfDate, stockFilter, statusFilter, conditions, appliedFilters, orgId]);
+  }, [dateRange, fromDate, toDate, trackingMode, conditions, appliedFilters, orgId]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'itemName',
-    'stockOnHand',
-    'inventoryAssetValue',
+    'sku',
+    'openingStock',
+    'quantityIn',
+    'quantityOut',
+    'closingStock',
   ]);
 
-  const formattedAsOfDate = format(appliedFilters.asOfDate, 'dd-MM-yyyy');
+  const formattedFromDate = format(appliedFilters.fromDate, 'dd-MM-yyyy');
+  const formattedToDate = format(appliedFilters.toDate, 'dd-MM-yyyy');
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
@@ -213,16 +213,16 @@ export function InventoryValuationSummaryPage() {
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const [data, setData] = useState<PaginatedInventoryValuationResponse | null>(null);
+  const [data, setData] = useState<PaginatedStockSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     if (!orgId) return;
     try {
-      const query: InventoryValuationQuery = {
-        asOfDate: endOfDay(appliedFilters.asOfDate).toISOString(),
-        stockAvailability: appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
-        status: appliedFilters.statusFilter as InventoryValuationQuery['status'],
+      const query: StockSummaryQuery = {
+        fromDate: appliedFilters.fromDate.toISOString(),
+        toDate: endOfDay(appliedFilters.toDate).toISOString(),
+        mode: appliedFilters.trackingMode as 'bills' | 'bills_and_invoices' | 'jobwork',
         page,
         perPage,
       };
@@ -264,10 +264,10 @@ export function InventoryValuationSummaryPage() {
         query.itemCustomFields = itemCustomFields;
       }
 
-      const response = await reportsApi.getInventoryValuation(orgId, query);
+      const response = await reportsApi.getStockSummary(orgId, query);
       setData(response);
     } catch (error) {
-      console.error('Failed to fetch inventory valuation', error);
+      console.error('Failed to fetch Stock Summary', error);
     } finally {
       setLoading(false);
     }
@@ -275,7 +275,7 @@ export function InventoryValuationSummaryPage() {
 
   useEffect(() => {
     // Record visit time for ReportsPage
-    localStorage.setItem(`lastVisited_inventoryValuation_${orgId}`, new Date().toISOString());
+    localStorage.setItem(`lastVisited_stockSummary_${orgId}`, new Date().toISOString());
 
     const init = async () => {
       await fetchData();
@@ -284,8 +284,10 @@ export function InventoryValuationSummaryPage() {
   }, [orgId, page, perPage, appliedFilters]);
 
   const rows = data?.results || [];
-  const totalQty = data?.grandTotalQty || 0;
-  const totalValue = data?.grandTotalValue || 0;
+  const grandTotalOpening = data?.grandTotalOpening || 0;
+  const grandTotalIn = data?.grandTotalIn || 0;
+  const grandTotalOut = data?.grandTotalOut || 0;
+  const grandTotalClosing = data?.grandTotalClosing || 0;
   const total = data?.total || 0;
 
   return (
@@ -328,7 +330,7 @@ export function InventoryValuationSummaryPage() {
           </button>
           <div>
             <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>
-              Inventory Valuation
+              Stock Summary
             </div>
             <div
               style={{
@@ -339,9 +341,9 @@ export function InventoryValuationSummaryPage() {
                 alignItems: 'center',
               }}
             >
-              Inventory Valuation Summary
+              Stock Summary Report
               <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
-                • As of {formattedAsOfDate}
+                • From {formattedFromDate} To {formattedToDate}
               </span>
             </div>
           </div>
@@ -392,45 +394,20 @@ export function InventoryValuationSummaryPage() {
 
         <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
           <ReportDateFilter
+            isRange={true}
             value={dateRange}
-            onChange={(label, date) => {
+            onChangeRange={(label, start, end) => {
               setDateRange(label);
-              setAsOfDate(date);
+              setFromDate(start);
+              setToDate(end);
             }}
+            labelPrefix=""
           />
 
           <SearchableSelect
-            options={STOCK_OPTIONS}
-            value={stockFilter}
-            onChange={setStockFilter}
-            keepOpenOnSelect={true}
-            showIndicator={stockFilter !== 'none'}
-            style={{ width: 'max-content' }}
-            triggerStyle={{
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              height: 'auto',
-              minHeight: '0',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-            }}
-            dropdownWidth="250px"
-            renderValue={(opt) => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#6b7280' }}>Stock Availability :</span>
-                <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
-              </div>
-            )}
-          />
-
-          <SearchableSelect
-            options={STATUS_OPTIONS}
-            value={statusFilter}
-            onChange={setStatusFilter}
-            keepOpenOnSelect={true}
-            showIndicator={statusFilter !== 'all'}
+            options={TRACKING_MODE_OPTIONS}
+            value={trackingMode}
+            onChange={setTrackingMode}
             style={{ width: 'max-content' }}
             triggerStyle={{
               border: '1px solid #d1d5db',
@@ -445,11 +422,13 @@ export function InventoryValuationSummaryPage() {
             dropdownWidth="200px"
             renderValue={(opt) => (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#6b7280' }}>Status :</span>
+                <span style={{ color: '#6b7280' }}>Mode of Stock tracking :</span>
                 <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
               </div>
             )}
           />
+
+
 
           <AdvancedFilter
             fields={filterFields}
@@ -465,7 +444,7 @@ export function InventoryValuationSummaryPage() {
           />
           <button
             type="button"
-            onClick={() => setAppliedFilters({ asOfDate, stockFilter, statusFilter, conditions })}
+            onClick={() => setAppliedFilters({ fromDate, toDate, stockFilter, trackingMode, conditions })}
             style={{
               padding: '6px 12px',
               background: '#2563eb',
@@ -559,9 +538,9 @@ export function InventoryValuationSummaryPage() {
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
-              Inventory Valuation Summary
+              Stock Summary Report
             </h2>
-            <div style={{ fontSize: '13px', color: '#4b5563' }}>As of {formattedAsOfDate}</div>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>From {formattedFromDate} To {formattedToDate}</div>
           </div>
 
           {/* Data Table */}
@@ -609,16 +588,28 @@ export function InventoryValuationSummaryPage() {
                           UNIT
                         </th>
                       );
-                    case 'stockOnHand':
+                    case 'openingStock':
                       return (
                         <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                          STOCK ON HAND
+                          OPENING STOCK
                         </th>
                       );
-                    case 'inventoryAssetValue':
+                    case 'quantityIn':
                       return (
                         <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                          INVENTORY ASSET VALUE
+                          QUANTITY IN
+                        </th>
+                      );
+                    case 'quantityOut':
+                      return (
+                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
+                          QUANTITY OUT
+                        </th>
+                      );
+                    case 'closingStock':
+                      return (
+                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
+                          CLOSING STOCK
                         </th>
                       );
                     default:
@@ -660,17 +651,21 @@ export function InventoryValuationSummaryPage() {
                   <tr
                     key={row.itemId}
                     className="table-row-hover"
-                    style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
-                    onClick={() =>
-                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)
-                    }
+                    style={{ borderTop: '1px solid #f9fafb' }}
                   >
                     {visibleColumns.map((colKey) => {
                       switch (colKey) {
                         case 'itemName':
                           return (
                             <td key={colKey} style={tdStyle}>
-                              <span style={{ color: '#111827', fontWeight: 500 }}>
+                              <span
+                                className="hover-underline"
+                                style={{ color: '#0062ff', fontWeight: 500, cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/organizations/${orgId}/items?id=${row.itemId}`);
+                                }}
+                              >
                                 {row.itemName}
                               </span>{' '}
                               <span style={{ color: '#9ca3af', fontSize: '12px' }}>
@@ -702,16 +697,52 @@ export function InventoryValuationSummaryPage() {
                               {row.uomName || '-'}
                             </td>
                           );
-                        case 'stockOnHand':
+                        case 'openingStock':
                           return (
                             <td
                               key={colKey}
                               style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                             >
-                              {row.stockOnHand.toFixed(2)}
+                              {(row.openingStock || 0).toFixed(2)}
                             </td>
                           );
-                        case 'inventoryAssetValue':
+                        case 'quantityIn':
+                          return (
+                            <td
+                              key={colKey}
+                              style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                            >
+                              <span
+                                className="hover-underline"
+                                style={{ color: '#0062ff', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward&mode=${appliedFilters.trackingMode}&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`);
+                                }}
+                              >
+                                {(row.quantityIn || 0).toFixed(2)}
+                              </span>
+                            </td>
+                          );
+                        case 'quantityOut':
+                          return (
+                            <td
+                              key={colKey}
+                              style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                            >
+                              <span
+                                className="hover-underline"
+                                style={{ color: '#0062ff', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward&mode=${appliedFilters.trackingMode}&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`);
+                                }}
+                              >
+                                {(row.quantityOut || 0).toFixed(2)}
+                              </span>
+                            </td>
+                          );
+                        case 'closingStock':
                           return (
                             <td
                               key={colKey}
@@ -722,11 +753,7 @@ export function InventoryValuationSummaryPage() {
                                 fontWeight: 600,
                               }}
                             >
-                              ₹{row.inventoryAssetValue < 0 ? '-' : ''}
-                              {Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
+                              {(row.closingStock || 0).toFixed(2)}
                             </td>
                           );
                         default:
@@ -755,32 +782,31 @@ export function InventoryValuationSummaryPage() {
                         </td>
                       );
                     }
-                    if (colKey === 'stockOnHand') {
+                    if (colKey === 'openingStock') {
                       return (
-                        <td
-                          key={colKey}
-                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
-                        >
-                          {totalQty.toFixed(2)}
+                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                          {grandTotalOpening.toFixed(2)}
                         </td>
                       );
                     }
-                    if (colKey === 'inventoryAssetValue') {
+                    if (colKey === 'quantityIn') {
                       return (
-                        <td
-                          key={colKey}
-                          style={{
-                            ...tdStyle,
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            color: '#111827',
-                          }}
-                        >
-                          ₹{totalValue < 0 ? '-' : ''}
-                          {Math.abs(totalValue).toLocaleString('en-IN', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                          {grandTotalIn.toFixed(2)}
+                        </td>
+                      );
+                    }
+                    if (colKey === 'quantityOut') {
+                      return (
+                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                          {grandTotalOut.toFixed(2)}
+                        </td>
+                      );
+                    }
+                    if (colKey === 'closingStock') {
+                      return (
+                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#111827' }}>
+                          {grandTotalClosing.toFixed(2)}
                         </td>
                       );
                     }
@@ -790,7 +816,7 @@ export function InventoryValuationSummaryPage() {
               )}
             </tbody>
           </table>
-          
+
           <Pagination
             pageContext={{
               page: data?.page || page,
@@ -853,3 +879,5 @@ const tdStyle = {
   color: '#111827',
   borderBottom: '1px solid #f3f4f6',
 };
+
+

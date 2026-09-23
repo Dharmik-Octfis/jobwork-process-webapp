@@ -23,6 +23,8 @@ interface ItemSearchableSelectProps {
   portal?: boolean;
   filter?: string;
   renderValue?: (item: Item | null) => React.ReactNode;
+  keepOpenOnSelect?: boolean;
+  showIndicator?: boolean;
 }
 
 export function ItemSearchableSelect({
@@ -39,6 +41,8 @@ export function ItemSearchableSelect({
   portal = false,
   filter,
   renderValue,
+  keepOpenOnSelect = false,
+  showIndicator = false,
 }: ItemSearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -199,7 +203,9 @@ export function ItemSearchableSelect({
       if (focusedIndex >= 0 && focusedIndex < fetchedOptions.length) {
         const opt = fetchedOptions[focusedIndex];
         onChange(opt);
-        setIsOpen(false);
+        if (!keepOpenOnSelect) {
+          setIsOpen(false);
+        }
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -251,6 +257,7 @@ export function ItemSearchableSelect({
         tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         style={{
+          position: 'relative',
           padding: '8px 12px',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--color-border)',
@@ -308,6 +315,21 @@ export function ItemSearchableSelect({
             <ChevronDown size={16} color="var(--color-text-muted)" />
           )}
         </div>
+        {showIndicator && (
+          <span 
+            style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              width: '10px',
+              height: '10px',
+              backgroundColor: '#f97316',
+              borderRadius: '50%',
+              border: '2px solid #fff',
+              zIndex: 1,
+            }}
+          />
+        )}
       </div>
 
       {isOpen &&
@@ -425,7 +447,9 @@ export function ItemSearchableSelect({
                       key={opt.id}
                       onClick={() => {
                         onChange(opt);
-                        setIsOpen(false);
+                        if (!keepOpenOnSelect) {
+                          setIsOpen(false);
+                        }
                       }}
                       style={{
                         padding: '8px 12px',

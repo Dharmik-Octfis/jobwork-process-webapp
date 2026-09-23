@@ -132,6 +132,14 @@ const InventoryValuationSummaryPage = lazyPage(
   () => import('../features/reports/InventoryValuationSummaryPage'),
   'InventoryValuationSummaryPage',
 );
+const StockSummaryReportPage = lazyPage(
+  () => import('../features/reports/StockSummaryReportPage'),
+  'StockSummaryReportPage',
+);
+const StockMovementReportPage = lazyPage(
+  () => import('../features/reports/StockMovementReportPage'),
+  'StockMovementReportPage',
+);
 const InventoryValuationDetailPage = lazyPage(
   () => import('../features/reports/InventoryValuationDetailPage'),
   'InventoryValuationDetailPage',
@@ -380,8 +388,10 @@ export const router = createBrowserRouter([
                 children: [
                   { path: '/organizations/:orgId', element: <DashboardPage /> },
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
+                  { path: '/organizations/:orgId/reports/stock-summary', element: <StockSummaryReportPage /> },
                   { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
                   { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
+                  { path: '/organizations/:orgId/reports/stock-movement', element: <StockMovementReportPage /> },
                   { path: '/organizations/:orgId/reports/fifo-cost-lot-tracking', element: <FifoCostLotTrackingPage /> },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },

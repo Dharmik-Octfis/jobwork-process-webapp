@@ -370,21 +370,21 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               that posted some. A draft is deleted above. */}
           {receipt.status !== 'cancelled' && receipt.status !== 'draft' && (
             <>
-              {!((receipt._count?.billItems ?? 0) > 0) && (
+              {(!receipt.billItems || receipt.billItems.length === 0) && (
                 <button
                   className="action-btn"
                   type="button"
-                  onClick={() => {
-                    navigate(`/organizations/${orgId}/purchases/bills/new?jobReceiptId=${receipt.id}&vendorId=${receipt.processorId}`);
-                  }}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/bills/new?fromJobReceipt=${receipt.id}`)
+                  }
                   style={{
                     padding: '6px 12px',
                     fontSize: 13,
-                    border: '1px solid #d1d5db',
+                    border: '1px solid #0062ff',
                     borderRadius: 4,
-                    background: '#fff',
+                    background: '#0062ff',
                     cursor: 'pointer',
-                    color: '#333',
+                    color: '#fff',
                   }}
                 >
                   <span className="action-btn-text">Convert to Bill</span>

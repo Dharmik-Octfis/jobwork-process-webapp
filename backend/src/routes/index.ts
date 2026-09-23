@@ -42,6 +42,8 @@ import { inventoryValuationRouter } from '../modules/reports/inventory-valuation
 import fifoCostLotTrackingRouter from '../modules/reports/fifo-cost-lot-tracking/fifoCostLotTracking.routes.ts';
 import { approvalProcessRouter } from '../modules/automation/approval-processes/approvalProcess.routes.ts';
 import { approvalsInboxRouter } from '../modules/automation/approval-processes/approvalsInbox.routes.ts';
+import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummary.routes.ts';
+import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
 import { env } from '../config/env.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
@@ -115,6 +117,8 @@ apiRouter.use('/organizations/:orgId/reports/inventory-valuation', inventoryValu
 apiRouter.use('/organizations/:orgId/reports/fifo-cost-lot-tracking', fifoCostLotTrackingRouter);
 apiRouter.use('/organizations/:orgId/automation/approval-processes', approvalProcessRouter);
 apiRouter.use('/organizations/:orgId/approvals', approvalsInboxRouter);
+apiRouter.use('/organizations/:orgId/reports/stock-summary', stockSummaryRouter);
+apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);
 
