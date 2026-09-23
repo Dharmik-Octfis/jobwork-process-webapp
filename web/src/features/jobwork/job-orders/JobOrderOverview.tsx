@@ -17,6 +17,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 
 import { JobOrderFlow } from './JobOrderFlow';
 import { ActivityTabs } from './JobOrderStepDetail';
@@ -437,6 +438,14 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     enabled: Boolean(orgId && id),
   });
 
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'job_orders', id);
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    data?.jobOrder?.status === 'REJECTED' ||
+    (data?.jobOrder as any)?.approvalStatus === 'REJECTED',
+  );
+  const isActionBlocked = isUnderApproval || isRejected;
+
   const steps = useMemo(() => data?.steps ?? [], [data]);
   const activity = useMemo(() => data?.activity ?? [], [data]);
 
@@ -704,12 +713,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             <ActionsMenu
               label={`More actions for ${jobOrder.jobOrderNumber}`}
               actions={[
-                {
-                  key: 'clone',
-                  label: 'Clone',
-                  onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
-                },
-                ...(isClosed
+                ...(isActionBlocked
+                  ? []
+                  : [
+                      {
+                        key: 'clone',
+                        label: 'Clone',
+                        onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
+                      },
+                    ]),
+                ...(isClosed || isActionBlocked
                   ? []
                   : [
                       {
@@ -850,7 +863,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
              so a step at a processor is no reason to withhold it. A closed order
              is: the server refuses those, and a button that only ever 409s is
              worse than no button. */
-          onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
+          onAppend={isClosed || isActionBlocked ? undefined : () => setAddStepsOpen(true)}
         />
 
         <div
@@ -893,6 +906,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           <JobOrderStepDetail
             step={selectedStep}
             activity={stepActivity}
+            isUnderApproval={isActionBlocked}
             onIssue={(step) =>
               navigate(
                 `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,

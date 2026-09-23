@@ -96,13 +96,13 @@ export function ItemComboBox({
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['items-search', orgId, debouncedValue, filter],
+    queryKey: ['items-search', orgId, debouncedValue, filter || 'active'],
     queryFn: ({ pageParam }) =>
       itemsApi.getItems(orgId, {
         search: debouncedValue || undefined,
         perPage: 10,
         page: pageParam,
-        filter,
+        filter: filter || 'active',
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -113,6 +113,13 @@ export function ItemComboBox({
 
   const fetchedOptions = useMemo(() => {
     let options = itemsData?.pages.flatMap((page) => page.results) || [];
+    // Only active items should be available in transaction dropdowns
+    options = options.filter(
+      (opt) =>
+        opt.isActive !== false &&
+        !(opt as any).isPendingApproval &&
+        (opt as any).approvalStatus !== 'Pending Approval',
+    );
     if (excludeItemId) {
       options = options.filter((opt) => opt.id !== excludeItemId);
     }

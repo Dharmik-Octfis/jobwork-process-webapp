@@ -9,6 +9,9 @@ import {
   Save,
   Check,
   AlertCircle,
+  Trash2,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import {
   useApprovalProcess,
@@ -88,6 +91,7 @@ export function ApprovalProcessConfigStudio() {
   const [selectedRuleIndex, setSelectedRuleIndex] = useState<number>(0);
   const [isEditingName, setIsEditingName] = useState(false);
   const [showAdminsModal, setShowAdminsModal] = useState(false);
+  const [ruleIndexToDelete, setRuleIndexToDelete] = useState<number | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null,
@@ -256,13 +260,14 @@ export function ApprovalProcessConfigStudio() {
     }
     setIsEditingName(false);
     setFeedback(null);
+    setRuleIndexToDelete(null);
     setIsEditMode(false);
   };
 
   const handleAddRule = () => {
     const nextOrder = (rules || []).length + 1;
     const newRule: ApprovalProcessRuleConfig = {
-      id: `rule_${Date.now()}`,
+      id: `rule_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name: `Rule ${nextOrder}`,
       ruleOrder: nextOrder,
       criteria: {
@@ -298,6 +303,43 @@ export function ApprovalProcessConfigStudio() {
     const nextRules = [...rules, newRule];
     setRules(nextRules);
     setSelectedRuleIndex(nextRules.length - 1);
+  };
+
+  const handleConfirmDeleteRule = () => {
+    if (ruleIndexToDelete === null) return;
+    if (rules.length <= 1) {
+      setFeedback({ type: 'error', message: 'An approval process must contain at least one rule.' });
+      setRuleIndexToDelete(null);
+      return;
+    }
+
+    const deletedRuleName = rules[ruleIndexToDelete]?.name || `Rule ${ruleIndexToDelete + 1}`;
+    const nextRules = rules.filter((_, idx) => idx !== ruleIndexToDelete);
+
+    // Re-index ruleOrder and sequentially re-number default rule names
+    const reorderedRules = nextRules.map((r, idx) => {
+      const isDefaultName = !r.name || /^Rule\s*\d+$/i.test(r.name.trim());
+      return {
+        ...r,
+        name: isDefaultName ? `Rule ${idx + 1}` : r.name,
+        ruleOrder: idx + 1,
+      };
+    });
+
+    setRules(reorderedRules);
+
+    // Update selectedRuleIndex to point to a valid rule
+    if (selectedRuleIndex >= reorderedRules.length) {
+      setSelectedRuleIndex(reorderedRules.length - 1);
+    } else if (selectedRuleIndex === ruleIndexToDelete) {
+      setSelectedRuleIndex(Math.max(0, Math.min(ruleIndexToDelete, reorderedRules.length - 1)));
+    } else if (selectedRuleIndex > ruleIndexToDelete) {
+      setSelectedRuleIndex(selectedRuleIndex - 1);
+    }
+
+    setRuleIndexToDelete(null);
+    setFeedback({ type: 'success', message: `"${deletedRuleName}" deleted successfully.` });
+    setTimeout(() => setFeedback(null), 3500);
   };
 
   const handleSave = async (andClose = false) => {
@@ -629,15 +671,33 @@ export function ApprovalProcessConfigStudio() {
               {(rules || []).map((rule, idx) => {
                 const isSelected = idx === selectedRuleIndex;
                 return (
-                  <button
+                  <div
                     key={rule.id || idx}
-                    type="button"
-                    className={`ap-sidebar-rule-item ${isSelected ? 'is-active' : ''}`}
-                    onClick={() => setSelectedRuleIndex(idx)}
+                    className={`ap-sidebar-rule-item-wrap ${isSelected ? 'is-active' : ''}`}
                   >
-                    <span className="ap-rule-dot" />
-                    <span className="ap-rule-name">{rule.name || `Rule ${idx + 1}`}</span>
-                  </button>
+                    <button
+                      type="button"
+                      className={`ap-sidebar-rule-item ${isSelected ? 'is-active' : ''}`}
+                      onClick={() => setSelectedRuleIndex(idx)}
+                    >
+                      <span className="ap-rule-dot" />
+                      <span className="ap-rule-name">{rule.name || `Rule ${idx + 1}`}</span>
+                    </button>
+                    {isEditMode && (rules || []).length > 1 && (
+                      <button
+                        type="button"
+                        className="ap-rule-item-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRuleIndexToDelete(idx);
+                        }}
+                        title={`Delete ${rule.name || `Rule ${idx + 1}`}`}
+                        aria-label={`Delete ${rule.name || `Rule ${idx + 1}`}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -676,7 +736,7 @@ export function ApprovalProcessConfigStudio() {
                   )}
                 </div>
 
-                <div className="ap-rule-admins-btn-wrap">
+                <div className="ap-rule-header-actions">
                   <button
                     type="button"
                     className="ap-assign-admins-btn"
@@ -690,12 +750,25 @@ export function ApprovalProcessConfigStudio() {
                       <span className="ap-admins-count">1</span>
                     )}
                   </button>
+
+                  {isEditMode && (rules || []).length > 1 && (
+                    <button
+                      type="button"
+                      className="ap-delete-rule-canvas-btn"
+                      onClick={() => setRuleIndexToDelete(selectedRuleIndex)}
+                      title={`Delete ${activeRule.name || 'this rule'}`}
+                    >
+                      <Trash2 size={15} />
+                      <span>Delete Rule</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* CARD 1: Approval Criteria */}
               <section className="ap-canvas-card">
                 <CriteriaBuilder
+                  orgId={orgId || ''}
                   criteria={activeRule.criteria}
                   fields={fields}
                   onChange={(updatedCriteria) =>
@@ -713,6 +786,7 @@ export function ApprovalProcessConfigStudio() {
               {/* CARD 2: Approval Stages */}
               <section className="ap-canvas-card">
                 <ApprovalStagesList
+                  orgId={orgId}
                   stages={activeRule.stages}
                   fields={fields}
                   members={members}
@@ -731,6 +805,7 @@ export function ApprovalProcessConfigStudio() {
               {/* CARD 3: Final Actions (Dual Branch) */}
               <section className="ap-canvas-card">
                 <ActionCard
+                  orgId={orgId}
                   finalApprovalActions={activeRule.finalApprovalActions || []}
                   rejectionActions={activeRule.rejectionActions || []}
                   fields={fields}
@@ -758,6 +833,74 @@ export function ApprovalProcessConfigStudio() {
           onSave={(id) => setAdminUserId(id)}
           onClose={() => setShowAdminsModal(false)}
         />
+      )}
+
+      {/* Delete Rule Confirmation Modal */}
+      {ruleIndexToDelete !== null && rules[ruleIndexToDelete] && (
+        <div
+          className="ap-modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRuleIndexToDelete(null);
+          }}
+        >
+          <div
+            className="ap-modal ap-delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-rule-title"
+          >
+            <div className="ap-modal-header ap-delete-modal-header">
+              <div className="ap-modal-title-wrap" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="ap-delete-icon-badge">
+                  <AlertTriangle size={18} color="#ef4444" />
+                </div>
+                <h3 id="delete-rule-title" className="ap-modal-title">
+                  Delete Rule
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="ap-icon-button"
+                onClick={() => setRuleIndexToDelete(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="ap-modal-body" style={{ padding: '20px' }}>
+              <p style={{ margin: '0 0 10px', fontSize: '14px', lineHeight: '1.5', color: 'var(--color-text)' }}>
+                Are you sure you want to delete{' '}
+                <strong>
+                  "{rules[ruleIndexToDelete]?.name || `Rule ${ruleIndexToDelete + 1}`}"
+                </strong>
+                ?
+              </p>
+              <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.5', color: 'var(--color-text-muted)' }}>
+                This will remove all configured criteria, approval stages, and final actions associated with this rule.
+              </p>
+            </div>
+
+            <div className="ap-modal-footer">
+              <button
+                type="button"
+                className="ap-button ap-button-ghost"
+                onClick={() => setRuleIndexToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ap-button ap-button-danger ap-delete-confirm-btn"
+                onClick={handleConfirmDeleteRule}
+              >
+                <Trash2 size={14} />
+                <span>Delete Rule</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

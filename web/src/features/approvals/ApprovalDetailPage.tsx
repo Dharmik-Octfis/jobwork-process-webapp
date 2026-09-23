@@ -141,11 +141,42 @@ export const ApprovalDetailPage: React.FC = () => {
     (s) => s.stageId === request.currentStageId || s.id === request.currentStageId,
   );
 
-  const canActOnApproval =
-    (request.status === 'IN_PROGRESS' || request.status === 'PENDING') &&
-    (activeStage?.approvers?.some((a) => a.userId === user?.id && a.status === 'PENDING') ||
-      Boolean(user?.isOwner) ||
-      Boolean(request.isApproverForCurrentUser));
+  const stageMode = request.stages?.[0]?.approvalMode || 'ANYONE';
+  const isAnyoneMode = stageMode === 'ANYONE' || stageMode === 'FIRST_RESPONSE';
+  const isEveryoneMode = stageMode === 'EVERYONE';
+
+  const isRejected = request.status === 'REJECTED';
+  const isPendingOrInProgress = request.status === 'IN_PROGRESS' || request.status === 'PENDING';
+
+  const lastRejection = isRejected
+    ? request.history?.slice().reverse().find((h) => h.eventType === 'REJECTED')
+    : null;
+
+  const userApproverRecords = request.stages
+    ?.flatMap((s) => s.approvers || [])
+    .filter((a) => a.userId === user?.id) || [];
+
+  const hasAlreadyApproved =
+    userApproverRecords.length > 0 &&
+    userApproverRecords.every((a) => a.status === 'APPROVED');
+
+  const isRejecter = Boolean(
+    lastRejection?.actorId && lastRejection.actorId === user?.id,
+  );
+
+  const isAssignedApprover = isPendingOrInProgress
+    ? (isAnyoneMode || isEveryoneMode)
+      ? request.stages?.some((s) => s.approvers?.some((a) => a.userId === user?.id && a.status === 'PENDING'))
+      : activeStage?.approvers?.some((a) => a.userId === user?.id && a.status === 'PENDING')
+    : isRejected
+    ? !hasAlreadyApproved && (isRejecter || userApproverRecords.some((a) => a.status === 'REJECTED' || a.status === 'PENDING'))
+    : false;
+
+  const isRuleAdmin = Boolean(request.processAdminUserIds?.includes(user?.id || ''));
+
+  const canActOnApproval = isRejected
+    ? (!hasAlreadyApproved && (isAssignedApprover || isRejecter)) || isRuleAdmin
+    : isAssignedApprover || isRuleAdmin || Boolean(request.isApproverForCurrentUser);
 
   // Extract snapshot fields filtering out internal system UUIDs and array collections
   const IGNORED_SNAPSHOT_KEYS = new Set([
@@ -229,19 +260,21 @@ export const ApprovalDetailPage: React.FC = () => {
                 }}
               >
                 <CheckCircle size={15} />
-                Approve
+                {isRejected ? 'Reconsider & Approve' : 'Approve'}
               </button>
-              <button
-                type="button"
-                className="btn-banner-reject"
-                onClick={() => {
-                  setErrorMessage(null);
-                  setRejectModalOpen(true);
-                }}
-              >
-                <XCircle size={15} />
-                Reject
-              </button>
+              {!isRejected && (
+                <button
+                  type="button"
+                  className="btn-banner-reject"
+                  onClick={() => {
+                    setErrorMessage(null);
+                    setRejectModalOpen(true);
+                  }}
+                >
+                  <XCircle size={15} />
+                  Reject
+                </button>
+              )}
             </>
           )}
 

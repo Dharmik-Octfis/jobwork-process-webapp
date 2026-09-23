@@ -624,9 +624,30 @@ export class ItemsService {
       });
 
       const paginated = pageSlice(rows, page, perPage);
+      const itemIds = paginated.results.map((r) => r.id);
+      let pendingApprovalItemIds = new Set<string>();
+      if (itemIds.length > 0) {
+        try {
+          const activeReqs = await tx.$queryRaw<Array<{ record_id: string }>>`
+            SELECT "record_id" FROM "approval_requests"
+            WHERE "organization_id" = ${organizationId}::uuid
+              AND "module_id" = ANY(ARRAY['items', 'item']::text[])
+              AND "record_id" = ANY(${itemIds}::text[])
+              AND "status" IN ('PENDING', 'IN_PROGRESS')
+          `;
+          pendingApprovalItemIds = new Set(activeReqs.map((a) => a.record_id));
+        } catch (_e) {
+          // ignore if table does not exist
+        }
+      }
+
       return {
         ...paginated,
-        results: paginated.results.map(toItemResponse),
+        results: paginated.results.map((row) => ({
+          ...toItemResponse(row),
+          isPendingApproval: pendingApprovalItemIds.has(row.id),
+          approvalStatus: pendingApprovalItemIds.has(row.id) ? 'Pending Approval' : null,
+        })),
       };
     });
   }
@@ -646,7 +667,27 @@ export class ItemsService {
       if (!item) {
         throw ApiError.notFound('Item not found');
       }
-      return toItemResponse(item);
+
+      let isPendingApproval = false;
+      try {
+        const activeReqs = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "approval_requests"
+          WHERE "organization_id" = ${organizationId}::uuid
+            AND "module_id" = ANY(ARRAY['items', 'item']::text[])
+            AND "record_id" = ${id}
+            AND "status" IN ('PENDING', 'IN_PROGRESS')
+          LIMIT 1
+        `;
+        isPendingApproval = activeReqs.length > 0;
+      } catch (_e) {
+        // ignore
+      }
+
+      return {
+        ...toItemResponse(item),
+        isPendingApproval,
+        approvalStatus: isPendingApproval ? 'Pending Approval' : null,
+      };
     });
   }
 

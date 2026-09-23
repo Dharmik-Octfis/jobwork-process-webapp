@@ -32,6 +32,7 @@ import { PurchaseOrderComments } from './PurchaseOrderComments';
 import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
 import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 
 function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -150,6 +151,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     queryFn: () => fetchPurchaseOrderById(orgId!, poId),
     enabled: Boolean(orgId && poId),
   });
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'purchase_orders',
+    poId,
+  );
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    po?.status?.toLowerCase() === 'rejected' ||
+    (po as any)?.approvalStatus?.toUpperCase() === 'REJECTED',
+  );
 
   const { data: paymentTerms } = useQuery({
     queryKey: ['paymentTerms', orgId],
@@ -305,27 +317,29 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
-                    );
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Copy size={14} /> Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      navigate(
+                        `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
+                      );
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Copy size={14} /> Clone
+                  </div>
+                )}
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
@@ -409,18 +423,27 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
               <button
-                onClick={() =>
-                  navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`)
+                onClick={() => {
+                  if (isUnderApproval || isRejected) return;
+                  navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`);
+                }}
+                disabled={isUnderApproval || isRejected}
+                title={
+                  isUnderApproval
+                    ? 'Cannot convert to bill while pending approval'
+                    : isRejected
+                    ? 'Cannot convert to bill while rejected'
+                    : undefined
                 }
                 style={{
                   padding: '6px 16px',
-                  background: '#0062ff',
+                  background: isUnderApproval || isRejected ? '#94a3b8' : '#0062ff',
                   color: 'white',
                   border: 'none',
                   borderRadius: '4px',
                   fontSize: '13px',
                   fontWeight: 500,
-                  cursor: 'pointer',
+                  cursor: isUnderApproval || isRejected ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',

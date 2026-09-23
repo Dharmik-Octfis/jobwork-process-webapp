@@ -353,13 +353,31 @@ export function CustomersList() {
                             {customer.companyName || customer.email || 'No email'}
                           </div>
                         </div>
-                        {customer.status === 'inactive' && (
+                        {(customer as any).isPendingApproval ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                color: '#b45309',
+                                marginTop: '4px',
+                                background: '#fef3c7',
+                                border: '1px solid #fde68a',
+                                padding: '2px 6px',
+                                borderRadius: '8px',
+                                letterSpacing: '0.02em',
+                              }}
+                            >
+                              PENDING APPROVAL
+                            </div>
+                          </div>
+                        ) : customer.status === 'inactive' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
                             <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
                               INACTIVE
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>

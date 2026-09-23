@@ -210,13 +210,13 @@ export function MultiSelectItemModal({
   }, [query, columnFilters, advancedConditions, customFieldsDef]);
 
   const { data: itemsPage } = useQuery({
-    queryKey: ['items-modal', orgId, debouncedQuery, page, filter, debouncedFiltersHash],
+    queryKey: ['items-modal', orgId, debouncedQuery, page, filter || 'active', debouncedFiltersHash],
     queryFn: () =>
       itemsApi.getItems(orgId, {
         ...(debouncedQuery ? { search: debouncedQuery } : {}),
         page,
         perPage: 50,
-        filter,
+        filter: filter || 'active',
         fieldFilters: debouncedFiltersHash,
       }),
     enabled: Boolean(orgId) && isOpen,
@@ -356,7 +356,13 @@ export function MultiSelectItemModal({
   });
 
   const shownItems = useMemo(() => {
-    return itemsPage?.results || [];
+    const raw = itemsPage?.results || [];
+    return raw.filter(
+      (item) =>
+        item.isActive !== false &&
+        !(item as any).isPendingApproval &&
+        (item as any).approvalStatus !== 'Pending Approval',
+    );
   }, [
     itemsPage?.results,
     isFilterOpen,

@@ -407,11 +407,27 @@ export function ItemsList() {
                             <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
                               ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
                             </div>
-                            {item.isActive === false && (
+                            {(item as any).isPendingApproval ? (
+                              <div
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  color: '#b45309',
+                                  marginTop: '4px',
+                                  background: '#fef3c7',
+                                  border: '1px solid #fde68a',
+                                  padding: '2px 6px',
+                                  borderRadius: '8px',
+                                  letterSpacing: '0.02em',
+                                }}
+                              >
+                                PENDING APPROVAL
+                              </div>
+                            ) : item.isActive === false ? (
                               <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
                                 INACTIVE
                               </div>
-                            )}
+                            ) : null}
                           </div>
                       </div>
                     ))}

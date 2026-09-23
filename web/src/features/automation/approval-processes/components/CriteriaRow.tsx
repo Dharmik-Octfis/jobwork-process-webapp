@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Loader2 } from 'lucide-react';
 import type { CriteriaCondition, FieldMetadata } from '../types/approvalProcess.types';
 import { getOperatorsForDataType, getDefaultOperator } from '../utils/operatorRegistry';
+import { useFkLookupOptions } from '../api/useFkLookupOptions';
+import { LocalComboBox } from '../../../../components/ui/LocalComboBox';
 
 interface CriteriaRowProps {
+  orgId: string;
   condition: CriteriaCondition;
   index: number;
   fields: FieldMetadata[];
@@ -14,6 +17,7 @@ interface CriteriaRowProps {
 }
 
 export function CriteriaRow({
+  orgId,
   condition,
   index,
   fields,
@@ -28,11 +32,46 @@ export function CriteriaRow({
     [fields, condition.fieldId],
   );
 
+  const fieldPickerOptions = useMemo(
+    () =>
+      (fields || []).map((f) => ({
+        value: f.id,
+        label: `${f.label}${f.isCustom ? ' (Custom)' : ''}`,
+      })),
+    [fields],
+  );
+
   const operators = useMemo(() => {
     return getOperatorsForDataType(selectedField?.dataType);
   }, [selectedField?.dataType]);
 
+  // Fetch related records when the field is a FK lookup
+  const { options: fkOptions, isLoading: fkLoading } = useFkLookupOptions(
+    orgId,
+    selectedField?.relatedModule,
+  );
+
+  const fkComboBoxOptions = useMemo(
+    () => fkOptions.map((opt) => ({ value: opt.id, label: opt.label })),
+    [fkOptions],
+  );
+
+  const picklistComboBoxOptions = useMemo(
+    () => (selectedField?.options || []).map((opt) => ({ value: opt.id, label: opt.label })),
+    [selectedField?.options],
+  );
+
   const handleFieldChange = (newFieldId: string) => {
+    if (!newFieldId) {
+      onChange({
+        ...condition,
+        fieldId: '',
+        operator: 'is',
+        value: '',
+        secondValue: undefined,
+      });
+      return;
+    }
     const field = fields.find((f) => f.id === newFieldId || f.apiName === newFieldId);
     const defaultOp = getDefaultOperator(field?.dataType);
     onChange({
@@ -45,15 +84,19 @@ export function CriteriaRow({
   };
 
   const handleOperatorChange = (newOp: string) => {
+    const isNowBetween = newOp === 'between' || newOp === 'not_between';
+    const isNowEmpty = newOp === 'is_empty' || newOp === 'is_not_empty';
     onChange({
       ...condition,
       operator: newOp,
-      secondValue: newOp === 'between' || newOp === 'not_between' ? '' : undefined,
+      value: isNowEmpty ? '' : condition.value,
+      secondValue: isNowBetween ? (condition.secondValue ?? '') : undefined,
     });
   };
 
   const isBetween = condition.operator === 'between' || condition.operator === 'not_between';
   const isEmptyCheck = condition.operator === 'is_empty' || condition.operator === 'is_not_empty';
+  const isLookup = selectedField?.dataType === 'lookup' && !!selectedField.relatedModule;
 
   return (
     <div
@@ -62,23 +105,19 @@ export function CriteriaRow({
     >
       <span className="ap-criteria-num-badge">{index + 1}</span>
 
-      {/* Field Selector */}
+      {/* Field Selector (Searchable Dropdown) */}
       <div className="ap-criteria-field-col">
-        <select
-          className="ap-select ap-criteria-select"
-          value={condition.fieldId}
-          onChange={(e) => handleFieldChange(e.target.value)}
-          aria-label={`Condition ${index + 1} field`}
-        >
-          <option value="" disabled>
-            Select Field...
-          </option>
-          {(fields || []).map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.label} {f.isCustom ? '(Custom)' : ''}
-            </option>
-          ))}
-        </select>
+        <LocalComboBox
+          options={fieldPickerOptions}
+          value={condition.fieldId || null}
+          onChange={(newFieldId) => {
+            handleFieldChange(newFieldId || '');
+          }}
+          placeholder="Select Field..."
+          portal={true}
+          style={{ width: '100%' }}
+          ariaLabel={`Condition ${index + 1} field`}
+        />
       </div>
 
       {/* Operator Selector */}
@@ -120,6 +159,24 @@ export function CriteriaRow({
               onChange={(e) => onChange({ ...condition, secondValue: e.target.value })}
             />
           </div>
+        ) : /* FK Lookup — Searchable dropdown of active related records */
+        isLookup ? (
+          fkLoading ? (
+            <div className="ap-criteria-fk-loading">
+              <Loader2 size={14} className="ap-spin" />
+              <span>Loading {selectedField.label}…</span>
+            </div>
+          ) : (
+            <LocalComboBox
+              options={fkComboBoxOptions}
+              value={(condition.value as string) || null}
+              onChange={(newVal) => onChange({ ...condition, value: newVal || '' })}
+              placeholder={`Select ${selectedField.label}…`}
+              portal={true}
+              style={{ width: '100%' }}
+              ariaLabel={`Condition ${index + 1} value`}
+            />
+          )
         ) : selectedField?.dataType === 'boolean' || selectedField?.dataType === 'checkbox' ? (
           <select
             className="ap-select ap-criteria-select"
@@ -130,18 +187,15 @@ export function CriteriaRow({
             <option value="false">False / No</option>
           </select>
         ) : selectedField?.options && selectedField.options.length > 0 ? (
-          <select
-            className="ap-select ap-criteria-select"
-            value={(condition.value as string) ?? ''}
-            onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          >
-            <option value="">Select option...</option>
-            {(selectedField.options || []).map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <LocalComboBox
+            options={picklistComboBoxOptions}
+            value={(condition.value as string) || null}
+            onChange={(newVal) => onChange({ ...condition, value: newVal || '' })}
+            placeholder="Select option..."
+            portal={true}
+            style={{ width: '100%' }}
+            ariaLabel={`Condition ${index + 1} value`}
+          />
         ) : selectedField?.dataType === 'date' || selectedField?.dataType === 'datetime' ? (
           <input
             type={selectedField.dataType === 'datetime' ? 'datetime-local' : 'date'}
@@ -166,9 +220,10 @@ export function CriteriaRow({
           <input
             type="text"
             className="ap-input ap-criteria-input"
-            placeholder="Type value..."
+            placeholder={condition.fieldId ? 'Type value...' : 'Select a field first...'}
             value={(condition.value as string) ?? ''}
             onChange={(e) => onChange({ ...condition, value: e.target.value })}
+            disabled={!condition.fieldId}
           />
         )}
       </div>

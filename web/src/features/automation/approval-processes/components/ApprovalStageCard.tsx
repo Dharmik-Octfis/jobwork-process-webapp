@@ -17,6 +17,7 @@ export interface AssignedUserInOtherStage {
 }
 
 interface ApprovalStageCardProps {
+  orgId?: string;
   stage: ApprovalStageConfig;
   index: number;
   totalStages: number;
@@ -31,6 +32,7 @@ interface ApprovalStageCardProps {
 }
 
 export function ApprovalStageCard({
+  orgId,
   stage,
   index,
   totalStages,
@@ -311,6 +313,7 @@ export function ApprovalStageCard({
 
       {addingAction && (
         <ActionConfigurationModal
+          orgId={orgId}
           actionType="UPDATE_FIELDS"
           fields={fields}
           members={members}

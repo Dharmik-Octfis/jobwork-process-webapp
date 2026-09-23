@@ -131,7 +131,9 @@ export function CreatePurchaseOrder() {
     queryKey: ['vendors', orgId],
     queryFn: () => fetchVendors(orgId!),
   });
-  const vendors = vendorsPage?.results || [];
+  const vendors = (vendorsPage?.results || []).filter(
+    (v) => v.status === 'active' || (existingPo && existingPo.vendorId === v.id),
+  );
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],

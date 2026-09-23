@@ -10,6 +10,7 @@ import { validateCriteriaPattern } from '../utils/patternValidator';
 import { getDefaultOperator } from '../utils/operatorRegistry';
 
 interface CriteriaBuilderProps {
+  orgId: string;
   criteria: ApprovalCriteria;
   fields: FieldMetadata[];
   onChange: (updated: ApprovalCriteria) => void;
@@ -34,7 +35,7 @@ function isConditionComplete(c: CriteriaCondition): boolean {
   return true;
 }
 
-export function CriteriaBuilder({ criteria, fields, onChange }: CriteriaBuilderProps) {
+export function CriteriaBuilder({ orgId, criteria, fields, onChange }: CriteriaBuilderProps) {
   const [isPatternDirty, setIsPatternDirty] = useState(false);
   const [showValidationBanner, setShowValidationBanner] = useState(false);
 
@@ -158,6 +159,7 @@ export function CriteriaBuilder({ criteria, fields, onChange }: CriteriaBuilderP
           conditions.map((condition, index) => (
             <CriteriaRow
               key={condition.id || index}
+              orgId={orgId}
               condition={condition}
               index={index}
               fields={fields}

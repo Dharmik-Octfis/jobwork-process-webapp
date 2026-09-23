@@ -254,6 +254,7 @@ export interface ApprovalRequestDetails {
   currentStageName?: string;
   requesterId: string | null;
   requesterName?: string;
+  processAdminUserIds?: string[];
   submittedAt: string;
   completedAt: string | null;
   stages: Array<{

@@ -18,6 +18,7 @@ interface Props {
   step: OverviewStep;
   /** This step's documents only — the caller has already filtered by `stepId`. */
   activity: ActivityEvent[];
+  isUnderApproval?: boolean;
   onIssue: (step: OverviewStep) => void;
   onReceive: (step: OverviewStep) => void;
   onComplete?: (step: OverviewStep) => void;
@@ -92,6 +93,7 @@ const columnLabel: React.CSSProperties = {
 export function JobOrderStepDetail({
   step,
   activity,
+  isUnderApproval = false,
   onIssue,
   onReceive,
   onComplete,
@@ -109,6 +111,8 @@ export function JobOrderStepDetail({
   const settled = step.status === 'completed' || step.status === 'short_closed';
 
   const reworkPending = toNumber(step.totals.reworkQty) > 0;
+
+  const canExecuteIssue = step.canIssue && !isUnderApproval;
 
   return (
     <section style={{ border: '1px solid #eef0f3', borderRadius: 10, background: '#fff' }}>
@@ -147,23 +151,28 @@ export function JobOrderStepDetail({
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {!step.canIssue && (
+          {isUnderApproval ? (
+            <span style={{ fontSize: 11, color: '#b45309', maxWidth: 320, fontWeight: 500 }}>
+              Job Order is pending approval. Actions are locked.
+            </span>
+          ) : !step.canIssue ? (
             <span style={{ fontSize: 11, color: '#94a3b8', maxWidth: 320 }}>
               {/* 🔴 The REASON, not just a disabled button. */}
               {step.blockedReason ?? 'This step has nothing listed to issue.'}
             </span>
-          )}
+          ) : null}
           <button
             className="action-btn"
             type="button"
             onClick={() => onIssue(step)}
-            disabled={!step.canIssue}
+            disabled={!canExecuteIssue}
+            title={isUnderApproval ? 'Cannot issue while pending approval' : undefined}
             style={{
               ...actionButton,
-              background: step.canIssue ? '#0062ff' : '#f1f5f9',
-              color: step.canIssue ? '#fff' : '#94a3b8',
+              background: canExecuteIssue ? '#0062ff' : '#f1f5f9',
+              color: canExecuteIssue ? '#fff' : '#94a3b8',
               border: 'none',
-              cursor: step.canIssue ? 'pointer' : 'not-allowed',
+              cursor: canExecuteIssue ? 'pointer' : 'not-allowed',
             }}
           >
             <Send size={14} /> <span className="action-btn-text">Issue</span>
@@ -173,11 +182,14 @@ export function JobOrderStepDetail({
               className="action-btn"
               type="button"
               onClick={() => onReceive(step)}
+              disabled={isUnderApproval}
+              title={isUnderApproval ? 'Cannot receive while pending approval' : undefined}
               style={{
                 ...actionButton,
-                background: '#fff',
-                color: '#186337',
-                border: '1px solid #186337',
+                background: isUnderApproval ? '#f1f5f9' : '#fff',
+                color: isUnderApproval ? '#94a3b8' : '#186337',
+                border: isUnderApproval ? '1px solid #cbd5e1' : '1px solid #186337',
+                cursor: isUnderApproval ? 'not-allowed' : 'pointer',
               }}
             >
               <PackageCheck size={14} /> <span className="action-btn-text">Receive</span>
@@ -187,11 +199,14 @@ export function JobOrderStepDetail({
             <button
               type="button"
               onClick={() => onComplete(step)}
+              disabled={isUnderApproval}
+              title={isUnderApproval ? 'Cannot complete step while pending approval' : undefined}
               style={{
                 ...actionButton,
-                background: '#fff',
-                color: '#2563eb',
-                border: '1px solid #2563eb',
+                background: isUnderApproval ? '#f1f5f9' : '#fff',
+                color: isUnderApproval ? '#94a3b8' : '#2563eb',
+                border: isUnderApproval ? '1px solid #cbd5e1' : '1px solid #2563eb',
+                cursor: isUnderApproval ? 'not-allowed' : 'pointer',
               }}
             >
               <Check size={14} /> Mark as complete

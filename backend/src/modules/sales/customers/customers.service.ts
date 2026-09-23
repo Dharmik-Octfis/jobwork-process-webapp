@@ -93,7 +93,32 @@ export async function getCustomersList(organizationId: string, opts: ListQuery) 
       include: { contactPersons: true, addresses: true },
     });
 
-    return pageSlice(rows, page, perPage);
+    const paginated = pageSlice(rows, page, perPage);
+    const customerIds = paginated.results.map((r) => r.id);
+    let pendingApprovalCustomerIds = new Set<string>();
+    if (customerIds.length > 0) {
+      try {
+        const activeReqs = await tx.$queryRaw<Array<{ record_id: string }>>`
+          SELECT "record_id" FROM "approval_requests"
+          WHERE "organization_id" = ${organizationId}::uuid
+            AND "module_id" = ANY(ARRAY['customers', 'customer']::text[])
+            AND "record_id" = ANY(${customerIds}::text[])
+            AND "status" IN ('PENDING', 'IN_PROGRESS')
+        `;
+        pendingApprovalCustomerIds = new Set(activeReqs.map((a) => a.record_id));
+      } catch (_e) {
+        // ignore
+      }
+    }
+
+    return {
+      ...paginated,
+      results: paginated.results.map((r) => ({
+        ...r,
+        isPendingApproval: pendingApprovalCustomerIds.has(r.id),
+        approvalStatus: pendingApprovalCustomerIds.has(r.id) ? 'Pending Approval' : null,
+      })),
+    };
   });
 }
 
@@ -204,12 +229,34 @@ export async function createNewCustomer(
 }
 
 export async function getCustomerById(organizationId: string, id: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.customer.findFirst({
+  return runAsTenant(organizationId, async (tx) => {
+    const customer = await tx.customer.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: { contactPersons: true, addresses: true },
-    }),
-  );
+    });
+    if (!customer) return null;
+
+    let isPendingApproval = false;
+    try {
+      const activeReqs = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "approval_requests"
+        WHERE "organization_id" = ${organizationId}::uuid
+          AND "module_id" = ANY(ARRAY['customers', 'customer']::text[])
+          AND "record_id" = ${id}
+          AND "status" IN ('PENDING', 'IN_PROGRESS')
+        LIMIT 1
+      `;
+      isPendingApproval = activeReqs.length > 0;
+    } catch (_e) {
+      // ignore
+    }
+
+    return {
+      ...customer,
+      isPendingApproval,
+      approvalStatus: isPendingApproval ? 'Pending Approval' : null,
+    };
+  });
 }
 
 export async function updateCustomerById(

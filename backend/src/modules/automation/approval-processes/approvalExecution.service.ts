@@ -139,7 +139,7 @@ export class ApprovalExecutionService {
   }
 
   /**
-   * Updates the status column of the underlying CRM record when an approval lifecycle event occurs.
+   * Updates the status / is_active column of the underlying CRM record when an approval lifecycle event occurs.
    * Silently fails so approval engine errors never block the parent operation.
    */
   private async updateRecordStatus(
@@ -150,30 +150,45 @@ export class ApprovalExecutionService {
   ): Promise<void> {
     try {
       const normalized = moduleId.trim().toLowerCase();
-      const tableName = MODULE_TABLE_MAP[normalized];
+      let tableName = MODULE_TABLE_MAP[normalized];
       if (!tableName) {
         // Try to infer via aliases
         const aliases = await this.resolveAllModuleAliases(normalized);
         const resolved = aliases.find((a) => MODULE_TABLE_MAP[a]);
-        if (!resolved) return;
-        const resolvedTable = MODULE_TABLE_MAP[resolved]!;
-        await runAsTenant(organizationId, async (tx) => {
+        if (resolved) {
+          tableName = MODULE_TABLE_MAP[resolved]!;
+        }
+      }
+      if (!tableName) return;
+
+      await runAsTenant(organizationId, async (tx) => {
+        if (tableName === 'items') {
+          // Items table uses is_active (boolean). When approved => true; when rejected or pending => false
+          const isActive = newStatus === APPROVAL_STATUS_APPROVED;
           await tx.$executeRawUnsafe(
-            `UPDATE "${resolvedTable}" SET "status" = $1, "updated_at" = now() WHERE "id" = $2::uuid AND "organization_id" = $3::uuid`,
+            `UPDATE "items" SET "is_active" = $1, "updated_at" = now() WHERE "id" = $2::uuid AND "organization_id" = $3::uuid`,
+            isActive,
+            recordId,
+            organizationId,
+          );
+        } else if (tableName === 'vendors' || tableName === 'customers') {
+          // Vendors / Customers table uses status ('active' | 'inactive')
+          const statusValue = newStatus === APPROVAL_STATUS_APPROVED ? 'active' : 'inactive';
+          await tx.$executeRawUnsafe(
+            `UPDATE "${tableName}" SET "status" = $1, "updated_at" = now() WHERE "id" = $2::uuid AND "organization_id" = $3::uuid`,
+            statusValue,
+            recordId,
+            organizationId,
+          );
+        } else {
+          // Other tables (purchase_orders, bills, job_orders, etc.) have a status VARCHAR column
+          await tx.$executeRawUnsafe(
+            `UPDATE "${tableName}" SET "status" = $1, "updated_at" = now() WHERE "id" = $2::uuid AND "organization_id" = $3::uuid`,
             newStatus,
             recordId,
             organizationId,
           );
-        });
-        return;
-      }
-      await runAsTenant(organizationId, async (tx) => {
-        await tx.$executeRawUnsafe(
-          `UPDATE "${tableName}" SET "status" = $1, "updated_at" = now() WHERE "id" = $2::uuid AND "organization_id" = $3::uuid`,
-          newStatus,
-          recordId,
-          organizationId,
-        );
+        }
       });
     } catch (err) {
       console.error(
@@ -243,6 +258,19 @@ export class ApprovalExecutionService {
       const fieldMap = new Map(fields.map((f) => [f.id, f]));
 
       for (const proc of processes) {
+        // If the user who created or updated the record is a Process Admin (Rule Admin),
+        // approval is not required for Jay, Dharmik, or any other approver.
+        if (actorUserId) {
+          const adminRows = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "approval_process_admins"
+            WHERE "process_id" = ${proc.id}::uuid
+              AND "user_id" = ${actorUserId}::uuid
+          `;
+          if (adminRows.length > 0) {
+            await this.updateRecordStatus(organizationId, normalizedModule, recordId, APPROVAL_STATUS_APPROVED);
+            return { triggered: false };
+          }
+        }
         // Match trigger type — DB stores CREATE_ONLY / EDIT_ONLY / CREATE_OR_EDIT
         const pTrigger = proc.trigger_type?.toUpperCase() || '';
         // CREATE_OR_EDIT (or legacy BOTH) always matches
@@ -329,8 +357,10 @@ export class ApprovalExecutionService {
 
           const requestId = reqRows[0]!.id;
 
-          // Create immutable request stages and resolve initial stage approvers
-          let firstStageInstanceId: string | null = null;
+          // Determine approval mode (ANYONE, EVERYONE, or SEQUENTIAL)
+          const firstMode = stages[0]?.approval_mode || 'ANYONE';
+          const isSequential = firstMode === 'SEQUENTIAL';
+
           for (let i = 0; i < stages.length; i++) {
             const stg = stages[i]!;
             const stgRows = await tx.$queryRaw<Array<{ id: string }>>`
@@ -340,22 +370,26 @@ export class ApprovalExecutionService {
               ) VALUES (
                 ${organizationId}::uuid, ${requestId}::uuid, ${stg.id}::uuid,
                 ${stg.stage_order}, ${stg.name},
-                ${i === 0 ? 'PENDING' : 'PENDING'},
+                'PENDING',
                 ${stg.approval_mode}, ${new Date()}
               )
               RETURNING "id"
             `;
 
+            const stageInstanceId = stgRows[0]!.id;
+
             if (i === 0) {
-              firstStageInstanceId = stgRows[0]!.id;
               // Set current stage on request
               await tx.$executeRaw`
                 UPDATE "approval_requests"
                 SET "current_stage_id" = ${stg.id}::uuid
                 WHERE "id" = ${requestId}::uuid
               `;
+            }
 
-              // Resolve concrete approver user IDs for Stage 1
+            // For ANYONE and EVERYONE (parallel), resolve approvers for ALL stages upfront.
+            // For SEQUENTIAL, only resolve approvers for Stage 1 upfront.
+            if (!isSequential || i === 0) {
               const config =
                 typeof stg.approver_config === 'string'
                   ? JSON.parse(stg.approver_config)
@@ -375,7 +409,7 @@ export class ApprovalExecutionService {
                   INSERT INTO "approval_request_approvers" (
                     "organization_id", "request_stage_id", "user_id", "status"
                   ) VALUES (
-                    ${organizationId}::uuid, ${firstStageInstanceId}::uuid,
+                    ${organizationId}::uuid, ${stageInstanceId}::uuid,
                     ${appr.userId}::uuid, 'PENDING'
                   )
                 `;
@@ -416,7 +450,7 @@ export class ApprovalExecutionService {
     requestId: string,
     approverUserId: string,
     comment?: string,
-    ipAddress?: string,
+    _ipAddress?: string,
     _userAgent?: string,
   ): Promise<{ success: boolean; requestStatus: string }> {
     return runAsTenant(organizationId, async (tx) => {
@@ -443,37 +477,144 @@ export class ApprovalExecutionService {
 
       const request = reqRows[0];
       if (!request) throw ApiError.notFound('Approval request not found.');
-      if (request.status !== 'IN_PROGRESS' && request.status !== 'PENDING') {
+      if (request.status !== 'IN_PROGRESS' && request.status !== 'PENDING' && request.status !== 'REJECTED') {
         throw new ApiError(400, `Cannot approve a request with status ${request.status}.`);
       }
 
-      // Find current stage instance
-      const stageRows = await tx.$queryRaw<
+      // If request was previously REJECTED, only the rejecting approver (Dharmik),
+      // an unapproved approver, or a Rule Admin can reconsider and approve it directly.
+      // An approver who already approved (Jay) has no reconsideration option.
+      if (request.status === 'REJECTED') {
+        const approverRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+          SELECT ap."id", ap."status" FROM "approval_request_approvers" ap
+          JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
+          WHERE rs."request_id" = ${requestId}::uuid
+            AND ap."user_id" = ${approverUserId}::uuid
+        `;
+
+        const lastRejectHistory = await tx.$queryRaw<Array<{ actor_id: string }>>`
+          SELECT "actor_id" FROM "approval_history"
+          WHERE "request_id" = ${requestId}::uuid AND "event_type" = 'REJECTED'
+          ORDER BY "created_at" DESC
+          LIMIT 1
+        `;
+
+        const isRejecter = lastRejectHistory[0]?.actor_id === approverUserId;
+        const hasUnapprovedRecord = approverRows.some((a) => a.status !== 'APPROVED');
+
+        const adminRow = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "approval_process_admins"
+          WHERE "process_id" = ${request.process_id}::uuid
+            AND "user_id" = ${approverUserId}::uuid
+        `;
+
+        const isRuleAdmin = adminRow.length > 0;
+
+        if (!isRejecter && !hasUnapprovedRecord && !isRuleAdmin) {
+          throw new ApiError(403, 'You have already approved this request. Reconsideration is only available for the rejecting approver or process admin.');
+        }
+
+        // Mark request as FINAL_APPROVED
+        await tx.$executeRaw`
+          UPDATE "approval_requests"
+          SET "status" = 'FINAL_APPROVED', "completed_at" = now(), "current_stage_id" = null
+          WHERE "id" = ${requestId}::uuid
+        `;
+
+        // Mark stages as APPROVED
+        await tx.$executeRaw`
+          UPDATE "approval_request_stages"
+          SET "status" = 'APPROVED', "completed_at" = now()
+          WHERE "request_id" = ${requestId}::uuid
+        `;
+
+        // Mark any non-approved approver records as APPROVED
+        await tx.$executeRaw`
+          UPDATE "approval_request_approvers"
+          SET "status" = 'APPROVED', "action_taken_at" = now(), "comment" = ${comment || 'Reconsidered and approved.'}
+          WHERE "request_stage_id" IN (
+            SELECT "id" FROM "approval_request_stages" WHERE "request_id" = ${requestId}::uuid
+          ) AND "status" != 'APPROVED'
+        `;
+
+        // Update the underlying CRM record status to 'Approved'
+        await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+
+        // Execute Final Actions
+        const actions = await tx.$queryRaw<
+          Array<{
+            id: string;
+            action_type: string;
+            trigger_event: string;
+            action_config: any;
+          }>
+        >`
+          SELECT "id", "action_type", "trigger_event", "action_config"
+          FROM "approval_actions"
+          WHERE "rule_id" = ${request.rule_id}::uuid
+            AND "trigger_event" = 'FINAL_APPROVAL'
+            AND "is_deleted" = false
+        `;
+
+        const parsedActions: ApprovalActionInput[] = actions.map((a) => ({
+          id: a.id,
+          triggerEvent: 'FINAL_APPROVAL',
+          actionType: a.action_type as any,
+          actionConfig:
+            typeof a.action_config === 'string'
+              ? JSON.parse(a.action_config)
+              : a.action_config || {},
+        }));
+
+        const recordData =
+          typeof request.record_snapshot === 'string'
+            ? JSON.parse(request.record_snapshot)
+            : request.record_snapshot || {};
+
+        await approvalActionService.executeActions(
+          tx,
+          organizationId,
+          requestId,
+          parsedActions,
+          recordData,
+          'FINAL_APPROVAL',
+          request.module_id,
+          request.record_id,
+          approverUserId,
+        );
+
+        await tx.$executeRaw`
+          INSERT INTO "approval_history" (
+            "organization_id", "request_id", "event_type", "actor_id",
+            "previous_status", "new_status", "comment"
+          ) VALUES (
+            ${organizationId}::uuid, ${requestId}::uuid, 'APPROVED',
+            ${approverUserId}::uuid, 'REJECTED', 'FINAL_APPROVED',
+            ${comment || 'Reconsidered and approved. Record reactivated.'}
+          )
+        `;
+
+        return { success: true, requestStatus: 'FINAL_APPROVED' };
+      }
+
+      // Check if user is an approver on any stage of this request, or an admin/owner
+      const approverRows = await tx.$queryRaw<
         Array<{
           id: string;
+          request_stage_id: string;
           stage_id: string;
+          stage_name: string;
           stage_order: number;
-          name: string;
           approval_mode: string;
           status: string;
         }>
       >`
-        SELECT "id", "stage_id", "stage_order", "name", "approval_mode", "status"
-        FROM "approval_request_stages"
-        WHERE "request_id" = ${requestId}::uuid AND "stage_id" = ${request.current_stage_id}::uuid
-        LIMIT 1
-      `;
-
-      const currentStageInstance = stageRows[0];
-      if (!currentStageInstance) {
-        throw new ApiError(400, 'Active approval stage instance not found.');
-      }
-
-      // Verify user is an approver or admin
-      const approverRow = await tx.$queryRaw<Array<{ id: string; status: string }>>`
-        SELECT "id", "status" FROM "approval_request_approvers"
-        WHERE "request_stage_id" = ${currentStageInstance.id}::uuid
-          AND "user_id" = ${approverUserId}::uuid
+        SELECT ap."id", ap."request_stage_id", rs."stage_id", rs."name" as "stage_name",
+               rs."stage_order", rs."approval_mode", ap."status"
+        FROM "approval_request_approvers" ap
+        JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
+        WHERE rs."request_id" = ${requestId}::uuid
+          AND ap."user_id" = ${approverUserId}::uuid
       `;
 
       const adminRow = await tx.$queryRaw<Array<{ id: string }>>`
@@ -486,156 +627,79 @@ export class ApprovalExecutionService {
         where: { organizationId, userId: approverUserId, isOwner: true, isDeleted: false },
       });
 
-      if (approverRow.length === 0 && adminRow.length === 0 && !isOwner) {
-        throw new ApiError(403, 'You are not authorized to approve this stage.');
+      if (approverRows.length === 0 && adminRow.length === 0 && !isOwner) {
+        throw new ApiError(403, 'You are not authorized to approve this request.');
       }
 
-      // Update approver status
-      if (approverRow.length > 0) {
-        await tx.$executeRaw`
-          UPDATE "approval_request_approvers"
-          SET "status" = 'APPROVED',
-              "action_taken_at" = now(),
-              "comment" = ${comment || null}
-          WHERE "id" = ${approverRow[0]!.id}::uuid
-        `;
-      }
-
-      // Check if stage is satisfied based on approval_mode
-      let stageCompleted = false;
-      if (
-        currentStageInstance.approval_mode === 'ANYONE' ||
-        currentStageInstance.approval_mode === 'FIRST_RESPONSE' ||
-        adminRow.length > 0 ||
-        isOwner
-      ) {
-        stageCompleted = true;
-      } else if (currentStageInstance.approval_mode === 'EVERYONE') {
-        const remaining = await tx.$queryRaw<Array<{ count: number }>>`
-          SELECT count(*)::int as "count" FROM "approval_request_approvers"
-          WHERE "request_stage_id" = ${currentStageInstance.id}::uuid
-            AND "status" = 'PENDING'
-        `;
-        stageCompleted = (remaining[0]?.count ?? 0) === 0;
-      } else {
-        stageCompleted = true;
-      }
-
-      // Log history
-      await tx.$executeRaw`
-        INSERT INTO "approval_history" (
-          "organization_id", "request_id", "event_type", "actor_id",
-          "previous_status", "new_status", "comment", "metadata"
-        ) VALUES (
-          ${organizationId}::uuid, ${requestId}::uuid, 'APPROVED',
-          ${approverUserId}::uuid, 'IN_PROGRESS', 'IN_PROGRESS',
-          ${comment || `Stage "${currentStageInstance.name}" approved.`},
-          ${JSON.stringify({ stageId: currentStageInstance.stage_id, stageName: currentStageInstance.name, ip: ipAddress })}::jsonb
-        )
-      `;
-
-      if (!stageCompleted) {
-        return { success: true, requestStatus: 'IN_PROGRESS' };
-      }
-
-      // Stage completed! Mark stage APPROVED
-      await tx.$executeRaw`
-        UPDATE "approval_request_stages"
-        SET "status" = 'APPROVED', "completed_at" = now()
-        WHERE "id" = ${currentStageInstance.id}::uuid
-      `;
-
-      // Check for next stage
-      const nextStageRows = await tx.$queryRaw<
+      // Load all request stages
+      const allStageRows = await tx.$queryRaw<
         Array<{
           id: string;
           stage_id: string;
           stage_order: number;
           name: string;
           approval_mode: string;
+          status: string;
         }>
       >`
-        SELECT "id", "stage_id", "stage_order", "name", "approval_mode"
+        SELECT "id", "stage_id", "stage_order", "name", "approval_mode", "status"
         FROM "approval_request_stages"
         WHERE "request_id" = ${requestId}::uuid
-          AND "stage_order" > ${currentStageInstance.stage_order}
-        ORDER BY "stage_order" ASC LIMIT 1
+        ORDER BY "stage_order" ASC
       `;
+
+      const approvalMode = allStageRows[0]?.approval_mode || 'ANYONE';
+
+      // Update user's approver record(s) to APPROVED
+      for (const appr of approverRows) {
+        if (appr.status === 'PENDING') {
+          await tx.$executeRaw`
+            UPDATE "approval_request_approvers"
+            SET "status" = 'APPROVED',
+                "action_taken_at" = now(),
+                "comment" = ${comment || null}
+            WHERE "id" = ${appr.id}::uuid
+          `;
+        }
+      }
 
       const recordData =
         typeof request.record_snapshot === 'string'
           ? JSON.parse(request.record_snapshot)
           : request.record_snapshot || {};
 
-      if (nextStageRows.length > 0) {
-        // Move to next stage
-        const nextStage = nextStageRows[0]!;
+      const isRuleAdmin = adminRow.length > 0;
+
+      // ----------------------------------------------------------------------
+      // 1. "ANYONE" Mode OR Rule Admin Override:
+      // If user is a Rule Admin (Process Admin), approval is not required for
+      // Jay, Dharmik, or any remaining approvers — the process is immediately approved.
+      // ----------------------------------------------------------------------
+      if (isRuleAdmin || approvalMode === 'ANYONE' || approvalMode === 'FIRST_RESPONSE') {
+        // Mark all request stages APPROVED
         await tx.$executeRaw`
-          UPDATE "approval_requests"
-          SET "current_stage_id" = ${nextStage.stage_id}::uuid
-          WHERE "id" = ${requestId}::uuid
+          UPDATE "approval_request_stages"
+          SET "status" = 'APPROVED', "completed_at" = now()
+          WHERE "request_id" = ${requestId}::uuid
         `;
 
-        // Fetch stage definition to resolve approvers
-        const stageDef = await tx.$queryRaw<
-          Array<{
-            approver_type: string;
-            approver_config: any;
-          }>
-        >`
-          SELECT "approver_type", "approver_config"
-          FROM "approval_stages"
-          WHERE "id" = ${nextStage.stage_id}::uuid
-        `;
-
-        if (stageDef.length > 0) {
-          const config =
-            typeof stageDef[0]!.approver_config === 'string'
-              ? JSON.parse(stageDef[0]!.approver_config)
-              : stageDef[0]!.approver_config || {};
-
-          const resolved = await approverResolverService.resolveApprovers(
-            tx,
-            organizationId,
-            stageDef[0]!.approver_type as any,
-            config,
-            recordData,
-          );
-
-          for (const appr of resolved) {
-            await tx.$executeRaw`
-              INSERT INTO "approval_request_approvers" (
-                "organization_id", "request_stage_id", "user_id", "status"
-              ) VALUES (
-                ${organizationId}::uuid, ${nextStage.id}::uuid,
-                ${appr.userId}::uuid, 'PENDING'
-              )
-            `;
-          }
-        }
-
+        // Mark all pending approvers APPROVED
         await tx.$executeRaw`
-          INSERT INTO "approval_history" (
-            "organization_id", "request_id", "event_type", "actor_id",
-            "previous_status", "new_status", "comment", "metadata"
-          ) VALUES (
-            ${organizationId}::uuid, ${requestId}::uuid, 'STAGE_STARTED',
-            null, 'IN_PROGRESS', 'IN_PROGRESS',
-            ${`Advanced to Stage "${nextStage.name}".`},
-            ${JSON.stringify({ stageId: nextStage.stage_id, stageName: nextStage.name })}::jsonb
-          )
+          UPDATE "approval_request_approvers"
+          SET "status" = 'APPROVED', "action_taken_at" = now(), "comment" = ${comment || (isRuleAdmin ? 'Approved by Process Admin (Rule Admin override).' : null)}
+          WHERE "request_stage_id" IN (
+            SELECT "id" FROM "approval_request_stages" WHERE "request_id" = ${requestId}::uuid
+          ) AND "status" = 'PENDING'
         `;
 
-        return { success: true, requestStatus: 'IN_PROGRESS' };
-      } else {
-        // Final stage approved! Mark request FINAL_APPROVED
+        // Mark request as FINAL_APPROVED
         await tx.$executeRaw`
           UPDATE "approval_requests"
           SET "status" = 'FINAL_APPROVED', "completed_at" = now(), "current_stage_id" = null
           WHERE "id" = ${requestId}::uuid
         `;
 
-        // Update the underlying CRM record status to 'Approved'
+        // Update underlying CRM record to 'Approved'
         await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
 
         // Execute Final Actions
@@ -683,12 +747,279 @@ export class ApprovalExecutionService {
           ) VALUES (
             ${organizationId}::uuid, ${requestId}::uuid, 'ACTION_EXECUTED',
             ${approverUserId}::uuid, 'IN_PROGRESS', 'FINAL_APPROVED',
-            'All stages completed. Final approval actions executed.'
+            ${isRuleAdmin ? 'Approved by Process Admin (Rule Admin override). Approval not required for remaining approvers.' : 'Approved (Anyone from list condition satisfied). All final actions executed.'}
           )
         `;
 
         return { success: true, requestStatus: 'FINAL_APPROVED' };
       }
+
+      // ----------------------------------------------------------------------
+      // 2. "EVERYONE" Mode: All members in all stages must approve (in parallel)
+      // ----------------------------------------------------------------------
+      if (approvalMode === 'EVERYONE') {
+        const remainingApprovers = await tx.$queryRaw<Array<{ count: number }>>`
+          SELECT count(*)::int as "count"
+          FROM "approval_request_approvers" ap
+          JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
+          WHERE rs."request_id" = ${requestId}::uuid
+            AND ap."status" = 'PENDING'
+        `;
+
+        const isAllDone = (remainingApprovers[0]?.count ?? 0) === 0;
+
+        await tx.$executeRaw`
+          INSERT INTO "approval_history" (
+            "organization_id", "request_id", "event_type", "actor_id",
+            "previous_status", "new_status", "comment"
+          ) VALUES (
+            ${organizationId}::uuid, ${requestId}::uuid, 'APPROVED',
+            ${approverUserId}::uuid, 'IN_PROGRESS', 'IN_PROGRESS',
+            ${comment || 'Approved. Waiting for remaining approvers in list.'}
+          )
+        `;
+
+        if (!isAllDone) {
+          return { success: true, requestStatus: 'IN_PROGRESS' };
+        }
+
+        // All approvers finished! Complete request
+        await tx.$executeRaw`
+          UPDATE "approval_request_stages"
+          SET "status" = 'APPROVED', "completed_at" = now()
+          WHERE "request_id" = ${requestId}::uuid
+        `;
+
+        await tx.$executeRaw`
+          UPDATE "approval_requests"
+          SET "status" = 'FINAL_APPROVED', "completed_at" = now(), "current_stage_id" = null
+          WHERE "id" = ${requestId}::uuid
+        `;
+
+        await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+
+        // Execute Final Actions
+        const actions = await tx.$queryRaw<
+          Array<{
+            id: string;
+            action_type: string;
+            trigger_event: string;
+            action_config: any;
+          }>
+        >`
+          SELECT "id", "action_type", "trigger_event", "action_config"
+          FROM "approval_actions"
+          WHERE "rule_id" = ${request.rule_id}::uuid
+            AND "trigger_event" = 'FINAL_APPROVAL'
+            AND "is_deleted" = false
+        `;
+
+        const parsedActions: ApprovalActionInput[] = actions.map((a) => ({
+          id: a.id,
+          triggerEvent: 'FINAL_APPROVAL',
+          actionType: a.action_type as any,
+          actionConfig:
+            typeof a.action_config === 'string'
+              ? JSON.parse(a.action_config)
+              : a.action_config || {},
+        }));
+
+        await approvalActionService.executeActions(
+          tx,
+          organizationId,
+          requestId,
+          parsedActions,
+          recordData,
+          'FINAL_APPROVAL',
+          request.module_id,
+          request.record_id,
+          approverUserId,
+        );
+
+        await tx.$executeRaw`
+          INSERT INTO "approval_history" (
+            "organization_id", "request_id", "event_type", "actor_id",
+            "previous_status", "new_status", "comment"
+          ) VALUES (
+            ${organizationId}::uuid, ${requestId}::uuid, 'ACTION_EXECUTED',
+            ${approverUserId}::uuid, 'IN_PROGRESS', 'FINAL_APPROVED',
+            'All members have approved (Everyone from list condition satisfied). All final actions executed.'
+          )
+        `;
+
+        return { success: true, requestStatus: 'FINAL_APPROVED' };
+      }
+
+      // ----------------------------------------------------------------------
+      // 3. "SEQUENTIAL" Mode: Approve stage-by-stage in sequence
+      // ----------------------------------------------------------------------
+      if (approvalMode === 'SEQUENTIAL') {
+        const currentStage = allStageRows.find((s) => s.stage_id === request.current_stage_id) || allStageRows[0]!;
+
+        const isInCurrentStage = approverRows.some((a) => a.request_stage_id === currentStage.id);
+        if (!isInCurrentStage && adminRow.length === 0 && !isOwner) {
+          throw new ApiError(403, `You are not authorized to approve Stage ${currentStage.stage_order} ("${currentStage.name}").`);
+        }
+
+        // If an admin or owner is approving on behalf of this stage, mark its pending approver records approved
+        if (adminRow.length > 0 || isOwner) {
+          await tx.$executeRaw`
+            UPDATE "approval_request_approvers"
+            SET "status" = 'APPROVED',
+                "action_taken_at" = now(),
+                "comment" = ${comment || 'Approved by Admin/Owner.'}
+            WHERE "request_stage_id" = ${currentStage.id}::uuid
+              AND "status" = 'PENDING'
+          `;
+        }
+
+        // Check if all approvers for this current stage have approved
+        const remainingInCurrentStage = await tx.$queryRaw<Array<{ count: number }>>`
+          SELECT count(*)::int as "count"
+          FROM "approval_request_approvers"
+          WHERE "request_stage_id" = ${currentStage.id}::uuid
+            AND "status" = 'PENDING'
+        `;
+
+        if ((remainingInCurrentStage[0]?.count ?? 0) > 0) {
+          return { success: true, requestStatus: 'IN_PROGRESS' };
+        }
+
+        // Mark current stage APPROVED
+        await tx.$executeRaw`
+          UPDATE "approval_request_stages"
+          SET "status" = 'APPROVED', "completed_at" = now()
+          WHERE "id" = ${currentStage.id}::uuid
+        `;
+
+        // Find next sequential stage
+        const nextStage = allStageRows.find((s) => s.stage_order > currentStage.stage_order);
+        if (nextStage) {
+          // Advance to next stage
+          await tx.$executeRaw`
+            UPDATE "approval_requests"
+            SET "current_stage_id" = ${nextStage.stage_id}::uuid
+            WHERE "id" = ${requestId}::uuid
+          `;
+
+          // Resolve and insert approvers for next stage
+          const stageDef = await tx.$queryRaw<
+            Array<{ approver_type: string; approver_config: any }>
+          >`
+            SELECT "approver_type", "approver_config"
+            FROM "approval_stages"
+            WHERE "id" = ${nextStage.stage_id}::uuid
+          `;
+
+          if (stageDef.length > 0) {
+            const config =
+              typeof stageDef[0]!.approver_config === 'string'
+                ? JSON.parse(stageDef[0]!.approver_config)
+                : stageDef[0]!.approver_config || {};
+
+            const resolved = await approverResolverService.resolveApprovers(
+              tx,
+              organizationId,
+              stageDef[0]!.approver_type as any,
+              config,
+              recordData,
+            );
+
+            for (const appr of resolved) {
+              const existingAppr = await tx.$queryRaw<Array<{ id: string }>>`
+                SELECT "id" FROM "approval_request_approvers"
+                WHERE "request_stage_id" = ${nextStage.id}::uuid AND "user_id" = ${appr.userId}::uuid
+              `;
+              if (existingAppr.length === 0) {
+                await tx.$executeRaw`
+                  INSERT INTO "approval_request_approvers" (
+                    "organization_id", "request_stage_id", "user_id", "status"
+                  ) VALUES (
+                    ${organizationId}::uuid, ${nextStage.id}::uuid,
+                    ${appr.userId}::uuid, 'PENDING'
+                  )
+                `;
+              }
+            }
+          }
+
+          await tx.$executeRaw`
+            INSERT INTO "approval_history" (
+              "organization_id", "request_id", "event_type", "actor_id",
+              "previous_status", "new_status", "comment", "metadata"
+            ) VALUES (
+              ${organizationId}::uuid, ${requestId}::uuid, 'STAGE_STARTED',
+              null, 'IN_PROGRESS', 'IN_PROGRESS',
+              ${`Advanced to Stage "${nextStage.name}".`},
+              ${JSON.stringify({ stageId: nextStage.stage_id, stageName: nextStage.name })}::jsonb
+            )
+          `;
+
+          return { success: true, requestStatus: 'IN_PROGRESS' };
+        } else {
+          // All sequential stages completed! Mark request FINAL_APPROVED
+          await tx.$executeRaw`
+            UPDATE "approval_requests"
+            SET "status" = 'FINAL_APPROVED', "completed_at" = now(), "current_stage_id" = null
+            WHERE "id" = ${requestId}::uuid
+          `;
+
+          await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+
+          // Execute Final Actions
+          const actions = await tx.$queryRaw<
+            Array<{
+              id: string;
+              action_type: string;
+              trigger_event: string;
+              action_config: any;
+            }>
+          >`
+            SELECT "id", "action_type", "trigger_event", "action_config"
+            FROM "approval_actions"
+            WHERE "rule_id" = ${request.rule_id}::uuid
+              AND "trigger_event" = 'FINAL_APPROVAL'
+              AND "is_deleted" = false
+          `;
+
+          const parsedActions: ApprovalActionInput[] = actions.map((a) => ({
+            id: a.id,
+            triggerEvent: 'FINAL_APPROVAL',
+            actionType: a.action_type as any,
+            actionConfig:
+              typeof a.action_config === 'string'
+                ? JSON.parse(a.action_config)
+                : a.action_config || {},
+          }));
+
+          await approvalActionService.executeActions(
+            tx,
+            organizationId,
+            requestId,
+            parsedActions,
+            recordData,
+            'FINAL_APPROVAL',
+            request.module_id,
+            request.record_id,
+            approverUserId,
+          );
+
+          await tx.$executeRaw`
+            INSERT INTO "approval_history" (
+              "organization_id", "request_id", "event_type", "actor_id",
+              "previous_status", "new_status", "comment"
+            ) VALUES (
+              ${organizationId}::uuid, ${requestId}::uuid, 'ACTION_EXECUTED',
+              ${approverUserId}::uuid, 'IN_PROGRESS', 'FINAL_APPROVED',
+              'All sequential stages completed. Final approval actions executed.'
+            )
+          `;
+
+          return { success: true, requestStatus: 'FINAL_APPROVED' };
+        }
+      }
+
+      return { success: true, requestStatus: 'IN_PROGRESS' };
     });
   }
 
@@ -743,6 +1074,18 @@ export class ApprovalExecutionService {
         UPDATE "approval_requests"
         SET "status" = 'REJECTED', "completed_at" = now(), "current_stage_id" = null
         WHERE "id" = ${requestId}::uuid
+      `;
+
+      // Mark current stage approver record(s) for the rejecter as REJECTED
+      await tx.$executeRaw`
+        UPDATE "approval_request_approvers"
+        SET "status" = 'REJECTED',
+            "action_taken_at" = now(),
+            "comment" = ${reason || 'Request rejected.'}
+        WHERE "request_stage_id" IN (
+          SELECT "id" FROM "approval_request_stages" WHERE "request_id" = ${requestId}::uuid
+        )
+        AND "user_id" = ${approverUserId}::uuid
       `;
 
       // Update the underlying CRM record status to 'Rejected'
@@ -942,6 +1285,58 @@ export class ApprovalExecutionService {
         approversByStage.set(a.request_stage_id, list);
       }
 
+      // If any stage has 0 approvers resolved yet in an active request, resolve them now
+      for (const stg of stages) {
+        const existingApprovers = approversByStage.get(stg.id) || [];
+        if (existingApprovers.length === 0 && stg.stage_id) {
+          const configRows = await tx.$queryRaw<Array<{ approver_type: string; approver_config: any }>>`
+            SELECT "approver_type", "approver_config"
+            FROM "approval_stages"
+            WHERE "id" = ${stg.stage_id}::uuid
+          `;
+          if (configRows.length > 0) {
+            const cfg = typeof configRows[0]!.approver_config === 'string'
+              ? JSON.parse(configRows[0]!.approver_config)
+              : configRows[0]!.approver_config || {};
+            const recordData = typeof req.record_snapshot === 'string'
+              ? JSON.parse(req.record_snapshot)
+              : req.record_snapshot || {};
+            const resolved = await approverResolverService.resolveApprovers(
+              tx,
+              organizationId,
+              configRows[0]!.approver_type as any,
+              cfg,
+              recordData,
+              req.requester_id || undefined,
+            );
+            for (const appr of resolved) {
+              const inserted = await tx.$queryRaw<Array<{ id: string }>>`
+                INSERT INTO "approval_request_approvers" (
+                  "organization_id", "request_stage_id", "user_id", "status"
+                ) VALUES (
+                  ${organizationId}::uuid, ${stg.id}::uuid,
+                  ${appr.userId}::uuid, 'PENDING'
+                )
+                ON CONFLICT DO NOTHING
+                RETURNING "id"
+              `;
+              const currentList = approversByStage.get(stg.id) || [];
+              currentList.push({
+                id: inserted[0]?.id || `appr_${appr.userId}`,
+                request_stage_id: stg.id,
+                user_id: appr.userId,
+                full_name: appr.fullName,
+                email: appr.email,
+                status: 'PENDING',
+                action_taken_at: null,
+                comment: null,
+              });
+              approversByStage.set(stg.id, currentList);
+            }
+          }
+        }
+      }
+
       // Load history
       const history = await tx.$queryRaw<
         Array<{
@@ -982,6 +1377,13 @@ export class ApprovalExecutionService {
         ORDER BY "executed_at" DESC
       `;
 
+      // Query process admin user IDs
+      const adminRows = await tx.$queryRaw<Array<{ user_id: string }>>`
+        SELECT "user_id" FROM "approval_process_admins"
+        WHERE "process_id" = ${req.process_id}::uuid
+      `;
+      const processAdminUserIds = adminRows.map((a) => a.user_id);
+
       return {
         id: req.id,
         organizationId: req.organization_id,
@@ -1002,6 +1404,7 @@ export class ApprovalExecutionService {
         currentStageId: req.current_stage_id,
         requesterId: req.requester_id,
         requesterName: req.requester_name || undefined,
+        processAdminUserIds,
         submittedAt: req.submitted_at.toISOString(),
         completedAt: req.completed_at ? req.completed_at.toISOString() : null,
         stages: stages.map((s) => ({
@@ -1174,7 +1577,10 @@ export class ApprovalExecutionService {
                    SELECT 1 FROM "approval_request_approvers" ap
                    JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
                    WHERE rs."request_id" = r."id"
-                     AND rs."stage_id" = r."current_stage_id"
+                     AND (
+                       rs."approval_mode" IN ('ANYONE', 'EVERYONE', 'FIRST_RESPONSE') OR
+                       rs."stage_id" = r."current_stage_id"
+                     )
                      AND ap."user_id" = ${currentUserId}::uuid
                      AND ap."status" = 'PENDING'
                  ) OR
@@ -1203,7 +1609,10 @@ export class ApprovalExecutionService {
               SELECT 1 FROM "approval_request_approvers" ap
               JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
               WHERE rs."request_id" = r."id"
-                AND rs."stage_id" = r."current_stage_id"
+                AND (
+                  rs."approval_mode" IN ('ANYONE', 'EVERYONE', 'FIRST_RESPONSE') OR
+                  rs."stage_id" = r."current_stage_id"
+                )
                 AND ap."user_id" = ${currentUserId}::uuid
                 AND ap."status" = 'PENDING'
             ) OR
@@ -1249,7 +1658,10 @@ export class ApprovalExecutionService {
               SELECT 1 FROM "approval_request_approvers" ap
               JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
               WHERE rs."request_id" = r."id"
-                AND rs."stage_id" = r."current_stage_id"
+                AND (
+                  rs."approval_mode" IN ('ANYONE', 'EVERYONE', 'FIRST_RESPONSE') OR
+                  rs."stage_id" = r."current_stage_id"
+                )
                 AND ap."user_id" = ${currentUserId}::uuid
                 AND ap."status" = 'PENDING'
             ) OR
@@ -1292,9 +1704,13 @@ export class ApprovalExecutionService {
           SELECT rs."request_id", ap."id", ap."user_id", u."full_name", u."email", ap."status"
           FROM "approval_request_approvers" ap
           JOIN "approval_request_stages" rs ON rs."id" = ap."request_stage_id"
-          JOIN "approval_requests" r ON r."id" = rs."request_id" AND rs."stage_id" = r."current_stage_id"
+          JOIN "approval_requests" r ON r."id" = rs."request_id"
           JOIN "users" u ON u."id" = ap."user_id"
           WHERE rs."request_id" = ANY(${requestIds}::uuid[])
+            AND (
+              rs."approval_mode" IN ('ANYONE', 'EVERYONE', 'FIRST_RESPONSE') OR
+              rs."stage_id" = r."current_stage_id"
+            )
         `;
 
         for (const row of approverRows) {

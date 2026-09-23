@@ -1,4 +1,4 @@
-import { prisma } from '../../../db/prisma.ts';
+import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import {
   LIST_COLUMNS,
   isListEntityType,
@@ -257,28 +257,65 @@ function toCamelCase(str: string): string {
   return str.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
 }
 
+/**
+ * Maps known FK column names (snake_case) → the entity type they reference.
+ * Any column whose name ends in `_id` that is not in this map is treated as a
+ * plain UUID text field — we don't want to show a dropdown for arbitrary UUIDs
+ * that have no list endpoint.
+ */
+const FK_COLUMN_TO_MODULE: Record<string, string> = {
+  // Identity / audit
+  created_by: 'member',
+  updated_by: 'member',
+  // Purchases
+  vendor_id: 'vendor',
+  purchase_order_id: 'purchase_order',
+  bill_id: 'bill',
+  // Sales
+  customer_id: 'customer',
+  // Items & Inventory
+  item_id: 'item',
+  // Jobwork
+  job_order_id: 'job_order',
+  job_issue_id: 'job_issue',
+  job_receipt_id: 'job_receipt',
+  // Locations
+  location_id: 'location',
+  delivery_location_id: 'location',
+  delivery_customer_id: 'customer',
+  // Step / process
+  step_id: 'process',
+  process_id: 'process',
+};
+
+/** Returns the related entity type for a FK column, or null for non-FK columns. */
+function inferRelatedModule(columnName: string): string | null {
+  return FK_COLUMN_TO_MODULE[columnName.toLowerCase()] ?? null;
+}
+
 function formatColumnLabel(columnName: string): string {
   const SPECIAL_LABELS: Record<string, string> = {
     po_number: 'PO Number',
     po_date: 'PO Date',
     delivery_date: 'Delivery Date',
     delivery_type: 'Delivery Type',
-    delivery_location_id: 'Delivery Location ID',
-    delivery_customer_id: 'Delivery Customer ID',
+    delivery_location_id: 'Delivery Location',
+    delivery_customer_id: 'Delivery Customer',
     sub_total: 'Sub Total',
     total_amount: 'Total Amount',
     payment_terms: 'Payment Terms',
     terms_and_conditions: 'Terms & Conditions',
-    location_id: 'Location ID',
-    vendor_id: 'Vendor ID',
-    customer_id: 'Customer ID',
+    location_id: 'Location',
+    vendor_id: 'Vendor',
+    customer_id: 'Customer',
+    item_id: 'Item',
     bill_number: 'Bill Number',
     bill_date: 'Bill Date',
     due_date: 'Due Date',
     created_at: 'Created At',
     updated_at: 'Last Modified',
-    created_by: 'Created By ID',
-    updated_by: 'Updated By ID',
+    created_by: 'Created By',
+    updated_by: 'Updated By',
     notes: 'Notes',
     status: 'Status',
     sku: 'SKU',
@@ -286,12 +323,15 @@ function formatColumnLabel(columnName: string): string {
     contact_name: 'Contact Name',
     company_name: 'Company Name',
     contact_number: 'Contact Number',
+    job_order_id: 'Job Order',
     job_order_number: 'Job Order Number',
+    job_issue_id: 'Job Challan',
+    job_receipt_id: 'Job Receipt',
     ownership: 'Ownership',
     target_date: 'Target Date',
     order_date: 'Order Date',
-    issue_number: 'Issue Number',
-    issue_date: 'Issue Date',
+    issue_number: 'Challan Number',
+    issue_date: 'Challan Date',
     receipt_number: 'Receipt Number',
     receipt_date: 'Receipt Date',
     item_name: 'Item Name',
@@ -308,6 +348,16 @@ function formatColumnLabel(columnName: string): string {
     return SPECIAL_LABELS[columnName];
   }
 
+  // For unmapped FK columns: strip trailing _id suffix for a cleaner label
+  const col = columnName.toLowerCase();
+  if (col.endsWith('_id') && inferRelatedModule(col)) {
+    return columnName
+      .slice(0, -3) // remove trailing _id
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
   return columnName
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -317,6 +367,8 @@ function formatColumnLabel(columnName: string): string {
 function mapPgTypeToFieldType(dataType: string, udtName: string, columnName: string): FieldDataType {
   const col = columnName.toLowerCase();
   if (col === 'status') return 'status';
+  // FK columns that have a known related module → render as lookup
+  if (inferRelatedModule(col)) return 'lookup';
   if (col.includes('email')) return 'email';
   if (col.includes('phone') || col.includes('mobile')) return 'phone';
   if (dataType.includes('timestamp') || dataType.includes('date')) return 'date';
@@ -486,6 +538,7 @@ export class ModuleMetadataService {
           const label = formatColumnLabel(col.column_name);
           const dataType = mapPgTypeToFieldType(col.data_type, col.udt_name, col.column_name);
 
+          const relatedMod = inferRelatedModule(col.column_name);
           fields.push({
             id: camelKey,
             moduleId,
@@ -496,6 +549,7 @@ export class ModuleMetadataService {
             isActive: true,
             isCustom: false,
             options: getFieldOptions(entityType, camelKey),
+            relatedModule: relatedMod ?? undefined,
           });
         }
       } catch (err) {
@@ -575,17 +629,22 @@ export class ModuleMetadataService {
       );
     }
 
-    // 3. Discover dynamic tenant custom fields from custom_field_definitions
+    // 3. Discover dynamic tenant custom fields from custom_field_definitions.
+    // MUST run inside runAsTenant so the RLS policy (which checks
+    // `app.current_tenant`) allows the query through; without it the policy
+    // returns 0 rows and the catch block silently swallows the error.
     try {
-      const customDefs = await prisma.customFieldDefinition.findMany({
-        where: {
-          organizationId,
-          entityType,
-          isDeleted: false,
-          status: 'active',
-        },
-        orderBy: { displayOrder: 'asc' },
-      });
+      const customDefs = await runAsTenant(organizationId, (tx) =>
+        tx.customFieldDefinition.findMany({
+          where: {
+            organizationId,
+            entityType,
+            isDeleted: false,
+            status: 'active',
+          },
+          orderBy: { displayOrder: 'asc' },
+        }),
+      );
 
       for (const def of customDefs) {
         const config = (def.config || {}) as { options?: Array<{ id: string; label: string }> };
@@ -601,8 +660,12 @@ export class ModuleMetadataService {
           options: config.options || [],
         });
       }
-    } catch {
-      // Return fields found so far if custom_field_definitions query encounters an issue
+    } catch (err) {
+      console.error(
+        `[ModuleMetadataService] Failed to load custom fields for ${entityType} (org=${organizationId}):`,
+        err,
+      );
+      // Return fields found so far — a custom-field failure should not block the approval engine
     }
 
     return fields;

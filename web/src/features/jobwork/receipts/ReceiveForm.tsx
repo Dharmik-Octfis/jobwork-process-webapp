@@ -462,7 +462,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
 
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'receive'],
-    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500 }),
+    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500, filter: 'active' }),
     enabled: Boolean(orgId),
   });
   const items = itemsPage?.results ?? [];

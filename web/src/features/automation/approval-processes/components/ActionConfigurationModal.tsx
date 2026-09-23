@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, Loader2 } from 'lucide-react';
 import type {
   ActionType,
   ApprovalActionConfig,
   FieldMetadata,
 } from '../types/approvalProcess.types';
 import type { Member } from '../../../members/members.api';
+import { useFkLookupOptions } from '../api/useFkLookupOptions';
+import { LocalComboBox } from '../../../../components/ui/LocalComboBox';
 
 interface ActionConfigurationModalProps {
+  orgId?: string;
   actionType: ActionType;
   initialAction?: ApprovalActionConfig;
   fields: FieldMetadata[];
@@ -17,6 +20,7 @@ interface ActionConfigurationModalProps {
 }
 
 export function ActionConfigurationModal({
+  orgId,
   actionType,
   initialAction,
   fields,
@@ -85,6 +89,11 @@ export function ActionConfigurationModal({
   const [error, setError] = useState<string | null>(null);
 
   const selectedField = safeFields.find((f) => f.id === fieldId || f.apiName === fieldId);
+  const isLookupField = selectedField?.dataType === 'lookup' || !!selectedField?.relatedModule;
+  const { options: fkOptions, isLoading: loadingFk } = useFkLookupOptions(
+    orgId,
+    isLookupField ? (selectedField?.relatedModule || selectedField?.apiName) : undefined,
+  );
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,7 +177,7 @@ export function ActionConfigurationModal({
       <div className="ap-modal ap-action-modal" role="dialog" aria-modal="true" aria-labelledby="action-title">
         <div className="ap-modal-header">
           <h3 id="action-title" className="ap-modal-title">
-            Configure {getActionTypeLabel(actionType)}
+            {initialAction ? 'Edit' : 'Configure'} {getActionTypeLabel(actionType)}
           </h3>
           <button type="button" className="ap-icon-button" onClick={onClose} aria-label="Close">
             <X size={18} />
@@ -206,22 +215,19 @@ export function ActionConfigurationModal({
                   <label htmlFor="target-field" className="ap-label required">
                     Field to Update
                   </label>
-                  <select
-                    id="target-field"
-                    className="ap-select"
-                    value={fieldId}
-                    onChange={(e) => setFieldId(e.target.value)}
-                    required
-                  >
-                    <option value="" disabled>
-                      Select field...
-                    </option>
-                    {safeFields.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label} ({f.dataType})
-                      </option>
-                    ))}
-                  </select>
+                  <LocalComboBox
+                    options={safeFields.map((f) => ({
+                      value: f.id,
+                      label: `${f.label}${f.isCustom ? ' (Custom)' : ''}`,
+                    }))}
+                    value={fieldId || null}
+                    onChange={(val) => {
+                      setFieldId(val || '');
+                      setStaticValue('');
+                    }}
+                    placeholder="Select field..."
+                    portal={true}
+                  />
                 </div>
 
                 <div className="ap-form-group">
@@ -265,20 +271,29 @@ export function ActionConfigurationModal({
                     <label htmlFor="static-value" className="ap-label">
                       New Value
                     </label>
-                    {Array.isArray(selectedField?.options) && selectedField.options.length > 0 ? (
-                      <select
-                        id="static-value"
-                        className="ap-select"
-                        value={(staticValue as string) || ''}
-                        onChange={(e) => setStaticValue(e.target.value)}
-                      >
-                        <option value="">Select option...</option>
-                        {selectedField.options.map((opt) => (
-                          <option key={opt.id} value={opt.id}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                    {isLookupField || fkOptions.length > 0 ? (
+                      loadingFk ? (
+                        <div className="ap-loading-inline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', color: 'var(--color-text-muted)' }}>
+                          <Loader2 size={15} className="ap-spin" />
+                          <span style={{ fontSize: '13px' }}>Loading {selectedField?.label || 'options'}...</span>
+                        </div>
+                      ) : (
+                        <LocalComboBox
+                          options={fkOptions.map((opt) => ({ value: opt.id, label: opt.label }))}
+                          value={(staticValue as string) || null}
+                          onChange={(newVal) => setStaticValue(newVal || '')}
+                          placeholder={`Select ${selectedField?.label || 'value'}...`}
+                          portal={true}
+                        />
+                      )
+                    ) : Array.isArray(selectedField?.options) && selectedField.options.length > 0 ? (
+                      <LocalComboBox
+                        options={selectedField.options.map((opt) => ({ value: opt.id, label: opt.label }))}
+                        value={(staticValue as string) || null}
+                        onChange={(newVal) => setStaticValue(newVal || '')}
+                        placeholder="Select option..."
+                        portal={true}
+                      />
                     ) : selectedField?.dataType === 'boolean' ? (
                       <select
                         id="static-value"
@@ -522,7 +537,7 @@ export function ActionConfigurationModal({
               Cancel
             </button>
             <button type="submit" className="ap-button ap-button-primary">
-              Save Action
+              {initialAction ? 'Update Action' : 'Save Action'}
             </button>
           </div>
         </form>

@@ -10,6 +10,7 @@ import type { Member } from '../../../members/members.api';
 import type { Role } from '../../../roles/roles.api';
 
 interface ApprovalStagesListProps {
+  orgId?: string;
   stages: ApprovalStageConfig[];
   fields: FieldMetadata[];
   members: Member[];
@@ -32,6 +33,7 @@ function isStageComplete(stage: ApprovalStageConfig): boolean {
 }
 
 export function ApprovalStagesList({
+  orgId,
   stages,
   fields,
   members,
@@ -196,6 +198,7 @@ export function ApprovalStagesList({
           return (
             <div key={stage.id || idx} className="ap-stage-wrapper">
               <ApprovalStageCard
+                orgId={orgId}
                 stage={stage}
                 index={idx}
                 totalStages={safeStages.length}
@@ -273,6 +276,17 @@ export function ApprovalStagesList({
               />
               <span>Sequential order</span>
             </label>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
+            {commonMode === 'ANYONE' && (
+              <span>⚡ <strong>Anyone from the list:</strong> If any one approver approves, the request is approved immediately.</span>
+            )}
+            {commonMode === 'EVERYONE' && (
+              <span>👥 <strong>Everyone from the list:</strong> All approvers across all stages must approve in parallel (simultaneously).</span>
+            )}
+            {commonMode === 'SEQUENTIAL' && (
+              <span>🔢 <strong>Sequential order:</strong> Approvers must approve one-by-one in strict stage order (Stage 1 first, then Stage 2, etc.).</span>
+            )}
           </div>
         </div>
       </div>

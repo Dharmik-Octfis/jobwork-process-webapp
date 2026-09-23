@@ -6,6 +6,7 @@ import {
   XCircle,
   Edit3,
   Trash2,
+  Eye,
 } from 'lucide-react';
 import type {
   ActionType,
@@ -16,6 +17,7 @@ import type { Member } from '../../../members/members.api';
 import { ActionConfigurationModal } from './ActionConfigurationModal';
 
 interface ActionCardProps {
+  orgId?: string;
   finalApprovalActions: ApprovalActionConfig[];
   rejectionActions: ApprovalActionConfig[];
   fields: FieldMetadata[];
@@ -33,7 +35,20 @@ const ACTION_CATALOG: { type: ActionType; label: string; icon: React.ComponentTy
   // { type: 'FUNCTION', label: 'Functions', icon: Code2 },
 ];
 
+/**
+ * Describes which action is currently open in the modal, either for ADD or EDIT.
+ * When editIndex is defined, the modal is in edit mode and Save will replace
+ * the action at that index instead of appending.
+ */
+interface ActiveModal {
+  target: 'approval' | 'rejection';
+  actionType: ActionType;
+  editIndex?: number;
+  initialAction?: ApprovalActionConfig;
+}
+
 export function ActionCard({
+  orgId,
   finalApprovalActions,
   rejectionActions,
   fields,
@@ -41,22 +56,54 @@ export function ActionCard({
   onFinalApprovalActionsChange,
   onRejectionActionsChange,
 }: ActionCardProps) {
-  const [activeModal, setActiveModal] = useState<{
-    target: 'approval' | 'rejection';
-    actionType: ActionType;
-  } | null>(null);
+  const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
 
   const safeFinalActions = Array.isArray(finalApprovalActions) ? finalApprovalActions : [];
   const safeRejectionActions = Array.isArray(rejectionActions) ? rejectionActions : [];
   const safeFields = Array.isArray(fields) ? fields : [];
   const safeMembers = Array.isArray(members) ? members : [];
 
-  const handleSaveAction = (newAction: ApprovalActionConfig) => {
+  /** Opens modal to add a brand-new action */
+  const openAddModal = (target: 'approval' | 'rejection', actionType: ActionType) => {
+    setActiveModal({ target, actionType });
+  };
+
+  /** Opens modal pre-filled with existing action data for editing */
+  const openEditModal = (
+    target: 'approval' | 'rejection',
+    action: ApprovalActionConfig,
+    idx: number,
+  ) => {
+    setActiveModal({
+      target,
+      actionType: action.actionType,
+      editIndex: idx,
+      initialAction: action,
+    });
+  };
+
+  const handleSaveAction = (updatedAction: ApprovalActionConfig) => {
     if (!activeModal) return;
+
+    const isEdit = activeModal.editIndex !== undefined;
+
     if (activeModal.target === 'approval') {
-      onFinalApprovalActionsChange([...safeFinalActions, newAction]);
+      if (isEdit) {
+        // Replace the action at editIndex
+        const updated = [...safeFinalActions];
+        updated[activeModal.editIndex!] = updatedAction;
+        onFinalApprovalActionsChange(updated);
+      } else {
+        onFinalApprovalActionsChange([...safeFinalActions, updatedAction]);
+      }
     } else {
-      onRejectionActionsChange([...safeRejectionActions, newAction]);
+      if (isEdit) {
+        const updated = [...safeRejectionActions];
+        updated[activeModal.editIndex!] = updatedAction;
+        onRejectionActionsChange(updated);
+      } else {
+        onRejectionActionsChange([...safeRejectionActions, updatedAction]);
+      }
     }
     setActiveModal(null);
   };
@@ -67,6 +114,19 @@ export function ActionCard({
     } else {
       onRejectionActionsChange(safeRejectionActions.filter((_, i) => i !== index));
     }
+  };
+
+  /** Returns a short human-friendly summary of what the action does */
+  const getActionSummary = (action: ApprovalActionConfig): string => {
+    if (action.actionType === 'UPDATE_FIELDS') {
+      const fieldName = (action.config?.fieldName as string) || (action.config?.fieldId as string) || 'field';
+      const value = action.config?.value;
+      if (value !== undefined && value !== '') {
+        return `Set "${fieldName}" → ${String(value)}`;
+      }
+      return `Update "${fieldName}"`;
+    }
+    return action.name || action.actionType.replace(/_/g, ' ');
   };
 
   return (
@@ -102,7 +162,7 @@ export function ActionCard({
                   <button
                     type="button"
                     className="ap-action-add-btn"
-                    onClick={() => setActiveModal({ target: 'approval', actionType: type })}
+                    onClick={() => openAddModal('approval', type)}
                     title={`Add ${label}`}
                     aria-label={`Add ${label} on final approval`}
                   >
@@ -118,17 +178,44 @@ export function ActionCard({
             <div className="ap-configured-actions-list">
               <div className="ap-configured-heading">Configured Final Actions:</div>
               {safeFinalActions.map((action, idx) => (
-                <div key={action.id || idx} className="ap-configured-item">
-                  <span className="ap-configured-type-tag">{action.actionType.replace('_', ' ')}</span>
-                  <span className="ap-configured-name">{action.name}</span>
-                  <button
-                    type="button"
-                    className="ap-configured-del"
-                    onClick={() => handleRemoveAction('approval', idx)}
-                    aria-label="Remove configured action"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                <div
+                  key={action.id || idx}
+                  className="ap-configured-item ap-configured-item--clickable"
+                  onClick={() => openEditModal('approval', action, idx)}
+                  title="Click to view / edit this action"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') openEditModal('approval', action, idx);
+                  }}
+                >
+                  <span className="ap-configured-type-tag">
+                    {action.actionType.replace(/_/g, ' ')}
+                  </span>
+                  <div className="ap-configured-body">
+                    <span className="ap-configured-name">{action.name}</span>
+                    <span className="ap-configured-summary">{getActionSummary(action)}</span>
+                  </div>
+                  <div className="ap-configured-actions-btns">
+                    <button
+                      type="button"
+                      className="ap-configured-edit"
+                      onClick={(e) => { e.stopPropagation(); openEditModal('approval', action, idx); }}
+                      aria-label="Edit configured action"
+                      title="Edit"
+                    >
+                      <Eye size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ap-configured-del"
+                      onClick={(e) => { e.stopPropagation(); handleRemoveAction('approval', idx); }}
+                      aria-label="Remove configured action"
+                      title="Delete"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -156,7 +243,7 @@ export function ActionCard({
                   <button
                     type="button"
                     className="ap-action-add-btn"
-                    onClick={() => setActiveModal({ target: 'rejection', actionType: type })}
+                    onClick={() => openAddModal('rejection', type)}
                     title={`Add ${label}`}
                     aria-label={`Add ${label} on rejection`}
                   >
@@ -172,17 +259,44 @@ export function ActionCard({
             <div className="ap-configured-actions-list">
               <div className="ap-configured-heading">Configured Rejection Actions:</div>
               {safeRejectionActions.map((action, idx) => (
-                <div key={action.id || idx} className="ap-configured-item">
-                  <span className="ap-configured-type-tag">{action.actionType.replace('_', ' ')}</span>
-                  <span className="ap-configured-name">{action.name}</span>
-                  <button
-                    type="button"
-                    className="ap-configured-del"
-                    onClick={() => handleRemoveAction('rejection', idx)}
-                    aria-label="Remove configured action"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                <div
+                  key={action.id || idx}
+                  className="ap-configured-item ap-configured-item--clickable"
+                  onClick={() => openEditModal('rejection', action, idx)}
+                  title="Click to view / edit this action"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') openEditModal('rejection', action, idx);
+                  }}
+                >
+                  <span className="ap-configured-type-tag">
+                    {action.actionType.replace(/_/g, ' ')}
+                  </span>
+                  <div className="ap-configured-body">
+                    <span className="ap-configured-name">{action.name}</span>
+                    <span className="ap-configured-summary">{getActionSummary(action)}</span>
+                  </div>
+                  <div className="ap-configured-actions-btns">
+                    <button
+                      type="button"
+                      className="ap-configured-edit"
+                      onClick={(e) => { e.stopPropagation(); openEditModal('rejection', action, idx); }}
+                      aria-label="Edit configured action"
+                      title="Edit"
+                    >
+                      <Eye size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ap-configured-del"
+                      onClick={(e) => { e.stopPropagation(); handleRemoveAction('rejection', idx); }}
+                      aria-label="Remove configured action"
+                      title="Delete"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -192,7 +306,9 @@ export function ActionCard({
 
       {activeModal && (
         <ActionConfigurationModal
+          orgId={orgId}
           actionType={activeModal.actionType}
+          initialAction={activeModal.initialAction}
           fields={safeFields}
           members={safeMembers}
           onSave={handleSaveAction}

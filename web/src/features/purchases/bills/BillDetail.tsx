@@ -33,6 +33,7 @@ import { BillComments } from './BillComments';
 import { BillActivityTimeline } from './BillActivityTimeline';
 import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 
@@ -162,6 +163,13 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     queryFn: () => fetchBillById(orgId!, poId),
     enabled: Boolean(orgId && poId),
   });
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'bills', poId);
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    po?.status?.toLowerCase() === 'rejected' ||
+    (po as any)?.approvalStatus?.toUpperCase() === 'REJECTED',
+  );
 
   const { data: orgs } = useQuery({
     queryKey: ['organizations'],
@@ -319,25 +327,27 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Copy size={14} /> Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Copy size={14} /> Clone
+                  </div>
+                )}
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
