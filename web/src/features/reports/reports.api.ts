@@ -40,7 +40,6 @@ export interface PaginatedInventoryValuationResponse {
 export interface StockSummaryQuery {
   fromDate?: string;
   toDate?: string;
-  mode?: 'bills' | 'bills_and_invoices' | 'jobwork';
   status?: 'all' | 'active' | 'inactive';
   itemName?: string;
   categoryName?: string;
@@ -159,7 +158,6 @@ export interface StockMovementQuery {
   itemId?: string;
   fromDate?: string;
   toDate?: string;
-  mode?: 'bills' | 'bills_and_invoices' | 'jobwork';
   movementType?: 'all' | 'inward' | 'outward';
   page?: number;
   perPage?: number;
@@ -193,7 +191,9 @@ export const reportsApi = {
     orgId: string,
     params: StockMovementQuery = {},
   ): Promise<PaginatedStockMovementResponse> => {
-    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-movement`, { params });
+    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-movement`, {
+      params,
+    });
     return response.data as PaginatedStockMovementResponse;
   },
   getInventoryValuation: async (
@@ -227,7 +227,9 @@ export const reportsApi = {
     params: StockSummaryQuery = {},
   ): Promise<PaginatedStockSummaryResponse> => {
     // Note: endpoint needs to be added in endpoints.ts, for now using a placeholder or assuming it exists
-    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-summary`, { params });
+    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-summary`, {
+      params,
+    });
     return response.data as PaginatedStockSummaryResponse;
   },
 };

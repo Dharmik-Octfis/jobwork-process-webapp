@@ -3,13 +3,11 @@ import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom'
 import { Menu, Filter, X } from 'lucide-react';
 import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
-import { SearchableSelect } from '../../components/ui/SearchableSelect';
-import { reportsApi, type PaginatedStockMovementResponse, type StockMovementRow } from './reports.api';
-
-const TRACKING_MODE_OPTIONS = [
-  { label: 'Bills', value: 'bills_and_invoices' },
-  { label: 'Jobwork Receives', value: 'jobwork' },
-];
+import {
+  reportsApi,
+  type PaginatedStockMovementResponse,
+  type StockMovementRow,
+} from './reports.api';
 
 export function StockMovementReportPage() {
   const navigate = useNavigate();
@@ -17,26 +15,28 @@ export function StockMovementReportPage() {
   const { orgId } = useParams<{ orgId: string }>();
 
   const initialItemId = searchParams.get('itemId') || '';
-  const initialMovementType = searchParams.get('movementType') as 'inward' | 'outward' | 'all' || 'all';
-  const initialMode = searchParams.get('mode') || 'bills_and_invoices';
+  const initialMovementType =
+    (searchParams.get('movementType') as 'inward' | 'outward' | 'all') || 'all';
   const initialFromDateStr = searchParams.get('fromDate');
   const initialToDateStr = searchParams.get('toDate');
 
-  const initialFromDate = initialFromDateStr ? new Date(initialFromDateStr) : startOfMonth(new Date());
+  const initialFromDate = initialFromDateStr
+    ? new Date(initialFromDateStr)
+    : startOfMonth(new Date());
   const initialToDate = initialToDateStr ? new Date(initialToDateStr) : new Date();
 
-  const [dateRangeLabel, setDateRangeLabel] = useState(initialFromDateStr && initialToDateStr ? 'Custom' : 'This Month');
+  const [dateRangeLabel, setDateRangeLabel] = useState(
+    initialFromDateStr && initialToDateStr ? 'Custom' : 'This Month',
+  );
   const [fromDate, setFromDate] = useState<Date>(initialFromDate);
   const [toDate, setToDate] = useState<Date>(initialToDate);
   const [movementType, _setMovementType] = useState(initialMovementType);
-  const [mode, setMode] = useState(initialMode);
   const [_itemIdFilter, _setItemIdFilter] = useState(initialItemId);
 
   const [appliedFilters, setAppliedFilters] = useState({
     fromDate: initialFromDate,
     toDate: initialToDate,
     movementType: initialMovementType,
-    mode: initialMode,
     itemId: initialItemId,
   });
 
@@ -53,7 +53,6 @@ export function StockMovementReportPage() {
           fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
           toDate: endOfDay(appliedFilters.toDate).toISOString(),
           movementType: appliedFilters.movementType as 'all' | 'inward' | 'outward',
-          mode: appliedFilters.mode as 'bills' | 'bills_and_invoices' | 'jobwork',
           page: 1,
           perPage: 100, // Just fetching top 100 for now to keep UI simple
         });
@@ -140,11 +139,23 @@ export function StockMovementReportPage() {
             <Menu size={18} color="#374151" />
           </button>
           <div style={{ flex: 1 }}>
-            <div style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>
-              Inventory
-            </div>
-            <div style={{ fontSize: '18px', fontWeight: 600, color: '#111827', display: 'flex', alignItems: 'center' }}>
-              Stock Movement <span style={{ color: '#6b7280', fontSize: '14px', fontWeight: 400, marginLeft: '8px' }}>• From {format(appliedFilters.fromDate, 'dd-MM-yyyy')} To {format(appliedFilters.toDate, 'dd-MM-yyyy')}</span>
+            <div style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Inventory</div>
+            <div
+              style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                color: '#111827',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              Stock Movement{' '}
+              <span
+                style={{ color: '#6b7280', fontSize: '14px', fontWeight: 400, marginLeft: '8px' }}
+              >
+                • From {format(appliedFilters.fromDate, 'dd-MM-yyyy')} To{' '}
+                {format(appliedFilters.toDate, 'dd-MM-yyyy')}
+              </span>
             </div>
           </div>
         </div>
@@ -202,32 +213,11 @@ export function StockMovementReportPage() {
               setToDate(end);
             }}
           />
-          <SearchableSelect
-            options={TRACKING_MODE_OPTIONS}
-            value={mode}
-            onChange={setMode}
-            style={{ width: 'max-content' }}
-            triggerStyle={{
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              height: 'auto',
-              minHeight: '0',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-            }}
-            dropdownWidth="200px"
-            renderValue={(opt) => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#6b7280' }}>Mode of Stock tracking:</span>
-                <span style={{ fontWeight: 500, color: '#111827' }}>{opt?.label || 'All'}</span>
-              </div>
-            )}
-          />
           <button
             type="button"
-            onClick={() => setAppliedFilters({ fromDate, toDate, movementType, mode, itemId: initialItemId })}
+            onClick={() =>
+              setAppliedFilters({ fromDate, toDate, movementType, itemId: initialItemId })
+            }
             style={{
               padding: '6px 12px',
               background: '#2563eb',
@@ -313,13 +303,19 @@ export function StockMovementReportPage() {
                 </tr>
               ) : (
                 data?.results.map((row) => (
-                  <tr key={row.id} className="table-row-hover" style={{ borderBottom: '1px solid #f9fafb' }}>
-                    <td style={tdStyle}>
-                      {format(new Date(row.transactionDate), 'dd-MM-yyyy')}
-                    </td>
+                  <tr
+                    key={row.id}
+                    className="table-row-hover"
+                    style={{ borderBottom: '1px solid #f9fafb' }}
+                  >
+                    <td style={tdStyle}>{format(new Date(row.transactionDate), 'dd-MM-yyyy')}</td>
                     <td style={tdStyle}>
                       {getDocLink(row) ? (
-                        <Link to={getDocLink(row)!} className="hover-underline" style={{ color: '#0062ff', textDecoration: 'none' }}>
+                        <Link
+                          to={getDocLink(row)!}
+                          className="hover-underline"
+                          style={{ color: '#0062ff', textDecoration: 'none' }}
+                        >
                           {row.transactionNumber}
                         </Link>
                       ) : (
@@ -327,26 +323,52 @@ export function StockMovementReportPage() {
                       )}
                     </td>
                     <td style={tdStyle}>
-                      <span className="hover-underline" style={{ color: '#0062ff', cursor: 'pointer' }} onClick={() => navigate(`/organizations/${orgId}/items?id=${row.itemId}`)}>
+                      <span
+                        className="hover-underline"
+                        style={{ color: '#0062ff', cursor: 'pointer' }}
+                        onClick={() => navigate(`/organizations/${orgId}/items?id=${row.itemId}`)}
+                      >
                         {row.itemName}
                       </span>
                     </td>
-                    <td style={tdStyle} className="capitalize">{row.transactionType}</td>
+                    <td style={tdStyle} className="capitalize">
+                      {row.transactionType}
+                    </td>
                     <td style={tdStyle}>{row.movementType}</td>
-                    <td style={tdStyle} className="capitalize">{row.source}</td>
+                    <td style={tdStyle} className="capitalize">
+                      {row.source}
+                    </td>
                     <td style={tdStyle}>{row.destination}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{row.quantity.toFixed(2)}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                      {row.quantity.toFixed(2)}
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
-            {(!loading && data && data.results.length > 0) && (
+            {!loading && data && data.results.length > 0 && (
               <tfoot>
                 <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb' }}>
-                  <td colSpan={7} style={{ padding: '12px 16px', fontWeight: 600, color: '#111827', fontSize: '13px' }}>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: '12px 16px',
+                      fontWeight: 600,
+                      color: '#111827',
+                      fontSize: '13px',
+                    }}
+                  >
                     Total
                   </td>
-                  <td style={{ padding: '12px 16px', fontWeight: 600, color: '#111827', fontSize: '13px', textAlign: 'right' }}>
+                  <td
+                    style={{
+                      padding: '12px 16px',
+                      fontWeight: 600,
+                      color: '#111827',
+                      fontSize: '13px',
+                      textAlign: 'right',
+                    }}
+                  >
                     {data.grandTotalQuantity.toFixed(2)}
                   </td>
                 </tr>
