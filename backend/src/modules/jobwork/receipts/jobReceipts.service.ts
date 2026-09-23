@@ -2968,6 +2968,18 @@ export async function cancelJobReceipt(
       );
     }
 
+    // The job worker's bill settles this receipt's charge; cancel the receipt and
+    // that bill would be paying for work the books no longer hold.
+    const billedOn = await tx.billItem.findFirst({
+      where: { jobReceiptId: id, isDeleted: false, bill: { organizationId, isDeleted: false } },
+      select: { bill: { select: { billNumber: true } } },
+    });
+    if (billedOn) {
+      throw ApiError.conflict(
+        `This receipt is on bill ${billedOn.bill.billNumber}. Remove it from the bill before cancelling.`,
+      );
+    }
+
     const touched = await tx.jobReceiptOutputBatch.findMany({
       where: { organizationId, jobReceiptId: id, isDeleted: false },
       select: { batchId: true, isNewBatch: true, batch: { select: { supplierBatchRef: true } } },

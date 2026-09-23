@@ -62,6 +62,18 @@ async function assertStockingUom(
   if (!uom) throw ApiError.badRequest('Unknown unit of measurement.');
 }
 
+/** A bill posts stock for every tracked line, so a tracked service would create stock of work done. */
+function assertServiceNotStocked(
+  itemType: string | undefined,
+  trackInventory: boolean | undefined,
+) {
+  if (itemType === 'service' && trackInventory) {
+    throw ApiError.badRequest('A service item cannot track inventory.', {
+      trackInventory: 'Services are not stocked.',
+    });
+  }
+}
+
 export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T): T {
   if (!rawData) return rawData;
   const copy: Record<string, unknown> = { ...rawData };
@@ -728,6 +740,7 @@ export class ItemsService {
       const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
 
       await assertStockingUom(tx, organizationId, rest.stockingUomId);
+      assertServiceNotStocked(rest.itemType, rest.trackInventory);
 
       const defs = await loadActiveDefinitions(tx, organizationId, 'item');
       const customFields = validateCustomFields({
@@ -887,6 +900,20 @@ export class ItemsService {
       const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
 
       await assertStockingUom(tx, organizationId, rest.stockingUomId);
+      assertServiceNotStocked(
+        rest.itemType ?? item.itemType,
+        rest.trackInventory ?? item.trackInventory,
+      );
+      if (rest.itemType === 'service' && item.itemType !== 'service') {
+        const moved = await tx.stockLedgerEntry.count({
+          where: { organizationId, itemId: id },
+        });
+        if (moved > 0) {
+          throw ApiError.conflict(
+            `${item.name} has stock movements, so it cannot become a service.`,
+          );
+        }
+      }
 
       // Only re-validate when the client sends custom fields; otherwise leave the
       // stored blob untouched. Required policy (b) uses the existing values.
