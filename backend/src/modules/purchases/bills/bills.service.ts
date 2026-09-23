@@ -973,7 +973,10 @@ export async function getOpenJobReceiptsForVendor(organizationId: string, vendor
                 inventoryTracking: true,
               },
             },
-            outputBatch: { select: { batchNumber: true } },
+            outputBatch: { select: { id: true, batchNumber: true } },
+            batches: {
+              include: { batch: { select: { id: true, supplierBatchRef: true } } },
+            },
           },
         },
       },

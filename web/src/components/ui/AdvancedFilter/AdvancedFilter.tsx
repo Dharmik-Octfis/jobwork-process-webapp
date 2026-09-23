@@ -140,6 +140,20 @@ export function AdvancedFilter({
       >
         {triggerIcon || <Filter size={16} />}
         {triggerLabel && <span>{triggerLabel}</span>}
+        {conditions.length > 0 && (
+          <span 
+            style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              width: '10px',
+              height: '10px',
+              backgroundColor: '#f97316',
+              borderRadius: '50%',
+              border: '2px solid #fff'
+            }}
+          />
+        )}
       </button>
 
       {isOpen && (

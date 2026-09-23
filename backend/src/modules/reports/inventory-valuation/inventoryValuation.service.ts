@@ -263,6 +263,7 @@ export async function getItemLedger(
         value: Prisma.Decimal;
         sourceDocType: string;
         sourceDocId: string | null;
+        createdAt: Date;
       }[]
     >`
       SELECT
@@ -270,7 +271,8 @@ export async function getItemLedger(
         SUM(l.qty_in - l.qty_out) AS "qty",
         SUM(l.value_in - l.value_out) AS "value",
         l.source_doc_type AS "sourceDocType",
-        l.source_doc_id AS "sourceDocId"
+        l.source_doc_id AS "sourceDocId",
+        MIN(l.created_at) AS "createdAt"
       FROM stock_ledger l
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.item_id = ${itemId}::uuid
@@ -307,11 +309,11 @@ export async function getItemLedger(
             billId: true,
             quantity: true,
             discount: true,
-            bill: { select: { status: true } },
+            bill: { select: { status: true, createdAt: true } },
           },
         })
       ).filter((line) => line.bill.status.toLowerCase() === 'open');
-      const billByReceipt = new Map(billLines.map((line) => [line.jobReceiptId!, line.billId]));
+      const billByReceipt = new Map(billLines.map((line) => [line.jobReceiptId!, { id: line.billId, createdAt: line.bill.createdAt }]));
       for (const receiptId of billByReceipt.keys()) {
         const lines = billLines.filter((line) => line.jobReceiptId === receiptId);
         const qty = lines.reduce((sum, line) => sum.plus(line.quantity), new Prisma.Decimal(0));
@@ -324,14 +326,23 @@ export async function getItemLedger(
         }
       }
       for (const entry of entries) {
-        const billId = entry.sourceDocId && billByReceipt.get(entry.sourceDocId);
-        if (entry.sourceDocType === 'job_receipt' && billId) {
+        const billInfo = entry.sourceDocId && billByReceipt.get(entry.sourceDocId);
+        if (entry.sourceDocType === 'job_receipt' && billInfo) {
           const unitDiscount = unitDiscountByReceipt.get(entry.sourceDocId!);
           if (unitDiscount) entry.value = entry.value.minus(unitDiscount.times(entry.qty));
           entry.sourceDocType = 'bill';
-          entry.sourceDocId = billId;
+          entry.sourceDocId = billInfo.id;
+          entry.createdAt = billInfo.createdAt;
         }
       }
+
+      // Re-sort the entries array in case the bill's createdAt changes the order 
+      // relative to other transactions on the same date.
+      entries.sort((a, b) => {
+        const dateDiff = a.date.getTime() - b.date.getTime();
+        if (dateDiff !== 0) return dateDiff;
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      });
     }
 
     const outDocIds = [
@@ -366,6 +377,7 @@ export async function getItemLedger(
         AND o.source_doc_id = ANY(${outDocIds}::uuid[])
         AND d.reversed_at IS NULL
       GROUP BY o.source_doc_id, i.source_doc_type, i.source_doc_id
+      ORDER BY o.source_doc_id, MIN(l.in_date) ASC, MIN(l.in_seq) ASC
     `
         : [];
 

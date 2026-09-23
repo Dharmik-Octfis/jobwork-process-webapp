@@ -781,4 +781,6 @@ input[type='number'] {
 }
 
 .table-row-hover:hover { background-color: #f8fafc !important; }
-
+.hover-underline:hover {
+  text-decoration: underline !important;
+}

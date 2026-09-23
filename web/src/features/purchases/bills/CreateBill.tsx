@@ -37,6 +37,8 @@ import {
   type BillAttachment,
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
+import { fetchJobReceiptById } from '../../jobwork/receipts/jobReceipts.api';
+import type { JobReceipt } from '../../jobwork/receipts/jobReceipts.schemas';
 import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
@@ -121,8 +123,9 @@ export function CreateBill() {
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
-  const jobReceiptId = searchParams.get('jobReceiptId');
+  const fromJobReceipt = searchParams.get('fromJobReceipt');
   const initialVendorId = searchParams.get('vendorId');
+  const jobReceiptId = searchParams.get('jobReceiptId');
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
 
@@ -130,6 +133,7 @@ export function CreateBill() {
   const isEdit = Boolean(id);
   const isClone = Boolean(cloneFrom);
   const isFromPo = Boolean(fromPo);
+  const isFromJobReceipt = Boolean(fromJobReceipt);
 
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
@@ -158,6 +162,12 @@ export function CreateBill() {
     queryKey: ['purchaseOrder', orgId, fromPo],
     queryFn: () => fetchPurchaseOrderById(orgId!, fromPo!),
     enabled: Boolean(orgId && fromPo),
+  });
+
+  const { data: sourceJobReceipt } = useQuery({
+    queryKey: ['jobReceipt', orgId, fromJobReceipt],
+    queryFn: () => fetchJobReceiptById(orgId!, fromJobReceipt!),
+    enabled: Boolean(orgId && fromJobReceipt),
   });
 
   const { data: vendorsPage } = useQuery({
@@ -338,6 +348,75 @@ export function CreateBill() {
       }
     }
   }, [existingPo, isClone, reset]);
+
+  useEffect(() => {
+    if (sourceJobReceipt && isFromJobReceipt) {
+      const formattedLineItems: BillItem[] = [];
+
+      sourceJobReceipt.outputs.forEach((output: JobReceipt['outputs'][number]) => {
+        const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
+        const qty = Number(output.acceptedQty) || 1;
+
+        formattedLineItems.push({
+          itemId: output.itemId,
+          item: output.item,
+          quantity: qty,
+          rate: totalCost / qty,
+          discountValue: 0,
+          discountType: 'percentage',
+          amount: totalCost,
+          itemTotal: totalCost,
+          jobReceiptId: sourceJobReceipt.id,
+          description: `Processing charge for Job Order ${sourceJobReceipt.jobOrder?.jobOrderNumber || ''} / Receive ${sourceJobReceipt.receiptNumber}`,
+          batches: output.batches?.filter((b) => b.kind === 'accepted').length
+            ? output.batches
+                .filter((b) => b.kind === 'accepted')
+                .map((b) => ({
+                  batchId: b.batch.id,
+                  quantity: Number(b.qty) || qty,
+                }))
+            : output.outputBatch?.id
+              ? [{
+                  batchId: output.outputBatch.id as string,
+                  quantity: qty,
+                }]
+              : undefined,
+        });
+      });
+
+      const resetData: CreateBillData = {
+        vendorId: sourceJobReceipt.processorId || '',
+        locationId: sourceJobReceipt.locationId || '',
+        paymentTerms: '',
+        billNumber: '',
+        billDate: new Date().toISOString().split('T')[0],
+        dueDate: '',
+        deliveryType: 'Location',
+        deliveryLocationId: sourceJobReceipt.locationId || '',
+        deliveryCustomerId: '',
+        termsAndConditions: '',
+        status: 'Draft',
+        customFields: null,
+        lineItems:
+          formattedLineItems.length > 0
+            ? (formattedLineItems as unknown as BillItem[])
+            : [
+                {
+                  itemId: '',
+                  quantity: '' as unknown as number,
+                  rate: '' as unknown as number,
+                  discountValue: '' as unknown as number,
+                  discountType: 'percentage',
+                  itemTotal: 0,
+                } as BillItem,
+              ],
+        subTotal: formattedLineItems.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
+        totalAmount: formattedLineItems.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
+      };
+
+      reset(resetData);
+    }
+  }, [sourceJobReceipt, isFromJobReceipt, reset]);
 
   useEffect(() => {
     if (sourcePo && isFromPo) {
@@ -1980,10 +2059,19 @@ export function CreateBill() {
                 itemTotal: totalCost,
                 jobReceiptId: receipt.id,
                 description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
-                batches: output.outputBatchId ? [{
-                  batchId: output.outputBatchId,
-                  quantity: qty,
-                }] : undefined,
+                batches: output.batches?.filter((b) => b.kind === 'accepted').length
+                  ? output.batches
+                      .filter((b) => b.kind === 'accepted')
+                      .map((b) => ({
+                        batchId: b.batch.id,
+                        quantity: Number(b.qty) || qty,
+                      }))
+                  : (output.outputBatchId || output.outputBatch?.id)
+                    ? [{
+                        batchId: (output.outputBatchId || output.outputBatch?.id) as string,
+                        quantity: qty,
+                      }]
+                    : undefined,
               };
 
               if (startIndex < newItems.length && !newItems[startIndex].itemId) {

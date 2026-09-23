@@ -288,6 +288,8 @@ model BillItem {
   /// What this line says it received, broken down. See `BillItemBatch`.
   batchLines BillItemBatch[]
 
+  @@index([billId, itemId])
+  @@index([jobReceiptId, itemId])
   @@map("bill_items")
 }
 

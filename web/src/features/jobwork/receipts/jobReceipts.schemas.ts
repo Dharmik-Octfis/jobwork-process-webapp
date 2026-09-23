@@ -151,7 +151,7 @@ export const jobReceiptSchema = z.object({
     .object({ id: z.string(), supplierBatchRef: z.string().nullable() })
     .nullable()
     .optional(),
-  _count: z.object({ billItems: z.number() }).optional(),
+  billItems: z.array(z.object({ id: z.string(), billId: z.string() })).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -181,7 +181,6 @@ export const receivePrefillSchema = z.object({
       challanNumber: z.string(),
       issueDate: z.string(),
       totalQty: z.string(),
-      isRework: z.boolean(),
       attemptNo: z.number(),
       /** Who is holding these goods, and the location the challan sent them to.
        * The pair is what lets the dialog offer "they stayed there" as a receive-
