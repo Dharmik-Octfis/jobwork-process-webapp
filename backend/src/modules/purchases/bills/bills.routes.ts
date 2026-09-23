@@ -18,21 +18,6 @@ export const billsRouter = Router({ mergeParams: true });
 
 billsRouter.use(authenticate, tenantContext);
 
-billsRouter.get('/debug-receipts', async (req, res) => {
-  const { PrismaClient } = require('@prisma/client');
-  const prisma = new PrismaClient();
-  const receipts = await prisma.jobReceipt.findMany({
-    select: {
-      receiptNumber: true,
-      processChargeTotal: true,
-      outputs: { select: { processCharge: true, rate: true } },
-    },
-    take: 5,
-    orderBy: { createdAt: 'desc' },
-  });
-  res.json(receipts);
-});
-
 billsRouter.get('/', requirePermission('bill:read'), ctrl.getBills);
 billsRouter.get('/count', requirePermission('bill:read'), ctrl.getBillCount);
 billsRouter.get(
