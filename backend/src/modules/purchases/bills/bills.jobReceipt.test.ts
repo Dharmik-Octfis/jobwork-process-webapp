@@ -368,6 +368,18 @@ describe('a service item is never stocked', { timeout: 60_000 }, () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
+  it('refuses deleting an item that still has stock, and deletes one that has none', async () => {
+    const stocked = await makeItem('Stocked');
+    await stockIn(stocked.id, 10, 100);
+    await expect(itemsService.delete(stocked.id, orgId)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('still has 10 in stock'),
+    });
+
+    const empty = await makeItem('Empty');
+    await expect(itemsService.delete(empty.id, orgId)).resolves.toBeDefined();
+  });
+
   it('refuses turning an item with stock movements into a service', async () => {
     const fabric = await makeItem('Moved');
     await stockIn(fabric.id, 10, 100);

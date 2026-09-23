@@ -1015,6 +1015,22 @@ export class ItemsService {
         );
       }
 
+      // Deleting hides the item from valuation while its stock stays on the books —
+      // at a godown or at a job worker, own or a customer's. Bring it to zero first.
+      const stock = await tx.stockLedgerEntry.aggregate({
+        where: { organizationId, itemId: id, stockEffect: { in: ['both', 'physical'] } },
+        _sum: { qtyIn: true, qtyOut: true },
+      });
+      const onHand = (stock._sum.qtyIn ?? new Prisma.Decimal(0)).minus(
+        stock._sum.qtyOut ?? new Prisma.Decimal(0),
+      );
+      if (!onHand.isZero()) {
+        throw ApiError.conflict(
+          `${item.name} still has ${onHand.toString()} in stock, so it cannot be deleted. ` +
+            'Issue, consume or adjust it to zero first, or mark the item inactive.',
+        );
+      }
+
       const deletedItem = await tx.item.update({
         where: { id },
         data: { isDeleted: true, updatedBy: userId ?? null },

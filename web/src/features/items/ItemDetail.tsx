@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
@@ -133,6 +135,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       onClose();
     },
+    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const toggleActiveMutation = useMutation({
