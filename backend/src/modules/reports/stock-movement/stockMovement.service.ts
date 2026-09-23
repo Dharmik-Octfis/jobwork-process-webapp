@@ -114,7 +114,7 @@ export async function getStockMovementReport(
         ABS(n.net) AS "quantity"
       FROM (${netted}) n
       JOIN items i ON n.item_id = i.id
-      ORDER BY n.posted_at DESC, n.created_at ASC
+      ORDER BY n.posted_at DESC, n.created_at DESC
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `;
 

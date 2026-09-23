@@ -1060,6 +1060,7 @@ export async function getAvailableBatches(
   });
 
   const zero = new Prisma.Decimal(0);
+  
   const positive = grouped
     .map((row) => ({
       batchId: row.batchId,
@@ -1069,27 +1070,35 @@ export async function getAvailableBatches(
     }))
     .filter((row) => row.availableQty.greaterThan(0));
 
-  if (positive.length === 0) return [];
+  const zeroBalance = grouped
+    .map((row) => ({
+      batchId: row.batchId,
+      locationId: row.locationId,
+      availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+      value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
+    }))
+    .filter((row) => row.availableQty.equals(0));
 
-  // One item asked about means the cap can go into the database, where a ceiling
-  // belongs. Several means it cannot — see the note on `limit` above.
+  // If we have nothing at all, return empty
+  if (positive.length === 0 && zeroBalance.length === 0) return [];
+
   const oneItem = Boolean(filter.itemId) || filter.itemIds?.length === 1;
 
-  const batches = await tx.batch.findMany({
+  // Base where clause for both live and dead batches
+  const baseWhere: Prisma.BatchWhereInput = {
+    organizationId: filter.organizationId,
+    isDeleted: false,
+    state: { not: UNALLOCATED_BATCH_STATE },
+    ...searchWhere<Prisma.BatchWhereInput>(filter.search, [
+      'supplierBatchRef',
+      'manufacturerBatch',
+    ]),
+  };
+
+  const batches = positive.length > 0 ? await tx.batch.findMany({
     where: {
       id: { in: positive.map((row) => row.batchId) },
-      organizationId: filter.organizationId,
-      isDeleted: false,
-      // Unallocated opening stock counts on hand but is never offered — see
-      // `UNALLOCATED_BATCH_STATE`. Dropping it here drops its balance row below.
-      state: { not: UNALLOCATED_BATCH_STATE },
-      // The picker's own search. Matches what is on the physical tag and nothing
-      // else — `batchNumber` is never rendered, so it is never typed either
-      // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
-      ...searchWhere<Prisma.BatchWhereInput>(filter.search, [
-        'supplierBatchRef',
-        'manufacturerBatch',
-      ]),
+      ...baseWhere,
     },
     // Ordered and capped HERE rather than after hydration, so a limit actually
     // bounds the rows the database builds.
@@ -1115,15 +1124,44 @@ export async function getAvailableBatches(
       ownership: true,
       ownerPartyId: true,
     },
-  });
+  }) : [];
+
+  // Safely fetch a small number of dead batches to satisfy UX without starving live stock
+  const deadBatches = zeroBalance.length > 0 ? await tx.batch.findMany({
+    where: {
+      id: { in: zeroBalance.map((row) => row.batchId) },
+      ...baseWhere,
+    },
+    // Newest first for dead batches so the user sees what they just exhausted
+    orderBy: { createdAt: 'desc' },
+    // Only return dead batches if explicitly searched, OR up to 10 by default
+    take: filter.search ? undefined : 10,
+    select: {
+      id: true,
+      batchNumber: true,
+      createdAt: true,
+      supplierBatchRef: true,
+      manufacturerBatch: true,
+      manufacturedDate: true,
+      expiryDate: true,
+      mrp: true,
+      sellingPrice: true,
+      itemId: true,
+      uomId: true,
+      ownership: true,
+      ownerPartyId: true,
+    },
+  }) : [];
+
+  const allBatches = [...batches, ...deadBatches];
 
   // The multi-item path's cap, applied to rows the database already ordered
   // oldest-first — so it keeps exactly the batches FIFO wants issued first,
   // which is what the database-side `take` keeps for one item.
   const capped =
     filter.limit && !oneItem
-      ? keepPerItem(batches, filter.limit)
-      : new Set(batches.map((b) => b.id));
+      ? keepPerItem(allBatches, filter.limit)
+      : new Set(allBatches.map((b) => b.id));
 
   /**
    * Driven by the BALANCE rows, not the batch rows: a batch with stock in two
@@ -1141,9 +1179,9 @@ export async function getAvailableBatches(
    * every test that did not check which batch moved (2026-09-02).
    */
   const batchById = new Map(
-    batches.filter((batch) => capped.has(batch.id)).map((batch) => [batch.id, batch]),
+    allBatches.filter((batch) => capped.has(batch.id)).map((batch) => [batch.id, batch]),
   );
-  return positive.flatMap((balance) => {
+  return [...positive, ...zeroBalance].flatMap((balance) => {
     const batch = batchById.get(balance.batchId);
     return batch
       ? [

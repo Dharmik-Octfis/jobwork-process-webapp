@@ -118,6 +118,7 @@ export async function fetchAvailableBatches(
     withUnits?: boolean;
     search?: string;
     limit?: number;
+    excludeVendorLocations?: boolean;
   },
 ): Promise<AvailableBatch[]> {
   const response = await apiClient.get(endpoints.inventory.availableBatches(orgId), {
@@ -125,6 +126,7 @@ export async function fetchAvailableBatches(
       ...params,
       search: params.search?.trim() || undefined,
       withUnits: params.withUnits ? 'true' : undefined,
+      excludeVendorLocations: params.excludeVendorLocations ? 'true' : undefined,
     },
   });
   return z.array(availableBatchSchema).parse(response.data);

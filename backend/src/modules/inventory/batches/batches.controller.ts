@@ -40,6 +40,10 @@ const availabilityQuerySchema = z
       .enum(['true', 'false'])
       .optional()
       .transform((v) => v === 'true'),
+    excludeVendorLocations: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
     /** The picker narrows by typing rather than paging: a batch is looked up by the
      * number on its tag, and nobody walks page 7 of a batch list. */
     search: z.string().trim().min(1).max(100).optional(),
@@ -66,6 +70,7 @@ openApiRegistry.registerPath({
       locationId: z.string().optional(),
       ownership: z.string().optional(),
       withUnits: z.string().optional(),
+      excludeVendorLocations: z.string().optional(),
       search: z.string().optional(),
       limit: z.string().optional(),
     }),

@@ -1024,10 +1024,11 @@ export function StepsGrid<T extends StepGridRow>({
       ownership,
       planSearchDebounced,
       'plan',
-      // 🔴 Part of the KEY. Turning the level on has to invalidate this, or the
       // planner serves a cached answer with no packages and every batch looks as
       // though it has none.
       unitLabel.enabled,
+      // 🔴 Job orders don't plan from vendor locations by default
+      'excludeVendorLocations',
     ],
     queryFn: () =>
       fetchAvailableBatches(orgId!, {
@@ -1036,6 +1037,7 @@ export function StepsGrid<T extends StepGridRow>({
         search: planSearchDebounced || undefined,
         limit: PLAN_BATCH_LIMIT,
         withUnits: unitLabel.enabled,
+        excludeVendorLocations: true,
       }),
     enabled: Boolean(orgId && planningRow?.itemId),
   });

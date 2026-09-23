@@ -539,10 +539,9 @@ export function AppLayout() {
               alt={activeOrg.name}
               onError={() => setLogoError(true)}
               style={{
-                maxWidth: isSidebarCollapsed ? 40 : 190,
-                maxHeight: 40,
+                maxWidth: isSidebarCollapsed ? 40 : 500,
+                height: 60,
                 width: 'auto',
-                height: 'auto',
                 objectFit: 'contain',
                 display: 'block',
                 transition: 'max-width 0.3s ease',

@@ -1383,10 +1383,12 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
 
         // Lines billed from a Job Receipt do not affect inventory.
         // The Job Receipt already received the physical stock.
-        if (payload.jobReceiptId) continue;
+        // However, the document rows (`billItemBatch`) still need to be written,
+        // so we process the batches with `post: false` to skip ledger postings.
+        const shouldPost = posting && !payload.jobReceiptId;
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          for (const b of batchesToReceive(item, payload, posting)) {
+          for (const b of batchesToReceive(item, payload, shouldPost)) {
             const received = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
@@ -1396,7 +1398,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
               locationId: createdBill.locationId,
               value: batchValue(payload, b.quantity),
               batch: b,
-              post: posting,
+              post: shouldPost,
             });
             postings.push(...received.postings);
           }
@@ -1404,7 +1406,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
              remember: its quantity is the line's own column, and the anonymous
              batch below exists only to give the ledger something to hang on. So
              this branch stays posting-only, and a draft writes nothing for it. */
-        } else if (posting && item?.trackInventory && item.inventoryTracking === 'none') {
+        } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
           postings.push(
             await untrackedPosting(tx, {
               organizationId: orgId,
@@ -1719,10 +1721,12 @@ export async function updateBill(
 
         // Lines billed from a Job Receipt do not affect inventory.
         // The Job Receipt already received the physical stock.
-        if (payload.jobReceiptId) continue;
+        // However, the document rows (`billItemBatch`) still need to be written,
+        // so we process the batches with `post: false` to skip ledger postings.
+        const shouldPost = mustPost && !payload.jobReceiptId;
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          for (const b of batchesToReceive(item, payload, mustPost)) {
+          for (const b of batchesToReceive(item, payload, shouldPost)) {
             const received = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
@@ -1732,14 +1736,14 @@ export async function updateBill(
               locationId: effectiveLocationId,
               value: batchValue(payload, b.quantity),
               batch: b,
-              post: mustPost,
+              post: shouldPost,
             });
             for (const unitId of received.unitIds) usedUnitIds.add(unitId);
             postings.push(...received.postings);
           }
           // Posting-only, for the same reason as on create: an item tracked at
           // neither level has no detail to remember.
-        } else if (mustPost && item?.trackInventory && item.inventoryTracking === 'none') {
+        } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
           postings.push(
             await untrackedPosting(tx, {
               organizationId: orgId,
