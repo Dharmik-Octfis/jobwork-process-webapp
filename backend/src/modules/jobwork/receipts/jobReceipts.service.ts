@@ -2142,14 +2142,12 @@ export async function createNewJobReceipt(
        *
        * The `outputItemId` / `outputUomId` columns that used to say WHICH row
        * these belong to went on 2026-08-12; it is the primary output, and that is
-       * derivable from the child list. `chainNotReady` still sums
-       * `totalReceivedQty`, which is why these six stay.
+       * derivable from the child list. List pages and reports still read
+       * these, which is why these six stay.
        *
        * 🔴 A DRAFT FILLS THESE IN TOO, so the list page can show what it is for.
        * They are therefore populated while the ledger behind them is empty, which
-       * is precisely why every sum over receipts filters on `POSTED_DOC_STATUS` —
-       * `chainNotReady` above all, since it reads `totalReceivedQty` alone and
-       * would otherwise let a parked receipt unlock the next step.
+       * is precisely why every sum over receipts filters on `POSTED_DOC_STATUS`.
        */
       totalIssuedQty: principalConsumedQty,
       totalReceivedQty: primaryOutput.receivedQty,

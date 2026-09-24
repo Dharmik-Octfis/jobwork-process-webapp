@@ -624,6 +624,7 @@ export function JobOrderForm({
               /* Decides which batches may even be offered: one customer's goods must
              never be planned into another's order (§5.3). */
               ownership={ownership}
+              ownerPartyId={ownerPartyId}
               lockedCount={lockedCount}
               finishedSteps={finishedSteps}
               unassignedProcessorLabel="Decide when issuing"

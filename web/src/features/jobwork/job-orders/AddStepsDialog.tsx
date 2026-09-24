@@ -17,6 +17,8 @@ interface Props {
   /** own | customer, from the order. Decides which batches the planner may name —
    * one customer's goods must never be planned into another's order (§5.3). */
   ownership: string;
+  /** …and which customer, on a customer order. */
+  ownerPartyId: string | null;
   /** Every step already on the order, in seq order. */
   steps: OverviewStep[];
   onAdded: () => void;
@@ -32,10 +34,9 @@ interface Props {
  *
  * 🔴 NO STEP'S STATUS IS CONSULTED — not the last one's, not any. A step appended
  * after one that is pending, at a processor, or complete is the same step: it
- * arrives `pending`, and the chain rule the server already enforces
- * (`chainNotReady`) refuses to let it issue until the step above has returned
- * something. The only refusal is on the ORDER, and it is the server's: an order
- * closed short or cancelled takes no more work.
+ * arrives `pending` and is issued like any other. The only refusal is on the
+ * ORDER, and it is the server's: an order closed short or cancelled takes no more
+ * work.
  *
  * The grid is `StepsGrid` — the same control the create form uses, not a second
  * copy of it. `seqOffset` makes its captions read "Step 4" instead of "Step 1",
@@ -48,6 +49,7 @@ export function AddStepsDialog({
   jobOrderId,
   jobOrderNumber,
   ownership,
+  ownerPartyId,
   steps,
   onAdded,
 }: Props) {
@@ -198,6 +200,7 @@ export function AddStepsDialog({
         showPlannedQty
         allowPlannedBatches
         ownership={ownership}
+        ownerPartyId={ownerPartyId}
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
         priorSpare={priorSpare}

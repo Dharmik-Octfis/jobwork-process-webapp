@@ -1737,7 +1737,13 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('refuses to issue a step until the step above it has delivered', async () => {
+  /**
+   * 🔴 THE CHAIN WARNS, IT DOES NOT BLOCK (2026-09-24). A step may issue before
+   * the step feeding it has returned anything, drawing on stock already on hand —
+   * the ledger is the only hard gate. The Overview names each such input so the
+   * Issue screen can say what is happening.
+   */
+  it('lets a step issue existing stock before the step above has delivered, and warns', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
       itemChanges: true,
@@ -1763,37 +1769,60 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           // Fed by step 1 — `classifyStepInputs` marks it fromStock: false, and
           // 60 is within the 100 panels cutting expects to return.
           inputs: [{ itemId: shirtId, plannedQty: 60 }],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: shirtsId, isPrimary: true, expectedQty: 60 }],
         },
       ],
     });
     expect(jobOrder.steps[1]!.inputs[0]!.fromStock).toBe(false);
 
-    /**
-     * 🔴 Nothing has come back from cutting, so there is nothing for stitching
-     * to send — and the no-stock scaffold must NOT invent it. Raw material can
-     * be conjured while Purchase Received is missing; work in progress cannot,
-     * because a step that produced nothing produced nothing.
-     *
-     * 🔴 Blocked BY POSITION, not by matching items. Asking whether step 2's
-     * inputs were declared as fed by step 1 let a step whose PRODUCES list was
-     * empty — or which named a different item — declare no link at all, and the
-     * rule then silently did not apply.
-     */
-    await expect(
-      createNewJobIssue(orgId, {
-        jobOrderStepId: jobOrder.steps[1]!.id,
-        sourceLocationId: godownId,
-        lines: [{ itemId: shirtId, qty: 60 }],
-      }),
-    ).rejects.toMatchObject({ status: 409 });
+    // Nothing has come back from cutting: step 2 warns about the panels, and
+    // step 1 — which draws on stock — warns about nothing.
+    const before = await getJobOrderOverview(orgId, jobOrder.id);
+    expect(before.steps[0]!.chainWarnings).toEqual([]);
+    expect(before.steps[1]!.canIssue).toBe(true);
+    expect(before.steps[1]!.chainWarnings).toHaveLength(1);
+    expect(before.steps[1]!.chainWarnings[0]!.itemId).toBe(shirtId);
+    expect(before.steps[1]!.chainWarnings[0]!.message).toContain('come back from step 1');
 
-    // The Overview says the same thing, in words, instead of a dead button.
+    // Panels already in the godown (a closed order's leftovers) may go out now.
+    await stockUp(shirtId, 60);
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: jobOrder.steps[1]!.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: shirtId, qty: 60 }],
+    });
+    expect(issue.status).toBe('issued');
+  });
+
+  it('never warns about a step whose inputs no earlier step produces', async () => {
+    const cutting = await createNewProcess(orgId, {
+      name: `Cutting ${unique()}`,
+      itemChanges: true,
+    });
+    const packing = await createNewProcess(orgId, { name: `Packing ${unique()}` });
+
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          inputs: [{ itemId: dyedId, plannedQty: 10 }],
+          outputs: [{ itemId: shirtId, isPrimary: true }],
+        },
+        {
+          processId: packing.id,
+          processorId: cutterId,
+          // Nothing above produces thread — it comes off the shelf, so step 2 is
+          // free to run alongside step 1.
+          inputs: [{ itemId: threadId, plannedQty: 5 }],
+          outputs: [{ itemId: threadId, isPrimary: true }],
+        },
+      ],
+    });
+
     const overview = await getJobOrderOverview(orgId, jobOrder.id);
-    expect(overview.steps[1]!.canIssue).toBe(false);
-    expect(overview.steps[1]!.blockedReason).toContain('Nothing has come back from step 1');
-    // Step 1 draws on stock, so it is free to go.
-    expect(overview.steps[0]!.canIssue).toBe(true);
+    expect(overview.steps[1]!.canIssue).toBe(true);
+    expect(overview.steps[1]!.chainWarnings).toEqual([]);
   });
 
   it('refuses two primary outputs, and the same item listed twice', async () => {
@@ -1840,9 +1869,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
    * and never over the whole grid (§6.6).
    *
    * The other half is what is NOT checked. No step's status gates this — a step
-   * at a processor is no reason to withhold it, because the appended step arrives
-   * `pending` and `chainNotReady` already refuses to let it issue until the step
-   * above has delivered. Only the ORDER refuses, and only when it is closed.
+   * at a processor is no reason to withhold it: the appended step arrives
+   * `pending` and is issued like any other. Only the ORDER refuses, and only when
+   * it is closed.
    */
   describe('appending steps to a running order', () => {
     it('appends after the last step while it is still at the processor, and leaves its challan intact', async () => {
@@ -1921,11 +1950,10 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       expect(after.remarks).toContain('Added step 2');
       expect(after.remarks).toContain('Party asked for stitching too');
 
-      // The chain sequences it without any status check on our side: cutting has
-      // returned nothing, so stitching has nothing to send on.
+      // Cutting has returned nothing, so the appended step warns about the panels
+      // it would draw from existing stock — the chain reaches across the boundary.
       const overview = await getJobOrderOverview(orgId, jobOrder.id);
-      expect(overview.steps[1]!.canIssue).toBe(false);
-      expect(overview.steps[1]!.blockedReason).toContain('Nothing has come back from step 1');
+      expect(overview.steps[1]!.chainWarnings[0]?.message).toContain('come back from step 1');
     });
 
     it('refuses an order that has been closed short', async () => {
@@ -1952,9 +1980,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
       /**
        * 🔴 The one refusal. `short_closed` is sticky, so the order would keep
-       * that label forever while `chainNotReady` waives the chain after a
-       * short-closed step — a document that reads as finished and still takes
-       * challans.
+       * that label forever while the new step took challans — a document that
+       * reads as finished and still takes them.
        */
       await expect(
         appendJobOrderSteps(orgId, jobOrder.id, {

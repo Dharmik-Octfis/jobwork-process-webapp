@@ -26,7 +26,7 @@ import {
   runAsDocument,
   type ProcessorType,
 } from '../jobwork.types.ts';
-import { chainNotReady, recomputeStep } from '../job-orders/jobOrders.status.ts';
+import { recomputeStep } from '../job-orders/jobOrders.status.ts';
 import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
 
@@ -490,6 +490,9 @@ async function resolveLines(
 ) {
   const lenient = context.lenient ?? false;
   const itemIds = new Set(lines.map((line) => line.itemId));
+  // `ownership` alone matches EVERY customer's goods; a customer order may only
+  // draw on its own customer's. The draft check below applies the same rule.
+  const ownerPartyId = context.ownership === 'customer' ? context.ownerPartyId : undefined;
 
   /**
    * 🔴 ONE CHALLAN, ONE LOCATION — exactly the one on the header (2026-08-19).
@@ -536,6 +539,7 @@ async function resolveLines(
     itemIds: [...itemIds],
     locationId: context.locationId,
     ownership: context.ownership,
+    ownerPartyId,
   })) {
     availableByKey.set(keyOf(row.batchId, row.locationId), row);
   }
@@ -562,6 +566,7 @@ async function resolveLines(
       batchIds: [...new Set([...availableByKey.values()].map((row) => row.batchId))],
       locationId: context.locationId,
       ownership: context.ownership,
+      ownerPartyId,
     })) {
       const key = keyOf(unit.batchId, unit.locationId);
       const forKey = unitsByKey.get(key) ?? new Map<string, AvailableUnitRow>();
@@ -883,7 +888,7 @@ async function resolveLines(
         state: { not: UNALLOCATED_BATCH_STATE },
         itemId: { in: [...itemIds] },
         ownership: context.ownership,
-        ...(context.ownership === 'customer' ? { ownerPartyId: context.ownerPartyId } : {}),
+        ...(ownerPartyId !== undefined ? { ownerPartyId } : {}),
       },
       select: { id: true, itemId: true },
     });
@@ -967,7 +972,6 @@ async function resolveLines(
  *
  * WHAT A DRAFT SKIPS, AND WHY EACH ONE IS SAFE TO SKIP
  *
- *   · `chainNotReady`    — the previous step may well finish before this is sent.
  *   · tolerance          — the quantity is still being typed.
  *   · availability       — `resolveLines({ lenient })`; the goods may not be in yet.
  *   · `postMovement`     — 🔴 THE POINT. No ledger row, so no stock moves.
@@ -1051,23 +1055,10 @@ export async function createNewJobIssue(
     }
     const isRework = header.isRework ?? false;
 
-    /**
-     * 🔴 THE CHAIN, ENFORCED HERE AND NOT ONLY ON THE BUTTON.
-     *
-     * Step 2 consumes what step 1 produced, so until step 1 has returned some of
-     * it there is physically nothing to send. The Overview disables the button
-     * for the same reason, but a disabled button is a hint — this is the rule.
-     *
-     * Rework is exempt: it re-issues what this step itself returned, which by
-     * definition already came back.
-     */
-    // Not for a draft: step 1 may well have returned something by the time this
-    // is actually sent, and refusing to PARK tomorrow's challan because today's
-    // goods are not back is a gate with no purpose.
-    if (!isRework && !asDraft) {
-      const notReady = await chainNotReady(tx, organizationId, step.jobOrderId, step);
-      if (notReady) throw ApiError.conflict(notReady);
-    }
+    // 🔴 No chain check (2026-09-24). A step may issue before the step feeding it
+    // returns anything; the ledger check in `resolveLines` refuses stock that is
+    // not there, and the Issue screen warns when existing stock stands in for it
+    // (`getChainWarnings`).
 
     /**
      * 🔴 THE PLAN MUST BE COMPLETE BEFORE MATERIAL LEAVES (landed-cost plan D11, V4).
@@ -1455,8 +1446,8 @@ export async function createNewJobIssue(
  * 🔴 It goes back through `createNewJobIssue` in `post` mode rather than simply
  * flipping the status and posting the stored lines. Flipping is the tempting
  * shortcut and it is the bug: the draft was saved leniently, so its lines may
- * overdraw a batch, breach the tolerance ceiling, or sit behind a step that has
- * still returned nothing. Every one of those checks lives in that function, and
+ * overdraw a batch or breach the tolerance ceiling. Every one of those checks
+ * lives in that function, and
  * a second posting path would be a second place for them to be forgotten.
  *
  * The draft's own rows are the input, so what is posted is exactly what was

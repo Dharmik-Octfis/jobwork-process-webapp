@@ -280,9 +280,8 @@ left its expected quantity blank. The note is `overPlanWarning`; the balance it 
 the server walks to fill in the blank rows.
 
 What the old hard rule protected against — an empty batch picker days later — now surfaces at issue
-time, per item, on the screen where someone can act on it. There is one hard rule left at issue time
-and it is new: **a step cannot issue until the step before it has returned something** (domain
-§6.4.1).
+time, per item, on the screen where someone can act on it. The chain is a warning there too: an input
+an earlier step produces but has not returned yet is flagged, not refused (domain §6.4.1).
 
 #### 4.2.3 The route's default quantities (2026-08-10)
 

@@ -133,16 +133,21 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
               ? `${qtyWithUnit(outstanding, unit)} still out`
               : settled && primaryOut
                 ? `${qtyWithUnit(primaryOut.receivedQty, primaryOut.uomSymbol)} back`
-                : step.blockedReason
-                  ? 'Blocked'
-                  : step.canIssue && issued === 0
-                    ? 'Ready to issue'
-                    : '—';
+                : step.canIssue && issued === 0
+                  ? step.chainWarnings.length > 0
+                    ? 'Awaiting earlier step'
+                    : 'Ready to issue'
+                  : '—';
 
         return (
           <div
             key={step.id}
-            style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0, position: 'relative' }}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              flexShrink: 0,
+              position: 'relative',
+            }}
           >
             {index > 0 && <Connector filled={steps[index - 1]!.status === 'completed'} />}
 
@@ -270,8 +275,6 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                 </span>
               </span>
             </button>
-
-
           </div>
         );
       })}

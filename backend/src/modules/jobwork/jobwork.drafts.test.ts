@@ -21,7 +21,7 @@ import {
   getReceivePrefill,
   postJobReceiptDraft,
 } from './receipts/jobReceipts.service.ts';
-import { chainNotReady, getStepTotals } from './job-orders/jobOrders.status.ts';
+import { getChainWarnings, getStepTotals } from './job-orders/jobOrders.status.ts';
 import type { ProcessorType } from './jobwork.types.ts';
 
 /**
@@ -32,15 +32,15 @@ import type { ProcessorType } from './jobwork.types.ts';
  * real totals, with NO ledger rows behind them. That makes it invisible only
  * because ~15 separate queries filter it out (`POSTED_DOC_STATUS`), and the
  * failure when one of them does not is silent and expensive: the Overview reports
- * material at a processor that is still in the godown, the next step's chain guard
- * opens on goods that never came back, and the stock report and the job order
+ * material at a processor that is still in the godown, the next step's chain warning
+ * clears on goods that never came back, and the stock report and the job order
  * disagree with no way to tell which is lying.
  *
  * So this file asserts the ABSENCE of effects, on both sides:
  *   · no `stock_ledger` row, no balance moved, no batch created;
  *   · step totals, step status and job order status all untouched;
  *   · the challans a draft receipt names stay open and receivable;
- *   · the chain guard still refuses the next step.
+ *   · the next step still warns that nothing has come back.
  *
  * …and then that posting the same draft does all of it properly, through the
  * ordinary path.
@@ -484,12 +484,12 @@ describe('a draft receipt affects nothing', { timeout: 120_000 }, () => {
     expect(totals.receivedQty.toString()).toBe('0');
     expect(totals.receiptCount).toBe(0);
 
-    // 🔴 …so the chain guard still refuses step 2. A receipt somebody typed and
-    // parked must not unlock the next operation.
-    const blocked = await runAsTenant(orgId, (tx) =>
-      chainNotReady(tx, orgId, step2.jobOrderId, { id: step2.id, seq: step2.seq }),
+    // 🔴 …so step 2 still warns that nothing has come back. A receipt somebody
+    // typed and parked is paperwork, not goods.
+    const warnings = await runAsTenant(orgId, (tx) =>
+      getChainWarnings(tx, orgId, step2.jobOrderId),
     );
-    expect(blocked).toMatch(/Nothing has come back/);
+    expect(warnings.get(step2.id)?.[0]?.message).toMatch(/has come back from step 1/);
   });
 
   it('is deleted outright, taking its outputs and lines with it', async () => {

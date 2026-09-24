@@ -84,7 +84,7 @@ openApiRegistry.registerPath({
   request: { params: orgParam.extend({ id: z.string() }) },
   responses: {
     200: { description: 'Issued' },
-    400: { description: 'No stock, past tolerance, or the previous step has returned nothing' },
+    400: { description: 'No stock, or past tolerance' },
     409: { description: 'Not a draft' },
   },
 });

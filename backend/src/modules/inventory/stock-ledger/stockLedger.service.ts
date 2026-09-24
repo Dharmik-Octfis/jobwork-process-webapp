@@ -729,6 +729,13 @@ export interface BalanceFilter {
    */
   locationIds?: readonly string[];
   ownership?: Ownership;
+  /**
+   * WHICH customer's goods. `ownership: 'customer'` alone matches every
+   * customer's stock, so an outward caller working for one customer must pass
+   * this too, or it offers — and posts — another customer's material.
+   * `undefined` means no filter; `null` means rows with no owner party.
+   */
+  ownerPartyId?: string | null;
   /** Balance as it stood at a moment in time, by `postedAt`. */
   asOf?: Date;
   /**
@@ -760,6 +767,7 @@ function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput 
         ? { locationId: { in: [...filter.locationIds] } }
         : {}),
     ...(filter.ownership ? { ownership: filter.ownership } : {}),
+    ...(filter.ownerPartyId !== undefined ? { ownerPartyId: filter.ownerPartyId } : {}),
     ...(filter.asOf ? { postedAt: { lte: filter.asOf } } : {}),
     stockEffect: { in: [axis, 'both'] },
   };
@@ -1037,6 +1045,8 @@ export async function getAvailableBatches(
      * back per (batch, location), so the caller knows where each balance is. */
     locationIds?: readonly string[];
     ownership?: Ownership;
+    /** See `BalanceFilter.ownerPartyId` — required in practice for customer stock. */
+    ownerPartyId?: string | null;
     asOf?: Date;
     /** Batch number or the supplier's own reference — the two things printed on
      * the tag, and the only two a user can read off the goods. */

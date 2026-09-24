@@ -363,20 +363,11 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
       step: front,
     };
   }
-  if (front.blockedReason) {
-    return {
-      icon: <Clock size={18} color="#64748b" />,
-      headline: 'Waiting on the step before it',
-      detail: `${where} · ${front.blockedReason}`,
-      tint: '#f8fafc',
-      border: '#e2e8f0',
-      step: front,
-    };
-  }
   return {
     icon: <Send size={18} color="#1d4ed8" />,
     headline: `Ready to issue to ${party}`,
-    detail: `${where} · nothing has gone out yet`,
+    // Issuing is allowed either way; the warning says it would use existing stock.
+    detail: `${where} · ${front.chainWarnings[0]?.message ?? 'nothing has gone out yet'}`,
     tint: '#eff6ff',
     border: '#bfdbfe',
     step: front,
@@ -914,6 +905,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           jobOrderId={jobOrder.id}
           jobOrderNumber={jobOrder.jobOrderNumber}
           ownership={jobOrder.ownership}
+          ownerPartyId={jobOrder.ownerPartyId}
           steps={steps}
           onAdded={() => {
             // The list too: appending to a completed order reopens it as

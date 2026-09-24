@@ -88,6 +88,9 @@ interface Props<T extends StepGridRow> {
   /** own | customer. Decides which batches may even be offered — one customer's
    * goods must never be planned into another's order (§5.3). */
   ownership?: string;
+  /** The customer, when `ownership` is `customer` — `ownership` alone matches every
+   * customer's goods. Until one is picked the planner offers nothing. */
+  ownerPartyId?: string | null;
   /**
    * How many steps already exist above these. The grid captions positions, and on
    * the append dialog position 1 of the array is step 4 of the order — a block
@@ -873,6 +876,7 @@ export function StepsGrid<T extends StepGridRow>({
   showInputQty,
   allowPlannedBatches,
   ownership = 'own',
+  ownerPartyId,
   seqOffset = 0,
   priorProducers,
   priorSpare,
@@ -1016,12 +1020,14 @@ export function StepsGrid<T extends StepGridRow>({
    * (`JobOrderStepInputBatch.locationId`). `ownership` stays mandatory: one
    * customer's goods must never be planned into another's order (§5.2).
    */
+  const planOwnerPartyId = ownership === 'customer' ? (ownerPartyId ?? undefined) : undefined;
   const { data: planningBatches = [], isLoading: planningBatchesLoading } = useQuery({
     queryKey: [
       'available-batches',
       orgId,
       planningRow?.itemId,
       ownership,
+      planOwnerPartyId,
       planSearchDebounced,
       'plan',
       // planner serves a cached answer with no packages and every batch looks as
@@ -1034,12 +1040,16 @@ export function StepsGrid<T extends StepGridRow>({
       fetchAvailableBatches(orgId!, {
         itemId: planningRow!.itemId!,
         ownership,
+        ownerPartyId: planOwnerPartyId,
         search: planSearchDebounced || undefined,
         limit: PLAN_BATCH_LIMIT,
         withUnits: unitLabel.enabled,
         excludeVendorLocations: true,
       }),
-    enabled: Boolean(orgId && planningRow?.itemId),
+    // A customer order with no customer yet would otherwise list every customer's goods.
+    enabled: Boolean(
+      orgId && planningRow?.itemId && (ownership !== 'customer' || planOwnerPartyId),
+    ),
   });
 
   const update = (index: number, patch: Partial<StepGridRow>) => {
