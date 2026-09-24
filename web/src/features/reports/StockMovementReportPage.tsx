@@ -15,6 +15,7 @@ export function StockMovementReportPage() {
   const { orgId } = useParams<{ orgId: string }>();
 
   const initialItemId = searchParams.get('itemId') || '';
+  const initialLocationId = searchParams.get('locationId') || '';
   const initialMovementType =
     (searchParams.get('movementType') as 'inward' | 'outward' | 'all') || 'all';
   const initialFromDateStr = searchParams.get('fromDate');
@@ -38,6 +39,7 @@ export function StockMovementReportPage() {
     toDate: initialToDate,
     movementType: initialMovementType,
     itemId: initialItemId,
+    locationId: initialLocationId,
   });
 
   const [data, setData] = useState<PaginatedStockMovementResponse | null>(null);
@@ -50,6 +52,7 @@ export function StockMovementReportPage() {
       try {
         const response = await reportsApi.getStockMovement(orgId, {
           itemId: appliedFilters.itemId || undefined,
+          locationId: appliedFilters.locationId || undefined,
           fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
           toDate: endOfDay(appliedFilters.toDate).toISOString(),
           movementType: appliedFilters.movementType as 'all' | 'inward' | 'outward',
@@ -216,7 +219,7 @@ export function StockMovementReportPage() {
           <button
             type="button"
             onClick={() =>
-              setAppliedFilters({ fromDate, toDate, movementType, itemId: initialItemId })
+              setAppliedFilters({ fromDate, toDate, movementType, itemId: initialItemId, locationId: initialLocationId })
             }
             style={{
               padding: '6px 12px',

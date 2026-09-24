@@ -690,7 +690,9 @@ export function StockSummaryReportPage() {
                               {(row.openingStock || 0).toFixed(2)}
                             </td>
                           );
-                        case 'quantityIn':
+                        case 'quantityIn': {
+                          const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+                          const locationQuery = locationCond?.value ? `&locationId=${locationCond.value}` : '';
                           return (
                             <td
                               key={colKey}
@@ -702,7 +704,7 @@ export function StockSummaryReportPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   navigate(
-                                    `/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`,
+                                    `/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}${locationQuery}`,
                                   );
                                 }}
                               >
@@ -710,7 +712,10 @@ export function StockSummaryReportPage() {
                               </span>
                             </td>
                           );
-                        case 'quantityOut':
+                        }
+                        case 'quantityOut': {
+                          const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+                          const locationQuery = locationCond?.value ? `&locationId=${locationCond.value}` : '';
                           return (
                             <td
                               key={colKey}
@@ -722,7 +727,7 @@ export function StockSummaryReportPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   navigate(
-                                    `/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`,
+                                    `/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}${locationQuery}`,
                                   );
                                 }}
                               >
@@ -730,6 +735,7 @@ export function StockSummaryReportPage() {
                               </span>
                             </td>
                           );
+                        }
                         case 'closingStock':
                           return (
                             <td

@@ -190,7 +190,7 @@ export async function getItemLedger(
   _query: ItemLedgerQuery,
 ): Promise<ItemLedgerResponse> {
   return runAsTenant(organizationId, async (tx) => {
-    const { fromDate, toDate } = _query;
+    const { fromDate, toDate, locationId } = _query;
 
     const item = await tx.item.findFirst({
       where: { organizationId, id: itemId },
@@ -223,6 +223,7 @@ export async function getItemLedger(
         AND l.stock_effect IN ('both', 'accounting')
         AND ${OWN_PLACE}
         ${toDate ? Prisma.sql`AND l.posted_at <= ${new Date(toDate)}::timestamptz` : Prisma.empty}
+        ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
       GROUP BY l.source_doc_type, l.source_doc_id, l.location_id, l.posted_at
       HAVING SUM(l.qty_in - l.qty_out) <> 0 OR SUM(l.value_in - l.value_out) <> 0
       ORDER BY l.posted_at ASC, MIN(l.created_at) ASC`;

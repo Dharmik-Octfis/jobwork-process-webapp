@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { Menu, X, Filter } from 'lucide-react';
 import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
@@ -8,6 +8,8 @@ import { reportsApi, type ItemLedgerResponse, type ItemLedgerRow } from './repor
 export function InventoryValuationDetailPage() {
   const navigate = useNavigate();
   const { orgId, itemId } = useParams<{ orgId: string; itemId: string }>();
+  const location = useLocation();
+  const locationId = new URLSearchParams(location.search).get('locationId') || undefined;
 
   const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
   const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
@@ -27,6 +29,7 @@ export function InventoryValuationDetailPage() {
       setLoading(true);
       try {
         const response = await reportsApi.getItemLedger(orgId, itemId, {
+          locationId,
           fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
           toDate: endOfDay(appliedFilters.toDate).toISOString(),
         });
@@ -39,7 +42,7 @@ export function InventoryValuationDetailPage() {
     };
 
     loadData();
-  }, [orgId, itemId, appliedFilters]);
+  }, [orgId, itemId, appliedFilters, locationId]);
 
   const getDocLink = (row: ItemLedgerRow) => {
     if (!row.sourceDocId) return null;

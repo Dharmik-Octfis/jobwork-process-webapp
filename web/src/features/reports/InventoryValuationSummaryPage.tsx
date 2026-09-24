@@ -675,9 +675,11 @@ export function InventoryValuationSummaryPage() {
                     key={row.itemId}
                     className="table-row-hover"
                     style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
-                    onClick={() =>
-                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)
-                    }
+                    onClick={() => {
+                      const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+                      const queryStr = locationCond?.value ? `?locationId=${locationCond.value}` : '';
+                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}${queryStr}`);
+                    }}
                   >
                     {visibleColumns.map((colKey) => {
                       switch (colKey) {

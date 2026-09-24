@@ -78,6 +78,7 @@ export interface PaginatedStockSummaryResponse {
 }
 
 export interface ItemLedgerQuery {
+  locationId?: string;
   fromDate?: string;
   toDate?: string;
 }
@@ -158,6 +159,7 @@ export interface FifoCostLotTrackingRow {
 
 export interface StockMovementQuery {
   itemId?: string;
+  locationId?: string;
   fromDate?: string;
   toDate?: string;
   movementType?: 'all' | 'inward' | 'outward';

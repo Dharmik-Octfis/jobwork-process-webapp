@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const stockMovementQuerySchema = z.object({
   itemId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
   fromDate: z.string().datetime().optional(),
   toDate: z.string().datetime().optional(),
   movementType: z.enum(['all', 'inward', 'outward']).optional().default('all'),
