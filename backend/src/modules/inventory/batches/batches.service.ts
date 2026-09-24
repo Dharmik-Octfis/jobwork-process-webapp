@@ -118,6 +118,9 @@ export interface AvailabilityQuery {
    * missing tenant filter (§5.2).
    */
   ownership?: Ownership;
+  /** …and for a customer order, WHICH customer. `ownership: 'customer'` alone
+   * offers every customer's goods, and the issue save refuses all but its own. */
+  ownerPartyId?: string;
   /**
    * Include each batch's PACKAGES — the takas, rolls or bales inside it — and its
    * untagged remainder.
@@ -138,6 +141,9 @@ export interface AvailabilityQuery {
   limit?: number;
   /** Exclude batches that are located at a vendor's location (i.e. at a processor) */
   excludeVendorLocations?: boolean;
+  /** Also return recently used-up batches (balance 0) — see `getAvailableBatches`.
+   * Only the bill's receive-into-existing-batch picker asks for this. */
+  includeExhausted?: boolean;
 }
 
 /**
@@ -183,8 +189,10 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       // which the job-order planner asks and the issue picker never does.
       locationId: query.locationId,
       ownership: query.ownership,
+      ownerPartyId: query.ownerPartyId,
       search: query.search,
       limit: query.limit,
+      includeExhausted: query.includeExhausted,
     });
     if (batches.length === 0) return [];
 
@@ -237,6 +245,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
         batchIds: [...new Set(validBatches.map((row) => row.batchId))],
         locationId: query.locationId,
         ownership: query.ownership,
+        ownerPartyId: query.ownerPartyId,
       });
       for (const unit of units) {
         const key = `${unit.batchId}@${unit.locationId}`;
@@ -326,7 +335,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
  */
 export async function getSourceLocations(
   organizationId: string,
-  query: { itemIds: readonly string[]; ownership?: Ownership },
+  query: { itemIds: readonly string[]; ownership?: Ownership; ownerPartyId?: string },
 ) {
   return runAsTenant(organizationId, async (tx) => {
     /**
@@ -349,6 +358,7 @@ export async function getSourceLocations(
         organizationId,
         itemId: { in: [...query.itemIds] },
         ...(query.ownership ? { ownership: query.ownership } : {}),
+        ...(query.ownerPartyId ? { ownerPartyId: query.ownerPartyId } : {}),
         // What can be issued FROM here — unallocated opening stock cannot, so a
         // location holding only that would offer a picker with nothing in it.
         batch: { state: { not: UNALLOCATED_BATCH_STATE } },

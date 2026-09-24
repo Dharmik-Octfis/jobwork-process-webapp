@@ -797,34 +797,37 @@ The cost of the 2026-08-07 change is unchanged and still worth stating: a mistyp
 caught when the job order is saved. It surfaces at issue time instead, per item, as _"no stock of
 Dyed Fabric at Main Godown"_ — later, but on the screen where the person can actually act on it.
 
-#### 6.4.1 …but a step still cannot issue before the step above it has delivered
+#### 6.4.1 …and at issue time it is a warning too, per item (2026-09-24)
 
-_(Added 2026-08-07, after the rule above proved too weak in practice.)_
+_(Added 2026-08-07 as a hard rule; turned into a warning 2026-09-24.)_
 
-Advisory at SAVE time, yes. At ISSUE time there is one hard rule:
+From 2026-08-07 to 2026-09-24 a step could not issue while **the step directly above it** had
+returned nothing — measured by position, whatever the items. Two things ended it:
 
-> A step may not issue while the step before it has received nothing back.
+- **It held up unrelated work.** A step consuming nothing the step above produces (embroidery on
+  bought-in patches after dyeing) waited anyway. SAP and Odoo routings allow parallel operations, and
+  Indian challan software has no chain at all. On 2026-09-24, 2 of the 4 steps it was blocking on
+  real orders shared no item with the step above.
+- **Its reason was gone.** It stopped the old no-stock scaffold inventing work in progress; since
+  2026-08-14 the issue save refuses any quantity the ledger does not hold, so an issue of goods that
+  do not exist is refused regardless.
 
-The steps of a job order are a sequence of operations on the same material: step 2 works on what step
-1 returned. Until step 1 has received something there is physically nothing for step 2 to send, and a
-challan raised anyway describes goods that do not exist.
+What remains is a **warning**, per input item:
 
-🔴 **Measured BY POSITION, not by matching items.** The first attempt asked whether step 2's inputs
-were _declared_ as fed by step 1 — i.e. whether `fromStock` was false. A step whose PRODUCES list was
-left empty, or which named a different item, declared no link at all, so the rule silently did not
-apply and step 2 could issue against nothing. Position is what the shop floor means by "the next
-step", and it cannot be typed wrong.
+> This step consumes an item an earlier step produces, and none of it has come back yet — issuing now
+> uses stock already on hand.
 
-- "Returned something" is `receivedQty > 0` on a non-cancelled receipt — **not** accepted quantity. A
-  consignment that came back entirely as rework did come back, and the rework has to be re-issued
-  from somewhere.
-- A previous step **closed short** does not block: it is finished by decision, and nobody is waiting.
-- **Rework is exempt.** It re-issues what this step itself returned, which by definition already came
-  back.
+- **By item, against every earlier step producing it**, not just the one directly above — stitching
+  that takes dyed fabric and embroidered patches depends on both.
+- An input no earlier step produces is drawn from stock and never warns.
+- "Come back" is `receivedQty > 0` of that item on a **posted** receipt (rework counts; a draft does
+  not). A producer **closed short** is finished by decision and raises nothing.
+- Nothing refuses. The only hard gate at issue time is real stock in the ledger. The trade-off: the
+  older stock goes out at its own FIFO cost, so the order's landed cost reflects that stock rather
+  than what the earlier step will return.
 
-It lives in `jobOrders.status.ts` → `chainNotReady` and is asked twice: by the Overview, to disable
-the button and print the reason, and by `createNewJobIssue`, to refuse the save. A button that merely
-hides is a rule a second tab walks straight past.
+It lives in `jobOrders.status.ts` → `getChainWarnings`, returned per step on the Overview as
+`chainWarnings`, and shown under the item on the Issue screen.
 
 ### 6.5 Step completion is measured per input item, on the input side
 

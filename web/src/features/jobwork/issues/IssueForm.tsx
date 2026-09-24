@@ -246,6 +246,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
    * is no longer its: see the query below. */
   const principal = inputItems[0] ?? null;
   const uomLabel = principal?.uomLabel ?? '';
+  const chainWarningByItem = useMemo(
+    () => new Map(step.chainWarnings.map((w) => [w.itemId, w.message])),
+    [step],
+  );
 
   /**
    * 🔴 A ledger query, over EVERY item on this challan (2026-08-19).
@@ -261,10 +265,19 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
    */
   const inputItemIds = useMemo(() => inputItems.map((input) => input.itemId), [inputItems]);
 
+  // `ownership: 'customer'` alone matches every customer's goods; the save accepts
+  // only this order's customer, so every stock query here narrows to it too.
+  const ownerPartyId =
+    jobOrder.ownership === 'customer' ? (jobOrder.ownerPartyId ?? undefined) : undefined;
+
   const { data: locations = [] } = useQuery({
-    queryKey: ['stock-locations', orgId, inputItemIds, jobOrder.ownership],
+    queryKey: ['stock-locations', orgId, inputItemIds, jobOrder.ownership, ownerPartyId],
     queryFn: () =>
-      fetchStockLocations(orgId!, { itemIds: inputItemIds, ownership: jobOrder.ownership }),
+      fetchStockLocations(orgId!, {
+        itemIds: inputItemIds,
+        ownership: jobOrder.ownership,
+        ownerPartyId,
+      }),
     enabled: Boolean(orgId) && inputItemIds.length > 0,
   });
 
@@ -428,6 +441,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       itemIds.join(','),
       effectiveSourceId,
       jobOrder.ownership,
+      ownerPartyId,
       // 🔴 Part of the KEY, not just the request. Turning the level on has to
       // invalidate this, or the picker serves a cached answer with no packages
       // in it and every batch looks as though it has none.
@@ -440,6 +454,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         // 🔴 Not optional. Without it one customer's goods can be issued into
         // another customer's job order (§5.2).
         ownership: jobOrder.ownership,
+        ownerPartyId,
         limit: BATCH_LIMIT,
         withUnits: unitLabel.enabled,
       }),
@@ -470,6 +485,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           input.itemId,
           effectiveSourceId,
           jobOrder.ownership,
+          ownerPartyId,
           search,
           unitLabel.enabled,
         ],
@@ -478,6 +494,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
             itemId: input.itemId,
             locationId: effectiveSourceId,
             ownership: jobOrder.ownership,
+            ownerPartyId,
             search,
             limit: BATCH_LIMIT,
             withUnits: unitLabel.enabled,
@@ -1568,6 +1585,21 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                         <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
                           {input.name}
                         </div>
+
+                        {/* A warning, never a block: the step feeding this item has
+                          returned none yet, so what goes out is older stock. */}
+                        {chainWarningByItem.get(input.itemId) && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 11.5,
+                              color: '#b45309',
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {chainWarningByItem.get(input.itemId)}
+                          </div>
+                        )}
 
                         {/* 🔴 Said out loud, never swallowed. Nothing was reserved, so
                           a planned batch going missing between planning and issuing

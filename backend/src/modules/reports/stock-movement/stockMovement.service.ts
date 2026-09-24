@@ -31,7 +31,7 @@ export async function getStockMovementReport(
       quantity: string | number | bigint;
     };
 
-    const { itemId, fromDate, toDate, movementType = 'all', page = 1, perPage = 25 } = query;
+    const { itemId, locationId, fromDate, toDate, movementType = 'all', page = 1, perPage = 25 } = query;
 
     const fromDateFilter = fromDate
       ? Prisma.sql`l.posted_at::date >= ${new Date(fromDate)}::timestamptz::date`
@@ -51,6 +51,7 @@ export async function getStockMovementReport(
     }
 
     const itemFilter = itemId ? Prisma.sql`l.item_id = ${itemId}::uuid` : Prisma.sql`true`;
+    const locationFilter = locationId ? Prisma.sql`l.location_id = ${locationId}::uuid` : Prisma.sql`true`;
 
     // One row per document, item and location, netted: an edit posts a reversal
     // and a re-post rather than rewriting its rows, so the raw ledger lists a bill
@@ -73,6 +74,7 @@ export async function getStockMovementReport(
         AND ${fromDateFilter}
         AND ${toDateFilter}
         AND ${itemFilter}
+        AND ${locationFilter}
       GROUP BY l.source_doc_type, COALESCE(l.source_doc_id, l.id), l.item_id, l.location_id
     `;
 

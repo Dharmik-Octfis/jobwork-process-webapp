@@ -166,9 +166,22 @@ export function AddBillBatchesModal({
   const { data: availableBatches = [] } = useQuery({
     // `withUnits` rides in the key: without it the two variants share a cache
     // entry and turning the level on serves the unit-less answer back.
-    queryKey: ['availableBatches', orgId, itemId, locationId, unitLabel.enabled],
+    queryKey: [
+      'availableBatches',
+      orgId,
+      itemId,
+      locationId,
+      unitLabel.enabled,
+      'includeExhausted',
+    ],
     queryFn: () =>
-      fetchAvailableBatches(orgId, { itemId: itemId!, locationId, withUnits: unitLabel.enabled }),
+      fetchAvailableBatches(orgId, {
+        itemId: itemId!,
+        locationId,
+        withUnits: unitLabel.enabled,
+        // A bill RECEIVES stock, so topping up a batch that has run out is valid here.
+        includeExhausted: true,
+      }),
     enabled: !!orgId && !!itemId,
   });
 

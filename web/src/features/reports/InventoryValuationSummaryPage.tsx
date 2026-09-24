@@ -14,6 +14,7 @@ import {
   type InventoryValuationQuery,
   type PaginatedInventoryValuationResponse,
 } from './reports.api';
+import { useRecordReportVisit } from './useRecordReportVisit';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
 import { CategorySelectDropdown } from '../items/components/CategorySelectDropdown';
@@ -43,6 +44,7 @@ export function InventoryValuationSummaryPage() {
   const navigate = useNavigate();
 
   const { orgId } = useParams<{ orgId: string }>();
+  useRecordReportVisit(orgId, 'inventory_valuation_summary');
 
   const initialState = useMemo(() => {
     if (!orgId) return null;
@@ -290,9 +292,6 @@ export function InventoryValuationSummaryPage() {
   };
 
   useEffect(() => {
-    // Record visit time for ReportsPage
-    localStorage.setItem(`lastVisited_inventoryValuation_${orgId}`, new Date().toISOString());
-
     const init = async () => {
       await fetchData();
     };
@@ -676,9 +675,11 @@ export function InventoryValuationSummaryPage() {
                     key={row.itemId}
                     className="table-row-hover"
                     style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
-                    onClick={() =>
-                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)
-                    }
+                    onClick={() => {
+                      const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+                      const queryStr = locationCond?.value ? `?locationId=${locationCond.value}` : '';
+                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}${queryStr}`);
+                    }}
                   >
                     {visibleColumns.map((colKey) => {
                       switch (colKey) {

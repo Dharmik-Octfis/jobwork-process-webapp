@@ -261,10 +261,11 @@ the shelf today.
 
 ### 5.3 The guards before it saves
 
-1. **The chain.** A step past the first cannot issue until the step before it has returned
-   _something_. Until then there is physically nothing to send on. **Any amount unblocks it**, so
-   partial progress works normally — cutting returns 40 of 100 panels and stitching can start on
-   those 40 immediately.
+1. **Stock, and the chain as a warning.** A line must be covered by what the ledger holds at the
+   source godown. There is no order between steps: one whose items no earlier step produces can issue
+   at once, in parallel. If an input is produced by an earlier step that has returned none of it yet,
+   the Issue screen **warns** under that item that existing stock will be used — it does not refuse
+   (domain §6.4.1).
 2. **The item set.** Every line must name an item the step declared it consumes. You can send less,
    or skip an item entirely; you cannot invent one.
 3. **The tolerance ceiling.** Per item, cumulative across every challan for that step:

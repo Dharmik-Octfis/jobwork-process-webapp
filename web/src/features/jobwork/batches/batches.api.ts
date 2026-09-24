@@ -115,10 +115,15 @@ export async function fetchAvailableBatches(
     itemId: string;
     locationId?: string;
     ownership?: string;
+    /** The customer, on a customer order — `ownership` alone offers every customer's goods. */
+    ownerPartyId?: string;
     withUnits?: boolean;
     search?: string;
     limit?: number;
     excludeVendorLocations?: boolean;
+    /** Also return recently used-up batches (0 left). Inward pickers only — a
+     * screen taking stock OUT must never pass this. */
+    includeExhausted?: boolean;
   },
 ): Promise<AvailableBatch[]> {
   const response = await apiClient.get(endpoints.inventory.availableBatches(orgId), {
@@ -127,6 +132,7 @@ export async function fetchAvailableBatches(
       search: params.search?.trim() || undefined,
       withUnits: params.withUnits ? 'true' : undefined,
       excludeVendorLocations: params.excludeVendorLocations ? 'true' : undefined,
+      includeExhausted: params.includeExhausted ? 'true' : undefined,
     },
   });
   return z.array(availableBatchSchema).parse(response.data);
@@ -154,6 +160,7 @@ export async function fetchAvailableBatchesForItems(
     itemIds: string[];
     locationId?: string;
     ownership?: string;
+    ownerPartyId?: string;
     limit?: number;
     /** Include each batch's packages — the Issue picker asks for them only when
      * the org runs the level, since they cost one extra grouped query. */
@@ -166,6 +173,7 @@ export async function fetchAvailableBatchesForItems(
       itemIds: params.itemIds.join(','),
       locationId: params.locationId,
       ownership: params.ownership,
+      ownerPartyId: params.ownerPartyId,
       limit: params.limit,
       withUnits: params.withUnits ? 'true' : undefined,
     },
@@ -183,11 +191,15 @@ export async function fetchAvailableBatchesForItems(
  */
 export async function fetchStockLocations(
   orgId: string,
-  params: { itemIds: string[]; ownership?: string },
+  params: { itemIds: string[]; ownership?: string; ownerPartyId?: string },
 ): Promise<StockLocation[]> {
   if (params.itemIds.length === 0) return [];
   const response = await apiClient.get(endpoints.inventory.stockLocations(orgId), {
-    params: { itemIds: params.itemIds.join(','), ownership: params.ownership },
+    params: {
+      itemIds: params.itemIds.join(','),
+      ownership: params.ownership,
+      ownerPartyId: params.ownerPartyId,
+    },
   });
   return z.array(stockLocationSchema).parse(response.data);
 }

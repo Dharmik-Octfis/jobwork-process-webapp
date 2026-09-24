@@ -1,88 +1,69 @@
-import { useState, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Folder, Star } from 'lucide-react';
 import { format } from 'date-fns';
+import {
+  reportsApi,
+  reportsCenterQueryKey,
+  type ReportKey,
+  type ReportListEntry,
+} from './reports.api';
 
-const CATEGORIES = [
-  'Inventory',
-];
+function formatLastVisited(iso: string | null): string {
+  return iso ? format(new Date(iso), 'dd-MM-yyyy hh:mm a') : '—';
+}
 
 export function ReportsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  const queryClient = useQueryClient();
   // By default, nothing is selected
   const [activeCategory, setActiveCategory] = useState('');
 
-  // Favorites state
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem(`favorite_reports_${orgId}`);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
+  const queryKey = reportsCenterQueryKey(orgId ?? '');
+  const {
+    data: reports = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey,
+    queryFn: () => reportsApi.listReports(orgId!),
+    enabled: !!orgId,
   });
 
-  const toggleFavorite = (reportName: string, e: React.MouseEvent) => {
+  // Optimistic: the star flips at once and rolls back if the save fails (the failure toast is global).
+  const favoriteMutation = useMutation({
+    mutationFn: ({ key, isFavorite }: { key: ReportKey; isFavorite: boolean }) =>
+      reportsApi.setFavorite(orgId!, key, isFavorite),
+    onMutate: async ({ key, isFavorite }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<ReportListEntry[]>(queryKey);
+      queryClient.setQueryData<ReportListEntry[]>(queryKey, (rows) =>
+        rows?.map((r) => (r.key === key ? { ...r, isFavorite } : r)),
+      );
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  });
+
+  const toggleFavorite = (report: ReportListEntry, e: React.MouseEvent) => {
     e.stopPropagation();
-    setFavorites(prev => {
-      const newFavs = prev.includes(reportName) ? prev.filter(n => n !== reportName) : [...prev, reportName];
-      localStorage.setItem(`favorite_reports_${orgId}`, JSON.stringify(newFavs));
-      return newFavs;
-    });
+    favoriteMutation.mutate({ key: report.key, isFavorite: !report.isFavorite });
   };
 
-  const lastVisitedInv = useMemo(() => {
-    const visitedStr = localStorage.getItem(`lastVisited_inventoryValuation_${orgId}`);
-    if (visitedStr) {
-      try {
-        return format(new Date(visitedStr), 'dd-MM-yyyy hh:mm a');
-      } catch {
-        // ignore
-      }
-    }
-    return null;
-  }, [orgId]);
-
-  const lastVisitedFifo = useMemo(() => {
-    const visitedStr = localStorage.getItem(`lastVisited_fifoCostLotTracking_${orgId}`);
-    if (visitedStr) {
-      try {
-        return format(new Date(visitedStr), 'dd-MM-yyyy hh:mm a');
-      } catch {
-        // ignore
-      }
-    }
-    return null;
-  }, [orgId]);
-
-  const lastVisitedStockSummary = useMemo(() => {
-    const visitedStr = localStorage.getItem(`lastVisited_stockSummary_${orgId}`);
-    if (visitedStr) {
-      try {
-        return format(new Date(visitedStr), 'dd-MM-yyyy hh:mm a');
-      } catch {
-        // ignore
-      }
-    }
-    return null;
-  }, [orgId]);
-
-  const reports = [
-    { name: 'Stock Summary Report', category: 'Inventory', lastVisited: lastVisitedStockSummary || 'Today', route: `/organizations/${orgId}/reports/stock-summary` },
-    { name: 'Inventory Valuation Summary', category: 'Inventory', lastVisited: lastVisitedInv || '11-09-2026 02:24 PM', route: `/organizations/${orgId}/reports/inventory-valuation-summary` },
-    { name: 'FIFO Cost Lot Tracking', category: 'Inventory', lastVisited: lastVisitedFifo || '12-09-2026 10:17 AM', route: `/organizations/${orgId}/reports/fifo-cost-lot-tracking` },
-  ];
+  const categories = Array.from(new Set(reports.map((r) => r.category)));
 
   const filteredReports = activeCategory
-    ? reports.filter(r => r.category === activeCategory)
+    ? reports.filter((r) => r.category === activeCategory)
     : reports;
 
   const sortedReports = [...filteredReports].sort((a, b) => {
-    const aFav = favorites.includes(a.name);
-    const bFav = favorites.includes(b.name);
-    if (aFav && !bFav) return -1;
-    if (!aFav && bFav) return 1;
+    if (a.isFavorite && !b.isFavorite) return -1;
+    if (!a.isFavorite && b.isFavorite) return 1;
     return 0;
   });
 
@@ -112,6 +93,7 @@ export function ReportsPage() {
         <button
           type="button"
           onClick={() => navigate(-1)}
+          aria-label="Close"
           style={{
             background: 'transparent',
             border: 'none',
@@ -132,8 +114,9 @@ export function ReportsPage() {
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar */}
+        {/* Sidebar — on a phone the category <select> in the table header replaces it */}
         <div
+          className="hidden-on-mobile"
           style={{
             width: '230px',
             background: '#fff',
@@ -157,12 +140,17 @@ export function ReportsPage() {
             Report Category
           </div>
 
-          {CATEGORIES.map((cat) => {
+          {categories.map((cat) => {
             const isActive = activeCategory === cat;
             return (
-              <div
+              <button
+                type="button"
                 key={cat}
+                aria-pressed={isActive}
                 style={{
+                  width: '100%',
+                  border: 'none',
+                  textAlign: 'left',
                   padding: '8px 12px',
                   cursor: 'pointer',
                   background: isActive ? '#eff6ff' : 'transparent',
@@ -186,13 +174,21 @@ export function ReportsPage() {
               >
                 <Folder size={16} color={isActive ? '#0062ff' : '#94a3b8'} strokeWidth={1.5} />
                 {cat}
-              </div>
+              </button>
             );
           })}
         </div>
 
         {/* Main Content */}
-        <div style={{ flex: 1, padding: '12px', overflowY: 'auto', background: '#f8fafc' }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '12px',
+            overflowY: 'auto',
+            background: '#f8fafc',
+          }}
+        >
           <div
             style={{
               background: '#fff',
@@ -209,6 +205,7 @@ export function ReportsPage() {
                 borderBottom: '1px solid #eef0f3',
                 display: 'flex',
                 alignItems: 'center',
+                flexWrap: 'wrap',
                 gap: '8px',
               }}
             >
@@ -227,98 +224,207 @@ export function ReportsPage() {
               >
                 {sortedReports.length}
               </span>
+              <select
+                className="visible-on-mobile"
+                aria-label="Report category"
+                value={activeCategory}
+                onChange={(e) => setActiveCategory(e.target.value)}
+                style={{
+                  marginLeft: 'auto',
+                  minHeight: '44px',
+                  maxWidth: '100%',
+                  padding: '0 12px',
+                  fontSize: '14px',
+                  color: '#334155',
+                  background: '#fff',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                }}
+              >
+                <option value="">All categories</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #eef0f3' }}>
-                  <th
-                    style={{
-                      padding: '12px 24px',
-                      textAlign: 'left',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      width: '40%',
-                    }}
-                  >
-                    Report Name
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 24px',
-                      textAlign: 'left',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      width: '30%',
-                    }}
-                  >
-                    Created By
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 24px',
-                      textAlign: 'left',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      width: '30%',
-                    }}
-                  >
-                    Last Visited
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedReports.length > 0 ? (
-                  sortedReports.map((report, idx) => {
-                    const isFav = favorites.includes(report.name);
-                    return (
-                      <tr
-                        key={idx}
-                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer', transition: 'background-color 0.15s' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                        onClick={() => navigate(report.route)}
-                      >
-                        <td style={{ padding: '14px 24px', fontSize: '13px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <Star
-                              size={16}
-                              color={isFav ? "#f59e0b" : "#cbd5e1"}
-                              fill={isFav ? "#f59e0b" : "none"}
-                              strokeWidth={1.5}
-                              onClick={(e) => toggleFavorite(report.name, e)}
-                              style={{ transition: 'all 0.2s' }}
-                            />
-                            <span style={{ color: '#0062ff', fontWeight: 500 }}>
-                              {report.name}
-                            </span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
-                          System Generated
-                        </td>
-                        <td style={{ padding: '14px 24px', fontSize: '13px', color: '#334155', fontWeight: 400 }}>
-                          {report.lastVisited}
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
-                      No reports found for this category.
-                    </td>
+            {/* Table — scrolls sideways on a phone instead of squashing */}
+            <div className="responsive-table-wrapper">
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                    <th
+                      style={{
+                        padding: '12px 24px',
+                        textAlign: 'left',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        width: '40%',
+                      }}
+                    >
+                      Report Name
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 24px',
+                        textAlign: 'left',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        width: '30%',
+                      }}
+                    >
+                      Created By
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 24px',
+                        textAlign: 'left',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        width: '30%',
+                      }}
+                    >
+                      Last Visited
+                    </th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        style={{
+                          padding: '24px',
+                          textAlign: 'center',
+                          color: '#64748b',
+                          fontSize: '13px',
+                        }}
+                      >
+                        Loading reports…
+                      </td>
+                    </tr>
+                  ) : isError ? (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        style={{
+                          padding: '24px',
+                          textAlign: 'center',
+                          color: '#64748b',
+                          fontSize: '13px',
+                        }}
+                      >
+                        Could not load reports.
+                      </td>
+                    </tr>
+                  ) : sortedReports.length > 0 ? (
+                    sortedReports.map((report) => {
+                      const isFav = report.isFavorite;
+                      const reportUrl = `/organizations/${orgId}/reports/${report.path}`;
+                      return (
+                        // The whole row is a mouse/touch convenience; the name <Link> is the keyboard path.
+                        <tr
+                          key={report.key}
+                          style={{
+                            borderBottom: '1px solid #eef0f3',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.15s',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.backgroundColor = 'transparent')
+                          }
+                          onClick={() => navigate(reportUrl)}
+                        >
+                          <td style={{ padding: '14px 24px', fontSize: '13px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => toggleFavorite(report, e)}
+                                aria-pressed={isFav}
+                                aria-label={
+                                  isFav
+                                    ? `Remove ${report.name} from favorites`
+                                    : `Add ${report.name} to favorites`
+                                }
+                                title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                                // 14px padding cancelled by -14px margin: a 44px touch target around a 16px icon, layout unchanged.
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  padding: '14px',
+                                  margin: '-14px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                }}
+                              >
+                                <Star
+                                  size={16}
+                                  color={isFav ? '#f59e0b' : '#cbd5e1'}
+                                  fill={isFav ? '#f59e0b' : 'none'}
+                                  strokeWidth={1.5}
+                                  style={{ transition: 'all 0.2s' }}
+                                />
+                              </button>
+                              <Link
+                                to={reportUrl}
+                                // The row's own click would navigate a second time.
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ color: '#0062ff', fontWeight: 500 }}
+                              >
+                                {report.name}
+                              </Link>
+                            </div>
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 24px',
+                              fontSize: '13px',
+                              color: '#334155',
+                              fontWeight: 400,
+                            }}
+                          >
+                            System Generated
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 24px',
+                              fontSize: '13px',
+                              color: '#334155',
+                              fontWeight: 400,
+                            }}
+                          >
+                            {formatLastVisited(report.lastVisitedAt)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        style={{
+                          padding: '24px',
+                          textAlign: 'center',
+                          color: '#64748b',
+                          fontSize: '13px',
+                        }}
+                      >
+                        No reports found for this category.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

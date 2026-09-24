@@ -1013,19 +1013,26 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     key: string,
     kind: 'accepted' | 'rework',
     allocation: BatchAllocation[],
+    overwriteQty?: number | null,
   ) => {
-    if (kind === 'rework') {
-      updateReturned(key, { reworkBatches: allocation });
-      return;
-    }
     const row = effectiveReturned.find((r) => r.key === key);
     if (!row) return;
+
+    if (kind === 'rework') {
+      updateReturned(key, {
+        reworkBatches: allocation,
+        ...(overwriteQty != null ? { reworkQty: overwriteQty } : {}),
+      });
+      return;
+    }
     const total = Number(allocation.reduce((sum, r) => sum + r.qty, 0).toFixed(4));
     updateReturned(key, {
       batches: allocation,
-      ...(row.receivedQty <= 0 && total > 0
-        ? { receivedQty: Number((total + row.reworkQty).toFixed(4)) }
-        : {}),
+      ...(overwriteQty != null
+        ? { receivedQty: Number((overwriteQty + row.reworkQty).toFixed(4)) }
+        : row.receivedQty <= 0 && total > 0
+          ? { receivedQty: Number((total + row.reworkQty).toFixed(4)) }
+          : {}),
     });
   };
 
@@ -1802,7 +1809,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           search={batchSearch}
           onSearchChange={setBatchSearch}
           isLoading={isLoadingBatches}
-          onSave={(rows) => saveAllocation(allocating.key, allocating.kind, rows)}
+          onSave={(rows, overwriteQty) => saveAllocation(allocating.key, allocating.kind, rows, overwriteQty)}
         />
       )}
       <div

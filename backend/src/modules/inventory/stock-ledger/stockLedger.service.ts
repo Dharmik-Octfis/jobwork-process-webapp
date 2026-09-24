@@ -729,6 +729,13 @@ export interface BalanceFilter {
    */
   locationIds?: readonly string[];
   ownership?: Ownership;
+  /**
+   * WHICH customer's goods. `ownership: 'customer'` alone matches every
+   * customer's stock, so an outward caller working for one customer must pass
+   * this too, or it offers — and posts — another customer's material.
+   * `undefined` means no filter; `null` means rows with no owner party.
+   */
+  ownerPartyId?: string | null;
   /** Balance as it stood at a moment in time, by `postedAt`. */
   asOf?: Date;
   /**
@@ -760,6 +767,7 @@ function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput 
         ? { locationId: { in: [...filter.locationIds] } }
         : {}),
     ...(filter.ownership ? { ownership: filter.ownership } : {}),
+    ...(filter.ownerPartyId !== undefined ? { ownerPartyId: filter.ownerPartyId } : {}),
     ...(filter.asOf ? { postedAt: { lte: filter.asOf } } : {}),
     stockEffect: { in: [axis, 'both'] },
   };
@@ -994,6 +1002,9 @@ export interface AvailableBatch {
   createdAt: Date;
 }
 
+/** How many used-up batches per item `includeExhausted` adds, newest first. */
+const EXHAUSTED_BATCH_LIMIT = 10;
+
 /**
  * What is actually available to issue, at one location, for one item — or, since
  * 2026-09-01, for SEVERAL items in one round trip.
@@ -1034,12 +1045,25 @@ export async function getAvailableBatches(
      * back per (batch, location), so the caller knows where each balance is. */
     locationIds?: readonly string[];
     ownership?: Ownership;
+    /** See `BalanceFilter.ownerPartyId` — required in practice for customer stock. */
+    ownerPartyId?: string | null;
     asOf?: Date;
     /** Batch number or the supplier's own reference — the two things printed on
      * the tag, and the only two a user can read off the goods. */
     search?: string;
     /** A ceiling on rows returned, for a picker that cannot render hundreds. */
     limit?: number;
+    /**
+     * Also return batches whose balance here is exactly ZERO — the most recent
+     * `EXHAUSTED_BATCH_LIMIT` per item, after every live one.
+     *
+     * 🔴 OPT-IN, and only for an INWARD picker: a bill receiving more stock into
+     * an existing batch may top up one that has run out. Every outward caller —
+     * issue, assembly, planning — must leave this off: a zero row there is stock
+     * the picker offers and the save then refuses, and the allocators rely on
+     * every returned row holding something.
+     */
+    includeExhausted?: boolean;
   },
 ): Promise<AvailableBatch[]> {
   /**
@@ -1060,108 +1084,116 @@ export async function getAvailableBatches(
   });
 
   const zero = new Prisma.Decimal(0);
-  
-  const positive = grouped
-    .map((row) => ({
-      batchId: row.batchId,
-      locationId: row.locationId,
-      availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
-      value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
-    }))
-    .filter((row) => row.availableQty.greaterThan(0));
+  const balances = grouped.map((row) => ({
+    batchId: row.batchId,
+    locationId: row.locationId,
+    availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+    value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
+  }));
 
-  const zeroBalance = grouped
-    .map((row) => ({
-      batchId: row.batchId,
-      locationId: row.locationId,
-      availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
-      value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
-    }))
-    .filter((row) => row.availableQty.equals(0));
+  const positive = balances.filter((row) => row.availableQty.greaterThan(0));
+  const zeroBalance = filter.includeExhausted
+    ? balances.filter((row) => row.availableQty.equals(0))
+    : [];
 
-  // If we have nothing at all, return empty
   if (positive.length === 0 && zeroBalance.length === 0) return [];
 
+  // One item asked about means the cap can go into the database, where a ceiling
+  // belongs. Several means it cannot — see the note on `limit` above.
   const oneItem = Boolean(filter.itemId) || filter.itemIds?.length === 1;
 
-  // Base where clause for both live and dead batches
   const baseWhere: Prisma.BatchWhereInput = {
     organizationId: filter.organizationId,
     isDeleted: false,
+    // Unallocated opening stock counts on hand but is never offered — see
+    // `UNALLOCATED_BATCH_STATE`. Dropping it here drops its balance row below.
     state: { not: UNALLOCATED_BATCH_STATE },
+    // The picker's own search. Matches what is on the physical tag and nothing
+    // else — `batchNumber` is never rendered, so it is never typed either
+    // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
     ...searchWhere<Prisma.BatchWhereInput>(filter.search, [
       'supplierBatchRef',
       'manufacturerBatch',
     ]),
   };
 
-  const batches = positive.length > 0 ? await tx.batch.findMany({
-    where: {
-      id: { in: positive.map((row) => row.batchId) },
-      ...baseWhere,
-    },
-    // Ordered and capped HERE rather than after hydration, so a limit actually
-    // bounds the rows the database builds.
-    //
-    // 🔴 Oldest first, NOT by `batchNumber` (2026-08-14). The number is invisible
-    // now, so ordering by it produced a sequence nobody on screen could explain —
-    // and, worse, the `take` then kept the LOWEST-numbered rows rather than the
-    // oldest, so a capped list dropped exactly the stock FIFO wants issued first.
-    orderBy: { createdAt: 'asc' },
-    ...(filter.limit && oneItem ? { take: filter.limit } : {}),
-    select: {
-      id: true,
-      batchNumber: true,
-      createdAt: true,
-      supplierBatchRef: true,
-      manufacturerBatch: true,
-      manufacturedDate: true,
-      expiryDate: true,
-      mrp: true,
-      sellingPrice: true,
-      itemId: true,
-      uomId: true,
-      ownership: true,
-      ownerPartyId: true,
-    },
-  }) : [];
+  const batches =
+    positive.length > 0
+      ? await tx.batch.findMany({
+          where: {
+            id: { in: positive.map((row) => row.batchId) },
+            ...baseWhere,
+          },
+          // Ordered and capped HERE rather than after hydration, so a limit actually
+          // bounds the rows the database builds.
+          //
+          // 🔴 Oldest first, NOT by `batchNumber` (2026-08-14). The number is invisible
+          // now, so ordering by it produced a sequence nobody on screen could explain —
+          // and, worse, the `take` then kept the LOWEST-numbered rows rather than the
+          // oldest, so a capped list dropped exactly the stock FIFO wants issued first.
+          orderBy: { createdAt: 'asc' },
+          ...(filter.limit && oneItem ? { take: filter.limit } : {}),
+          select: {
+            id: true,
+            batchNumber: true,
+            createdAt: true,
+            supplierBatchRef: true,
+            manufacturerBatch: true,
+            manufacturedDate: true,
+            expiryDate: true,
+            mrp: true,
+            sellingPrice: true,
+            itemId: true,
+            uomId: true,
+            ownership: true,
+            ownerPartyId: true,
+          },
+        })
+      : [];
 
-  // Safely fetch a small number of dead batches to satisfy UX without starving live stock
-  const deadBatches = zeroBalance.length > 0 ? await tx.batch.findMany({
-    where: {
-      id: { in: zeroBalance.map((row) => row.batchId) },
-      ...baseWhere,
-    },
-    // Newest first for dead batches so the user sees what they just exhausted
-    orderBy: { createdAt: 'desc' },
-    // Only return dead batches if explicitly searched, OR up to 10 by default
-    take: filter.search ? undefined : 10,
-    select: {
-      id: true,
-      batchNumber: true,
-      createdAt: true,
-      supplierBatchRef: true,
-      manufacturerBatch: true,
-      manufacturedDate: true,
-      expiryDate: true,
-      mrp: true,
-      sellingPrice: true,
-      itemId: true,
-      uomId: true,
-      ownership: true,
-      ownerPartyId: true,
-    },
-  }) : [];
+  // Newest first — what was just used up is what a top-up is likely to name. Capped
+  // PER ITEM like live stock (in the database for one item, below for several), and
+  // capped while searching too, so a search can never return every batch ever emptied.
+  const exhaustedCap = Math.min(EXHAUSTED_BATCH_LIMIT, filter.limit ?? EXHAUSTED_BATCH_LIMIT);
+  const exhaustedRows =
+    zeroBalance.length > 0
+      ? await tx.batch.findMany({
+          where: {
+            id: { in: zeroBalance.map((row) => row.batchId) },
+            ...baseWhere,
+          },
+          orderBy: { createdAt: 'desc' },
+          ...(oneItem ? { take: exhaustedCap } : {}),
+          select: {
+            id: true,
+            batchNumber: true,
+            createdAt: true,
+            supplierBatchRef: true,
+            manufacturerBatch: true,
+            manufacturedDate: true,
+            expiryDate: true,
+            mrp: true,
+            sellingPrice: true,
+            itemId: true,
+            uomId: true,
+            ownership: true,
+            ownerPartyId: true,
+          },
+        })
+      : [];
 
-  const allBatches = [...batches, ...deadBatches];
+  const keptExhausted = oneItem ? null : keepPerItem(exhaustedRows, exhaustedCap);
+  const exhaustedBatches = keptExhausted
+    ? exhaustedRows.filter((row) => keptExhausted.has(row.id))
+    : exhaustedRows;
 
   // The multi-item path's cap, applied to rows the database already ordered
   // oldest-first — so it keeps exactly the batches FIFO wants issued first,
   // which is what the database-side `take` keeps for one item.
   const capped =
     filter.limit && !oneItem
-      ? keepPerItem(allBatches, filter.limit)
-      : new Set(allBatches.map((b) => b.id));
+      ? keepPerItem(batches, filter.limit)
+      : new Set(batches.map((b) => b.id));
 
   /**
    * Driven by the BALANCE rows, not the batch rows: a batch with stock in two
@@ -1178,23 +1210,29 @@ export async function getAvailableBatches(
    * Assuming this was already sorted consumed the NEWEST stock first and passed
    * every test that did not check which batch moved (2026-09-02).
    */
-  const batchById = new Map(
-    allBatches.filter((batch) => capped.has(batch.id)).map((batch) => [batch.id, batch]),
+  // Two maps, not one: with no location filter a batch can be live in one godown
+  // and empty in another, and a shared map would let its exhausted entry smuggle a
+  // live row back past `limit`.
+  const liveById = new Map(
+    batches.filter((batch) => capped.has(batch.id)).map((batch) => [batch.id, batch]),
   );
-  return [...positive, ...zeroBalance].flatMap((balance) => {
-    const batch = batchById.get(balance.batchId);
-    return batch
-      ? [
-          {
-            ...batch,
-            batchId: batch.id,
-            locationId: balance.locationId,
-            availableQty: balance.availableQty,
-            value: balance.value,
-          },
-        ]
-      : [];
-  });
+  const exhaustedById = new Map(exhaustedBatches.map((batch) => [batch.id, batch]));
+  const toRow =
+    (byId: Map<string, (typeof batches)[number]>) => (balance: (typeof balances)[number]) => {
+      const batch = byId.get(balance.batchId);
+      return batch
+        ? [
+            {
+              ...batch,
+              batchId: batch.id,
+              locationId: balance.locationId,
+              availableQty: balance.availableQty,
+              value: balance.value,
+            },
+          ]
+        : [];
+    };
+  return [...positive.flatMap(toRow(liveById)), ...zeroBalance.flatMap(toRow(exhaustedById))];
 }
 
 /** The first `limit` rows of each item, taking `rows` in the order given. */
