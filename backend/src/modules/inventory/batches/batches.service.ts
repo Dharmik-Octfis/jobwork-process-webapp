@@ -138,6 +138,9 @@ export interface AvailabilityQuery {
   limit?: number;
   /** Exclude batches that are located at a vendor's location (i.e. at a processor) */
   excludeVendorLocations?: boolean;
+  /** Also return recently used-up batches (balance 0) — see `getAvailableBatches`.
+   * Only the bill's receive-into-existing-batch picker asks for this. */
+  includeExhausted?: boolean;
 }
 
 /**
@@ -185,6 +188,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       ownership: query.ownership,
       search: query.search,
       limit: query.limit,
+      includeExhausted: query.includeExhausted,
     });
     if (batches.length === 0) return [];
 
