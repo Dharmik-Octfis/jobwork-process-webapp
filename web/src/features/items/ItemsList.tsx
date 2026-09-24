@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api.ts';
 import { Plus, Package, SlidersHorizontal, ShoppingBag } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
@@ -136,6 +138,10 @@ export function ItemsList() {
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setItemToDelete(null);
     },
+    onError: (error) => {
+      toast.error(toApiErrorMessage(error));
+      setItemToDelete(null);
+    },
   });
 
   const headerStyle = {
@@ -150,7 +156,9 @@ export function ItemsList() {
     setIsProcessing(true);
     try {
       await Promise.allSettled(
-        selectedIds.map((id) => itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }))
+        selectedIds.map((id) =>
+          itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }),
+        ),
       );
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setSelectedIds([]);
@@ -163,7 +171,9 @@ export function ItemsList() {
     setIsProcessing(true);
     try {
       await Promise.allSettled(
-        selectedIds.map((id) => itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }))
+        selectedIds.map((id) =>
+          itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }),
+        ),
       );
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setSelectedIds([]);
@@ -177,9 +187,7 @@ export function ItemsList() {
   };
 
   const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleAll = () => {
@@ -201,7 +209,10 @@ export function ItemsList() {
       }}
     >
       {/* Main Content Area */}
-      <div className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
           className="master-pane"
           style={{
@@ -263,7 +274,11 @@ export function ItemsList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/items/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -330,7 +345,11 @@ export function ItemsList() {
                   transactions.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/items/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/items/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -384,123 +403,155 @@ export function ItemsList() {
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              color: '#1e293b',
+                              marginBottom: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            {item.itemStructure === 'composite' && (
+                              <ShoppingBag size={14} color="#64748b" />
+                            )}
+                            <span
                               style={{
-                                fontSize: '13px',
-                                fontWeight: 500,
-                                color: '#1e293b',
-                                marginBottom: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
                               }}
                             >
-                              {item.itemStructure === 'composite' && (
-                                <ShoppingBag size={14} color="#64748b" />
-                              )}
-                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>SKU: {item.sku}</div>
+                              {item.name}
+                            </span>
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
-                              ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
-                            </div>
-                            {(item as any).isPendingApproval ? (
-                              <div
-                                style={{
-                                  fontSize: '10px',
-                                  fontWeight: 600,
-                                  color: '#b45309',
-                                  marginTop: '4px',
-                                  background: '#fef3c7',
-                                  border: '1px solid #fde68a',
-                                  padding: '2px 6px',
-                                  borderRadius: '8px',
-                                  letterSpacing: '0.02em',
-                                }}
-                              >
-                                PENDING APPROVAL
-                              </div>
-                            ) : item.isActive === false ? (
-                              <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
-                                INACTIVE
-                              </div>
-                            ) : null}
+                          <div
+                            style={{
+                              fontSize: '12px',
+                              color: '#64748b',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            SKU: {item.sku}
                           </div>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            marginLeft: '12px',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <div style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                            ₹{item.sellingPrice ? Number(item.sellingPrice).toFixed(2) : '0.00'}
+                          </div>
+                          {item.isActive === false && (
+                            <div
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                color: '#94a3b8',
+                                marginTop: '4px',
+                              }}
+                            >
+                              INACTIVE
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={items.length > 0 && selectedIds.length === items.length}
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item) => (
+                      <thead>
                         <tr
-                          key={item.id}
-                          onClick={() => setSearchParams({ id: item.id })}
                           style={{
+                            background: '#f9f9fb',
+                            borderTop: '1px solid #eef0f3',
                             borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                            background: selectedIds.includes(item.id) ? '#f8fafc' : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => {
-                            if (!selectedIds.includes(item.id))
-                              e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <th
+                            style={{
+                              width: 48,
+                              ...headerStyle,
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                          >
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(item.id)}
-                              onChange={() => toggleSelection(item.id)}
+                              checked={items.length > 0 && selectedIds.length === items.length}
+                              onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
-                          </td>
+                          </th>
                           {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                fontSize: 13,
-                                // The locked column is the identity you click through on.
-                                color: col.locked ? '#0062ff' : '#333',
-                                fontWeight: col.locked ? 500 : 400,
-                              }}
-                            >
-                              {renderItemCell(item, col.key, customFieldsDef)}
-                            </td>
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <tr
+                            key={item.id}
+                            onClick={() => setSearchParams({ id: item.id })}
+                            style={{
+                              borderBottom: '1px solid #eef0f3',
+                              transition: 'background 0.1s',
+                              cursor: 'pointer',
+                              background: selectedIds.includes(item.id) ? '#f8fafc' : 'transparent',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={(e) => {
+                              if (!selectedIds.includes(item.id))
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <td
+                              style={{
+                                width: 48,
+                                padding: '12px 16px',
+                                paddingRight: 0,
+                                textAlign: 'center',
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(item.id)}
+                                onChange={() => toggleSelection(item.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </td>
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '12px 16px',
+                                  fontSize: 13,
+                                  // The locked column is the identity you click through on.
+                                  color: col.locked ? '#0062ff' : '#333',
+                                  fontWeight: col.locked ? 500 : 400,
+                                }}
+                              >
+                                {renderItemCell(item, col.key, customFieldsDef)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -560,9 +611,18 @@ export function ItemsList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(
-              selectedIds.map(id => itemsApi.deleteItem(orgId!, id))
+            const results = await Promise.allSettled(
+              selectedIds.map((id) => itemsApi.deleteItem(orgId!, id)),
             );
+            const refused = results.filter((r) => r.status === 'rejected');
+            if (refused.length > 0) {
+              const first = (refused[0] as PromiseRejectedResult).reason;
+              toast.error(
+                refused.length === 1
+                  ? toApiErrorMessage(first)
+                  : `${refused.length} items were not deleted. ${toApiErrorMessage(first)}`,
+              );
+            }
             queryClient.invalidateQueries({ queryKey: ['items', orgId] });
             setSelectedIds([]);
           } finally {

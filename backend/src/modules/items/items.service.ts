@@ -63,6 +63,18 @@ async function assertStockingUom(
   if (!uom) throw ApiError.badRequest('Unknown unit of measurement.');
 }
 
+/** A bill posts stock for every tracked line, so a tracked service would create stock of work done. */
+function assertServiceNotStocked(
+  itemType: string | undefined,
+  trackInventory: boolean | undefined,
+) {
+  if (itemType === 'service' && trackInventory) {
+    throw ApiError.badRequest('A service item cannot track inventory.', {
+      trackInventory: 'Services are not stocked.',
+    });
+  }
+}
+
 export function normalizeItemDto<T extends Record<string, unknown>>(rawData: T): T {
   if (!rawData) return rawData;
   const copy: Record<string, unknown> = { ...rawData };
@@ -770,6 +782,7 @@ export class ItemsService {
       const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
 
       await assertStockingUom(tx, organizationId, rest.stockingUomId);
+      assertServiceNotStocked(rest.itemType, rest.trackInventory);
 
       const defs = await loadActiveDefinitions(tx, organizationId, 'item');
       const customFields = validateCustomFields({
@@ -944,6 +957,20 @@ export class ItemsService {
       const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
 
       await assertStockingUom(tx, organizationId, rest.stockingUomId);
+      assertServiceNotStocked(
+        rest.itemType ?? item.itemType,
+        rest.trackInventory ?? item.trackInventory,
+      );
+      if (rest.itemType === 'service' && item.itemType !== 'service') {
+        const moved = await tx.stockLedgerEntry.count({
+          where: { organizationId, itemId: id },
+        });
+        if (moved > 0) {
+          throw ApiError.conflict(
+            `${item.name} has stock movements, so it cannot become a service.`,
+          );
+        }
+      }
 
       // Only re-validate when the client sends custom fields; otherwise leave the
       // stored blob untouched. Required policy (b) uses the existing values.
@@ -1057,6 +1084,22 @@ export class ItemsService {
       if (usageCount > 0) {
         throw ApiError.conflict(
           'Cannot delete item because it is used as a component in a composite item recipe.',
+        );
+      }
+
+      // Deleting hides the item from valuation while its stock stays on the books —
+      // at a godown or at a job worker, own or a customer's. Bring it to zero first.
+      const stock = await tx.stockLedgerEntry.aggregate({
+        where: { organizationId, itemId: id, stockEffect: { in: ['both', 'physical'] } },
+        _sum: { qtyIn: true, qtyOut: true },
+      });
+      const onHand = (stock._sum.qtyIn ?? new Prisma.Decimal(0)).minus(
+        stock._sum.qtyOut ?? new Prisma.Decimal(0),
+      );
+      if (!onHand.isZero()) {
+        throw ApiError.conflict(
+          `${item.name} still has ${onHand.toString()} in stock, so it cannot be deleted. ` +
+            'Issue, consume or adjust it to zero first, or mark the item inactive.',
         );
       }
 

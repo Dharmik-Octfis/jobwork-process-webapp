@@ -29,8 +29,8 @@ import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
 import { writeOffStep } from './jobOrders.writeOff.ts';
 import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import {
-  getAllChainNotReady,
   getAllStepTotals,
+  getChainWarnings,
   recomputeJobOrder,
   recomputeStep,
 } from './jobOrders.status.ts';
@@ -380,11 +380,10 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
  * stock, which is exactly the mixed supply a single `fromStock` flag cannot
  * express.
  *
- * The rest is unchanged from when the chain stopped being a rule: the real gate
- * is positional and lives at issue time (`chainNotReady`), where a step cannot
- * send anything until the step above it has returned something, and a mistyped
- * chain surfaces there as "no stock of Dyed Fabric at Main Godown" — later than
- * a save-time error, but on the screen where somebody can act on it.
+ * The only hard gate is at issue time: real stock in the ledger. A mistyped chain
+ * surfaces there as "no stock of Dyed Fabric at Main Godown" — later than a
+ * save-time error, but on the screen where somebody can act on it. An input fed
+ * by a step that has returned nothing yet is a warning there (`getChainWarnings`).
  */
 function classifyStepInputs(
   steps: readonly { resolvedInputs: ResolvedInput[]; resolvedOutputs: ResolvedOutput[] }[],
@@ -535,8 +534,8 @@ function derivedExpectedQty(
  * chain rule made when it refused thread and buttons (§6.4).
  *
  * So the balance survives as what it is genuinely good for — deriving the blank
- * rows — and the hard gates stay where the domain already put them: position, at
- * issue time (`chainNotReady`), and real stock availability in the ledger.
+ * rows — and the hard gate stays where the domain already put it: real stock
+ * availability in the ledger, at issue time.
  *
  * 🔴 This is a PLAN, computed once and stored, and it is never used as a
  * conversion factor at receipt time (§6.3). What actually comes back is measured,
@@ -1815,9 +1814,9 @@ function assertLockedStepsUnchanged(
  *
  * 🔴 NO STEP'S STATUS IS CHECKED, deliberately. Appending after a step that is
  * pending, at a processor, or complete is the same operation each time — the new
- * step arrives `pending` and `chainNotReady` already refuses to let it issue until
- * the step above it has returned something. A guard here would defend against a
- * hazard that only exists for INSERT, which renumbers.
+ * step arrives `pending`, and issuing it is governed like any other step's. A
+ * guard here would defend against a hazard that only exists for INSERT, which
+ * renumbers.
  *
  * The ORDER's status is another matter, and there is exactly one refusal: see
  * below.
@@ -1839,10 +1838,9 @@ export async function appendJobOrderSteps(
 
     /**
      * 🔴 A closed order must refuse, or it becomes a document that reads as
-     * finished and still takes challans. Two mechanisms combine: `short_closed`
-     * and `cancelled` are sticky, so `recomputeJobOrder` returns early and the
-     * order keeps its label forever; and `chainNotReady` waives the chain when
-     * the step above is short-closed, so the new step would happily issue.
+     * finished and still takes challans: `short_closed` and `cancelled` are
+     * sticky, so `recomputeJobOrder` returns early and the order keeps its label
+     * forever, while the new step would happily issue.
      */
     if (order.status === 'short_closed' || order.status === 'cancelled') {
       throw ApiError.conflict(
@@ -2003,38 +2001,81 @@ export async function getJobOrderOverview(
   id: string,
   filterStepId?: string,
 ) {
-  // Outside the transaction, and before it — `memberships` has no RLS policy, so
-  // this is a plain probe, and taking it here keeps it off a second pooled
-  // connection held open by the tenant tx (`lib/memberDirectory.ts`).
-  const directory = await getMemberDirectory(organizationId);
-
-  const activityPromise = filterStepId
-    ? Promise.resolve([])
-    : runAsTenant(organizationId, (tx) =>
-        buildActivity(tx, organizationId, id, directory, filterStepId),
+  /**
+   * 🔴 TWO TRANSACTIONS SIDE BY SIDE, on two pooled connections — as before, but
+   * split by weight rather than by topic, because the response waits for the
+   * slower one:
+   *
+   *   · main    — the order and its plan, the stock balances, the chain;
+   *   · figures — the step totals and the activity timeline.
+   *
+   * Every read is the query it was; only its connection changed. Postgres runs
+   * these at READ COMMITTED, where each statement takes its own snapshot even
+   * inside one transaction, so reading in two gives the same guarantee as one.
+   * A step-filtered request has no timeline and stays in one transaction.
+   */
+  const figuresPromise = filterStepId
+    ? null
+    : // Outside the transaction, and before it — `memberships` has no RLS
+      // policy, so this is a plain probe (`lib/memberDirectory.ts`).
+      getMemberDirectory(organizationId).then((directory) =>
+        runAsTenant(organizationId, async (tx) => {
+          const stepRows = await tx.jobOrderStep.findMany({
+            where: { organizationId, jobOrderId: id, isDeleted: false },
+            select: { id: true },
+          });
+          const totals = await getAllStepTotals(
+            tx,
+            organizationId,
+            stepRows.map((row) => row.id),
+          );
+          const { events, refs } = await buildActivity(
+            tx,
+            organizationId,
+            id,
+            directory,
+            undefined,
+            flowItemIds(totals),
+          );
+          return { totals, activity: events, refs };
+        }),
       );
 
-  const mainOverviewPromise = runAsTenant(organizationId, async (tx) => {
+  const mainPromise = runAsTenant(organizationId, async (tx) => {
     const includeQuery = filterStepId
       ? {
-          ...JOB_ORDER_OVERVIEW_INCLUDE,
+          ...JOB_ORDER_OVERVIEW_QUERY,
           steps: {
-            ...JOB_ORDER_OVERVIEW_INCLUDE.steps,
-            where: { ...JOB_ORDER_OVERVIEW_INCLUDE.steps?.where, id: filterStepId },
+            ...JOB_ORDER_OVERVIEW_QUERY.steps,
+            where: { ...JOB_ORDER_OVERVIEW_QUERY.steps.where, id: filterStepId },
           },
         }
-      : JOB_ORDER_OVERVIEW_INCLUDE;
+      : JOB_ORDER_OVERVIEW_QUERY;
 
-    const order = await tx.jobOrder.findFirst({
+    const found = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: includeQuery,
     });
 
-    if (!order) throw ApiError.notFound('Job order not found');
+    if (!found) throw ApiError.notFound('Job order not found');
 
     if (filterStepId) {
-      order.steps = order.steps.filter((s) => s.id === filterStepId);
+      found.steps = found.steps.filter((s) => s.id === filterStepId);
     }
+
+    const planRefs = await lookupRefs(
+      tx,
+      organizationId,
+      [
+        found.inputItemId,
+        ...found.steps.flatMap((s) => [...s.inputs, ...s.outputs].map((row) => row.itemId)),
+      ],
+      [
+        found.inputUomId,
+        ...found.steps.flatMap((s) => [...s.inputs, ...s.outputs].map((row) => row.uomId)),
+      ],
+    );
+    const order = hydrateOrder(found, planRefs);
 
     const batches = await tx.batch.findMany({
       where: { organizationId, isDeleted: false, sourceDocId: id },
@@ -2042,25 +2083,13 @@ export async function getJobOrderOverview(
       select: { id: true, supplierBatchRef: true, itemId: true },
     });
 
-    const stepIds = order.steps.map((s) => s.id);
     const principalItemIds = [
       ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
     ] as string[];
 
-    const allTotalsMap = await getAllStepTotals(tx, organizationId, stepIds);
-
-    const allStepsLightweight = await tx.jobOrderStep.findMany({
-      where: { organizationId, jobOrderId: id, isDeleted: false },
-      select: { id: true, seq: true, processNameSnapshot: true, status: true },
-      orderBy: { seq: 'asc' },
-    });
-
-    const allChainBlockedMap = await getAllChainNotReady(
-      tx,
-      organizationId,
-      id,
-      allStepsLightweight,
-    );
+    // Reads every step itself: a filtered overview holds one, and a warning depends
+    // on the steps above it.
+    const chainWarningsMap = await getChainWarnings(tx, organizationId, id);
 
     const balances =
       principalItemIds.length > 0
@@ -2075,156 +2104,216 @@ export async function getJobOrderOverview(
           })
         : [];
 
-    const firstStep = order.steps[0];
-    const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
+    // Filtered: no figures transaction, so the totals are read here.
+    const ownFigures = filterStepId
+      ? await stepFigures(
+          tx,
+          organizationId,
+          order.steps.map((s) => s.id),
+        )
+      : null;
 
-    const availableQtyMap = new Map<string, Prisma.Decimal>();
-    for (const row of balances as {
-      itemId: string;
-      _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null };
-    }[]) {
-      const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
-      const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
-      availableQtyMap.set(row.itemId, inD.minus(outD));
-    }
+    return { order, batches, chainWarningsMap, balances, ownFigures };
+  });
 
-    const allUnplannedIds = new Set<string>();
-    for (const step of order.steps) {
-      const totals = allTotalsMap.get(step.id)!;
-      const planned = new Set([
-        ...step.inputs.map((row) => row.itemId),
-        ...step.outputs.map((row) => row.itemId),
-      ]);
-      for (const flow of totals.perItem) {
-        if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
-      }
-      for (const flow of totals.perOutput) {
-        if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
-      }
-    }
+  const [main, figures] = await Promise.all([mainPromise, figuresPromise]);
+  const { order, batches, chainWarningsMap, balances } = main;
 
-    const unplannedItems =
-      allUnplannedIds.size > 0
-        ? await tx.item.findMany({
-            where: { id: { in: [...allUnplannedIds] }, organizationId },
-            select: {
-              id: true,
-              name: true,
-              stockingUom: { select: { symbol: true, unitName: true } },
-            },
-          })
-        : [];
-
-    const unplannedById = new Map<
-      string,
-      { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
-    >(
-      unplannedItems.map((item) => [
-        item.id,
-        item as { name: string; stockingUom: { symbol: string | null; unitName: string } | null },
-      ]),
+  let { totals: allTotalsMap, refs: flowRefs } = main.ownFigures ?? figures!;
+  // A step added between the two transactions' reads has no totals yet. Read
+  // just those, rather than render a step with none.
+  const missing = order.steps.filter((s) => !allTotalsMap.has(s.id)).map((s) => s.id);
+  if (missing.length > 0) {
+    const extra = await runAsTenant(organizationId, (tx) =>
+      stepFigures(tx, organizationId, missing),
     );
+    allTotalsMap = new Map([...allTotalsMap, ...extra.totals]);
+    flowRefs = {
+      itemById: new Map([...flowRefs.itemById, ...extra.refs.itemById]),
+      uomById: new Map([...flowRefs.uomById, ...extra.refs.uomById]),
+    };
+  }
+  const activity = figures?.activity ?? [];
 
-    const steps = order.steps.map((step) => {
-      const totals = allTotalsMap.get(step.id)!;
+  const firstStep = order.steps[0];
+  const firstTotals = firstStep ? allTotalsMap.get(firstStep.id) : null;
 
-      // The issue button is enabled by AVAILABILITY, not by status: a step can be
-      // ready on paper and have nothing to send. Measured on the PRINCIPAL input
-      // — the first consumed row, which is what the step is fundamentally about.
-      const principalInput = step.inputs[0] ?? null;
-      let availableQty = new Prisma.Decimal(0);
-      if (principalInput) {
-        availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
-      }
+  const availableQtyMap = new Map<string, Prisma.Decimal>();
+  for (const row of balances as {
+    itemId: string;
+    _sum: { qtyIn: Prisma.Decimal | null; qtyOut: Prisma.Decimal | null };
+  }[]) {
+    const inD = row._sum.qtyIn ?? new Prisma.Decimal(0);
+    const outD = row._sum.qtyOut ?? new Prisma.Decimal(0);
+    availableQtyMap.set(row.itemId, inD.minus(outD));
+  }
 
-      const blockedReason = allChainBlockedMap.get(step.id) ?? null;
+  const allUnplannedIds = new Set<string>();
+  for (const step of order.steps) {
+    const totals = allTotalsMap.get(step.id)!;
+    const planned = new Set([
+      ...step.inputs.map((row) => row.itemId),
+      ...step.outputs.map((row) => row.itemId),
+    ]);
+    for (const flow of totals.perItem) {
+      if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+    }
+    for (const flow of totals.perOutput) {
+      if (!planned.has(flow.itemId)) allUnplannedIds.add(flow.itemId);
+    }
+  }
 
-      // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
-      // `receivedQty` would mix metres and pieces on any step where the item
-      // changes (jobOrders.status.ts).
-      const issuedD = totals.issuedQty;
-      const consumedD = totals.consumedQty;
-      // A completed step's remainder was written off — it is no longer out (R8).
-      const outstanding = issuedD.minus(consumedD).minus(totals.writtenOffQty);
-      return {
-        ...step,
-        totals: {
-          issuedQty: totals.issuedQty.toString(),
-          consumedQty: totals.consumedQty.toString(),
-          receivedQty: totals.receivedQty.toString(),
-          acceptedQty: totals.acceptedQty.toString(),
-          reworkQty: totals.reworkQty.toString(),
-          scrapQty: totals.scrapQty.toString(),
-          returnedQty: totals.returnedQty.toString(),
-          outstandingQty: outstanding.toString(),
-          writtenOffQty: totals.writtenOffQty.toString(),
-          writtenOffValue: totals.writtenOffValue.toString(),
-          issueCount: totals.issueCount,
-          receiptCount: totals.receiptCount,
-        },
-        /**
-         * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
-         * principal input's and the primary output's; these are every item's,
-         * each in its own unit, and they are what the Overview renders.
-         *
-         * Both lists include items the PLAN never named — a step can be issued
-         * something nobody listed, and a receipt can return something nobody
-         * expected. Showing only the planned rows would hide exactly the
-         * movements somebody needs to look at.
-         */
-        itemTotals: buildItemTotals(step, totals, unplannedById),
-        availableQty: availableQty.toString(),
-        /**
-         * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
-         * by the ledger.
-         *
-         * It used to require a positive balance, which is the right rule and
-         * will be again. Material In was retired before Purchase Received and
-         * Opening Stock exist, so today there is no way to put stock on the
-         * books at all — and a button that can never light up makes the whole
-         * loop untestable. The Issue dialog creates a zero-valued batch for an
-         * item with no stock and says so on screen (`jobIssues.service.ts`).
-         *
-         * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
-         * lands. Issuing what you do not have is a real defect, not a feature.
-         *
-         * The ONE thing the scaffold does not relax is the chain — see
-         * `blockedReason` below.
-         */
-        canIssue: step.inputs.length > 0 && !blockedReason,
-        /**
-         * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
-         *
-         * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
-         * there is physically nothing to send — and the no-stock scaffold would
-         * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
-         * is the one thing it must never do. Raw material can be conjured while
-         * Purchase Received is missing; work in progress cannot.
-         *
-         * Items drawn from stock are unaffected: thread comes from the godown,
-         * not from the operation above.
-         */
-        blockedReason,
-        // Visible once something is out there to come back.
-        canReceive: outstanding.greaterThan(0),
-      };
+  const unplannedById = new Map<
+    string,
+    { name: string; stockingUom: { symbol: string | null; unitName: string } | null }
+  >();
+  for (const itemId of allUnplannedIds) {
+    const item = flowRefs.itemById.get(itemId);
+    if (!item) continue;
+    const uom = item.stockingUomId ? flowRefs.uomById.get(item.stockingUomId) : undefined;
+    unplannedById.set(itemId, {
+      name: item.name,
+      stockingUom: uom ? { symbol: uom.symbol, unitName: uom.unitName } : null,
     });
+  }
 
+  const steps = order.steps.map((step) => {
+    const totals = allTotalsMap.get(step.id)!;
+
+    // The issue button is enabled by AVAILABILITY, not by status: a step can be
+    // ready on paper and have nothing to send. Measured on the PRINCIPAL input
+    // — the first consumed row, which is what the step is fundamentally about.
+    const principalInput = step.inputs[0] ?? null;
+    let availableQty = new Prisma.Decimal(0);
+    if (principalInput) {
+      availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
+    }
+
+    const chainWarnings = chainWarningsMap.get(step.id) ?? [];
+
+    // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
+    // `receivedQty` would mix metres and pieces on any step where the item
+    // changes (jobOrders.status.ts).
+    const issuedD = totals.issuedQty;
+    const consumedD = totals.consumedQty;
+    // A completed step's remainder was written off — it is no longer out (R8).
+    const outstanding = issuedD.minus(consumedD).minus(totals.writtenOffQty);
     return {
-      jobOrder: order,
-      batches,
-      summary: {
-        issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
+      ...step,
+      totals: {
+        issuedQty: totals.issuedQty.toString(),
+        consumedQty: totals.consumedQty.toString(),
+        receivedQty: totals.receivedQty.toString(),
+        acceptedQty: totals.acceptedQty.toString(),
+        reworkQty: totals.reworkQty.toString(),
+        scrapQty: totals.scrapQty.toString(),
+        returnedQty: totals.returnedQty.toString(),
+        outstandingQty: outstanding.toString(),
+        writtenOffQty: totals.writtenOffQty.toString(),
+        writtenOffValue: totals.writtenOffValue.toString(),
+        issueCount: totals.issueCount,
+        receiptCount: totals.receiptCount,
       },
-      steps,
+      /**
+       * 🔴 THE PAGE'S REAL NUMBERS (§5.7 + §6.5). The six totals above are the
+       * principal input's and the primary output's; these are every item's,
+       * each in its own unit, and they are what the Overview renders.
+       *
+       * Both lists include items the PLAN never named — a step can be issued
+       * something nobody listed, and a receipt can return something nobody
+       * expected. Showing only the planned rows would hide exactly the
+       * movements somebody needs to look at.
+       */
+      itemTotals: buildItemTotals(step, totals, unplannedById),
+      availableQty: availableQty.toString(),
+      /**
+       * Enabled whenever the step lists something to issue, NOT by the ledger:
+       * the Issue screen shows what is on hand per godown, and the save refuses
+       * any quantity that is not there.
+       */
+      canIssue: step.inputs.length > 0,
+      /**
+       * Inputs an earlier step produces and has not returned yet, per item
+       * (`getChainWarnings`). Informational — issuing them draws on stock
+       * already on hand, and nothing refuses it.
+       */
+      chainWarnings,
+      // Visible once something is out there to come back.
+      canReceive: outstanding.greaterThan(0),
     };
   });
 
-  const [activity, mainOverview] = await Promise.all([activityPromise, mainOverviewPromise]);
-
   return {
-    ...mainOverview,
+    jobOrder: order,
+    batches,
+    summary: {
+      issuedQty: firstTotals ? firstTotals.issuedQty.toString() : '0',
+    },
+    steps,
     activity,
+  };
+}
+
+/** Every item a step's totals mention — the unplanned ones among them need names. */
+function flowItemIds(totals: Map<string, StepTotals>): string[] {
+  return [...totals.values()].flatMap((t) => [...t.perItem, ...t.perOutput].map((f) => f.itemId));
+}
+
+/** Step totals, plus names and units for every item they mention. */
+async function stepFigures(tx: TenantClient, organizationId: string, stepIds: string[]) {
+  const totals = await getAllStepTotals(tx, organizationId, stepIds);
+  const refs = await lookupRefs(tx, organizationId, flowItemIds(totals), []);
+  return { totals, refs };
+}
+
+/** The overview's order read without any item or unit — `hydrateOrder` attaches
+ * those from one lookup. Derived from the include below so the two cannot drift. */
+const STEP_OVERVIEW_QUERY = {
+  inputs: {
+    ...STEP_OVERVIEW_INCLUDE.inputs,
+    include: { plannedBatches: STEP_OVERVIEW_INCLUDE.inputs.include.plannedBatches },
+  },
+  outputs: {
+    ...STEP_OVERVIEW_INCLUDE.outputs,
+    include: { components: STEP_OVERVIEW_INCLUDE.outputs.include.components },
+  },
+  process: STEP_OVERVIEW_INCLUDE.process,
+  workCentre: STEP_OVERVIEW_INCLUDE.workCentre,
+} satisfies Prisma.JobOrderStepInclude;
+
+const JOB_ORDER_OVERVIEW_QUERY = {
+  route: JOB_ORDER_OVERVIEW_INCLUDE.route,
+  steps: { ...JOB_ORDER_OVERVIEW_INCLUDE.steps, include: STEP_OVERVIEW_QUERY },
+} satisfies Prisma.JobOrderInclude;
+
+type OverviewOrderRead = Prisma.JobOrderGetPayload<{ include: typeof JOB_ORDER_OVERVIEW_QUERY }>;
+type OverviewOrder = Prisma.JobOrderGetPayload<{ include: typeof JOB_ORDER_OVERVIEW_INCLUDE }>;
+
+/**
+ * Put back the item and unit objects the include used to return, same fields.
+ * A required item that is missing throws, as Prisma's include would; a missing
+ * optional one is null, as it would be.
+ */
+function hydrateOrder(found: OverviewOrderRead, refs: Refs): OverviewOrder {
+  const item = (itemId: string) => {
+    const row = refs.itemById.get(itemId);
+    if (!row) throw new Error(`Job order overview: item ${itemId} could not be read.`);
+    return { id: row.id, name: row.name, sku: row.sku, inventoryTracking: row.inventoryTracking };
+  };
+  const uom = (uomId: string | null) => {
+    const row = uomId ? refs.uomById.get(uomId) : undefined;
+    return row ? { id: row.id, unitName: row.unitName, symbol: row.symbol } : null;
+  };
+  return {
+    ...found,
+    inputItem:
+      found.inputItemId && refs.itemById.has(found.inputItemId) ? item(found.inputItemId) : null,
+    inputUom: uom(found.inputUomId),
+    steps: found.steps.map((step) => ({
+      ...step,
+      inputs: step.inputs.map((row) => ({ ...row, item: item(row.itemId), uom: uom(row.uomId) })),
+      outputs: step.outputs.map((row) => ({ ...row, item: item(row.itemId), uom: uom(row.uomId) })),
+    })),
   };
 }
 
@@ -2392,10 +2481,13 @@ async function buildActivity(
   jobOrderId: string,
   directory: MemberDirectory,
   filterStepId?: string,
+  extraItemIds: readonly string[] = [],
 ) {
   const unitOf = (uom: { symbol: string | null; unitName: string } | null | undefined) =>
     uom ? (uom.symbol ?? uom.unitName) : null;
 
+  // Scalars only — names, units, batch labels and locations are read once for
+  // the whole timeline below, not once per relation level.
   const issues = await tx.jobIssue.findMany({
     where: {
       organizationId,
@@ -2417,18 +2509,10 @@ async function buildActivity(
       processorNameSnapshot: true,
       createdBy: true,
       createdAt: true,
-      destination: { select: { name: true } },
+      destinationLocationId: true,
       lines: {
         where: { isDeleted: false },
-        select: {
-          id: true,
-          itemId: true,
-          qty: true,
-          item: { select: { name: true } },
-          uom: { select: { symbol: true, unitName: true } },
-          // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
-          batch: { select: { supplierBatchRef: true } },
-        },
+        select: { id: true, itemId: true, qty: true, uomId: true, batchId: true },
       },
     },
   });
@@ -2452,13 +2536,13 @@ async function buildActivity(
       processorNameSnapshot: true,
       createdBy: true,
       createdAt: true,
-      location: { select: { name: true } },
+      locationId: true,
       // Only the challan each line closes — the per-line quantities are the
       // consumption side and the disposition lives on `outputs`, so carrying
       // the whole line here would be a second copy of neither.
       lines: {
         where: { isDeleted: false },
-        select: { jobIssue: { select: { challanNumber: true } } },
+        select: { jobIssueId: true },
       },
       outputs: {
         where: { isDeleted: false },
@@ -2472,25 +2556,81 @@ async function buildActivity(
           scrapQty: true,
           isPrimary: true,
           remarks: true,
-          item: { select: { name: true } },
-          uom: { select: { symbol: true, unitName: true } },
-          reason: { select: { name: true } },
+          uomId: true,
+          reasonId: true,
           // 🔴 The child table, not `outputBatch`/`reworkBatch` — those name
           // only the FIRST of each kind, and a split delivery has more.
           batches: {
             where: { isDeleted: false },
             orderBy: [{ kind: 'asc' }, { seq: 'asc' }],
-            select: {
-              kind: true,
-              qty: true,
-              isNewBatch: true,
-              batch: { select: { supplierBatchRef: true } },
-            },
+            select: { kind: true, qty: true, isNewBatch: true, batchId: true },
           },
         },
       },
     },
   });
+
+  const issueLines = issues.flatMap((issue) => issue.lines);
+  const receiptOutputs = receipts.flatMap((receipt) => receipt.outputs);
+  const refs = await lookupRefs(
+    tx,
+    organizationId,
+    [
+      ...issueLines.map((line) => line.itemId),
+      ...receiptOutputs.map((row) => row.itemId),
+      ...extraItemIds,
+    ],
+    [...issueLines.map((line) => line.uomId), ...receiptOutputs.map((row) => row.uomId)],
+  );
+  // 🔴 The LABEL, never `batchNumber` (2026-08-14) — internal key.
+  const batchRefs = await namesById(
+    [
+      ...issueLines.map((line) => line.batchId),
+      ...receiptOutputs.flatMap((row) => row.batches.map((b) => b.batchId)),
+    ],
+    (ids) =>
+      tx.batch.findMany({
+        where: { organizationId, id: { in: ids } },
+        select: { id: true, supplierBatchRef: true },
+      }),
+    (row) => row.supplierBatchRef,
+  );
+  const locationNames = await namesById(
+    [...issues.map((issue) => issue.destinationLocationId), ...receipts.map((r) => r.locationId)],
+    (ids) =>
+      tx.location.findMany({
+        where: { organizationId, id: { in: ids } },
+        select: { id: true, name: true },
+      }),
+    (row) => row.name,
+  );
+  const reasonNames = await namesById(
+    receiptOutputs.map((row) => row.reasonId),
+    (ids) =>
+      tx.rejectionReason.findMany({
+        where: { organizationId, id: { in: ids } },
+        select: { id: true, name: true },
+      }),
+    (row) => row.name,
+  );
+  // A receipt line closes one of this order's own challans, already read above;
+  // the lookup covers only a challan that list does not hold (a deleted draft).
+  const challanNumbers = new Map(issues.map((issue) => [issue.id, issue.challanNumber]));
+  const missingChallans = [
+    ...new Set(
+      receipts
+        .flatMap((receipt) => receipt.lines.map((line) => line.jobIssueId))
+        .filter((id): id is string => Boolean(id) && !challanNumbers.has(id!)),
+    ),
+  ];
+  if (missingChallans.length > 0) {
+    const rows = await tx.jobIssue.findMany({
+      where: { organizationId, id: { in: missingChallans } },
+      select: { id: true, challanNumber: true },
+    });
+    for (const row of rows) challanNumbers.set(row.id, row.challanNumber);
+  }
+  const uomOf = (uomId: string | null) => (uomId ? (refs.uomById.get(uomId) ?? null) : null);
 
   const issueEvents = issues.map((issue) => ({
     kind: 'issue' as const,
@@ -2500,7 +2640,8 @@ async function buildActivity(
     date: issue.issueDate.toISOString(),
     status: issue.status,
     remarks: issue.remarks,
-    partyName: issue.processorNameSnapshot ?? issue.destination?.name ?? null,
+    partyName:
+      issue.processorNameSnapshot ?? locationNames.get(issue.destinationLocationId) ?? null,
     processorType: issue.processorType,
     actorName: directory.actorName(issue.createdBy),
     isRework: issue.isRework,
@@ -2509,10 +2650,10 @@ async function buildActivity(
     lines: issue.lines.map((line) => ({
       id: line.id,
       itemId: line.itemId,
-      itemName: line.item?.name ?? 'Item',
-      uomSymbol: unitOf(line.uom),
+      itemName: refs.itemById.get(line.itemId)?.name ?? 'Item',
+      uomSymbol: unitOf(uomOf(line.uomId)),
       qty: line.qty.toString(),
-      batchRef: line.batch?.supplierBatchRef ?? null,
+      batchRef: batchRefs.get(line.batchId) ?? null,
     })),
     at: issue.issueDate.getTime(),
     recordedAt: issue.createdAt.getTime(),
@@ -2526,24 +2667,26 @@ async function buildActivity(
     date: receipt.receiptDate.toISOString(),
     status: receipt.status,
     remarks: receipt.remarks,
-    partyName: receipt.processorNameSnapshot ?? receipt.location?.name ?? null,
+    partyName: receipt.processorNameSnapshot ?? locationNames.get(receipt.locationId) ?? null,
     processorType: receipt.processorType,
     actorName: directory.actorName(receipt.createdBy),
-    locationName: receipt.location?.name ?? null,
+    locationName: locationNames.get(receipt.locationId) ?? null,
     consumedQty: receipt.totalIssuedQty.toString(),
     // Never entered our stock, so it has no batch and no ledger row (§6.4) —
     // which is exactly why it has to be said in words here.
     returnedQty: receipt.totalReturnedQty.toString(),
     againstChallans: [
       ...new Set(
-        receipt.lines.map((line) => line.jobIssue?.challanNumber).filter(Boolean) as string[],
+        receipt.lines
+          .map((line) => (line.jobIssueId ? challanNumbers.get(line.jobIssueId) : undefined))
+          .filter(Boolean) as string[],
       ),
     ].sort(),
     outputs: receipt.outputs.map((output) => ({
       id: output.id,
       itemId: output.itemId,
-      itemName: output.item?.name ?? 'Item',
-      uomSymbol: unitOf(output.uom),
+      itemName: refs.itemById.get(output.itemId)?.name ?? 'Item',
+      uomSymbol: unitOf(uomOf(output.uomId)),
       isPrimary: output.isPrimary,
       receivedQty: output.receivedQty.toString(),
       acceptedQty: output.acceptedQty.toString(),
@@ -2551,12 +2694,13 @@ async function buildActivity(
       scrapQty: output.scrapQty.toString(),
       // The gate types free text now; older rows carry a reason row. One field
       // out, because the screen shows them under one heading either way.
-      reason: output.reason?.name ?? output.remarks ?? null,
+      reason:
+        (output.reasonId ? reasonNames.get(output.reasonId) : undefined) ?? output.remarks ?? null,
       batches: output.batches.map((row) => ({
         kind: row.kind,
         qty: row.qty.toString(),
         isNewBatch: row.isNewBatch,
-        batchRef: row.batch?.supplierBatchRef ?? null,
+        batchRef: batchRefs.get(row.batchId) ?? null,
       })),
     })),
     at: receipt.receiptDate.getTime(),
@@ -2570,9 +2714,75 @@ async function buildActivity(
    * raised on one day would otherwise sort arbitrarily, and a receipt printed
    * above the challan it closes reads as a receipt of goods that never left.
    */
-  return [...issueEvents, ...receiptEvents]
+  const events = [...issueEvents, ...receiptEvents]
     .sort((a, b) => a.at - b.at || a.recordedAt - b.recordedAt)
     .map(({ at: _at, recordedAt: _recordedAt, ...event }) => event);
+  // `refs` rides back so the overview can name unplanned items (`extraItemIds`)
+  // from the same lookup instead of a query of its own.
+  return { events, refs };
+}
+
+const ITEM_REF_SELECT = {
+  ...ROW_OVERVIEW_INCLUDE.item.select,
+  stockingUomId: true,
+} satisfies Prisma.ItemSelect;
+type Refs = {
+  itemById: Map<string, Prisma.ItemGetPayload<{ select: typeof ITEM_REF_SELECT }>>;
+  uomById: Map<
+    string,
+    Prisma.UnitOfMeasurementGetPayload<{ select: typeof ROW_OVERVIEW_INCLUDE.uom.select }>
+  >;
+};
+
+/**
+ * Items and units for a whole page in two reads, where a nested include pays one
+ * round trip per relation level. The units of every item read here are included,
+ * so an item's stocking unit needs no third query. No `isDeleted` filter, same as
+ * a relation include: a row that names a deleted item still shows its name.
+ */
+async function lookupRefs(
+  tx: TenantClient,
+  organizationId: string,
+  itemIds: readonly (string | null | undefined)[],
+  uomIds: readonly (string | null | undefined)[],
+): Promise<Refs> {
+  const wantedItems = [...new Set(itemIds.filter((id): id is string => Boolean(id)))];
+  const items =
+    wantedItems.length > 0
+      ? await tx.item.findMany({
+          where: { organizationId, id: { in: wantedItems } },
+          select: ITEM_REF_SELECT,
+        })
+      : [];
+  const wantedUoms = [
+    ...new Set(
+      [...uomIds, ...items.map((item) => item.stockingUomId)].filter((id): id is string =>
+        Boolean(id),
+      ),
+    ),
+  ];
+  const uoms =
+    wantedUoms.length > 0
+      ? await tx.unitOfMeasurement.findMany({
+          where: { organizationId, id: { in: wantedUoms } },
+          select: ROW_OVERVIEW_INCLUDE.uom.select,
+        })
+      : [];
+  return {
+    itemById: new Map(items.map((item) => [item.id, item])),
+    uomById: new Map(uoms.map((uom) => [uom.id, uom])),
+  };
+}
+
+/** One read for a set of ids, skipped when there are none. */
+async function namesById<Row extends { id: string }>(
+  ids: readonly (string | null | undefined)[],
+  read: (ids: string[]) => Promise<Row[]>,
+  pick: (row: Row) => string | null,
+): Promise<Map<string, string | null>> {
+  const wanted = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (wanted.length === 0) return new Map();
+  return new Map((await read(wanted)).map((row) => [row.id, pick(row)]));
 }
 
 /** Re-derive an order's status after something downstream changed it. */

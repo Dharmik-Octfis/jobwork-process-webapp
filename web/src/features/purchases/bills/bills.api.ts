@@ -23,8 +23,13 @@ export async function fetchBillCount(orgId: string, params: PageParams = {}): Pr
   return (response.data as { total: number }).total;
 }
 
-export async function fetchOpenJobReceipts(orgId: string, vendorId: string): Promise<OpenJobReceipt[]> {
-  const response = await apiClient.get(`${endpoints.purchases.bills(orgId)}/open-job-receipts/${vendorId}`);
+export async function fetchOpenJobReceipts(
+  orgId: string,
+  vendorId: string,
+): Promise<OpenJobReceipt[]> {
+  const response = await apiClient.get(
+    `${endpoints.purchases.bills(orgId)}/open-job-receipts/${vendorId}`,
+  );
   return response.data;
 }
 
@@ -105,12 +110,9 @@ export async function uploadBillAttachments(
   orgId: string,
   formData: FormData,
 ): Promise<BillAttachment[]> {
-  const response = await apiClient.post(
+  const response = await apiClient.postForm(
     `${endpoints.purchases.bills(orgId)}/attachments/upload`,
-    formData,
-    {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    },
+    formData
   );
   return response.data;
 }

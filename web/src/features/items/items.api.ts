@@ -68,17 +68,9 @@ export const itemsApi = {
   },
 
   uploadImages: async (orgId: string, id: string, formData: FormData): Promise<Item> => {
-    const response = await apiClient.post(
+    const response = await apiClient.postForm(
       `${endpoints.seedData.items(orgId)}/${id}/images`,
-      formData,
-      {
-        transformRequest: [
-          (data, headers) => {
-            delete headers['Content-Type'];
-            return data;
-          },
-        ],
-      },
+      formData
     );
     return response.data;
   },

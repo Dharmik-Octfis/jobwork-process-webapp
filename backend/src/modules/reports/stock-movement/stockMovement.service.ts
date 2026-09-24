@@ -5,20 +5,6 @@ import type {
 } from './stockMovement.schemas.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 
-const COUNTED_SOURCE = Prisma.sql`
-  (
-    l.source_doc_type != 'job_receipt'
-    OR EXISTS (
-      SELECT 1 FROM bill_items bi
-      JOIN bills b ON b.id = bi.bill_id
-      WHERE bi.job_receipt_id = l.source_doc_id
-        AND bi.item_id = l.item_id
-        AND bi.is_deleted = false
-        AND b.is_deleted = false
-        AND LOWER(b.status) = 'open'
-    )
-  )`;
-
 const OWN_PLACE = Prisma.sql`
   EXISTS (
     SELECT 1 FROM locations loc
@@ -45,63 +31,7 @@ export async function getStockMovementReport(
       quantity: string | number | bigint;
     };
 
-    const {
-      itemId,
-      fromDate,
-      toDate,
-      mode = 'bills_and_invoices',
-      movementType = 'all',
-      page = 1,
-      perPage = 25,
-    } = query;
-
-    let countedSourceFilter = Prisma.sql`true`;
-    if (mode === 'bills') {
-      countedSourceFilter = Prisma.sql`
-        (
-          (
-            l.source_doc_type IN ('bill', 'item_opening_stock', 'stock_transfer', 'job_issue')
-            AND (
-              l.source_doc_type != 'bill'
-              OR NOT EXISTS (
-                SELECT 1 FROM bill_items bi
-                WHERE bi.bill_id = l.source_doc_id
-                  AND bi.item_id = l.item_id
-                  AND bi.job_receipt_id IS NOT NULL
-                  AND bi.is_deleted = false
-              )
-            )
-          )
-          OR (
-            l.source_doc_type = 'job_receipt'
-            AND EXISTS (
-              SELECT 1 FROM bill_items bi
-              JOIN bills b ON b.id = bi.bill_id
-              WHERE bi.job_receipt_id = l.source_doc_id
-                AND bi.item_id = l.item_id
-                AND bi.is_deleted = false
-                AND b.is_deleted = false
-                AND LOWER(b.status) = 'open'
-            )
-          )
-        )
-      `;
-    } else if (mode === 'jobwork') {
-      countedSourceFilter = Prisma.sql`
-        (
-          l.source_doc_type != 'bill'
-          OR NOT EXISTS (
-            SELECT 1 FROM bill_items bi
-            WHERE bi.bill_id = l.source_doc_id
-              AND bi.item_id = l.item_id
-              AND bi.job_receipt_id IS NOT NULL
-              AND bi.is_deleted = false
-          )
-        )
-      `;
-    } else if (mode === 'bills_and_invoices') {
-      countedSourceFilter = COUNTED_SOURCE;
-    }
+    const { itemId, locationId, fromDate, toDate, movementType = 'all', page = 1, perPage = 25 } = query;
 
     const fromDateFilter = fromDate
       ? Prisma.sql`l.posted_at::date >= ${new Date(fromDate)}::timestamptz::date`
@@ -121,6 +51,7 @@ export async function getStockMovementReport(
     }
 
     const itemFilter = itemId ? Prisma.sql`l.item_id = ${itemId}::uuid` : Prisma.sql`true`;
+    const locationFilter = locationId ? Prisma.sql`l.location_id = ${locationId}::uuid` : Prisma.sql`true`;
 
     // One row per document, item and location, netted: an edit posts a reversal
     // and a re-post rather than rewriting its rows, so the raw ledger lists a bill
@@ -139,11 +70,11 @@ export async function getStockMovementReport(
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'physical')
-        AND ${countedSourceFilter}
         AND ${OWN_PLACE}
         AND ${fromDateFilter}
         AND ${toDateFilter}
         AND ${itemFilter}
+        AND ${locationFilter}
       GROUP BY l.source_doc_type, COALESCE(l.source_doc_id, l.id), l.item_id, l.location_id
     `;
 
@@ -159,21 +90,7 @@ export async function getStockMovementReport(
     const total = Number(totals[0]?.count || 0);
     const grandTotalQuantity = Number(totals[0]?.quantity || 0);
 
-    const jobReceiptTxNo = mode === 'bills' || mode === 'bills_and_invoices'
-      ? Prisma.sql`COALESCE(
-          (SELECT b.bill_number FROM bills b JOIN bill_items bi ON b.id = bi.bill_id WHERE bi.job_receipt_id = n.source_doc_id AND bi.item_id = n.item_id AND b.is_deleted = false AND LOWER(b.status) = 'open' LIMIT 1),
-          (SELECT receipt_number FROM job_receipts WHERE id = n.source_doc_id)
-        )`
-      : Prisma.sql`(SELECT receipt_number FROM job_receipts WHERE id = n.source_doc_id)`;
-
-    const transactionTypeAndSource = mode === 'bills' || mode === 'bills_and_invoices'
-      ? Prisma.sql`
-          CASE 
-            WHEN n.source_doc_type = 'job_receipt' THEN 'bill'
-            ELSE REPLACE(n.source_doc_type, '_', ' ')
-          END
-        `
-      : Prisma.sql`REPLACE(n.source_doc_type, '_', ' ')`;
+    const transactionTypeAndSource = Prisma.sql`REPLACE(n.source_doc_type, '_', ' ')`;
 
     const rawRows = await tx.$queryRaw<RawRow[]>`
       SELECT
@@ -182,7 +99,7 @@ export async function getStockMovementReport(
         COALESCE(
           CASE
             WHEN n.source_doc_type = 'bill' THEN (SELECT bill_number FROM bills WHERE id = n.source_doc_id)
-            WHEN n.source_doc_type = 'job_receipt' THEN ${jobReceiptTxNo}
+            WHEN n.source_doc_type = 'job_receipt' THEN (SELECT receipt_number FROM job_receipts WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'job_issue' THEN (SELECT challan_number FROM job_issues WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'purchase_order' THEN (SELECT po_number FROM purchase_orders WHERE id = n.source_doc_id)
             ELSE n.source_doc_id::text
@@ -199,7 +116,7 @@ export async function getStockMovementReport(
         ABS(n.net) AS "quantity"
       FROM (${netted}) n
       JOIN items i ON n.item_id = i.id
-      ORDER BY n.posted_at DESC, n.created_at ASC
+      ORDER BY n.posted_at DESC, n.created_at DESC
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `;
 

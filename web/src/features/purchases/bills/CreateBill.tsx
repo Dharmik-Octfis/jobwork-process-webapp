@@ -38,7 +38,6 @@ import {
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
 import { fetchJobReceiptById } from '../../jobwork/receipts/jobReceipts.api';
-import type { JobReceipt } from '../../jobwork/receipts/jobReceipts.schemas';
 import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
@@ -55,6 +54,29 @@ import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopove
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
+
+/**
+ * A job receipt is billed as the job worker's SERVICE, never as the goods: the
+ * receipt already valued its output at material + agreed charge. The user picks the
+ * process's service item and types qty and rate; the server refuses anything else.
+ */
+function receiptChargeLine(receipt: {
+  id: string;
+  receiptNumber: string;
+  jobOrder?: { jobOrderNumber?: string | null } | null;
+}): BillItem {
+  return {
+    itemId: '',
+    quantity: '' as unknown as number,
+    rate: '' as unknown as number,
+    discountValue: '' as unknown as number,
+    discountType: 'percentage',
+    amount: 0,
+    itemTotal: 0,
+    jobReceiptId: receipt.id,
+    description: `Job work charges for Job Order ${receipt.jobOrder?.jobOrderNumber ?? ''} / Receive ${receipt.receiptNumber}`,
+  };
+}
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
@@ -241,7 +263,7 @@ export function CreateBill() {
 
   useEffect(() => {
     if (jobReceiptId && openJobReceipts.length > 0 && !hasAutoFilledJobReceipt) {
-      const receipt = openJobReceipts.find(r => r.id === jobReceiptId);
+      const receipt = openJobReceipts.find((r) => r.id === jobReceiptId);
       if (receipt) {
         const currentItems = getValues('lineItems') ?? [];
         let startIndex = currentItems.findIndex((item) => !item.itemId);
@@ -251,32 +273,12 @@ export function CreateBill() {
         }
 
         const newItems = [...currentItems];
-
-        receipt.outputs.forEach((output) => {
-          const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
-          const qty = Number(output.acceptedQty) || 1;
-          const itemData = {
-            itemId: output.itemId,
-            item: output.item,
-            quantity: qty,
-            rate: totalCost / qty,
-            amount: totalCost,
-            itemTotal: totalCost,
-            jobReceiptId: receipt.id,
-            description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
-            batches: output.outputBatchId ? [{
-              batchId: output.outputBatchId,
-              quantity: qty,
-            }] : undefined,
-          };
-
-          if (startIndex < newItems.length && !newItems[startIndex].itemId) {
-            newItems[startIndex] = { ...newItems[startIndex], ...itemData };
-          } else {
-            newItems.push({ ...itemData } as BillItem);
-          }
-          startIndex++;
-        });
+        const itemData = receiptChargeLine(receipt);
+        if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+          newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+        } else {
+          newItems.push(itemData);
+        }
 
         setValue('lineItems', newItems, { shouldValidate: true });
         setHasAutoFilledJobReceipt(true);
@@ -300,7 +302,8 @@ export function CreateBill() {
           discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           amount: item.amount || 0,
           jobReceiptId: item.jobReceiptId,
-          description: (item.customFields as Record<string, unknown>)?.description as string || '',
+          description:
+            ((item.customFields as Record<string, unknown>)?.description as string) || '',
           batches: isClone ? undefined : item.batches,
         };
       });
@@ -353,38 +356,7 @@ export function CreateBill() {
 
   useEffect(() => {
     if (sourceJobReceipt && isFromJobReceipt) {
-      const formattedLineItems: BillItem[] = [];
-
-      sourceJobReceipt.outputs.forEach((output: JobReceipt['outputs'][number]) => {
-        const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
-        const qty = Number(output.acceptedQty) || 1;
-
-        formattedLineItems.push({
-          itemId: output.itemId,
-          item: output.item,
-          quantity: qty,
-          rate: totalCost / qty,
-          discountValue: 0,
-          discountType: 'percentage',
-          amount: totalCost,
-          itemTotal: totalCost,
-          jobReceiptId: sourceJobReceipt.id,
-          description: `Processing charge for Job Order ${sourceJobReceipt.jobOrder?.jobOrderNumber || ''} / Receive ${sourceJobReceipt.receiptNumber}`,
-          batches: output.batches?.filter((b) => b.kind === 'accepted').length
-            ? output.batches
-                .filter((b) => b.kind === 'accepted')
-                .map((b) => ({
-                  batchId: b.batch.id,
-                  quantity: Number(b.qty) || qty,
-                }))
-            : output.outputBatch?.id
-              ? [{
-                  batchId: output.outputBatch.id as string,
-                  quantity: qty,
-                }]
-              : undefined,
-        });
-      });
+      const formattedLineItems: BillItem[] = [receiptChargeLine(sourceJobReceipt)];
 
       const resetData: CreateBillData = {
         vendorId: sourceJobReceipt.processorId || '',
@@ -1160,6 +1132,8 @@ export function CreateBill() {
                                     });
                                     setValue(`lineItems.${index}.item`, val);
                                     const selected = val;
+                                    // A receipt line keeps its description: it names the receipt it settles.
+                                    const keepsDescription = Boolean(curItem?.jobReceiptId);
                                     if (selected) {
                                       setValue(
                                         `lineItems.${index}.rate`,
@@ -1171,14 +1145,14 @@ export function CreateBill() {
                                         `lineItems.${index}.quantity`,
                                         1 as unknown as number,
                                       );
-                                      setValue(
-                                        `lineItems.${index}.description`,
-                                        selected.purchaseDescription ||
+                                      if (!keepsDescription) {
+                                        setValue(
+                                          `lineItems.${index}.description`,
                                           selected.purchaseDescription ||
-                                          selected.salesDescription ||
-                                          selected.salesDescription ||
-                                          '',
-                                      );
+                                            selected.salesDescription ||
+                                            '',
+                                        );
+                                      }
                                     } else {
                                       setValue(`lineItems.${index}.rate`, '' as unknown as number);
                                       setValue(
@@ -1190,10 +1164,17 @@ export function CreateBill() {
                                         '' as unknown as number,
                                       );
                                       setValue(`lineItems.${index}.discountType`, 'percentage');
-                                      setValue(`lineItems.${index}.description`, '');
+                                      if (!keepsDescription) {
+                                        setValue(`lineItems.${index}.description`, '');
+                                      }
                                     }
                                   }}
-                                  placeholder="Type or click to select an item."
+                                  filter={curItem?.jobReceiptId ? 'services' : undefined}
+                                  placeholder={
+                                    curItem?.jobReceiptId
+                                      ? 'Select a service item.'
+                                      : 'Type or click to select an item.'
+                                  }
                                   footerAction={{
                                     text: 'New Product',
                                     onClick: () => setItemModalIndex(index),
@@ -1202,8 +1183,8 @@ export function CreateBill() {
                               )}
                             </div>
 
-                            {/* Description Field - only shown when an item is selected */}
-                            {selectedItem && (
+                            {/* Description Field - shown once an item is selected, or on a receipt line */}
+                            {(selectedItem || curItem?.jobReceiptId) && (
                               <textarea
                                 {...register(`lineItems.${index}.description`)}
                                 placeholder="Add a description to your item"
@@ -1247,11 +1228,11 @@ export function CreateBill() {
                                     textTransform: 'uppercase',
                                   }}
                                 >
-                                  {selectedItem.type || 'GOODS'}
+                                  {selectedItem.itemType === 'service' ? 'Services' : 'Goods'}
                                 </span>
                                 {selectedItem.hsnCode && (
                                   <span style={{ color: '#475569', fontWeight: 500 }}>
-                                    HSN Code:{' '}
+                                    {selectedItem.itemType === 'service' ? 'SAC' : 'HSN Code'}:{' '}
                                     <span style={{ color: '#2563eb', fontWeight: 600 }}>
                                       {selectedItem.hsnCode}
                                     </span>
@@ -2048,41 +2029,14 @@ export function CreateBill() {
           const newItems = [...currentItems];
 
           selectedReceipts.forEach((receipt) => {
-            receipt.outputs.forEach((output) => {
-              // If the targeted row is empty, overwrite it, else push new
-              const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
-              const qty = Number(output.acceptedQty) || 1;
-              const itemData = {
-                itemId: output.itemId,
-                item: output.item,
-                quantity: qty,
-                rate: totalCost / qty,
-                amount: totalCost,
-                itemTotal: totalCost,
-                jobReceiptId: receipt.id,
-                description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
-                batches: output.batches?.filter((b) => b.kind === 'accepted').length
-                  ? output.batches
-                      .filter((b) => b.kind === 'accepted')
-                      .map((b) => ({
-                        batchId: b.batch.id,
-                        quantity: Number(b.qty) || qty,
-                      }))
-                  : (output.outputBatchId || output.outputBatch?.id)
-                    ? [{
-                        batchId: (output.outputBatchId || output.outputBatch?.id) as string,
-                        quantity: qty,
-                      }]
-                    : undefined,
-              };
-
-              if (startIndex < newItems.length && !newItems[startIndex].itemId) {
-                newItems[startIndex] = { ...newItems[startIndex], ...itemData };
-              } else {
-                newItems.push({ ...itemData } as BillItem);
-              }
-              startIndex++;
-            });
+            // If the targeted row is empty, overwrite it, else push new
+            const itemData = receiptChargeLine(receipt);
+            if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+              newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+            } else {
+              newItems.push(itemData);
+            }
+            startIndex++;
           });
 
           setValue('lineItems', newItems, { shouldValidate: true });

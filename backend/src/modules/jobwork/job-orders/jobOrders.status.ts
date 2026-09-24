@@ -411,64 +411,111 @@ export function stepStatusFrom(totals: StepTotals, isCompleted: boolean): JobOrd
   return 'partially_received';
 }
 
+/** One input a step would draw from existing stock, because the earlier step that
+ * produces it has returned none yet. */
+export interface ChainWarning {
+  itemId: string;
+  message: string;
+}
+
 /**
- * 🔴 A STEP CANNOT ISSUE UNTIL THE STEP BEFORE IT HAS RETURNED SOMETHING.
+ * 🔴 THE CHAIN IS A WARNING, NOT A BLOCK (2026-09-24). It refuses nothing.
  *
- * The steps of a job order are a SEQUENCE of operations on the same material:
- * step 2 works on what step 1 sent back. Until step 1 has received anything
- * there is physically nothing for step 2 to send, and a challan raised anyway
- * describes goods that do not exist.
+ * It used to refuse any step from issuing until the step directly above had
+ * returned something — by position, whatever the items. That held up steps that
+ * share no material with the step above (embroidery on bought-in patches waiting
+ * on the dyer), which ERPs run in parallel. And its original reason is gone: it
+ * stopped the old no-stock scaffold inventing work in progress, and the issue
+ * save now refuses any quantity the ledger does not hold (`resolveLines`).
  *
- * 🔴 BY POSITION, not by matching items. It used to ask whether step 2's inputs
- * were *declared* as fed by step 1 — and a step whose PRODUCES list was left
- * empty, or which named a different item, declared no link at all, so the rule
- * silently did not apply and step 2 could issue against nothing. Position is
- * what the shop floor means by "the next step", and it cannot be typed wrong.
+ * So the only thing still worth saying is the case where it matters: this step
+ * consumes an item an earlier step PRODUCES, and none of it has come back yet.
+ * Issuing is still allowed — the stock on hand is real, e.g. dyed fabric left
+ * from a closed order — but it is that older stock, and its FIFO cost, that goes
+ * out. The Issue screen shows this per item; the save does not read it.
  *
- * "Returned something" is `receivedQty > 0` on a POSTED receipt. Not accepted
- * quantity: a consignment that came back entirely as rework did come back, and
- * the rework has to be re-issued from somewhere. And not a draft one — typing a
- * receipt and parking it must not unlock the next step, or the chain guard is
- * opened by paperwork instead of by goods.
+ * By ITEM, against every earlier step producing it, not just the one directly
+ * above: stitching that takes dyed fabric AND embroidered patches waits on both.
+ * An input no earlier step produces is drawn from stock and never warns. A
+ * producer closed short is finished by decision, so nobody waits on it.
  *
- * Lives here rather than in the service because both the Overview (to disable
- * the button) and `jobIssues.service.ts` (to refuse the save) must ask exactly
- * the same question — a button that merely hides is a rule a second tab walks
- * straight past.
+ * "Come back" is `receivedQty > 0` of that item on a POSTED receipt — rework
+ * included (it came back), a draft receipt not (paperwork is not goods).
  */
-export async function chainNotReady(
+export async function getChainWarnings(
   tx: TenantClient,
   organizationId: string,
   jobOrderId: string,
-  step: { id: string; seq: number },
-): Promise<string | null> {
-  if (step.seq <= 1) return null;
-
-  const previous = await tx.jobOrderStep.findFirst({
-    where: { organizationId, jobOrderId, seq: { lt: step.seq }, isDeleted: false },
-    orderBy: { seq: 'desc' },
-    select: { id: true, seq: true, processNameSnapshot: true, status: true },
+): Promise<Map<string, ChainWarning[]>> {
+  const result = new Map<string, ChainWarning[]>();
+  const steps = await tx.jobOrderStep.findMany({
+    where: { organizationId, jobOrderId, isDeleted: false },
+    orderBy: { seq: 'asc' },
+    select: {
+      id: true,
+      seq: true,
+      processNameSnapshot: true,
+      status: true,
+      inputs: { where: { isDeleted: false }, select: { itemId: true } },
+      outputs: { where: { isDeleted: false }, select: { itemId: true } },
+    },
   });
-  // No step above it — the seq numbering has a hole, so there is nothing to wait
-  // for and blocking would be arbitrary.
-  if (!previous) return null;
+  if (steps.length < 2) return result;
 
-  // A step closed short is finished by decision, not by arithmetic. Whatever it
-  // did or did not return, nobody is waiting on it any more.
-  if (previous.status === 'short_closed') return null;
-
-  const returned = await tx.jobReceipt.aggregate({
+  // Everything that has come back, per (step, item), in one read.
+  const returnedRows = await tx.jobReceiptOutput.findMany({
     where: {
       organizationId,
-      jobOrderStepId: previous.id,
-      isDeleted: false,
-      status: POSTED_DOC_STATUS,
+      receivedQty: { gt: 0 },
+      jobReceipt: {
+        jobOrderStepId: { in: steps.map((s) => s.id) },
+        isDeleted: false,
+        status: POSTED_DOC_STATUS,
+      },
     },
-    _sum: { totalReceivedQty: true },
+    select: { itemId: true, jobReceipt: { select: { jobOrderStepId: true } } },
   });
-  if ((returned._sum.totalReceivedQty ?? ZERO).greaterThan(0)) return null;
+  const returned = new Set(returnedRows.map((r) => `${r.jobReceipt.jobOrderStepId}#${r.itemId}`));
 
-  return `Nothing has come back from step ${previous.seq} (${previous.processNameSnapshot}) yet, so there is nothing to send on.`;
+  const pending = new Map<string, { itemId: string; producers: typeof steps }[]>();
+  for (const step of steps) {
+    for (const { itemId } of step.inputs) {
+      const producers = steps.filter(
+        (p) =>
+          p.seq < step.seq &&
+          p.status !== 'short_closed' &&
+          p.outputs.some((o) => o.itemId === itemId),
+      );
+      if (producers.length === 0) continue;
+      if (producers.some((p) => returned.has(`${p.id}#${itemId}`))) continue;
+      pending.set(step.id, [...(pending.get(step.id) ?? []), { itemId, producers }]);
+    }
+  }
+  if (pending.size === 0) return result;
+
+  const itemIds = [...new Set([...pending.values()].flat().map((row) => row.itemId))];
+  const names = new Map(
+    (
+      await tx.item.findMany({
+        where: { organizationId, id: { in: itemIds } },
+        select: { id: true, name: true },
+      })
+    ).map((item) => [item.id, item.name]),
+  );
+
+  for (const [stepId, rows] of pending) {
+    result.set(
+      stepId,
+      rows.map(({ itemId, producers }) => {
+        const from = producers.map((p) => `step ${p.seq} (${p.processNameSnapshot})`).join(', ');
+        return {
+          itemId,
+          message: `No ${names.get(itemId) ?? 'material'} has come back from ${from} yet — issuing now uses stock already on hand.`,
+        };
+      }),
+    );
+  }
+  return result;
 }
 
 /**
@@ -723,71 +770,5 @@ export async function getAllStepTotals(
     });
   }
 
-  return result;
-}
-
-/**
- * Bulk version of chainNotReady.
- */
-export async function getAllChainNotReady(
-  tx: TenantClient,
-  organizationId: string,
-  _jobOrderId: string,
-  steps: { id: string; seq: number; processNameSnapshot: string; status: string }[],
-): Promise<Map<string, string | null>> {
-  const result = new Map<string, string | null>();
-  if (steps.length === 0) return result;
-
-  const previousIds = steps
-    .filter((s) => s.seq > 1)
-    .map((s) => {
-      // Find the immediately preceding step
-      const prevs = steps.filter((p) => p.seq < s.seq).sort((a, b) => b.seq - a.seq);
-      return prevs[0]?.id;
-    })
-    .filter(Boolean) as string[];
-
-  const returned =
-    previousIds.length > 0
-      ? await tx.jobReceipt.groupBy({
-          by: ['jobOrderStepId'],
-          where: {
-            organizationId,
-            jobOrderStepId: { in: previousIds },
-            isDeleted: false,
-            status: POSTED_DOC_STATUS,
-          },
-          _sum: { totalReceivedQty: true },
-        })
-      : [];
-  const returnedByStep = new Map(
-    returned.map((r) => [r.jobOrderStepId, r._sum.totalReceivedQty ?? ZERO]),
-  );
-
-  for (const step of steps) {
-    if (step.seq <= 1) {
-      result.set(step.id, null);
-      continue;
-    }
-    const prevs = steps.filter((p) => p.seq < step.seq).sort((a, b) => b.seq - a.seq);
-    const previous = prevs[0];
-    if (!previous) {
-      result.set(step.id, null);
-      continue;
-    }
-    if (previous.status === 'short_closed') {
-      result.set(step.id, null);
-      continue;
-    }
-    const received = returnedByStep.get(previous.id) ?? ZERO;
-    if (received.greaterThan(0)) {
-      result.set(step.id, null);
-      continue;
-    }
-    result.set(
-      step.id,
-      `Nothing has come back from step ${previous.seq} (${previous.processNameSnapshot}) yet, so there is nothing to send on.`,
-    );
-  }
   return result;
 }

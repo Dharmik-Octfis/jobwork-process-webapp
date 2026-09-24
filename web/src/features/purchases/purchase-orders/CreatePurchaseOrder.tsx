@@ -1324,11 +1324,11 @@ export function CreatePurchaseOrder() {
                                     textTransform: 'uppercase',
                                   }}
                                 >
-                                  {selectedItem.type || 'GOODS'}
+                                  {selectedItem.itemType === 'service' ? 'Services' : 'Goods'}
                                 </span>
                                 {selectedItem.hsnCode && (
                                   <span style={{ color: '#475569', fontWeight: 500 }}>
-                                    HSN Code:{' '}
+                                    {selectedItem.itemType === 'service' ? 'SAC' : 'HSN Code'}:{' '}
                                     <span style={{ color: '#2563eb', fontWeight: 600 }}>
                                       {selectedItem.hsnCode}
                                     </span>

@@ -159,8 +159,15 @@ export const endpoints = {
   listViews: (orgId: string, entityType: string) =>
     `/organizations/${orgId}/list-views/${entityType}`,
   reports: {
+    /** Reports Center list, merged with the caller's last-visited + favourite. */
+    list: (orgId: string) => `/organizations/${orgId}/reports`,
+    visit: (orgId: string, reportKey: string) =>
+      `/organizations/${orgId}/reports/${reportKey}/visit`,
+    favorite: (orgId: string, reportKey: string) =>
+      `/organizations/${orgId}/reports/${reportKey}/favorite`,
     inventoryValuation: (orgId: string) => `/organizations/${orgId}/reports/inventory-valuation`,
-    fifoCostLotTracking: (orgId: string) => `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
+    fifoCostLotTracking: (orgId: string) =>
+      `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
   },
   automation: {
     approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,

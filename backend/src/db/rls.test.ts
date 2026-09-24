@@ -47,6 +47,9 @@ const TENANT_TABLES = [
   'roles',
   'permission_templates',
   'list_view_preferences',
+  // Per-user report history (last visited, favourite), added in
+  // 20260924100000_add_report_user_states. Direct form — own organization_id.
+  'report_user_states',
   // Jobwork / inventory, added in 20260804120247_jobwork_sprint1_foundation.
   // `batches` kept its policy through the 2026-08-12 rename from `lots` — a
   // policy is attached to the table, not to its name, and this one compares

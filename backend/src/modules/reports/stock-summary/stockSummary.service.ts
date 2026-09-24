@@ -31,7 +31,6 @@ export async function getStockSummaryReport(
     const {
       fromDate,
       toDate,
-      mode = 'bills',
       status = 'all',
       itemName,
       categoryName,
@@ -41,82 +40,8 @@ export async function getStockSummaryReport(
       itemCustomFields,
     } = query;
 
-    const COUNTED_SOURCE = Prisma.sql`
-      (
-        (
-          l.source_doc_type != 'job_receipt'
-          AND (
-            l.source_doc_type != 'bill'
-            OR NOT EXISTS (
-              SELECT 1 FROM bill_items bi
-              WHERE bi.bill_id = l.source_doc_id
-                AND bi.item_id = l.item_id
-                AND bi.job_receipt_id IS NOT NULL
-                AND bi.is_deleted = false
-            )
-          )
-        )
-        OR (
-          l.source_doc_type = 'job_receipt'
-          AND EXISTS (
-            SELECT 1 FROM bill_items bi
-            JOIN bills b ON b.id = bi.bill_id
-            WHERE bi.job_receipt_id = l.source_doc_id
-              AND bi.item_id = l.item_id
-              AND bi.is_deleted = false
-              AND b.is_deleted = false
-              AND LOWER(b.status) = 'open'
-          )
-        )
-      )`;
-
-    let countedSourceFilter = Prisma.sql`true`;
-    if (mode === 'bills') {
-      countedSourceFilter = Prisma.sql`
-        (
-          (
-            l.source_doc_type IN ('bill', 'item_opening_stock', 'stock_transfer', 'job_issue')
-            AND (
-              l.source_doc_type != 'bill'
-              OR NOT EXISTS (
-                SELECT 1 FROM bill_items bi
-                WHERE bi.bill_id = l.source_doc_id
-                  AND bi.item_id = l.item_id
-                  AND bi.job_receipt_id IS NOT NULL
-                  AND bi.is_deleted = false
-              )
-            )
-          )
-          OR (
-            l.source_doc_type = 'job_receipt'
-            AND EXISTS (
-              SELECT 1 FROM bill_items bi
-              JOIN bills b ON b.id = bi.bill_id
-              WHERE bi.job_receipt_id = l.source_doc_id
-                AND bi.item_id = l.item_id
-                AND bi.is_deleted = false
-                AND b.is_deleted = false
-                AND LOWER(b.status) = 'open'
-            )
-          )
-        )
-      `;
-    } else if (mode === 'bills_and_invoices') {
-      countedSourceFilter = COUNTED_SOURCE;
-    } else if (mode === 'jobwork') {
-      countedSourceFilter = Prisma.sql`
-        (
-          l.source_doc_type != 'bill'
-          OR NOT EXISTS (
-            SELECT 1 FROM bill_items bi
-            WHERE bi.bill_id = l.source_doc_id
-              AND bi.item_id = l.item_id
-              AND bi.job_receipt_id IS NOT NULL
-              AND bi.is_deleted = false
-          )
-        )
-      `;
-    }
+    // Every own-place movement counts: a job receipt from the day it posts, and a bill
+    // line raised from one posts nothing, so no document is counted twice.
 
     const fromDateFilter = fromDate
       ? Prisma.sql`l.posted_at::date >= ${new Date(fromDate)}::timestamptz::date`
@@ -143,7 +68,6 @@ export async function getStockSummaryReport(
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'physical')
-        AND ${countedSourceFilter}
         ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
         AND ${OWN_PLACE}
       GROUP BY l.item_id, l.source_doc_type, COALESCE(l.source_doc_id, l.id), l.location_id

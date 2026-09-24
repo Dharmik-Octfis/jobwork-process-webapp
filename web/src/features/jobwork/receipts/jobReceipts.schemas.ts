@@ -181,6 +181,7 @@ export const receivePrefillSchema = z.object({
       challanNumber: z.string(),
       issueDate: z.string(),
       totalQty: z.string(),
+      isRework: z.boolean(),
       attemptNo: z.number(),
       /** Who is holding these goods, and the location the challan sent them to.
        * The pair is what lets the dialog offer "they stayed there" as a receive-

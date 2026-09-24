@@ -949,6 +949,90 @@ function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWher
   };
 }
 
+/**
+ * 🔴 A BILL AGAINST A JOB RECEIPT BILLS THE WORK, NOT THE GOODS (2026-09-23).
+ *
+ * The receipt already put its output on the books at material + agreed charge, so
+ * the job worker's bill settles the charge only: its line is a service and posts
+ * nothing. A goods line here is the old mistake of billing the processor for our
+ * own material. A receipt sits on one live bill at a time, draft or open.
+ */
+async function assertReceiptLines(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string | null;
+    vendorId: string;
+    lines: readonly { itemId: string; jobReceiptId?: string | null }[];
+  },
+) {
+  const { organizationId, billId, vendorId, lines } = args;
+  const linked = lines.flatMap((line, index) =>
+    line.jobReceiptId ? [{ index, itemId: line.itemId, receiptId: line.jobReceiptId }] : [],
+  );
+  if (linked.length === 0) return;
+
+  const items = await tx.item.findMany({
+    where: { organizationId, id: { in: linked.map((line) => line.itemId) } },
+    select: { id: true, name: true, itemType: true, trackInventory: true },
+  });
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  for (const line of linked) {
+    const item = itemsById.get(line.itemId);
+    const field = `lineItems.${line.index}.itemId`;
+    if (!item || item.itemType !== 'service') {
+      throw ApiError.badRequest(
+        `Line ${line.index + 1} is billed against a job receipt, so it must be a service item.`,
+        { [field]: 'Select a service item.' },
+      );
+    }
+    // A tracked service would post stock on any ordinary bill; the item form now
+    // refuses it, but services saved before that still carry it.
+    if (item.trackInventory) {
+      throw ApiError.badRequest(
+        `${item.name} is a service but has inventory tracking on. Turn it off on the item, then save the bill.`,
+        { [field]: 'Service tracks inventory.' },
+      );
+    }
+  }
+
+  const receiptIds = [...new Set(linked.map((line) => line.receiptId))];
+  const receipts = await tx.jobReceipt.findMany({
+    where: { organizationId, id: { in: receiptIds }, isDeleted: false },
+    select: { id: true, receiptNumber: true, status: true, processorId: true },
+  });
+  const receiptsById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
+  for (const receiptId of receiptIds) {
+    const receipt = receiptsById.get(receiptId);
+    if (!receipt) throw ApiError.badRequest('Job receipt not found.');
+    if (receipt.status !== 'posted') {
+      throw ApiError.conflict(`${receipt.receiptNumber} is not posted, so it cannot be billed.`);
+    }
+    if (receipt.processorId !== vendorId) {
+      throw ApiError.badRequest(
+        `${receipt.receiptNumber} was received from a different processor than this bill's vendor.`,
+      );
+    }
+  }
+
+  const elsewhere = await tx.billItem.findFirst({
+    where: {
+      jobReceiptId: { in: receiptIds },
+      isDeleted: false,
+      bill: { organizationId, isDeleted: false, ...(billId ? { id: { not: billId } } : {}) },
+    },
+    select: {
+      jobReceipt: { select: { receiptNumber: true } },
+      bill: { select: { billNumber: true } },
+    },
+  });
+  if (elsewhere) {
+    throw ApiError.conflict(
+      `${elsewhere.jobReceipt?.receiptNumber} is already on bill ${elsewhere.bill.billNumber}.`,
+    );
+  }
+}
+
 export async function getOpenJobReceiptsForVendor(organizationId: string, vendorId: string) {
   return runAsTenant(organizationId, async (tx) => {
     const results = await tx.jobReceipt.findMany({
@@ -957,7 +1041,8 @@ export async function getOpenJobReceiptsForVendor(organizationId: string, vendor
         processorId: vendorId,
         status: 'posted',
         isDeleted: false,
-        billItems: { none: {} }, // Only unbilled receipts
+        // Unbilled = on no live bill. A deleted line or bill frees the receipt again.
+        billItems: { none: { isDeleted: false, bill: { isDeleted: false } } },
       },
       include: {
         jobOrder: { select: { jobOrderNumber: true } },
@@ -1224,6 +1309,12 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
     if (existingBill) {
       throw ApiError.conflict(DUPLICATE_NUMBER);
     }
+    await assertReceiptLines(tx, {
+      organizationId: orgId,
+      billId: null,
+      vendorId: billData.vendorId,
+      lines: lineItems,
+    });
 
     const createdBill = await tx.bill.create({
       data: {
@@ -1293,10 +1384,12 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
 
         // Lines billed from a Job Receipt do not affect inventory.
         // The Job Receipt already received the physical stock.
-        if (payload.jobReceiptId) continue;
+        // However, the document rows (`billItemBatch`) still need to be written,
+        // so we process the batches with `post: false` to skip ledger postings.
+        const shouldPost = posting && !payload.jobReceiptId;
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          for (const b of batchesToReceive(item, payload, posting)) {
+          for (const b of batchesToReceive(item, payload, shouldPost)) {
             const received = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
@@ -1306,7 +1399,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
               locationId: createdBill.locationId,
               value: batchValue(payload, b.quantity),
               batch: b,
-              post: posting,
+              post: shouldPost,
             });
             postings.push(...received.postings);
           }
@@ -1314,7 +1407,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
              remember: its quantity is the line's own column, and the anonymous
              batch below exists only to give the ledger something to hang on. So
              this branch stays posting-only, and a draft writes nothing for it. */
-        } else if (posting && item?.trackInventory && item.inventoryTracking === 'none') {
+        } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
           postings.push(
             await untrackedPosting(tx, {
               organizationId: orgId,
@@ -1437,6 +1530,15 @@ export async function updateBill(
       if (existingDuplicate) {
         throw ApiError.conflict(DUPLICATE_NUMBER);
       }
+    }
+
+    if (lineItems || billData.vendorId !== undefined || goingOpen) {
+      await assertReceiptLines(tx, {
+        organizationId: orgId,
+        billId: id,
+        vendorId: effectiveVendorId,
+        lines: lineItems ?? existing.lineItems,
+      });
     }
 
     await tx.bill.update({
@@ -1635,10 +1737,12 @@ export async function updateBill(
 
         // Lines billed from a Job Receipt do not affect inventory.
         // The Job Receipt already received the physical stock.
-        if (payload.jobReceiptId) continue;
+        // However, the document rows (`billItemBatch`) still need to be written,
+        // so we process the batches with `post: false` to skip ledger postings.
+        const shouldPost = mustPost && !payload.jobReceiptId;
 
         if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          for (const b of batchesToReceive(item, payload, mustPost)) {
+          for (const b of batchesToReceive(item, payload, shouldPost)) {
             const received = await receiveBillBatch(tx, {
               organizationId: orgId,
               userId: userId || null,
@@ -1648,14 +1752,14 @@ export async function updateBill(
               locationId: effectiveLocationId,
               value: batchValue(payload, b.quantity),
               batch: b,
-              post: mustPost,
+              post: shouldPost,
             });
             for (const unitId of received.unitIds) usedUnitIds.add(unitId);
             postings.push(...received.postings);
           }
           // Posting-only, for the same reason as on create: an item tracked at
           // neither level has no detail to remember.
-        } else if (mustPost && item?.trackInventory && item.inventoryTracking === 'none') {
+        } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
           postings.push(
             await untrackedPosting(tx, {
               organizationId: orgId,

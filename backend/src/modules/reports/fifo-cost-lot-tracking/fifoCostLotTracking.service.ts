@@ -12,8 +12,8 @@ import { format, differenceInDays } from 'date-fns';
  *
  * This report used to pair inward and outward quantities by replaying FIFO in
  * JavaScript, and never priced an outflow at all. Now every row is fact: a lot is
- * one `stock_cost_layers` row, and what it dispersed is exactly the draws the
- * postings made on it — at the lot's real cost.
+ * one document's `stock_cost_layers` at one cost (see `Lot` below), and what it
+ * dispersed is exactly the draws the postings made on them — at the lot's real cost.
  *
  * Only own stock at our own places has layers, so customer-owned and physical-only
  * movements no longer appear (valuation never counted them either). A document's
@@ -33,8 +33,6 @@ interface LayerRow {
   isLegacy: boolean;
   inDocType: string | null;
   inDocId: string | null;
-  billId: string | null;
-  unitDiscount: Prisma.Decimal | null;
 }
 
 interface DrawRow {
@@ -77,33 +75,15 @@ export async function getFifoCostLotTracking(
         l.remaining_qty AS "remainingQty",
         l.is_legacy AS "isLegacy",
         e.source_doc_type AS "inDocType",
-        e.source_doc_id AS "inDocId",
-        billed.bill_id AS "billId",
-        billed.unit_discount AS "unitDiscount"
+        e.source_doc_id AS "inDocId"
       FROM stock_cost_layers l
       JOIN items i ON i.id = l.item_id
       LEFT JOIN units_of_measurement u ON u.id = i.stocking_uom_id
       JOIN locations loc ON loc.id = l.location_id
       LEFT JOIN stock_ledger e ON e.id = l.in_ledger_entry_id
-      -- a bill line raised from a job receipt posts no stock; the receipt's lot is the
-      -- bill's, at the receipt's cost less the bill's discount per unit
-      LEFT JOIN LATERAL (
-        SELECT
-          (MIN(bi.bill_id::text))::uuid AS bill_id,
-          SUM(COALESCE(bi.discount_amount, 0)) / NULLIF(SUM(bi.quantity), 0) AS unit_discount
-        FROM bill_items bi
-        JOIN bills b ON b.id = bi.bill_id
-        WHERE e.source_doc_type = 'job_receipt'
-          AND bi.job_receipt_id = e.source_doc_id
-          AND bi.item_id = l.item_id
-          AND bi.is_deleted = false
-          AND b.is_deleted = false
-          AND LOWER(b.status) = 'open'
-      ) billed ON true
+      -- a job receipt is a lot from the day it posts; its bill settles the charge only
       WHERE l.organization_id = ${organizationId}::uuid
         AND (loc.type IS NULL OR loc.type NOT IN ('processor', 'in_transit', 'customer_site'))
-        -- lots come IN from opening stock and bills only; a receipt counts once billed on an Open bill
-        AND (e.source_doc_type IS DISTINCT FROM 'job_receipt' OR billed.bill_id IS NOT NULL)
         ${itemName ? Prisma.sql`AND i.name ILIKE ${'%' + itemName + '%'}` : Prisma.empty}
         ${locationName ? Prisma.sql`AND loc.name ILIKE ${'%' + locationName + '%'}` : Prisma.empty}
       ORDER BY i.name ASC, l.in_date ASC, l.in_seq ASC`;
@@ -129,17 +109,10 @@ export async function getFifoCostLotTracking(
       drawsByLayer.set(draw.layerId, [...(drawsByLayer.get(draw.layerId) ?? []), draw]);
     }
 
-    // A billed receipt's lot reads as its bill; netting below still keys on the receipt.
-    const shownInDoc = (layer: LayerRow) =>
-      layer.billId
-        ? { type: 'bill', id: layer.billId }
-        : { type: layer.inDocType, id: layer.inDocId };
-
     const docInfo = await describeParties(tx, [
-      ...layers.flatMap((layer) => {
-        const doc = shownInDoc(layer);
-        return doc.type && doc.id ? [{ type: doc.type, id: doc.id }] : [];
-      }),
+      ...layers.flatMap((layer) =>
+        layer.inDocType && layer.inDocId ? [{ type: layer.inDocType, id: layer.inDocId }] : [],
+      ),
       ...draws.flatMap((draw) =>
         draw.outDocId ? [{ type: draw.outDocType, id: draw.outDocId }] : [],
       ),
@@ -161,9 +134,22 @@ export async function getFifoCostLotTracking(
     const inRange = (date: Date) => date.getTime() >= from && date.getTime() <= to;
     const qty = (value: Prisma.Decimal) => Number(value.toDecimalPlaces(4));
 
-    const rows: FifoCostLotTrackingRow[] = [];
-    let currentItemId = '';
-
+    /**
+     * 🔴 A LOT IS ONE DOCUMENT'S STOCK AT ONE COST, not one layer (2026-09-23). A
+     * receipt or bill putting 100 into two batches writes two layers of 50; listing
+     * them separately showed "50" beside a Summary saying 100 (JR-00085). Layers of
+     * the same item, document, date and unit cost are one lot; a different cost stays
+     * its own lot. Cut-over balances carry no document and stay one per layer.
+     */
+    interface Lot {
+      key: string;
+      layer: LayerRow;
+      unitCost: Prisma.Decimal;
+      qty: Prisma.Decimal;
+      remaining: Prisma.Decimal;
+      dispersals: DrawRow[];
+    }
+    const lots = new Map<string, Lot>();
     for (const layer of layers) {
       // A document taking back its own layer is a correction of itself, not a
       // dispersal: an edited bill's old lot, a cancelled receipt's output.
@@ -175,26 +161,62 @@ export async function getFifoCostLotTracking(
         .reduce((sum, draw) => sum.plus(draw.qty), new Prisma.Decimal(0));
       const lotQty = layer.qty.minus(selfTaken);
       if (!lotQty.greaterThan(0)) continue;
-      const dispersals = layerDraws.filter((draw) => !own(draw));
 
-      const shown = shownInDoc(layer);
-      const inDoc = describe(shown.type, shown.id);
       const unitCost = layer.qty.isZero()
         ? new Prisma.Decimal(0)
-        : layer.value.dividedBy(layer.qty).minus(layer.unitDiscount ?? 0);
+        : layer.value.dividedBy(layer.qty);
+      const key = layer.inDocId
+        ? [
+            layer.itemId,
+            layer.inDocType,
+            layer.inDocId,
+            layer.inDate.toISOString(),
+            unitCost.toFixed(4),
+          ].join('|')
+        : layer.id;
+      const lot = lots.get(key) ?? {
+        key,
+        layer,
+        unitCost,
+        qty: new Prisma.Decimal(0),
+        remaining: new Prisma.Decimal(0),
+        dispersals: [],
+      };
+      lot.qty = lot.qty.plus(lotQty);
+      lot.remaining = lot.remaining.plus(layer.remainingQty);
+      for (const draw of layerDraws.filter((row) => !own(row))) {
+        // One challan drawing on both layers of a lot is one dispersal of that lot.
+        const same = draw.outDocId
+          ? lot.dispersals.find(
+              (row) => row.outDocType === draw.outDocType && row.outDocId === draw.outDocId,
+            )
+          : undefined;
+        if (same) same.qty = same.qty.plus(draw.qty);
+        else lot.dispersals.push({ ...draw });
+      }
+      lots.set(key, lot);
+    }
+
+    const rows: FifoCostLotTrackingRow[] = [];
+    let currentItemId = '';
+
+    for (const { key, layer, unitCost, qty: lotQty, remaining, dispersals } of lots.values()) {
+      dispersals.sort((a, b) => a.outDate.getTime() - b.outDate.getTime());
+      const inDoc = describe(layer.inDocType, layer.inDocId);
       const age = differenceInDays(new Date(), layer.inDate);
       const inCols = {
+        lotKey: key,
         inDate: format(layer.inDate, 'dd-MM-yyyy'),
         inTransaction: inDoc.transaction,
         inReceivedFrom: inDoc.partyName,
         inQty: qty(lotQty),
         inQtyUnit: layer.uomName ?? 'unit',
-        inQtyRemaining: qty(layer.remainingQty),
+        inQtyRemaining: qty(remaining),
         inAge: age > 0 ? `${age} Days` : '',
         inCost: unitCost.toFixed(2),
         inTotal: unitCost.times(lotQty).toFixed(2),
-        inDocType: shown.type ?? '',
-        inDocId: shown.id ?? '',
+        inDocType: layer.inDocType ?? '',
+        inDocId: layer.inDocId ?? '',
         inPartyId: inDoc.partyId,
         inPartyType: inDoc.partyType,
       };

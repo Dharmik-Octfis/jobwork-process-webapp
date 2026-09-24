@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export const stockMovementQuerySchema = z.object({
   itemId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
   fromDate: z.string().datetime().optional(),
   toDate: z.string().datetime().optional(),
-  mode: z.enum(['bills', 'bills_and_invoices', 'jobwork']).optional().default('bills_and_invoices'),
   movementType: z.enum(['all', 'inward', 'outward']).optional().default('all'),
   page: z.coerce.number().int().min(1).optional().default(1),
   perPage: z.coerce.number().int().min(1).max(100).optional().default(25),

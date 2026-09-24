@@ -101,7 +101,7 @@ export type JobReceiptStatus = (typeof JOB_RECEIPT_STATUSES)[number];
  * so counting it merely double-counts a zero. A draft has LINES AND TOTALS AND NO
  * LEDGER ROWS AT ALL — it is a challan that says 4,800 m left the godown while the
  * ledger says nothing did. Count one and the step reports material at a processor
- * that never went anywhere, the next step's chain guard opens on it, and the
+ * that never went anywhere, the next step's chain warning clears on it, and the
  * Overview and the stock report disagree with no way to tell which is lying.
  *
  * `jobwork.drafts.test.ts` pins this: it saves a draft on both sides and asserts

@@ -3,7 +3,6 @@ import { z } from 'zod';
 export const stockSummaryQuerySchema = z.object({
   fromDate: z.string().datetime().optional(),
   toDate: z.string().datetime().optional(),
-  mode: z.enum(['bills', 'bills_and_invoices', 'jobwork']).optional().default('bills_and_invoices'),
   status: z.enum(['all', 'active', 'inactive']).optional().default('all'),
   itemName: z.string().optional(),
   categoryName: z.string().optional(),

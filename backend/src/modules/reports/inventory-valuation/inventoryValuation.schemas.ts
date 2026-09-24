@@ -39,6 +39,7 @@ export interface InventoryValuationRow {
 }
 
 export const itemLedgerQuerySchema = z.object({
+  locationId: z.string().uuid().optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
 });

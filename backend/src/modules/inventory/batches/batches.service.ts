@@ -118,6 +118,9 @@ export interface AvailabilityQuery {
    * missing tenant filter (§5.2).
    */
   ownership?: Ownership;
+  /** …and for a customer order, WHICH customer. `ownership: 'customer'` alone
+   * offers every customer's goods, and the issue save refuses all but its own. */
+  ownerPartyId?: string;
   /**
    * Include each batch's PACKAGES — the takas, rolls or bales inside it — and its
    * untagged remainder.
@@ -136,6 +139,11 @@ export interface AvailabilityQuery {
   search?: string;
   /** A ceiling on rows, so an item with hundreds of live batches still answers. */
   limit?: number;
+  /** Exclude batches that are located at a vendor's location (i.e. at a processor) */
+  excludeVendorLocations?: boolean;
+  /** Also return recently used-up batches (balance 0) — see `getAvailableBatches`.
+   * Only the bill's receive-into-existing-batch picker asks for this. */
+  includeExhausted?: boolean;
 }
 
 /**
@@ -181,8 +189,10 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       // which the job-order planner asks and the issue picker never does.
       locationId: query.locationId,
       ownership: query.ownership,
+      ownerPartyId: query.ownerPartyId,
       search: query.search,
       limit: query.limit,
+      includeExhausted: query.includeExhausted,
     });
     if (batches.length === 0) return [];
 
@@ -193,10 +203,18 @@ export async function getAvailableStock(organizationId: string, query: Availabil
         organizationId,
         id: { in: [...new Set(batches.map((row) => row.locationId))] },
         isDeleted: false,
+        ...(query.excludeVendorLocations ? { type: { not: 'processor' } } : {}),
       },
       select: { id: true, name: true },
     });
     const locationNameById = new Map(locations.map((row) => [row.id, row.name]));
+
+    // If excluding vendor locations, drop any batches whose location was filtered out above
+    const validBatches = query.excludeVendorLocations
+      ? batches.filter((batch) => locationNameById.has(batch.locationId))
+      : batches;
+
+    if (validBatches.length === 0) return [];
 
     // One read for every item asked about — not one per item, and never one per
     // batch.
@@ -224,9 +242,10 @@ export async function getAvailableStock(organizationId: string, query: Availabil
     if (query.withUnits) {
       const units = await getAvailableBatchUnits(tx, {
         organizationId,
-        batchIds: [...new Set(batches.map((row) => row.batchId))],
+        batchIds: [...new Set(validBatches.map((row) => row.batchId))],
         locationId: query.locationId,
         ownership: query.ownership,
+        ownerPartyId: query.ownerPartyId,
       });
       for (const unit of units) {
         const key = `${unit.batchId}@${unit.locationId}`;
@@ -242,7 +261,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       }
     }
 
-    return batches.map((batch) => ({
+    return validBatches.map((batch) => ({
       batchId: batch.batchId,
       /* 🔴 Sent back on the line. A row is a batch AT A GODOWN, and the challan
          records which one — within a site there may be several. */
@@ -316,7 +335,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
  */
 export async function getSourceLocations(
   organizationId: string,
-  query: { itemIds: readonly string[]; ownership?: Ownership },
+  query: { itemIds: readonly string[]; ownership?: Ownership; ownerPartyId?: string },
 ) {
   return runAsTenant(organizationId, async (tx) => {
     /**
@@ -339,6 +358,7 @@ export async function getSourceLocations(
         organizationId,
         itemId: { in: [...query.itemIds] },
         ...(query.ownership ? { ownership: query.ownership } : {}),
+        ...(query.ownerPartyId ? { ownerPartyId: query.ownerPartyId } : {}),
         // What can be issued FROM here — unallocated opening stock cannot, so a
         // location holding only that would offer a picker with nothing in it.
         batch: { state: { not: UNALLOCATED_BATCH_STATE } },

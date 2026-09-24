@@ -44,6 +44,7 @@ import { approvalProcessRouter } from '../modules/automation/approval-processes/
 import { approvalsInboxRouter } from '../modules/automation/approval-processes/approvalsInbox.routes.ts';
 import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummary.routes.ts';
 import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
+import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { env } from '../config/env.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
@@ -119,6 +120,8 @@ apiRouter.use('/organizations/:orgId/automation/approval-processes', approvalPro
 apiRouter.use('/organizations/:orgId/approvals', approvalsInboxRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-summary', stockSummaryRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRouter);
+// The Reports Center list + per-user visit/favourite — after the specific reports above.
+apiRouter.use('/organizations/:orgId/reports', reportsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);
 

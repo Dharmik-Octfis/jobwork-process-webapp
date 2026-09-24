@@ -40,7 +40,6 @@ export interface PaginatedInventoryValuationResponse {
 export interface StockSummaryQuery {
   fromDate?: string;
   toDate?: string;
-  mode?: 'bills' | 'bills_and_invoices' | 'jobwork';
   status?: 'all' | 'active' | 'inactive';
   itemName?: string;
   categoryName?: string;
@@ -79,6 +78,7 @@ export interface PaginatedStockSummaryResponse {
 }
 
 export interface ItemLedgerQuery {
+  locationId?: string;
   fromDate?: string;
   toDate?: string;
 }
@@ -126,6 +126,8 @@ export interface PaginatedFifoCostLotTrackingResponse {
 }
 
 export interface FifoCostLotTrackingRow {
+  /** One lot = one document's stock at one cost; rows sharing it are its dispersals. */
+  lotKey: string;
   inDate: string | null;
   inTransaction: string;
   inReceivedFrom: string;
@@ -157,9 +159,9 @@ export interface FifoCostLotTrackingRow {
 
 export interface StockMovementQuery {
   itemId?: string;
+  locationId?: string;
   fromDate?: string;
   toDate?: string;
-  mode?: 'bills' | 'bills_and_invoices' | 'jobwork';
   movementType?: 'all' | 'inward' | 'outward';
   page?: number;
   perPage?: number;
@@ -188,12 +190,40 @@ export interface PaginatedStockMovementResponse {
   grandTotalQuantity: number;
 }
 
+/** Stable report ids from the backend catalog (`reports.catalog.ts`) — never the label or path. */
+export type ReportKey = 'stock_summary' | 'inventory_valuation_summary' | 'fifo_cost_lot_tracking';
+
+export interface ReportListEntry {
+  key: ReportKey;
+  name: string;
+  category: string;
+  /** Page path under `/organizations/:orgId/reports/`. */
+  path: string;
+  /** ISO timestamp; null until this user opens the report in this organization. */
+  lastVisitedAt: string | null;
+  isFavorite: boolean;
+}
+
+export const reportsCenterQueryKey = (orgId: string) => ['reports', orgId, 'center'] as const;
+
 export const reportsApi = {
+  listReports: async (orgId: string): Promise<ReportListEntry[]> => {
+    const response = await apiClient.get(endpoints.reports.list(orgId));
+    return response.data as ReportListEntry[];
+  },
+  recordVisit: async (orgId: string, reportKey: ReportKey): Promise<void> => {
+    await apiClient.post(endpoints.reports.visit(orgId, reportKey));
+  },
+  setFavorite: async (orgId: string, reportKey: ReportKey, isFavorite: boolean): Promise<void> => {
+    await apiClient.put(endpoints.reports.favorite(orgId, reportKey), { isFavorite });
+  },
   getStockMovement: async (
     orgId: string,
     params: StockMovementQuery = {},
   ): Promise<PaginatedStockMovementResponse> => {
-    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-movement`, { params });
+    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-movement`, {
+      params,
+    });
     return response.data as PaginatedStockMovementResponse;
   },
   getInventoryValuation: async (
@@ -227,7 +257,9 @@ export const reportsApi = {
     params: StockSummaryQuery = {},
   ): Promise<PaginatedStockSummaryResponse> => {
     // Note: endpoint needs to be added in endpoints.ts, for now using a placeholder or assuming it exists
-    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-summary`, { params });
+    const response = await apiClient.get(`/organizations/${orgId}/reports/stock-summary`, {
+      params,
+    });
     return response.data as PaginatedStockSummaryResponse;
   },
 };

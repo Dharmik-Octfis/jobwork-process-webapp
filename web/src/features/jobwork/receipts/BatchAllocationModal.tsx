@@ -204,7 +204,7 @@ interface Props {
    * untracked item's batches are ledger plumbing nobody ever sees. */
   requiresReference: boolean;
   rows: BatchAllocation[];
-  onSave: (rows: BatchAllocation[]) => void;
+  onSave: (rows: BatchAllocation[], overwriteQty: number | null) => void;
   /** Batches already spoken for by the OTHER side of this item — accepted and
    * rework may never land in the same batch. */
   blockedBatchIds: readonly string[];
@@ -564,8 +564,10 @@ export function BatchAllocationModal({
         .find(Boolean) ?? null)
     : null;
 
+  const [overwrite, setOverwrite] = useState(false);
+
   const canSave =
-    matches && unlabelled.length === 0 && duplicateIds.size === 0 && unitProblem === null;
+    (matches || overwrite) && unlabelled.length === 0 && duplicateIds.size === 0 && unitProblem === null;
 
   const handleSave = () => {
     if (!canSave) return;
@@ -585,6 +587,7 @@ export function BatchAllocationModal({
               allocation.units.filter(isSubmittableUnit)
             : [],
         })),
+      overwrite ? allocated : null,
     );
     onClose();
   };
@@ -705,15 +708,40 @@ export function BatchAllocationModal({
               </>
             ) : (
               <>
-                <span style={{ color: '#64748b' }}>
-                  {kind === 'accepted' ? 'Accepted' : 'Rework'} quantity :
-                </span>{' '}
-                {formatQty(targetQty)} {uomLabel}
-                <span style={{ color: '#e2e8f0', margin: '0 10px' }}>|</span>
-                <span style={{ color: '#64748b' }}>Still to allocate :</span>{' '}
-                <span style={{ color: matches ? '#15803d' : '#b45309', fontWeight: 600 }}>
-                  {formatQty(remaining)} {uomLabel}
-                </span>
+                <div>
+                  <span style={{ color: '#64748b' }}>
+                    {kind === 'accepted' ? 'Accepted' : 'Rework'} quantity :
+                  </span>{' '}
+                  {formatQty(targetQty)} {uomLabel}
+                  <span style={{ color: '#e2e8f0', margin: '0 10px' }}>|</span>
+                  <span style={{ color: '#64748b' }}>Still to allocate :</span>{' '}
+                  <span style={{ color: matches ? '#15803d' : '#b45309', fontWeight: 600 }}>
+                    {formatQty(remaining)} {uomLabel}
+                  </span>
+                </div>
+                
+                {/* The one way out of a mismatch that does not mean retyping the line: the
+                  quantity follows what was actually allocated, instead of the other way
+                  round. Pointless when they already agree, so it is disabled there. */}
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 8,
+                    fontSize: 12.5,
+                    color: matches ? '#94a3b8' : '#334155',
+                    cursor: matches ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={overwrite}
+                    disabled={matches}
+                    onChange={(e) => setOverwrite(e.target.checked)}
+                  />
+                  Overwrite the line item with {formatQty(allocated)} quantities
+                </label>
               </>
             )}
           </div>

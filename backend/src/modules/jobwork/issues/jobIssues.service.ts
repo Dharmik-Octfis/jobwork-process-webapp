@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
@@ -25,7 +26,7 @@ import {
   runAsDocument,
   type ProcessorType,
 } from '../jobwork.types.ts';
-import { chainNotReady, recomputeStep } from '../job-orders/jobOrders.status.ts';
+import { recomputeStep } from '../job-orders/jobOrders.status.ts';
 import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import type { CreateJobIssueInput } from './jobIssues.schemas.ts';
 
@@ -286,24 +287,21 @@ async function assertWithinTolerance(
   tx: TenantClient,
   organizationId: string,
   step: { id: string; plannedInputQty: Prisma.Decimal | null },
+  inputs: readonly StepInputRow[],
   qtyByItem: ReadonlyMap<string, Prisma.Decimal>,
   overrideReason: string | null | undefined,
 ) {
   if (overrideReason) return;
 
-  const inputs = await tx.jobOrderStepInput.findMany({
-    where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
-    orderBy: { seq: 'asc' },
-    select: {
-      itemId: true,
-      plannedQty: true,
-      tolerancePct: true,
-      item: { select: { name: true } },
-    },
-  });
   const rowByItem = new Map(inputs.map((row) => [row.itemId, row]));
   const principalItemId = inputs[0]?.itemId;
 
+  const checks: {
+    itemId: string;
+    qty: Prisma.Decimal;
+    planned: Prisma.Decimal;
+    tolerancePct: Prisma.Decimal;
+  }[] = [];
   for (const [itemId, qty] of qtyByItem) {
     const row = rowByItem.get(itemId);
     const planned =
@@ -313,28 +311,38 @@ async function assertWithinTolerance(
 
     const tolerancePct = row?.tolerancePct ?? null;
     if (tolerancePct === null) continue;
+    checks.push({ itemId, qty, planned, tolerancePct });
+  }
+  if (checks.length === 0) return;
 
-    const already = await tx.jobIssueLine.aggregate({
-      where: {
-        organizationId,
-        itemId,
+  // Every checked item's history in one grouped read, not one aggregate per item.
+  const already = await tx.jobIssueLine.groupBy({
+    by: ['itemId'],
+    where: {
+      organizationId,
+      itemId: { in: checks.map((check) => check.itemId) },
+      isDeleted: false,
+      jobIssue: {
+        jobOrderStepId: step.id,
         isDeleted: false,
-        jobIssue: {
-          jobOrderStepId: step.id,
-          isDeleted: false,
-          isRework: false,
-          // Drafts excluded with cancellations: a parked challan has issued
-          // nothing, so counting it against the ceiling would refuse a real issue
-          // for material that is still in the godown.
-          status: POSTED_DOC_STATUS,
-        },
+        isRework: false,
+        // Drafts excluded with cancellations: a parked challan has issued
+        // nothing, so counting it against the ceiling would refuse a real issue
+        // for material that is still in the godown.
+        status: POSTED_DOC_STATUS,
       },
-      _sum: { qty: true },
-    });
-    const issued = already._sum.qty ?? ZERO;
+    },
+    _sum: { qty: true },
+  });
+  const issuedByItem = new Map(already.map((row) => [row.itemId, row._sum.qty ?? ZERO]));
+
+  for (const { itemId, qty, planned, tolerancePct } of checks) {
+    const issued = issuedByItem.get(itemId) ?? ZERO;
     const ceiling = planned.times(new Prisma.Decimal(1).plus(tolerancePct.dividedBy(100)));
     if (issued.plus(qty).greaterThan(ceiling)) {
-      const name = row?.item.name;
+      const name = rowByItem.has(itemId)
+        ? (await itemNames(tx, organizationId, [itemId])).get(itemId)
+        : undefined;
       throw new ApiError(
         400,
         `This would issue ${issued.plus(qty).toString()}${name ? ` of ${name}` : ''} against a ` +
@@ -399,6 +407,7 @@ async function allowedItems(
   organizationId: string,
   step: { id: string },
   isRework: boolean,
+  inputs: readonly StepInputRow[],
 ): Promise<{ itemId: string; uomId: string | null }[]> {
   if (isRework) {
     // Primary first: rework re-issues what this step returned, and the caller
@@ -410,11 +419,38 @@ async function allowedItems(
     });
   }
 
+  return inputs.map((row) => ({ itemId: row.itemId, uomId: row.uomId }));
+}
+
+/** The step's live input rows, in seq order — read once per save and shared by the
+ * plan check, the item allow-list and the tolerance ceiling. */
+type StepInputRow = {
+  itemId: string;
+  uomId: string | null;
+  plannedQty: Prisma.Decimal | null;
+  tolerancePct: Prisma.Decimal | null;
+};
+
+async function loadStepInputs(
+  tx: TenantClient,
+  organizationId: string,
+  stepId: string,
+): Promise<StepInputRow[]> {
   return tx.jobOrderStepInput.findMany({
-    where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
+    where: { organizationId, jobOrderStepId: stepId, isDeleted: false },
     orderBy: { seq: 'asc' },
-    select: { itemId: true, uomId: true },
+    select: { itemId: true, uomId: true, plannedQty: true, tolerancePct: true },
   });
+}
+
+/** Item names for an error message — read only once a refusal is certain, so the
+ * happy path never pays for them. */
+async function itemNames(tx: TenantClient, organizationId: string, ids: readonly string[]) {
+  const rows = await tx.item.findMany({
+    where: { organizationId, id: { in: [...new Set(ids)] } },
+    select: { id: true, name: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.name]));
 }
 
 /**
@@ -454,6 +490,9 @@ async function resolveLines(
 ) {
   const lenient = context.lenient ?? false;
   const itemIds = new Set(lines.map((line) => line.itemId));
+  // `ownership` alone matches EVERY customer's goods; a customer order may only
+  // draw on its own customer's. The draft check below applies the same rule.
+  const ownerPartyId = context.ownership === 'customer' ? context.ownerPartyId : undefined;
 
   /**
    * 🔴 ONE CHALLAN, ONE LOCATION — exactly the one on the header (2026-08-19).
@@ -500,6 +539,7 @@ async function resolveLines(
     itemIds: [...itemIds],
     locationId: context.locationId,
     ownership: context.ownership,
+    ownerPartyId,
   })) {
     availableByKey.set(keyOf(row.batchId, row.locationId), row);
   }
@@ -526,6 +566,7 @@ async function resolveLines(
       batchIds: [...new Set([...availableByKey.values()].map((row) => row.batchId))],
       locationId: context.locationId,
       ownership: context.ownership,
+      ownerPartyId,
     })) {
       const key = keyOf(unit.batchId, unit.locationId);
       const forKey = unitsByKey.get(key) ?? new Map<string, AvailableUnitRow>();
@@ -847,7 +888,7 @@ async function resolveLines(
         state: { not: UNALLOCATED_BATCH_STATE },
         itemId: { in: [...itemIds] },
         ownership: context.ownership,
-        ...(context.ownership === 'customer' ? { ownerPartyId: context.ownerPartyId } : {}),
+        ...(ownerPartyId !== undefined ? { ownerPartyId } : {}),
       },
       select: { id: true, itemId: true },
     });
@@ -931,7 +972,6 @@ async function resolveLines(
  *
  * WHAT A DRAFT SKIPS, AND WHY EACH ONE IS SAFE TO SKIP
  *
- *   · `chainNotReady`    — the previous step may well finish before this is sent.
  *   · tolerance          — the quantity is still being typed.
  *   · availability       — `resolveLines({ lenient })`; the goods may not be in yet.
  *   · `postMovement`     — 🔴 THE POINT. No ledger row, so no stock moves.
@@ -1015,23 +1055,10 @@ export async function createNewJobIssue(
     }
     const isRework = header.isRework ?? false;
 
-    /**
-     * 🔴 THE CHAIN, ENFORCED HERE AND NOT ONLY ON THE BUTTON.
-     *
-     * Step 2 consumes what step 1 produced, so until step 1 has returned some of
-     * it there is physically nothing to send. The Overview disables the button
-     * for the same reason, but a disabled button is a hint — this is the rule.
-     *
-     * Rework is exempt: it re-issues what this step itself returned, which by
-     * definition already came back.
-     */
-    // Not for a draft: step 1 may well have returned something by the time this
-    // is actually sent, and refusing to PARK tomorrow's challan because today's
-    // goods are not back is a gate with no purpose.
-    if (!isRework && !asDraft) {
-      const notReady = await chainNotReady(tx, organizationId, step.jobOrderId, step);
-      if (notReady) throw ApiError.conflict(notReady);
-    }
+    // 🔴 No chain check (2026-09-24). A step may issue before the step feeding it
+    // returns anything; the ledger check in `resolveLines` refuses stock that is
+    // not there, and the Issue screen warns when existing stock stands in for it
+    // (`getChainWarnings`).
 
     /**
      * 🔴 THE PLAN MUST BE COMPLETE BEFORE MATERIAL LEAVES (landed-cost plan D11, V4).
@@ -1042,12 +1069,11 @@ export async function createNewJobIssue(
      * must still save. Drafts send nothing; rework re-issues what came back rather
      * than drawing on the plan.
      */
+    // Rework never reads them — it draws on what the step produced, not its plan.
+    const stepInputs = isRework ? [] : await loadStepInputs(tx, organizationId, step.id);
+
     if (!isRework && !asDraft) {
-      const plannedRows = await tx.jobOrderStepInput.findMany({
-        where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
-        orderBy: { seq: 'asc' },
-        select: { itemId: true, plannedQty: true, item: { select: { name: true } } },
-      });
+      const plannedRows = stepInputs;
       const expectedRows = await tx.jobOrderStepOutput.findMany({
         where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
         orderBy: { seq: 'asc' },
@@ -1065,9 +1091,12 @@ export async function createNewJobIssue(
         plannedRows.map((row) => row.itemId),
         expectedRows,
       );
-      const noPlanned = plannedRows
+      const unplannedIds = plannedRows
         .filter((row) => !row.plannedQty || row.plannedQty.lessThanOrEqualTo(0))
-        .map((row) => row.item.name);
+        .map((row) => row.itemId);
+      const unplannedNames =
+        unplannedIds.length > 0 ? await itemNames(tx, organizationId, unplannedIds) : new Map();
+      const noPlanned = unplannedIds.map((id) => unplannedNames.get(id) ?? 'an item');
       const noExpected = expectedRows
         .filter((row) => !row.expectedQty || row.expectedQty.lessThanOrEqualTo(0))
         .map((row) => row.item.name);
@@ -1086,7 +1115,7 @@ export async function createNewJobIssue(
       }
     }
 
-    const allowed = await allowedItems(tx, organizationId, step, isRework);
+    const allowed = await allowedItems(tx, organizationId, step, isRework, stepInputs);
     if (allowed.length === 0) {
       throw ApiError.badRequest(
         isRework
@@ -1200,6 +1229,7 @@ export async function createNewJobIssue(
         tx,
         organizationId,
         step,
+        stepInputs,
         qtyByItem,
         header.toleranceOverrideReason,
       );
@@ -1311,28 +1341,34 @@ export async function createNewJobIssue(
           resolvedLines.map((line) => line.batchId),
         );
 
-    for (const line of resolvedLines) {
-      const created = await tx.jobIssueLine.create({
-        data: {
-          organizationId,
-          jobIssueId: issue.id,
-          // 🔴 The item lives HERE (§5.7). Every per-item total downstream —
-          // tolerance, step completion, the Overview — reads this column.
-          itemId: line.itemId,
-          uomId: line.uomId,
-          batchId: line.batchId,
-          // Three packages of one batch are three lines, as three batches are.
-          batchUnitId: line.batchUnitId,
-          // The godown this line actually left — the header's, under the
-          // one-location rule. Written per line because the ledger and every
-          // stock-by-location read join through here, not through the header.
-          sourceLocationId: line.sourceLocationId,
-          qty: line.qty,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
-      });
+    /* One INSERT for every line, all-or-nothing like the rest of this transaction.
+       The ids are assigned here rather than by the database so each ledger row
+       below is tied to its own line without relying on the order RETURNING
+       happens to hand rows back in. */
+    const lineRows = resolvedLines.map((line) => ({ id: randomUUID(), line }));
+    await tx.jobIssueLine.createMany({
+      data: lineRows.map(({ id, line }) => ({
+        id,
+        organizationId,
+        jobIssueId: issue.id,
+        // 🔴 The item lives HERE (§5.7). Every per-item total downstream —
+        // tolerance, step completion, the Overview — reads this column.
+        itemId: line.itemId,
+        uomId: line.uomId,
+        batchId: line.batchId,
+        // Three packages of one batch are three lines, as three batches are.
+        batchUnitId: line.batchUnitId,
+        // The godown this line actually left — the header's, under the
+        // one-location rule. Written per line because the ledger and every
+        // stock-by-location read join through here, not through the header.
+        sourceLocationId: line.sourceLocationId,
+        qty: line.qty,
+        createdBy: userId ?? null,
+        updatedBy: userId ?? null,
+      })),
+    });
 
+    for (const { id: createdId, line } of lineRows) {
       /**
        * 🔴 A DRAFT STOPS HERE — THIS IS THE WHOLE FEATURE.
        *
@@ -1360,7 +1396,7 @@ export async function createNewJobIssue(
         batchUnitId: line.batchUnitId,
         sourceDocType: SOURCE_DOC_TYPES.jobIssue,
         sourceDocId: issue.id,
-        sourceDocLineId: created.id,
+        sourceDocLineId: createdId,
         postedAt: issueDate,
         userId,
       };
@@ -1380,7 +1416,7 @@ export async function createNewJobIssue(
           locationId: destinationLocationId,
           movementType: 'transfer_in',
           qtyIn: line.qty,
-          layerLineId: created.id,
+          layerLineId: createdId,
         },
         issuedBatches,
       );
@@ -1391,9 +1427,14 @@ export async function createNewJobIssue(
     // construction, not because a filter inside it happened to exclude one.
     if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
+    /* Header and line columns only — still read back from the database after every
+       write, so they are what was stored. The screens that save a challan read
+       only its id and status and then refetch the document; the display relations
+       in ISSUE_INCLUDE were ~8 more round trips nobody read (`getJobIssueById`
+       still returns them). */
     return tx.jobIssue.findFirstOrThrow({
       where: { id: issue.id, organizationId },
-      include: ISSUE_INCLUDE,
+      include: { lines: { where: { isDeleted: false } } },
     });
   });
 }
@@ -1405,8 +1446,8 @@ export async function createNewJobIssue(
  * 🔴 It goes back through `createNewJobIssue` in `post` mode rather than simply
  * flipping the status and posting the stored lines. Flipping is the tempting
  * shortcut and it is the bug: the draft was saved leniently, so its lines may
- * overdraw a batch, breach the tolerance ceiling, or sit behind a step that has
- * still returned nothing. Every one of those checks lives in that function, and
+ * overdraw a batch or breach the tolerance ceiling. Every one of those checks
+ * lives in that function, and
  * a second posting path would be a second place for them to be forgotten.
  *
  * The draft's own rows are the input, so what is posted is exactly what was

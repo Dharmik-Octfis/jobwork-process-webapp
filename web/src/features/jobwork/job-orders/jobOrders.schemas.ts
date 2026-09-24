@@ -170,8 +170,9 @@ export const overviewStepSchema = jobOrderStepSchema.extend({
   }),
   availableQty: z.string(),
   canIssue: z.boolean(),
-  /** Why the Issue button is off, in words. Null when it is on. */
-  blockedReason: z.string().nullable().default(null),
+  /** Inputs an earlier step produces and has not returned yet. Issuing them is
+   * allowed — it draws on stock already on hand — so this informs, never blocks. */
+  chainWarnings: z.array(z.object({ itemId: z.string(), message: z.string() })).default([]),
   canReceive: z.boolean(),
 });
 
