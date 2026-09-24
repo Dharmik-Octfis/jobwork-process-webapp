@@ -952,7 +952,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
                       <span
                         style={{
-                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
+                          background: (() => {
+                            const s = (po.status || '').toLowerCase();
+                            if (s === 'draft' || s === '') return '#94a3b8';
+                            if (s === 'pending approval') return '#f59e0b';
+                            if (s === 'approved' || s === 'active') return '#10b981';
+                            if (s === 'rejected') return '#ef4444';
+                            return '#3b82f6';
+                          })(),
                           color: 'white',
                           fontSize: '10px',
                           padding: '1px 6px',

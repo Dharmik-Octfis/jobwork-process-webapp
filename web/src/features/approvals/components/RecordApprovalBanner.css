@@ -3,71 +3,82 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 18px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
-  border: 1px solid #bfdbfe;
-  border-left: 4px solid #2563eb;
-  border-radius: 8px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #3b82f6;
+  border-radius: 6px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   font-family: inherit;
   flex-wrap: wrap;
 }
 
 .record-approval-banner.rejected {
-  background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%);
-  border-color: #fecaca;
+  background: #ffffff;
+  border-color: #e2e8f0;
   border-left-color: #ef4444;
 }
 
 .record-approval-banner.approved {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-  border-color: #bbf7d0;
+  background: #ffffff;
+  border-color: #e2e8f0;
   border-left-color: #10b981;
 }
 
 .approval-banner-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex: 1;
   min-width: 260px;
 }
 
 .approval-banner-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #dbeafe;
-  color: #1d4ed8;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #3b82f6;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
+.record-approval-banner.rejected .approval-banner-icon {
+  color: #ef4444;
+}
+
+.record-approval-banner.approved .approval-banner-icon {
+  color: #10b981;
+}
+
 .approval-banner-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .approval-banner-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #1e293b;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .approval-stage-badge {
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: #3b82f6;
-  color: #ffffff;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
 }
 
 .approval-lock-badge {
@@ -75,12 +86,12 @@
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: #fef3c7;
-  color: #b45309;
-  border: 1px solid #fde68a;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
   letter-spacing: 0.01em;
 }
 
@@ -92,56 +103,58 @@
 .approval-banner-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .btn-banner-approve {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: #10b981;
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
+  gap: 5px;
+  padding: 5px 12px;
+  background: #ffffff;
+  color: #15803d;
+  border: 1px solid #86efac;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: all 0.15s ease;
 }
 
 .btn-banner-approve:hover {
-  background: #059669;
+  background: #f0fdf4;
+  border-color: #22c55e;
 }
 
 .btn-banner-reject {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: #ef4444;
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
+  gap: 5px;
+  padding: 5px 12px;
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: all 0.15s ease;
 }
 
 .btn-banner-reject:hover {
-  background: #dc2626;
+  background: #fef2f2;
+  border-color: #ef4444;
 }
 
 .btn-banner-view {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 5px 12px;
   background: #ffffff;
   color: #475569;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -151,8 +164,8 @@
 
 .btn-banner-view:hover {
   background: #f8fafc;
-  color: #1e293b;
-  border-color: #94a3b8;
+  color: #0f172a;
+  border-color: #cbd5e1;
 }
 
 /* Modal Styling */

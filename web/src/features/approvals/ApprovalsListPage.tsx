@@ -11,6 +11,7 @@ import {
   XCircle,
   Inbox,
   User,
+  ChevronDown,
 } from 'lucide-react';
 import { approvalsApi } from './approvals.api';
 import { useApprovalModules } from '../automation/approval-processes/api/approvalProcess.api';
@@ -122,39 +123,38 @@ export const ApprovalsListPage: React.FC = () => {
 
       {/* Toolbar & Filters */}
       <div className="approvals-toolbar">
-        {/* Module Pills Filter */}
-        <div className="approvals-module-pills">
-          <button
-            type="button"
-            className={`module-pill-btn ${selectedModule === 'all' ? 'active' : ''}`}
-            onClick={() => {
-              setSelectedModule('all');
-              setPage(1);
-            }}
-          >
-            All Modules
-          </button>
-          {modules.map((m: ModuleMetadata) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`module-pill-btn ${
-                selectedModule === m.code.toLowerCase() || selectedModule === m.id ? 'active' : ''
-              }`}
-              onClick={() => {
-                setSelectedModule(m.code.toLowerCase());
+        {/* Module Dropdown Filter */}
+        <div className="approvals-filter-group">
+          <label htmlFor="approvals-module-select" className="approvals-filter-label">
+            Module:
+          </label>
+          <div className="approvals-select-wrapper">
+            <select
+              id="approvals-module-select"
+              className="no-global-focus approvals-module-select"
+              value={selectedModule}
+              onChange={(e) => {
+                setSelectedModule(e.target.value);
                 setPage(1);
               }}
             >
-              {m.name}
-            </button>
-          ))}
+              <option value="all">All Modules</option>
+              {modules.map((m: ModuleMetadata) => (
+                <option key={m.id} value={m.code.toLowerCase()}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="approvals-select-chevron" />
+          </div>
         </div>
 
         {/* Search */}
         <div className="approvals-search-box">
           <Search size={15} color="#94a3b8" />
           <input
+            id="approvals-search-input"
+            className="no-global-focus approvals-search-input"
             type="text"
             placeholder="Search record or process..."
             value={search}

@@ -253,24 +253,23 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 16px;
-  background: #f8fafc;
-  transition: all 0.15s ease;
+  background: #ffffff;
+  transition: border-color 0.15s ease;
 }
 
 .stage-step-card.active {
   background: #ffffff;
   border-color: #3b82f6;
-  box-shadow: 0 0 0 1px #3b82f6, 0 4px 6px -1px rgba(59, 130, 246, 0.1);
 }
 
 .stage-step-card.completed {
-  background: #f0fdf4;
-  border-color: #86efac;
+  background: #ffffff;
+  border-color: #10b981;
 }
 
 .stage-step-card.rejected {
-  background: #fef2f2;
-  border-color: #fca5a5;
+  background: #ffffff;
+  border-color: #ef4444;
 }
 
 .stage-step-header {
@@ -301,10 +300,10 @@
   align-items: center;
   justify-content: space-between;
   font-size: 12px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.7);
+  padding: 8px 12px;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 /* Record Snapshot Display */
