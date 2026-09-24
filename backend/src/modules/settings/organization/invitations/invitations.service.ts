@@ -239,7 +239,41 @@ export async function createInvitation(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
 
-  const invite = await prisma.invitation.upsert({
+  // Enforce organization user limit with a row-level lock and create invitation
+  const invite = await prisma.$transaction(async (tx) => {
+    const org = await tx.$queryRaw<{ max_users_limit: number }[]>`
+      SELECT max_users_limit FROM organizations WHERE id = ${organizationId}::uuid FOR UPDATE
+    `;
+    const maxLimit = org[0]?.max_users_limit || 10;
+    
+    const activeMembersCount = await tx.membership.count({
+      where: { organizationId, isDeleted: false }
+    });
+    
+    const pendingInvitesCount = await tx.invitation.count({
+      where: { 
+        organizationId, 
+        status: 'pending', 
+        expiresAt: { gt: new Date() },
+        email: { not: input.email } 
+      }
+    });
+
+    console.log('[INVITATION LIMIT CHECK]', {
+      organizationId,
+      maxLimit,
+      activeMembersCount,
+      pendingInvitesCount,
+      total: activeMembersCount + pendingInvitesCount,
+      shouldThrow: activeMembersCount + pendingInvitesCount >= maxLimit,
+      inputEmail: input.email
+    });
+
+    if (activeMembersCount + pendingInvitesCount >= maxLimit) {
+      throw ApiError.badRequest('Organization user limit reached. Please upgrade your plan to add more users.');
+    }
+
+    return tx.invitation.upsert({
     where: {
       // eslint-disable-next-line @typescript-eslint/naming-convention -- Prisma compound-unique key
       organizationId_email: { organizationId, email: input.email },
@@ -293,6 +327,7 @@ export async function createInvitation(
       role: { select: { name: true } },
       permissionTemplate: { select: { name: true } },
     },
+  });
   });
 
   const inviteLink = `${env.appUrl}/invite/accept?token=${rawToken}`;
