@@ -18,13 +18,14 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '6px 8px',
+  padding: '8px 12px',
   fontSize: 13,
   border: '1px solid #d1d5db',
-  borderRadius: 4,
+  borderRadius: 6,
   background: '#fff',
-  minHeight: 32,
+  minHeight: 36,
   boxSizing: 'border-box',
+  outline: 'none',
 };
 
 /**
@@ -57,23 +58,27 @@ export function JobOrderNumberConfigModal({
     <Modal
       isOpen
       onClose={onClose}
-      title="Configure Job Order Numbers Preferences"
-      width={600}
+      title="Configure Job Order Number Preferences"
+      width={560}
       footer={
-        <>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
           <button
             type="button"
             disabled={!isValid || isSaving}
             onClick={() => onSave(prefix, nextNumber)}
             style={{
-              padding: '6px 20px',
-              background: isValid && !isSaving ? '#0062ff' : '#94a3b8',
+              padding: '7px 20px',
+              background:
+                isValid && !isSaving
+                  ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                  : '#cbd5e1',
               color: 'white',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 6,
               cursor: isValid && !isSaving ? 'pointer' : 'not-allowed',
-              fontWeight: 500,
+              fontWeight: 600,
               fontSize: 13,
+              boxShadow: isValid && !isSaving ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
             }}
           >
             {isSaving ? 'Saving…' : 'Save'}
@@ -82,11 +87,11 @@ export function JobOrderNumberConfigModal({
             type="button"
             onClick={onClose}
             style={{
-              padding: '6px 20px',
+              padding: '7px 18px',
               background: '#fff',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
+              color: '#475569',
+              border: '1px solid #cbd5e1',
+              borderRadius: 6,
               cursor: 'pointer',
               fontWeight: 500,
               fontSize: 13,
@@ -94,7 +99,7 @@ export function JobOrderNumberConfigModal({
           >
             Cancel
           </button>
-        </>
+        </div>
       }
     >
       <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>

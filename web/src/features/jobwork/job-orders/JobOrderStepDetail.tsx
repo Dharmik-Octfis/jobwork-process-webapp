@@ -50,11 +50,12 @@ const actionButton: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-  padding: '6px 12px',
+  padding: '7px 14px',
   fontSize: 13,
-  borderRadius: 4,
+  borderRadius: 6,
   cursor: 'pointer',
-  fontWeight: 500,
+  fontWeight: 600,
+  transition: 'all 0.15s ease',
 };
 
 const columnLabel: React.CSSProperties = {
@@ -160,10 +161,13 @@ export function JobOrderStepDetail({
             disabled={!step.canIssue}
             style={{
               ...actionButton,
-              background: step.canIssue ? '#0062ff' : '#f1f5f9',
+              background: step.canIssue
+                ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                : '#f1f5f9',
               color: step.canIssue ? '#fff' : '#94a3b8',
               border: 'none',
               cursor: step.canIssue ? 'pointer' : 'not-allowed',
+              boxShadow: step.canIssue ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
             }}
           >
             <Send size={14} /> <span className="action-btn-text">Issue</span>
@@ -175,9 +179,10 @@ export function JobOrderStepDetail({
               onClick={() => onReceive(step)}
               style={{
                 ...actionButton,
-                background: '#fff',
-                color: '#186337',
-                border: '1px solid #186337',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#fff',
+                border: 'none',
+                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
               }}
             >
               <PackageCheck size={14} /> <span className="action-btn-text">Receive</span>
@@ -190,8 +195,9 @@ export function JobOrderStepDetail({
               style={{
                 ...actionButton,
                 background: '#fff',
-                color: '#2563eb',
-                border: '1px solid #2563eb',
+                color: '#0284c7',
+                border: '1px solid rgba(2, 132, 199, 0.35)',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
               }}
             >
               <Check size={14} /> Mark as complete
@@ -338,34 +344,34 @@ export function ActivityTabs({
             style={{
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === 'issue' ? '3px solid #2563eb' : '3px solid transparent',
-              fontSize: 14,
+              borderBottom: activeTab === 'issue' ? '3px solid #0284c7' : '3px solid transparent',
+              fontSize: 13,
               fontWeight: 600,
-              color: activeTab === 'issue' ? '#1e293b' : '#64748b',
+              color: activeTab === 'issue' ? '#0284c7' : '#64748b',
               cursor: 'pointer',
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              transition: 'all 0.2s',
+              transition: 'all 0.15s ease',
             }}
           >
             Issues
             <span
               style={{
-                fontSize: 12,
-                background: '#f1f5f9',
-                color: '#3b82f6',
+                fontSize: 11,
+                background: activeTab === 'issue' ? '#f0f7fd' : '#f1f5f9',
+                color: activeTab === 'issue' ? '#0284c7' : '#64748b',
                 padding: '2px 8px',
                 borderRadius: 12,
-                fontWeight: 600,
+                fontWeight: 700,
               }}
             >
               {issues.length}
             </span>
           </button>
 
-          <div style={{ width: 2, background: '#e2e8f0', margin: '12px 0', borderRadius: 2 }} />
+          <div style={{ width: 1, background: '#e2e8f0', margin: '10px 0' }} />
 
           <button
             type="button"
@@ -373,27 +379,27 @@ export function ActivityTabs({
             style={{
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === 'receipt' ? '3px solid #2563eb' : '3px solid transparent',
-              fontSize: 14,
+              borderBottom: activeTab === 'receipt' ? '3px solid #0284c7' : '3px solid transparent',
+              fontSize: 13,
               fontWeight: 600,
-              color: activeTab === 'receipt' ? '#1e293b' : '#64748b',
+              color: activeTab === 'receipt' ? '#0284c7' : '#64748b',
               cursor: 'pointer',
               padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              transition: 'all 0.2s',
+              transition: 'all 0.15s ease',
             }}
           >
             Receives
             <span
               style={{
-                fontSize: 12,
-                background: '#f1f5f9',
-                color: '#3b82f6',
+                fontSize: 11,
+                background: activeTab === 'receipt' ? '#f0f7fd' : '#f1f5f9',
+                color: activeTab === 'receipt' ? '#0284c7' : '#64748b',
                 padding: '2px 8px',
                 borderRadius: 12,
-                fontWeight: 600,
+                fontWeight: 700,
               }}
             >
               {receipts.length}

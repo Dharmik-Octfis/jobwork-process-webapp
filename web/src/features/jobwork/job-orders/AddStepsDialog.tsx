@@ -159,15 +159,16 @@ export function AddStepsDialog({
             onClick={submit}
             disabled={mutation.isPending}
             style={{
-              padding: '7px 16px',
+              padding: '7px 20px',
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: 600,
               border: 'none',
-              borderRadius: 4,
-              background: '#0062ff',
+              borderRadius: 6,
+              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
               color: '#fff',
               cursor: mutation.isPending ? 'not-allowed' : 'pointer',
-              opacity: mutation.isPending ? 0.6 : 1,
+              opacity: mutation.isPending ? 0.7 : 1,
+              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
             }}
           >
             {mutation.isPending ? 'Adding…' : `Add step${rows.length === 1 ? '' : 's'}`}
@@ -176,13 +177,14 @@ export function AddStepsDialog({
             type="button"
             onClick={onClose}
             style={{
-              padding: '7px 16px',
+              padding: '7px 18px',
               fontSize: 13,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
+              border: '1px solid #cbd5e1',
+              borderRadius: 6,
               background: '#fff',
-              color: '#333',
+              color: '#475569',
               cursor: 'pointer',
+              fontWeight: 500,
             }}
           >
             Cancel

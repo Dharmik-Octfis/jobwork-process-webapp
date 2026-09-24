@@ -56,12 +56,12 @@ export function CreateJobOrder() {
           alignItems: 'center',
           gap: 12,
           padding: '16px 24px',
-          borderBottom: '1px solid #eef0f3',
+          borderBottom: '1px solid #e2e8f0',
           justifyContent: 'space-between',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>
             {cloneFrom ? 'Clone Job Order' : 'New Job Order'}
           </h1>
           {source && (
@@ -91,11 +91,20 @@ export function CreateJobOrder() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '4px',
-            borderRadius: '4px',
+            padding: '6px',
+            borderRadius: '6px',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f1f5f9';
+            e.currentTarget.style.color = '#0f172a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'none';
+            e.currentTarget.style.color = '#64748b';
           }}
         >
-          <X size={20} />
+          <X size={18} />
         </button>
       </header>
       {cloneFailed && (

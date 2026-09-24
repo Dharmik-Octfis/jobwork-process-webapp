@@ -142,7 +142,12 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
         return (
           <div
             key={step.id}
-            style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0, position: 'relative' }}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              flexShrink: 0,
+              position: 'relative',
+            }}
           >
             {index > 0 && <Connector filled={steps[index - 1]!.status === 'completed'} />}
 
@@ -167,15 +172,18 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                 flexDirection: 'column',
                 alignItems: 'center',
                 gap: 8,
-                width: 128,
+                width: 136,
                 flexShrink: 0,
-                padding: '4px 6px 8px 6px',
+                padding: '6px 8px 10px 8px',
                 border: 'none',
                 borderRadius: 10,
                 background: isSelected ? '#fff' : 'transparent',
-                boxShadow: isSelected ? 'inset 0 0 0 1px #e2e8f0' : 'none',
+                boxShadow: isSelected
+                  ? '0 2px 8px rgba(2, 132, 199, 0.12), inset 0 0 0 1px rgba(2, 132, 199, 0.35)'
+                  : 'none',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
+                transition: 'all 0.15s ease',
               }}
             >
               <span aria-hidden style={{ position: 'relative', flexShrink: 0 }}>
@@ -190,21 +198,18 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                     fontSize: 13,
                     fontWeight: 700,
                     fontVariantNumeric: 'tabular-nums',
-                    background: settled ? meta.color : isCurrent ? '#fff' : '#f8fafc',
-                    color: settled ? '#fff' : isCurrent ? meta.color : '#94a3b8',
+                    background: settled ? '#10b981' : isCurrent ? '#fff' : '#f8fafc',
+                    color: settled ? '#fff' : isCurrent ? '#0284c7' : '#94a3b8',
                     border: `${isCurrent ? 2 : 1}px solid ${
-                      settled || isCurrent ? meta.color : '#dfe4ea'
+                      settled ? '#10b981' : isCurrent ? '#0284c7' : '#cbd5e1'
                     }`,
-                    // The halo is the whole "you are here" signal, and the one
-                    // thing on the rail that is pure decoration.
-                    boxShadow: isCurrent ? `0 0 0 4px ${meta.bg}` : 'none',
+                    boxShadow: isCurrent ? '0 0 0 4px rgba(2, 132, 199, 0.2)' : 'none',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   {step.seq}
                 </span>
                 {settled && (
-                  // Done, WITHOUT taking the numeral's place. A badge on the rim
-                  // answers a second question instead of replacing the first.
                   <span
                     style={{
                       position: 'absolute',
@@ -216,9 +221,9 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                       width: 14,
                       height: 14,
                       borderRadius: '50%',
-                      background: meta.color,
+                      background: '#10b981',
                       color: '#fff',
-                      border: '2px solid #f8fafc',
+                      border: '2px solid #ffffff',
                     }}
                   >
                     <Check size={8} strokeWidth={4} />
@@ -231,21 +236,19 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                     display: 'block',
                     fontSize: 12,
                     fontWeight: isCurrent || isSelected ? 600 : 500,
-                    color: settled || isCurrent || isSelected ? '#111' : '#64748b',
+                    color: settled || isCurrent || isSelected ? '#0f172a' : '#64748b',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}
                   title={step.processNameSnapshot}
                 >
-                  {/* The snapshots, not a join — a process or vendor renamed
-                      since must not retitle work whose challans are printed. */}
                   {step.processNameSnapshot}
                 </span>
                 <span
                   style={{
                     display: 'block',
-                    fontSize: 10,
+                    fontSize: 11,
                     color: '#94a3b8',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -258,9 +261,9 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                   style={{
                     display: 'block',
                     marginTop: 3,
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: 500,
-                    color: rework > 0 ? '#b45309' : outstanding > 0 ? '#1d4ed8' : '#94a3b8',
+                    color: rework > 0 ? '#ea580c' : outstanding > 0 ? '#0284c7' : '#94a3b8',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
@@ -270,8 +273,6 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
                 </span>
               </span>
             </button>
-
-
           </div>
         );
       })}
@@ -299,10 +300,10 @@ function Connector({ filled, dashed }: { filled: boolean; dashed?: boolean }) {
         flexShrink: 0,
         borderRadius: 1,
         background: dashed
-          ? 'repeating-linear-gradient(90deg,#dfe4ea 0 4px,transparent 4px 8px)'
+          ? 'repeating-linear-gradient(90deg, #cbd5e1 0 4px, transparent 4px 8px)'
           : filled
-            ? '#15803d'
-            : '#e6e9ee',
+            ? '#10b981'
+            : '#e2e8f0',
       }}
     />
   );
@@ -318,14 +319,15 @@ function AppendNode({ onClick }: { onClick: () => void }) {
         flexDirection: 'column',
         alignItems: 'center',
         gap: 8,
-        width: 92,
+        width: 96,
         flexShrink: 0,
-        padding: '4px 6px 8px 6px',
+        padding: '6px 8px 10px 8px',
         border: 'none',
         background: 'transparent',
-        color: '#0062ff',
+        color: '#0284c7',
         cursor: 'pointer',
         fontFamily: 'inherit',
+        transition: 'all 0.15s ease',
       }}
     >
       <span
@@ -337,14 +339,16 @@ function AppendNode({ onClick }: { onClick: () => void }) {
           width: NODE,
           height: NODE,
           borderRadius: '50%',
-          border: '1px dashed #b7c4d4',
-          background: '#fff',
+          border: '1.5px dashed #38bdf8',
+          background: '#f0f7fd',
           flexShrink: 0,
+          color: '#0284c7',
+          transition: 'all 0.15s ease',
         }}
       >
         <Plus size={15} />
       </span>
-      <span style={{ fontSize: 11 }}>Add step</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: '#0284c7' }}>Add step</span>
     </button>
   );
 }

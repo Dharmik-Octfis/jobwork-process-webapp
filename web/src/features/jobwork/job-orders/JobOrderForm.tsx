@@ -52,25 +52,37 @@ const inputStyle: React.CSSProperties = {
   padding: '8px 12px',
   fontSize: 13,
   border: '1px solid #d1d5db',
-  borderRadius: 4,
+  borderRadius: 6,
   background: '#fff',
   height: 36,
   boxSizing: 'border-box' as const,
+  outline: 'none',
+  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
 };
 
 const readOnlyStyle: React.CSSProperties = {
   ...inputStyle,
   background: '#f8fafc',
   color: '#64748b',
+  border: '1px solid #e2e8f0',
 };
 
 const sectionHeading: React.CSSProperties = {
   fontSize: 13,
-  fontWeight: 600,
-  color: '#111',
+  fontWeight: 700,
+  color: '#0f172a',
   margin: '0 0 16px 0',
   textTransform: 'uppercase',
-  letterSpacing: 0.4,
+  letterSpacing: '0.04em',
+};
+
+const sectionCard: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 10,
+  padding: '20px 24px',
+  marginBottom: 20,
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
 };
 
 const num = (value: string | number | null | undefined) =>
@@ -403,14 +415,14 @@ export function JobOrderForm({
             </p>
           )}
 
-          <section style={{ marginBottom: 32 }}>
-            <h2 style={sectionHeading}>Order</h2>
+          <section style={sectionCard}>
+            <h2 style={sectionHeading}>Order Details</h2>
 
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px',
+                gap: '16px',
                 maxWidth: '640px',
               }}
             >
@@ -608,8 +620,8 @@ export function JobOrderForm({
             </div>
           </section>
 
-          <section style={{ marginBottom: 32 }}>
-            <h2 style={sectionHeading}>Steps</h2>
+          <section style={sectionCard}>
+            <h2 style={sectionHeading}>Planned Steps & Processes</h2>
 
             <StepsGrid
               steps={steps}
@@ -631,10 +643,8 @@ export function JobOrderForm({
           </section>
 
           {customFieldDefs.length > 0 && (
-            <section style={{ maxWidth: 900, marginBottom: 32 }}>
+            <section style={{ ...sectionCard, maxWidth: 900 }}>
               <h2 style={sectionHeading}>Custom Fields</h2>
-              {/* Same wrapping grid as the Order section above, so custom fields read
-              as more fields on this form rather than a panel bolted to the end. */}
               <CustomFieldsSection
                 orgId={orgId!}
                 entityType="job_order"
@@ -662,20 +672,37 @@ export function JobOrderForm({
           )}
         </form>
       </div>
-      <div className="page-footer form-actions-footer">
+      <div
+        className="page-footer form-actions-footer"
+        style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+      >
         <button
           form="joborder-form"
           type="submit"
           disabled={isPending}
           style={{
-            padding: '6px 20px',
-            background: '#0062ff',
+            padding: '7px 24px',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
             color: 'white',
             border: 'none',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontWeight: 500,
+            borderRadius: 6,
+            cursor: isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
             fontSize: 13,
+            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isPending) {
+              e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isPending) {
+              e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+              e.currentTarget.style.transform = 'none';
+            }
           }}
         >
           {isPending ? 'Saving…' : 'Save'}
@@ -684,14 +711,23 @@ export function JobOrderForm({
           type="button"
           onClick={onCancel}
           style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
+            padding: '7px 20px',
+            background: '#fff',
+            color: '#475569',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
             cursor: 'pointer',
             fontWeight: 500,
             fontSize: 13,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.color = '#0f172a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#fff';
+            e.currentTarget.style.color = '#475569';
           }}
         >
           Cancel

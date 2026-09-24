@@ -19,14 +19,8 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { JobOrderFlow } from './JobOrderFlow';
 import { ActivityTabs } from './JobOrderStepDetail';
 import { formatDate } from '../../../lib/formatDate';
-import {
-  JOB_ORDER_STATUS_META,
-  daysSince,
-  formatQty,
-  qtyWithUnit,
-  statusMeta,
-  toNumber,
-} from '../jobwork.schemas';
+import { JobOrderStatusBadge } from './JobOrderStatusBadge';
+import { daysSince, formatQty, qtyWithUnit, toNumber } from '../jobwork.schemas';
 import {
   deleteJobOrder,
   fetchJobOrderOverview,
@@ -225,25 +219,47 @@ function Tile({
   note?: string | null;
 }) {
   return (
-    <div style={{ minWidth: 92 }}>
+    <div
+      style={{
+        minWidth: 100,
+        background: '#fff',
+        padding: '8px 14px',
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+      }}
+    >
       <span
         style={{
           fontSize: 10,
-          fontWeight: 600,
-          color: '#94a3b8',
+          fontWeight: 700,
+          color: '#64748b',
           textTransform: 'uppercase',
-          letterSpacing: 0.4,
+          letterSpacing: '0.04em',
           display: 'block',
+          marginBottom: 2,
         }}
       >
         {label}
       </span>
-      <span style={{ fontSize: 16, fontWeight: 600, color: '#111', lineHeight: 1.4 }}>
+      <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
         {value}
-        {unit && <span style={{ fontSize: 11, color: '#64748b', marginLeft: 3 }}>{unit}</span>}
+        {unit && (
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginLeft: 4 }}>
+            {unit}
+          </span>
+        )}
       </span>
       {note && (
-        <span style={{ display: 'block', fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>
+        <span
+          style={{
+            display: 'block',
+            fontSize: 10,
+            color: '#94a3b8',
+            lineHeight: 1.3,
+            marginTop: 2,
+          }}
+        >
           {note}
         </span>
       )}
@@ -554,7 +570,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   }
 
   const { jobOrder, summary } = data;
-  const status = statusMeta(JOB_ORDER_STATUS_META, jobOrder.status);
   const unit = jobOrder.inputUom ? (jobOrder.inputUom.symbol ?? jobOrder.inputUom.unitName) : '';
   const listPath = `/organizations/${orgId}/jobwork/job-orders`;
   const isClosed = jobOrder.status === 'short_closed' || jobOrder.status === 'cancelled';
@@ -592,7 +607,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
       <header
         style={{
           background: '#fff',
-          borderBottom: '1px solid #eef0f3',
+          borderBottom: '1px solid #e2e8f0',
           position: 'sticky',
           top: 0,
           zIndex: 10,
@@ -605,37 +620,29 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 16,
-            padding: '13px 24px 3px 24px',
+            padding: '16px 24px',
             boxSizing: 'border-box',
           }}
         >
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 0 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h1 style={{ fontSize: 18, fontWeight: 600, color: '#000', margin: 0 }}>
+                <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>
                   {jobOrder.jobOrderNumber}
                 </h1>
-                <span
-                  style={{
-                    padding: '2px 10px',
-                    borderRadius: 10,
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: status.color,
-                    background: status.bg,
-                  }}
-                >
-                  {status.label}
-                </span>
+                <JobOrderStatusBadge status={jobOrder.status} size="md" />
                 {jobOrder.ownership === 'customer' && (
                   <span
                     style={{
-                      padding: '2px 10px',
-                      borderRadius: 10,
+                      padding: '3px 10px',
+                      borderRadius: 12,
                       fontSize: 11,
-                      fontWeight: 500,
+                      fontWeight: 600,
                       color: '#7c3aed',
                       background: '#f5f3ff',
+                      border: '1px solid #ddd6fe',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.03em',
                     }}
                   >
                     Customer-owned
@@ -648,19 +655,17 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   gap: 14,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
-                  marginTop: 5,
+                  marginTop: 6,
                 }}
               >
                 <span style={metaItem}>
                   {jobOrder.inputItem?.name ?? 'No item yet'}
                   {jobOrder.inputQty !== null && ` · ${formatQty(jobOrder.inputQty)} ${unit}`}
                 </span>
-                {/* The frozen name, not a join — the route may have been renamed
-                    or deleted since this order was raised. */}
                 <span style={metaItem}>{jobOrder.routeNameSnapshot ?? 'No route'}</span>
                 <span style={metaItem}>Raised {formatDate(jobOrder.orderDate)}</span>
                 {jobOrder.targetDate && (
-                  <span style={{ ...metaItem, color: isLate ? '#b91c1c' : '#64748b' }}>
+                  <span style={{ ...metaItem, color: isLate ? '#dc2626' : '#64748b' }}>
                     Due {formatDate(jobOrder.targetDate)}
                     {isLate ? ' · overdue' : ''}
                   </span>
@@ -669,11 +674,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            {/* Offered on a running order too (§6.6): the steps past the work
-                front are still a plan. Only a CLOSED order has nothing editable
-                left, which is the same line `isClosed` already draws for Add
-                work and Close short. */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {!isClosed && (
               <button
                 className="action-btn"
@@ -683,22 +684,31 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  padding: '6px 12px',
+                  padding: '7px 14px',
                   fontSize: 13,
-                  border: '1px solid #d1d5db',
-                  borderRadius: 4,
+                  fontWeight: 600,
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
                   background: '#fff',
                   cursor: 'pointer',
-                  color: '#333',
+                  color: '#1e293b',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f0f7fd';
+                  e.currentTarget.style.color = '#0284c7';
+                  e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#fff';
+                  e.currentTarget.style.color = '#1e293b';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
                 }}
               >
-                <Pencil size={14} /> <span className="action-btn-text">Edit</span>
+                <Pencil size={14} color="#0284c7" /> <span className="action-btn-text">Edit</span>
               </button>
             )}
-            {/* Clone and Delete apply to a closed order too — the first is the
-                usual reason anyone opens a finished one, and the second is the
-                server's call, not this page's. Close short is the exception: it
-                is the one action a closed order has already had. */}
             <ActionsMenu
               label={`More actions for ${jobOrder.jobOrderNumber}`}
               actions={[
@@ -736,69 +746,85 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: 30,
-                height: 30,
+                width: 32,
+                height: 32,
                 border: '1px solid #e2e8f0',
-                borderRadius: 4,
+                borderRadius: 6,
                 background: '#fff',
                 cursor: 'pointer',
                 color: '#64748b',
-                marginLeft: 8,
+                marginLeft: 4,
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f1f5f9';
+                e.currentTarget.style.color = '#0f172a';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#fff';
+                e.currentTarget.style.color = '#64748b';
               }}
             >
-              <X size={15} />
+              <X size={16} />
             </button>
           </div>
         </div>
       </header>
 
-      {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
-            the four numbers on the right are what somebody checks once they have
-            read it. Putting the tiles above this was the old order, and it made
-            every reader derive the sentence themselves. */}
+      {/* Answer first hero banner */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 24,
+          gap: 20,
           flexWrap: 'wrap',
-          padding: '12px 24px',
+          padding: '14px 24px',
           background: position.tint,
-          borderTop: `1px solid ${position.border}`,
-          borderBottom: '1px solid #eef0f3',
+          borderBottom: '1px solid #e2e8f0',
         }}
       >
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 260 }}>
-          <span style={{ marginTop: 1, flexShrink: 0 }}>{position.icon}</span>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 260 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              border: `1px solid ${position.border}`,
+              flexShrink: 0,
+            }}
+          >
+            {position.icon}
+          </div>
           <div>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#111' }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
               {position.headline}
             </p>
             {position.detail && (
-              <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569' }}>
+              <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569', lineHeight: 1.4 }}>
                 {position.detail}
               </p>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
         </div>
       </div>
 
       <div style={{ padding: '18px 24px' }}>
-        {/* 🔴 The scale and the position, ALWAYS visible. A twelve-step route
-            scrolls, so on any given screenful the rail alone cannot say how many
-            steps there are or which one you are looking at. This line can, and
-            it costs one row. */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 12,
-            marginBottom: 10,
+            marginBottom: 12,
             flexWrap: 'wrap',
           }}
         >
@@ -806,19 +832,30 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           <div
             aria-hidden
             style={{
-              width: 132,
-              height: 4,
-              borderRadius: 2,
-              background: '#e6e9ee',
+              width: 140,
+              height: 5,
+              borderRadius: 3,
+              background: '#e2e8f0',
               overflow: 'hidden',
             }}
           >
-            <div style={{ width: `${donePct}%`, height: '100%', background: '#15803d' }} />
+            <div
+              style={{
+                width: `${donePct}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #0284c7 0%, #10b981 100%)',
+                borderRadius: 3,
+                transition: 'width 0.3s ease',
+              }}
+            />
           </div>
-          <span style={{ fontSize: 11, color: '#64748b' }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b' }}>
             {doneSteps} of {steps.length} step{steps.length === 1 ? '' : 's'} done
             {position.step && !isClosed && jobOrder.status !== 'completed' && (
-              <span style={{ color: '#94a3b8' }}> · now at step {position.step.seq}</span>
+              <span style={{ color: '#0284c7', fontWeight: 600 }}>
+                {' '}
+                · now at step {position.step.seq}
+              </span>
             )}
           </span>
         </div>
@@ -844,11 +881,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             <div
               style={{
                 display: 'inline-flex',
-                gap: 2,
-                margin: '20px 0 10px 0',
-                padding: 3,
-                background: '#eef1f5',
-                borderRadius: 999,
+                gap: 4,
+                margin: '20px 0 12px 0',
+                padding: '3px',
+                background: '#e2e8f0',
+                borderRadius: 8,
                 maxWidth: '100%',
               }}
             >
@@ -1042,20 +1079,21 @@ function ViewTab({
       onClick={onClick}
       aria-pressed={isActive}
       style={{
-        padding: '5px 14px',
+        padding: '6px 16px',
         fontSize: 12,
         fontWeight: isActive ? 600 : 500,
-        color: isActive ? '#111' : '#64748b',
+        color: isActive ? '#0284c7' : '#64748b',
         background: isActive ? '#fff' : 'transparent',
         border: 'none',
-        borderRadius: 999,
-        boxShadow: isActive ? '0 1px 2px rgba(15,23,42,0.10)' : 'none',
+        borderRadius: 6,
+        boxShadow: isActive ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
         cursor: 'pointer',
         fontFamily: 'inherit',
         maxWidth: 280,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
+        transition: 'all 0.15s ease',
       }}
     >
       {label}
