@@ -13,6 +13,7 @@ import {
   type StockSummaryQuery,
   type PaginatedStockSummaryResponse,
 } from './reports.api';
+import { useRecordReportVisit } from './useRecordReportVisit';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
 import { CategorySelectDropdown } from '../items/components/CategorySelectDropdown';
@@ -26,6 +27,7 @@ import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUt
 export function StockSummaryReportPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  useRecordReportVisit(orgId, 'stock_summary');
 
   const initialState = useMemo(() => {
     if (!orgId) return null;
@@ -284,9 +286,6 @@ export function StockSummaryReportPage() {
   };
 
   useEffect(() => {
-    // Record visit time for ReportsPage
-    localStorage.setItem(`lastVisited_stockSummary_${orgId}`, new Date().toISOString());
-
     const init = async () => {
       await fetchData();
     };
