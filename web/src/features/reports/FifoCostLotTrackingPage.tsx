@@ -8,6 +8,7 @@ import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
 import { reportsApi } from './reports.api';
+import { useRecordReportVisit } from './useRecordReportVisit';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import type { Item } from '../items/items.schemas';
@@ -65,6 +66,7 @@ const tdStyle = {
 export function FifoCostLotTrackingPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  useRecordReportVisit(orgId, 'fifo_cost_lot_tracking');
 
   const initialState = useMemo(() => {
     if (!orgId) return null;

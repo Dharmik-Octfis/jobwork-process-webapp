@@ -69,6 +69,9 @@ model User {
   createdListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceCreatedBy")
   updatedListViewPreferences    ListViewPreference[]    @relation("ListViewPreferenceUpdatedBy")
   listViewPreferences           ListViewPreference[]    @relation("ListViewPreferenceUser")
+  createdReportUserStates       ReportUserState[]       @relation("ReportUserStateCreatedBy")
+  updatedReportUserStates       ReportUserState[]       @relation("ReportUserStateUpdatedBy")
+  reportUserStates              ReportUserState[]       @relation("ReportUserStateUser")
   createdLocations              Location[]              @relation("LocationCreatedBy")
   updatedLocations              Location[]              @relation("LocationUpdatedBy")
   createdMemberships            Membership[]            @relation("MembershipCreatedBy")
@@ -297,6 +300,7 @@ model Organization {
   invitations            Invitation[]
   items                  Item[]
   listViewPreferences    ListViewPreference[]
+  reportUserStates       ReportUserState[]
   locations              Location[]
   memberships            Membership[]
   numberSequences        NumberSequence[]
@@ -627,6 +631,39 @@ model ListViewPreference {
 
   @@unique([userId, organizationId, entityType])
   @@map("list_view_preferences")
+}
+
+/// One user's history with one report in one organization — when they last
+/// opened it and whether they starred it. The reports themselves are code
+/// (`modules/reports/reports.catalog.ts`); this row only points at one by key.
+///
+/// Per USER, like `ListViewPreference`: "last visited" and favourites are
+/// personal, so two members of an org see their own. A row exists only once the
+/// user has opened or starred that report, so the table grows with actual use,
+/// not with the size of the catalog.
+///
+/// No `custom_fields` — a preferences row, same exclusion as `list_view_preferences`.
+model ReportUserState {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  /// Stable key from `REPORTS` in reports.catalog.ts — never the label or the URL.
+  /// Renaming a key needs a migration that rewrites this column.
+  reportKey      String       @map("report_key") @db.VarChar(80)
+  lastVisitedAt  DateTime?    @map("last_visited_at") @db.Timestamptz(6)
+  isFavorite     Boolean      @default(false) @map("is_favorite")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  createdBy      String?      @map("created_by") @db.Uuid
+  updatedBy      String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser  User?        @relation("ReportUserStateCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("ReportUserStateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  user           User         @relation("ReportUserStateUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId, reportKey])
+  @@map("report_user_states")
 }
 
 model Location {

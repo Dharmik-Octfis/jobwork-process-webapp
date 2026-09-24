@@ -44,6 +44,11 @@ const availabilityQuerySchema = z
       .enum(['true', 'false'])
       .optional()
       .transform((v) => v === 'true'),
+    /** Also return recently used-up batches — for an inward (top-up) picker only. */
+    includeExhausted: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
     /** The picker narrows by typing rather than paging: a batch is looked up by the
      * number on its tag, and nobody walks page 7 of a batch list. */
     search: z.string().trim().min(1).max(100).optional(),
@@ -71,6 +76,7 @@ openApiRegistry.registerPath({
       ownership: z.string().optional(),
       withUnits: z.string().optional(),
       excludeVendorLocations: z.string().optional(),
+      includeExhausted: z.string().optional(),
       search: z.string().optional(),
       limit: z.string().optional(),
     }),

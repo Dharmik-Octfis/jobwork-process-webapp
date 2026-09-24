@@ -188,7 +188,33 @@ export interface PaginatedStockMovementResponse {
   grandTotalQuantity: number;
 }
 
+/** Stable report ids from the backend catalog (`reports.catalog.ts`) — never the label or path. */
+export type ReportKey = 'stock_summary' | 'inventory_valuation_summary' | 'fifo_cost_lot_tracking';
+
+export interface ReportListEntry {
+  key: ReportKey;
+  name: string;
+  category: string;
+  /** Page path under `/organizations/:orgId/reports/`. */
+  path: string;
+  /** ISO timestamp; null until this user opens the report in this organization. */
+  lastVisitedAt: string | null;
+  isFavorite: boolean;
+}
+
+export const reportsCenterQueryKey = (orgId: string) => ['reports', orgId, 'center'] as const;
+
 export const reportsApi = {
+  listReports: async (orgId: string): Promise<ReportListEntry[]> => {
+    const response = await apiClient.get(endpoints.reports.list(orgId));
+    return response.data as ReportListEntry[];
+  },
+  recordVisit: async (orgId: string, reportKey: ReportKey): Promise<void> => {
+    await apiClient.post(endpoints.reports.visit(orgId, reportKey));
+  },
+  setFavorite: async (orgId: string, reportKey: ReportKey, isFavorite: boolean): Promise<void> => {
+    await apiClient.put(endpoints.reports.favorite(orgId, reportKey), { isFavorite });
+  },
   getStockMovement: async (
     orgId: string,
     params: StockMovementQuery = {},

@@ -119,6 +119,9 @@ export async function fetchAvailableBatches(
     search?: string;
     limit?: number;
     excludeVendorLocations?: boolean;
+    /** Also return recently used-up batches (0 left). Inward pickers only — a
+     * screen taking stock OUT must never pass this. */
+    includeExhausted?: boolean;
   },
 ): Promise<AvailableBatch[]> {
   const response = await apiClient.get(endpoints.inventory.availableBatches(orgId), {
@@ -127,6 +130,7 @@ export async function fetchAvailableBatches(
       search: params.search?.trim() || undefined,
       withUnits: params.withUnits ? 'true' : undefined,
       excludeVendorLocations: params.excludeVendorLocations ? 'true' : undefined,
+      includeExhausted: params.includeExhausted ? 'true' : undefined,
     },
   });
   return z.array(availableBatchSchema).parse(response.data);
