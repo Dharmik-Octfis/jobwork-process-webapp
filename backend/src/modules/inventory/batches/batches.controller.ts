@@ -35,6 +35,7 @@ const availabilityQuerySchema = z
       .pipe(z.array(z.string().uuid()).min(1).max(50).optional()),
     locationId: z.string().uuid().optional(),
     ownership: z.enum(OWNERSHIPS).optional(),
+    ownerPartyId: z.string().uuid().optional(),
     /** Include each batch's packages and its untagged remainder — see the service. */
     withUnits: z
       .enum(['true', 'false'])
@@ -74,6 +75,7 @@ openApiRegistry.registerPath({
       itemIds: z.string().optional(),
       locationId: z.string().optional(),
       ownership: z.string().optional(),
+      ownerPartyId: z.string().optional(),
       withUnits: z.string().optional(),
       excludeVendorLocations: z.string().optional(),
       includeExhausted: z.string().optional(),
@@ -91,7 +93,11 @@ openApiRegistry.registerPath({
   summary: 'Locations actually holding these items, with per-item balances',
   request: {
     params: orgParam,
-    query: z.object({ itemIds: z.string(), ownership: z.string().optional() }),
+    query: z.object({
+      itemIds: z.string(),
+      ownership: z.string().optional(),
+      ownerPartyId: z.string().optional(),
+    }),
   },
   responses: { 200: { description: 'Locations with a positive balance, per item' } },
 });
@@ -123,6 +129,7 @@ const sourceLocationsQuerySchema = z.object({
     .transform((value) => value.split(',').filter(Boolean))
     .pipe(z.array(z.string().uuid()).min(1)),
   ownership: z.enum(OWNERSHIPS).optional(),
+  ownerPartyId: z.string().uuid().optional(),
 });
 
 export const getLocations = async (req: Request, res: Response) => {

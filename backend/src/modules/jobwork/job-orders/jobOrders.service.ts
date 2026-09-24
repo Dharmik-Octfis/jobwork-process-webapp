@@ -28,8 +28,8 @@ import { lockJobOrderSteps, lockStep } from '../jobwork.posting.ts';
 import { writeOffStep } from './jobOrders.writeOff.ts';
 import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import {
-  getAllChainNotReady,
   getAllStepTotals,
+  getChainWarnings,
   recomputeJobOrder,
   recomputeStep,
 } from './jobOrders.status.ts';
@@ -379,11 +379,10 @@ function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): R
  * stock, which is exactly the mixed supply a single `fromStock` flag cannot
  * express.
  *
- * The rest is unchanged from when the chain stopped being a rule: the real gate
- * is positional and lives at issue time (`chainNotReady`), where a step cannot
- * send anything until the step above it has returned something, and a mistyped
- * chain surfaces there as "no stock of Dyed Fabric at Main Godown" — later than
- * a save-time error, but on the screen where somebody can act on it.
+ * The only hard gate is at issue time: real stock in the ledger. A mistyped chain
+ * surfaces there as "no stock of Dyed Fabric at Main Godown" — later than a
+ * save-time error, but on the screen where somebody can act on it. An input fed
+ * by a step that has returned nothing yet is a warning there (`getChainWarnings`).
  */
 function classifyStepInputs(
   steps: readonly { resolvedInputs: ResolvedInput[]; resolvedOutputs: ResolvedOutput[] }[],
@@ -534,8 +533,8 @@ function derivedExpectedQty(
  * chain rule made when it refused thread and buttons (§6.4).
  *
  * So the balance survives as what it is genuinely good for — deriving the blank
- * rows — and the hard gates stay where the domain already put them: position, at
- * issue time (`chainNotReady`), and real stock availability in the ledger.
+ * rows — and the hard gate stays where the domain already put it: real stock
+ * availability in the ledger, at issue time.
  *
  * 🔴 This is a PLAN, computed once and stored, and it is never used as a
  * conversion factor at receipt time (§6.3). What actually comes back is measured,
@@ -1784,9 +1783,9 @@ function assertLockedStepsUnchanged(
  *
  * 🔴 NO STEP'S STATUS IS CHECKED, deliberately. Appending after a step that is
  * pending, at a processor, or complete is the same operation each time — the new
- * step arrives `pending` and `chainNotReady` already refuses to let it issue until
- * the step above it has returned something. A guard here would defend against a
- * hazard that only exists for INSERT, which renumbers.
+ * step arrives `pending`, and issuing it is governed like any other step's. A
+ * guard here would defend against a hazard that only exists for INSERT, which
+ * renumbers.
  *
  * The ORDER's status is another matter, and there is exactly one refusal: see
  * below.
@@ -1808,10 +1807,9 @@ export async function appendJobOrderSteps(
 
     /**
      * 🔴 A closed order must refuse, or it becomes a document that reads as
-     * finished and still takes challans. Two mechanisms combine: `short_closed`
-     * and `cancelled` are sticky, so `recomputeJobOrder` returns early and the
-     * order keeps its label forever; and `chainNotReady` waives the chain when
-     * the step above is short-closed, so the new step would happily issue.
+     * finished and still takes challans: `short_closed` and `cancelled` are
+     * sticky, so `recomputeJobOrder` returns early and the order keeps its label
+     * forever, while the new step would happily issue.
      */
     if (order.status === 'short_closed' || order.status === 'cancelled') {
       throw ApiError.conflict(
@@ -2058,16 +2056,9 @@ export async function getJobOrderOverview(
       ...new Set(order.steps.map((s) => s.inputs[0]?.itemId).filter(Boolean)),
     ] as string[];
 
-    // Unfiltered, `order.steps` IS every live step in seq order — the same rows
-    // the chain used to re-read. Filtered, it holds one step, so read them all.
-    const chainSteps = filterStepId
-      ? await tx.jobOrderStep.findMany({
-          where: { organizationId, jobOrderId: id, isDeleted: false },
-          select: { id: true, seq: true, processNameSnapshot: true, status: true },
-          orderBy: { seq: 'asc' },
-        })
-      : order.steps;
-    const allChainBlockedMap = await getAllChainNotReady(tx, organizationId, id, chainSteps);
+    // Reads every step itself: a filtered overview holds one, and a warning depends
+    // on the steps above it.
+    const chainWarningsMap = await getChainWarnings(tx, organizationId, id);
 
     const balances =
       principalItemIds.length > 0
@@ -2091,11 +2082,11 @@ export async function getJobOrderOverview(
         )
       : null;
 
-    return { order, batches, allChainBlockedMap, balances, ownFigures };
+    return { order, batches, chainWarningsMap, balances, ownFigures };
   });
 
   const [main, figures] = await Promise.all([mainPromise, figuresPromise]);
-  const { order, batches, allChainBlockedMap, balances } = main;
+  const { order, batches, chainWarningsMap, balances } = main;
 
   let { totals: allTotalsMap, refs: flowRefs } = main.ownFigures ?? figures!;
   // A step added between the two transactions' reads has no totals yet. Read
@@ -2167,7 +2158,7 @@ export async function getJobOrderOverview(
       availableQty = availableQtyMap.get(principalInput.itemId) ?? new Prisma.Decimal(0);
     }
 
-    const blockedReason = allChainBlockedMap.get(step.id) ?? null;
+    const chainWarnings = chainWarningsMap.get(step.id) ?? [];
 
     // 🔴 Issued MINUS CONSUMED, both in the input's unit. Subtracting
     // `receivedQty` would mix metres and pieces on any step where the item
@@ -2205,36 +2196,17 @@ export async function getJobOrderOverview(
       itemTotals: buildItemTotals(step, totals, unplannedById),
       availableQty: availableQty.toString(),
       /**
-       * ⚠️ TEMPORARY — enabled whenever the step has something to issue, NOT
-       * by the ledger.
-       *
-       * It used to require a positive balance, which is the right rule and
-       * will be again. Material In was retired before Purchase Received and
-       * Opening Stock exist, so today there is no way to put stock on the
-       * books at all — and a button that can never light up makes the whole
-       * loop untestable. The Issue dialog creates a zero-valued batch for an
-       * item with no stock and says so on screen (`jobIssues.service.ts`).
-       *
-       * 🔴 Restore `availableQty.greaterThan(0)` the day Purchase Received
-       * lands. Issuing what you do not have is a real defect, not a feature.
-       *
-       * The ONE thing the scaffold does not relax is the chain — see
-       * `blockedReason` below.
+       * Enabled whenever the step lists something to issue, NOT by the ledger:
+       * the Issue screen shows what is on hand per godown, and the save refuses
+       * any quantity that is not there.
        */
-      canIssue: step.inputs.length > 0 && !blockedReason,
+      canIssue: step.inputs.length > 0,
       /**
-       * 🔴 A STEP FED BY AN EARLIER ONE CANNOT ISSUE UNTIL THAT STEP DELIVERS.
-       *
-       * Step 2 consumes what step 1 produced. If step 1 has returned nothing,
-       * there is physically nothing to send — and the no-stock scaffold would
-       * otherwise happily invent a batch of dyed fabric nobody ever dyed, which
-       * is the one thing it must never do. Raw material can be conjured while
-       * Purchase Received is missing; work in progress cannot.
-       *
-       * Items drawn from stock are unaffected: thread comes from the godown,
-       * not from the operation above.
+       * Inputs an earlier step produces and has not returned yet, per item
+       * (`getChainWarnings`). Informational — issuing them draws on stock
+       * already on hand, and nothing refuses it.
        */
-      blockedReason,
+      chainWarnings,
       // Visible once something is out there to come back.
       canReceive: outstanding.greaterThan(0),
     };

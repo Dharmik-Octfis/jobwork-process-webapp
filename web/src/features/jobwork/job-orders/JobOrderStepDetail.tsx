@@ -150,7 +150,7 @@ export function JobOrderStepDetail({
           {!step.canIssue && (
             <span style={{ fontSize: 11, color: '#94a3b8', maxWidth: 320 }}>
               {/* 🔴 The REASON, not just a disabled button. */}
-              {step.blockedReason ?? 'This step has nothing listed to issue.'}
+              This step has nothing listed to issue.
             </span>
           )}
           <button
