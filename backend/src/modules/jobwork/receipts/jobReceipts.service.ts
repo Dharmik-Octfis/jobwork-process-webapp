@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
@@ -1601,12 +1602,36 @@ export async function createNewJobReceipt(
       );
     }
 
+    // The plan the receipt is costed by rides on this read — frozen on the step, and
+    // nothing in this transaction writes to it before it is used.
     const step = await tx.jobOrderStep.findFirst({
       where: { id: header.jobOrderStepId, organizationId, isDeleted: false },
       include: {
-        process: { select: { name: true } },
         jobOrder: {
           select: { id: true, ownership: true, ownerPartyId: true, status: true, isDeleted: true },
+        },
+        inputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: { itemId: true, uomId: true, plannedQty: true, item: { select: { name: true } } },
+        },
+        outputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: {
+            itemId: true,
+            uomId: true,
+            isPrimary: true,
+            expectedQty: true,
+            rate: true,
+            sharePct: true,
+            item: { select: { name: true, itemStructure: true } },
+            components: {
+              where: { isDeleted: false },
+              orderBy: { seq: 'asc' },
+              select: { componentItemId: true, qtyPerUnit: true },
+            },
+          },
         },
       },
     });
@@ -1726,11 +1751,9 @@ export async function createNewJobReceipt(
      * than from the `receiveItemId` scalar that used to mirror it (dropped
      * 2026-08-12, plan §12.1 Migration B).
      */
-    const plannedPrimaryOutput = await tx.jobOrderStepOutput.findFirst({
-      where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
-      orderBy: [{ isPrimary: 'desc' }, { seq: 'asc' }],
-      select: { itemId: true, uomId: true },
-    });
+    // `outputs` is in seq order, so the first primary — else the first row — is
+    // what `orderBy: [isPrimary desc, seq asc]` used to return.
+    const plannedPrimaryOutput = step.outputs.find((row) => row.isPrimary) ?? step.outputs[0];
 
     const outputItemId = header.outputItemId ?? plannedPrimaryOutput?.itemId;
     if (!outputItemId) {
@@ -1793,22 +1816,15 @@ export async function createNewJobReceipt(
       batchReference: data.batchReference?.trim() || null,
       reworkBatchReference: data.reworkBatchReference?.trim() || null,
     });
-    await assertItemsBelongToOrg(
-      tx,
-      organizationId,
-      outputRows.map((row) => row.itemId),
-    );
-
     // One item, one stocking unit (§5.1) — read from the item, never taken from
-    // the request, exactly as the job order does with its own units.
+    // the request, exactly as the job order does with its own units. The same read
+    // is the existence check `assertItemsBelongToOrg` would have made.
+    const outputItemIds = [...new Set(outputRows.map((row) => row.itemId).filter(Boolean))];
     const outputItems = await tx.item.findMany({
-      where: {
-        id: { in: [...new Set(outputRows.map((row) => row.itemId))] },
-        organizationId,
-        isDeleted: false,
-      },
+      where: { id: { in: outputItemIds }, organizationId, isDeleted: false },
       select: { id: true, stockingUomId: true },
     });
+    if (outputItems.length !== outputItemIds.length) throw ApiError.badRequest('Unknown item.');
     const stockingUomByItem = new Map(outputItems.map((item) => [item.id, item.stockingUomId]));
     for (const row of outputRows) {
       row.uomId = stockingUomByItem.get(row.itemId) ?? row.uomId;
@@ -1835,35 +1851,7 @@ export async function createNewJobReceipt(
       );
     }
 
-    // The plan the receipt is costed by — frozen on the step, read in one query.
-    const planStep = await tx.jobOrderStep.findFirstOrThrow({
-      where: { id: step.id, organizationId },
-      select: {
-        seq: true,
-        inputs: {
-          where: { isDeleted: false },
-          orderBy: { seq: 'asc' },
-          select: { itemId: true, uomId: true, plannedQty: true, item: { select: { name: true } } },
-        },
-        outputs: {
-          where: { isDeleted: false },
-          orderBy: { seq: 'asc' },
-          select: {
-            itemId: true,
-            uomId: true,
-            expectedQty: true,
-            rate: true,
-            sharePct: true,
-            item: { select: { name: true, itemStructure: true } },
-            components: {
-              where: { isDeleted: false },
-              orderBy: { seq: 'asc' },
-              select: { componentItemId: true, qtyPerUnit: true },
-            },
-          },
-        },
-      },
-    });
+    const planStep = step;
     const plan: CostPlan = { inputs: planStep.inputs, outputs: planStep.outputs };
     const plannedOutputByItem = new Map(planStep.outputs.map((row) => [row.itemId, row]));
     const itemName = (itemId: string) =>
@@ -2562,6 +2550,13 @@ export async function createNewJobReceipt(
      * default — the list is not a registered entity type, so there is nothing an
      * org could have defined to put in it.
      */
+    /* Built up here and written as three bulk INSERTs below — outputs, then their
+       batch links, then the consumption lines — the order the foreign keys need.
+       Output ids are assigned here so each link row names its own output without
+       relying on the order RETURNING hands rows back in. */
+    const outputData: Prisma.JobReceiptOutputCreateManyInput[] = [];
+    const outputBatchData: Prisma.JobReceiptOutputBatchCreateManyInput[] = [];
+
     for (const [index, output] of outputRows.entries()) {
       /**
        * 🔴 WHAT A DRAFT KEEPS OF THE BATCH PLAN: the allocations that name a
@@ -2596,60 +2591,63 @@ export async function createNewJobReceipt(
                 })),
             ]
           : []);
-      const outputRow = await tx.jobReceiptOutput.create({
-        data: {
-          organizationId,
-          jobReceiptId: receipt.id,
-          seq: index + 1,
-          itemId: output.itemId,
-          uomId: output.uomId,
-          receivedQty: output.receivedQty,
-          acceptedQty: output.acceptedQty,
-          reworkQty: output.reworkQty,
-          scrapQty: output.scrapQty,
-          returnedQty: output.returnedQty,
-          isPrimary: output.isPrimary,
-          // No longer drives cost (R5); kept null until Migration 2 drops it.
-          valueShare: null,
-          // 🔴 The breakdown as posted, never re-derived — a later change to the
-          // job order's rate must not rewrite what this receipt cost.
-          rate: rateByItem.get(output.itemId) ?? null,
-          materialValue: valuesByItem.get(output.itemId)?.material ?? ZERO,
-          processCharge: valuesByItem.get(output.itemId)?.charge ?? ZERO,
-          // The FIRST batch of each kind, not the only one — see the column's
-          // note. `batches` below is the complete record.
-          outputBatchId: posted.find((row) => row.kind === 'accepted')?.batchId ?? null,
-          reworkBatchId: posted.find((row) => row.kind === 'rework')?.batchId ?? null,
-          reasonId: output.reasonId,
-          responsibility: output.responsibility,
-          remarks: output.remarks,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
+      const outputRowId = randomUUID();
+      outputData.push({
+        id: outputRowId,
+        organizationId,
+        jobReceiptId: receipt.id,
+        seq: index + 1,
+        itemId: output.itemId,
+        uomId: output.uomId,
+        receivedQty: output.receivedQty,
+        acceptedQty: output.acceptedQty,
+        reworkQty: output.reworkQty,
+        scrapQty: output.scrapQty,
+        returnedQty: output.returnedQty,
+        isPrimary: output.isPrimary,
+        // No longer drives cost (R5); kept null until Migration 2 drops it.
+        valueShare: null,
+        // 🔴 The breakdown as posted, never re-derived — a later change to the
+        // job order's rate must not rewrite what this receipt cost.
+        rate: rateByItem.get(output.itemId) ?? null,
+        materialValue: valuesByItem.get(output.itemId)?.material ?? ZERO,
+        processCharge: valuesByItem.get(output.itemId)?.charge ?? ZERO,
+        // The FIRST batch of each kind, not the only one — see the column's
+        // note. `batches` below is the complete record.
+        outputBatchId: posted.find((row) => row.kind === 'accepted')?.batchId ?? null,
+        reworkBatchId: posted.find((row) => row.kind === 'rework')?.batchId ?? null,
+        reasonId: output.reasonId,
+        responsibility: output.responsibility,
+        remarks: output.remarks,
+        createdBy: userId ?? null,
+        updatedBy: userId ?? null,
       });
 
       /**
        * 🔴 THE COMPLETE LIST OF BATCHES THIS ROW WROTE INTO. Written after the
-       * output row because the foreign key points at it, and written for EVERY
+       * output rows because the foreign key points at them, and written for EVERY
        * row including by-products — the guard that reads this at cancellation
        * time is the one that used to miss them.
        */
       for (const [seq, batch] of posted.entries()) {
-        await tx.jobReceiptOutputBatch.create({
-          data: {
-            organizationId,
-            jobReceiptId: receipt.id,
-            jobReceiptOutputId: outputRow.id,
-            seq: seq + 1,
-            kind: batch.kind,
-            batchId: batch.batchId,
-            qty: batch.qty,
-            isNewBatch: batch.isNewBatch,
-            createdBy: userId ?? null,
-            updatedBy: userId ?? null,
-          },
+        outputBatchData.push({
+          organizationId,
+          jobReceiptId: receipt.id,
+          jobReceiptOutputId: outputRowId,
+          seq: seq + 1,
+          kind: batch.kind,
+          batchId: batch.batchId,
+          qty: batch.qty,
+          isNewBatch: batch.isNewBatch,
+          createdBy: userId ?? null,
+          updatedBy: userId ?? null,
         });
       }
+    }
+
+    await tx.jobReceiptOutput.createMany({ data: outputData });
+    if (outputBatchData.length > 0) {
+      await tx.jobReceiptOutputBatch.createMany({ data: outputBatchData });
     }
 
     /**
@@ -2681,9 +2679,9 @@ export async function createNewJobReceipt(
       mode: 'create',
     }) as Prisma.InputJsonValue;
 
-    for (const allocation of allocations) {
-      await tx.jobReceiptLine.create({
-        data: {
+    if (allocations.length > 0) {
+      await tx.jobReceiptLine.createMany({
+        data: allocations.map((allocation) => ({
           organizationId,
           jobReceiptId: receipt.id,
           jobIssueId: allocation.jobIssueId,
@@ -2694,7 +2692,7 @@ export async function createNewJobReceipt(
           customFields: lineCustomFields,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
-        },
+        })),
       });
     }
 
@@ -2725,9 +2723,17 @@ export async function createNewJobReceipt(
      */
     if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
+    /* Header, line and output columns only — still read back after every write, so
+       they are what was stored (`outputBatchId` and the two value totals included,
+       which the update above set). The screens that save a receipt read only its id
+       and status and then refetch it; RECEIPT_INCLUDE's display relations were ~15
+       more round trips nobody read (`getJobReceiptById` still returns them). */
     return tx.jobReceipt.findFirstOrThrow({
       where: { id: receipt.id, organizationId },
-      include: RECEIPT_INCLUDE,
+      include: {
+        lines: { where: { isDeleted: false } },
+        outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' } },
+      },
     });
   });
 }
