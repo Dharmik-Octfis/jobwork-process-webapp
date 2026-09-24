@@ -21,6 +21,8 @@ export interface PaginatedFifoCostLotTrackingResponse {
 }
 
 export interface FifoCostLotTrackingRow {
+  /** One lot = one document's stock at one cost; rows sharing it are its dispersals. */
+  lotKey: string;
   inDate: string | null;
   inTransaction: string;
   inReceivedFrom: string;

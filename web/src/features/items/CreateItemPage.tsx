@@ -62,7 +62,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         frontImage: itemToClone.frontImage || null,
         rearImage: itemToClone.rearImage || null,
         images: itemToClone.images || [],
-        trackInventory: true,
+        trackInventory: itemToClone.itemType !== 'service' && itemToClone.trackInventory !== false,
         inventoryTracking: (itemToClone.inventoryTracking ?? 'none').toLowerCase(),
         openingStock:
           itemToClone.openingStock !== null && itemToClone.openingStock !== undefined
@@ -194,7 +194,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const handleRadioChange = (name: string, value: string) => {
     setFormData((prev) => {
       const newState = { ...prev, [name]: value };
-      if (name === 'type' && value === 'Service' && prev.inventoryTracking === 'batch') {
+      if (name === 'itemType' && value === 'service') {
+        newState.trackInventory = false;
         newState.inventoryTracking = 'none';
       }
       return newState;
@@ -1024,87 +1025,87 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             </div>
           </div>
 
-          {/* Inventory Tracking */}
-          <div
-            style={{
-              background: '#f8fafc',
-              padding: '24px 24px',
-              margin: '0 -24px',
-              width: 'calc(100% + 48px)',
-              boxSizing: 'border-box',
-              borderRadius: 0,
-              borderTop: '1px solid #e2e8f0',
-              borderBottom: '1px solid #e2e8f0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-            }}
-          >
-            <div style={{ maxWidth: '900px', width: '100%' }}>
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#1e293b',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  name="trackInventory"
-                  checked={formData.trackInventory}
-                  onChange={handleChange}
-                  style={{ marginTop: 2 }}
-                />
-                <div>
-                  Track Inventory for this item
-                  <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>
-                    You cannot enable/disable inventory tracking once you've created transactions
-                    for this item
-                  </div>
-                </div>
-              </label>
-
-              {formData.trackInventory && (
-                <div
+          {/* A service is never stocked — a bill posts stock for any tracked line. */}
+          {formData.itemType !== 'service' && (
+            <div
+              style={{
+                background: '#f8fafc',
+                padding: '24px 24px',
+                margin: '0 -24px',
+                width: 'calc(100% + 48px)',
+                boxSizing: 'border-box',
+                borderRadius: 0,
+                borderTop: '1px solid #e2e8f0',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+              }}
+            >
+              <div style={{ maxWidth: '900px', width: '100%' }}>
+                <label
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: 14,
-                    paddingTop: 8,
-                    borderTop: '1px solid #e2e8f0',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                    cursor: 'pointer',
                   }}
                 >
+                  <input
+                    type="checkbox"
+                    name="trackInventory"
+                    checked={formData.trackInventory}
+                    onChange={handleChange}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    Track Inventory for this item
+                    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>
+                      You cannot enable/disable inventory tracking once you've created transactions
+                      for this item
+                    </div>
+                  </div>
+                </label>
+
+                {formData.trackInventory && (
                   <div
-                    className="form-field-grid"
-                    style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 14,
+                      paddingTop: 8,
+                      borderTop: '1px solid #e2e8f0',
+                    }}
                   >
-                    <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
-                      Inventory Tracking
-                    </label>
-                    <div style={{ display: 'flex', gap: 16 }}>
-                      <label
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="inventoryTracking"
-                          value="none"
-                          checked={formData.inventoryTracking === 'none'}
-                          onChange={() => handleRadioChange('inventoryTracking', 'none')}
-                        />{' '}
-                        None
+                    <div
+                      className="form-field-grid"
+                      style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
+                    >
+                      <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
+                        Inventory Tracking
                       </label>
-                      {formData.itemType !== 'service' && (
+                      <div style={{ display: 'flex', gap: 16 }}>
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="inventoryTracking"
+                            value="none"
+                            checked={formData.inventoryTracking === 'none'}
+                            onChange={() => handleRadioChange('inventoryTracking', 'none')}
+                          />{' '}
+                          None
+                        </label>
                         <label
                           style={{
                             display: 'flex',
@@ -1123,70 +1124,70 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           />{' '}
                           {singular}
                         </label>
-                      )}
+                      </div>
                     </div>
-                  </div>
 
-                  {formData.inventoryTracking === 'none' && (
-                    <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <label
-                          style={{
-                            fontSize: 13,
-                            color: '#4b5563',
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Opening Stock
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="openingStock"
-                          value={formData.openingStock || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '140px',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
+                    {formData.inventoryTracking === 'none' && (
+                      <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <label
+                            style={{
+                              fontSize: 13,
+                              color: '#4b5563',
+                              fontWeight: 500,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Opening Stock
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="openingStock"
+                            value={formData.openingStock || ''}
+                            onChange={handleChange}
+                            style={{
+                              width: '140px',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: '1px solid #d1d5db',
+                              fontSize: 13,
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <label
+                            style={{
+                              fontSize: 13,
+                              color: '#4b5563',
+                              fontWeight: 500,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Value of Opening Stock (per quantity)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="openingStockValuePerUnit"
+                            value={formData.openingStockValuePerUnit || ''}
+                            onChange={handleChange}
+                            style={{
+                              width: '140px',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: '1px solid #d1d5db',
+                              fontSize: 13,
+                            }}
+                          />
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <label
-                          style={{
-                            fontSize: 13,
-                            color: '#4b5563',
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Value of Opening Stock (per quantity)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="openingStockValuePerUnit"
-                          value={formData.openingStockValuePerUnit || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '140px',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Custom Fields */}
           {orgId && (

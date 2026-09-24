@@ -5,6 +5,7 @@ import { SignupPage } from '../features/auth/SignupPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { NoAccessPage } from '../features/auth/NoAccessPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
+import { GuestRoute } from '../routes/GuestRoute';
 import { RequireOrganization } from '../routes/RequireOrganization';
 import { OrgRedirect } from '../routes/OrgRedirect';
 import { LegacyJobworkMasterRedirect } from '../routes/LegacyJobworkMasterRedirect';
@@ -356,9 +357,14 @@ export const router = createBrowserRouter([
      */
     errorElement: <AppErrorBoundary />,
     children: [
-      { path: '/login', element: <LoginPage /> },
-      { path: '/signup', element: <SignupPage /> },
-      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      {
+        element: <GuestRoute />,
+        children: [
+          { path: '/login', element: <LoginPage /> },
+          { path: '/signup', element: <SignupPage /> },
+          { path: '/forgot-password', element: <ForgotPasswordPage /> },
+        ],
+      },
       // Public — the invitee may not have an account yet.
       { path: '/invite/accept', element: <AcceptInvitePage /> },
       // Public — reached from a REFUSED sign-in, so there is no jobwork session to protect it with.

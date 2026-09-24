@@ -51,19 +51,19 @@ export function InventoryValuationSummaryPage() {
       const stored = sessionStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
-        
+
         const safeDate = (val: string | number | null | undefined, fallback: Date) => {
           if (!val) return fallback;
           const d = new Date(val);
           return isNaN(d.getTime()) ? fallback : d;
         };
-        
+
         parsed.asOfDate = safeDate(parsed.asOfDate, new Date());
-        
+
         if (parsed.appliedFilters) {
           parsed.appliedFilters.asOfDate = safeDate(parsed.appliedFilters.asOfDate, new Date());
         }
-        
+
         return parsed;
       }
     } catch (_e) {
@@ -78,23 +78,33 @@ export function InventoryValuationSummaryPage() {
   const [statusFilter, setStatusFilter] = useState(initialState?.statusFilter || 'all');
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
 
-  const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
-    asOfDate: new Date(),
-    stockFilter: 'none',
-    statusFilter: 'all',
-    conditions: [] as FilterCondition[],
-  });
+  const [appliedFilters, setAppliedFilters] = useState<{
+    asOfDate: Date;
+    stockFilter: string;
+    statusFilter: string;
+    conditions: FilterCondition[];
+  }>(
+    initialState?.appliedFilters || {
+      asOfDate: new Date(),
+      stockFilter: 'none',
+      statusFilter: 'all',
+      conditions: [] as FilterCondition[],
+    },
+  );
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(`inventoryValuationSummaryState_${orgId}`, JSON.stringify({
-      dateRange,
-      asOfDate,
-      stockFilter,
-      statusFilter,
-      conditions,
-      appliedFilters
-    }));
+    sessionStorage.setItem(
+      `inventoryValuationSummaryState_${orgId}`,
+      JSON.stringify({
+        dateRange,
+        asOfDate,
+        stockFilter,
+        statusFilter,
+        conditions,
+        appliedFilters,
+      }),
+    );
   }, [dateRange, asOfDate, stockFilter, statusFilter, conditions, appliedFilters, orgId]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
@@ -116,7 +126,7 @@ export function InventoryValuationSummaryPage() {
 
   const locationOptions = useMemo(
     () => locations.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })),
-    [locations]
+    [locations],
   );
 
   const customFilterFields = useMemo(() => {
@@ -208,7 +218,7 @@ export function InventoryValuationSummaryPage() {
       },
       ...customFilterFields,
     ],
-    [orgId, locationOptions, customFilterFields]
+    [orgId, locationOptions, customFilterFields],
   );
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
@@ -221,7 +231,8 @@ export function InventoryValuationSummaryPage() {
     try {
       const query: InventoryValuationQuery = {
         asOfDate: endOfDay(appliedFilters.asOfDate).toISOString(),
-        stockAvailability: appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
+        stockAvailability:
+          appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
         status: appliedFilters.statusFilter as InventoryValuationQuery['status'],
         page,
         perPage,
@@ -256,7 +267,12 @@ export function InventoryValuationSummaryPage() {
       const customFieldKeys = new Set(customFields.map((cf) => cf.key));
       const itemCustomFields: Record<string, unknown> = {};
       appliedFilters.conditions.forEach((c) => {
-        if (customFieldKeys.has(c.field) && c.value !== undefined && c.value !== null && c.value !== '') {
+        if (
+          customFieldKeys.has(c.field) &&
+          c.value !== undefined &&
+          c.value !== null &&
+          c.value !== ''
+        ) {
           itemCustomFields[c.field] = c.value;
         }
       });
@@ -483,7 +499,6 @@ export function InventoryValuationSummaryPage() {
           >
             Run Report
           </button>
-
         </div>
       </div>
 
@@ -790,7 +805,7 @@ export function InventoryValuationSummaryPage() {
               )}
             </tbody>
           </table>
-          
+
           <Pagination
             pageContext={{
               page: data?.page || page,

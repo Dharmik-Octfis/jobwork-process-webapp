@@ -1,4 +1,4 @@
-import { useState, Fragment,useEffect,useMemo } from 'react';
+import { useState, Fragment, useEffect, useMemo } from 'react';
 import { format, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter, History } from 'lucide-react';
@@ -11,7 +11,6 @@ import { reportsApi } from './reports.api';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import type { Item } from '../items/items.schemas';
-
 
 const iconButtonStyle = {
   background: '#fff',
@@ -81,12 +80,18 @@ export function FifoCostLotTrackingPage() {
           return isNaN(d.getTime()) ? fallback : d;
         };
 
-        parsed.fromDate = parsed.fromDate ? safeDate(parsed.fromDate, startOfMonth(new Date())) : undefined;
+        parsed.fromDate = parsed.fromDate
+          ? safeDate(parsed.fromDate, startOfMonth(new Date()))
+          : undefined;
         parsed.toDate = parsed.toDate ? safeDate(parsed.toDate, endOfDay(new Date())) : undefined;
 
         if (parsed.appliedFilters) {
-          parsed.appliedFilters.fromDate = parsed.appliedFilters.fromDate ? safeDate(parsed.appliedFilters.fromDate, startOfMonth(new Date())) : undefined;
-          parsed.appliedFilters.toDate = parsed.appliedFilters.toDate ? safeDate(parsed.appliedFilters.toDate, endOfDay(new Date())) : undefined;
+          parsed.appliedFilters.fromDate = parsed.appliedFilters.fromDate
+            ? safeDate(parsed.appliedFilters.fromDate, startOfMonth(new Date()))
+            : undefined;
+          parsed.appliedFilters.toDate = parsed.appliedFilters.toDate
+            ? safeDate(parsed.appliedFilters.toDate, endOfDay(new Date()))
+            : undefined;
         }
 
         return parsed;
@@ -99,33 +104,59 @@ export function FifoCostLotTrackingPage() {
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const [dateRangeLabel, setDateRangeLabel] = useState(initialState?.dateRangeLabel || 'This Month');
-  const [fromDate, setFromDate] = useState<Date | undefined>(initialState?.fromDate || startOfMonth(new Date()));
-  const [toDate, setToDate] = useState<Date | undefined>(initialState?.toDate || endOfDay(new Date()));
+  const [dateRangeLabel, setDateRangeLabel] = useState(
+    initialState?.dateRangeLabel || 'This Month',
+  );
+  const [fromDate, setFromDate] = useState<Date | undefined>(
+    initialState?.fromDate || startOfMonth(new Date()),
+  );
+  const [toDate, setToDate] = useState<Date | undefined>(
+    initialState?.toDate || endOfDay(new Date()),
+  );
   const [selectedItem, setSelectedItem] = useState<Item | null>(initialState?.selectedItem || null);
   const [locationId, setLocationId] = useState<string>(initialState?.locationId || '');
   const [isProductOut, setIsProductOut] = useState(initialState?.isProductOut || false);
 
-  const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
-    fromDate: startOfMonth(new Date()) as Date | undefined,
-    toDate: endOfDay(new Date()) as Date | undefined,
-    itemName: undefined as string | undefined,
-    locationName: undefined as string | undefined,
-    reportBasis: 'product_in' as 'product_in' | 'product_out',
-  });
+  const [appliedFilters, setAppliedFilters] = useState<{
+    fromDate: Date | undefined;
+    toDate: Date | undefined;
+    itemName: string | undefined;
+    locationName: string | undefined;
+    reportBasis: 'product_in' | 'product_out';
+  }>(
+    initialState?.appliedFilters || {
+      fromDate: startOfMonth(new Date()),
+      toDate: endOfDay(new Date()),
+      itemName: undefined,
+      locationName: undefined,
+      reportBasis: 'product_in',
+    },
+  );
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(`fifoCostLotTrackingState_${orgId}`, JSON.stringify({
-      dateRangeLabel,
-      fromDate,
-      toDate,
-      selectedItem,
-      locationId,
-      isProductOut,
-      appliedFilters
-    }));
-  }, [dateRangeLabel, fromDate, toDate, selectedItem, locationId, isProductOut, appliedFilters, orgId]);
+    sessionStorage.setItem(
+      `fifoCostLotTrackingState_${orgId}`,
+      JSON.stringify({
+        dateRangeLabel,
+        fromDate,
+        toDate,
+        selectedItem,
+        locationId,
+        isProductOut,
+        appliedFilters,
+      }),
+    );
+  }, [
+    dateRangeLabel,
+    fromDate,
+    toDate,
+    selectedItem,
+    locationId,
+    isProductOut,
+    appliedFilters,
+    orgId,
+  ]);
 
   const [hasInitializedLoc, setHasInitializedLoc] = useState(false);
 
@@ -209,10 +240,9 @@ export function FifoCostLotTrackingPage() {
           isLeftSame = true;
         }
       } else {
-        if (
-          dataRows[i].inTransaction &&
-          dataRows[i].inTransaction === dataRows[leftGroupStart].inTransaction
-        ) {
+        // By lot, not by document name: one document can hold lots at two costs,
+        // and a lot's quantity is its own row's, never the first of a merged run.
+        if (dataRows[i].lotKey === dataRows[leftGroupStart].lotKey) {
           isLeftSame = true;
         }
       }
@@ -230,16 +260,15 @@ export function FifoCostLotTrackingPage() {
       // Right side grouping
       let isRightSame = false;
       if (appliedFilters.reportBasis === 'product_out') {
-        if (
-          dataRows[i].inTransaction &&
-          dataRows[i].inTransaction === dataRows[rightGroupStart].inTransaction
-        ) {
+        if (dataRows[i].lotKey === dataRows[rightGroupStart].lotKey) {
           isRightSame = true;
         }
       } else {
+        // A dispersal belongs to the lot it drew from; never span it across two lots.
         if (
           dataRows[i].outTransaction &&
-          dataRows[i].outTransaction === dataRows[rightGroupStart].outTransaction
+          dataRows[i].outTransaction === dataRows[rightGroupStart].outTransaction &&
+          dataRows[i].lotKey === dataRows[rightGroupStart].lotKey
         ) {
           isRightSame = true;
         }

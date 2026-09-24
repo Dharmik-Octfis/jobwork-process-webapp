@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
 import { format, endOfDay } from 'date-fns';
-import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
@@ -22,19 +21,11 @@ import { fetchLocations, isOwnLocation } from '../configuration/locations/locati
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
-const TRACKING_MODE_OPTIONS = [
-  { label: 'Bills', value: 'bills_and_invoices' },
-  { label: 'Jobwork Receives', value: 'jobwork' },
-];
-
 // Filter fields are now dynamically generated in the component to access orgId
 
 export function StockSummaryReportPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
-  const [searchParams] = useSearchParams();
-
-  const initialMode = searchParams.get('mode') || 'bills_and_invoices';
 
   const initialState = useMemo(() => {
     if (!orgId) return null;
@@ -43,21 +34,27 @@ export function StockSummaryReportPage() {
       const stored = sessionStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
-        
+
         const safeDate = (val: string | number | null | undefined, fallback: Date) => {
           if (!val) return fallback;
           const d = new Date(val);
           return isNaN(d.getTime()) ? fallback : d;
         };
-        
-        parsed.fromDate = safeDate(parsed.fromDate, new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+
+        parsed.fromDate = safeDate(
+          parsed.fromDate,
+          new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+        );
         parsed.toDate = safeDate(parsed.toDate, new Date());
-        
+
         if (parsed.appliedFilters) {
-          parsed.appliedFilters.fromDate = safeDate(parsed.appliedFilters.fromDate, new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+          parsed.appliedFilters.fromDate = safeDate(
+            parsed.appliedFilters.fromDate,
+            new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+          );
           parsed.appliedFilters.toDate = safeDate(parsed.appliedFilters.toDate, new Date());
         }
-        
+
         return parsed;
       }
     } catch (_e) {
@@ -67,31 +64,40 @@ export function StockSummaryReportPage() {
   }, [orgId]);
 
   const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
-  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [fromDate, setFromDate] = useState<Date>(
+    initialState?.fromDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  );
   const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [stockFilter] = useState('none');
-  const [trackingMode, setTrackingMode] = useState(initialState?.trackingMode || initialMode);
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
 
-  const [appliedFilters, setAppliedFilters] = useState(initialState?.appliedFilters || {
-    fromDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    toDate: new Date(),
-    stockFilter: 'none',
-    trackingMode: 'bills_and_invoices',
-    conditions: [] as FilterCondition[],
-  });
+  const [appliedFilters, setAppliedFilters] = useState<{
+    fromDate: Date;
+    toDate: Date;
+    stockFilter: string;
+    conditions: FilterCondition[];
+  }>(
+    initialState?.appliedFilters || {
+      fromDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      toDate: new Date(),
+      stockFilter: 'none',
+      conditions: [] as FilterCondition[],
+    },
+  );
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(`stockSummaryState_${orgId}`, JSON.stringify({
-      dateRange,
-      fromDate,
-      toDate,
-      trackingMode,
-      conditions,
-      appliedFilters
-    }));
-  }, [dateRange, fromDate, toDate, trackingMode, conditions, appliedFilters, orgId]);
+    sessionStorage.setItem(
+      `stockSummaryState_${orgId}`,
+      JSON.stringify({
+        dateRange,
+        fromDate,
+        toDate,
+        conditions,
+        appliedFilters,
+      }),
+    );
+  }, [dateRange, fromDate, toDate, conditions, appliedFilters, orgId]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
@@ -116,7 +122,7 @@ export function StockSummaryReportPage() {
 
   const locationOptions = useMemo(
     () => locations.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })),
-    [locations]
+    [locations],
   );
 
   const customFilterFields = useMemo(() => {
@@ -208,7 +214,7 @@ export function StockSummaryReportPage() {
       },
       ...customFilterFields,
     ],
-    [orgId, locationOptions, customFilterFields]
+    [orgId, locationOptions, customFilterFields],
   );
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
@@ -222,7 +228,6 @@ export function StockSummaryReportPage() {
       const query: StockSummaryQuery = {
         fromDate: appliedFilters.fromDate.toISOString(),
         toDate: endOfDay(appliedFilters.toDate).toISOString(),
-        mode: appliedFilters.trackingMode as 'bills' | 'bills_and_invoices' | 'jobwork',
         page,
         perPage,
       };
@@ -256,7 +261,12 @@ export function StockSummaryReportPage() {
       const customFieldKeys = new Set(customFields.map((cf) => cf.key));
       const itemCustomFields: Record<string, unknown> = {};
       appliedFilters.conditions.forEach((c) => {
-        if (customFieldKeys.has(c.field) && c.value !== undefined && c.value !== null && c.value !== '') {
+        if (
+          customFieldKeys.has(c.field) &&
+          c.value !== undefined &&
+          c.value !== null &&
+          c.value !== ''
+        ) {
           itemCustomFields[c.field] = c.value;
         }
       });
@@ -404,32 +414,6 @@ export function StockSummaryReportPage() {
             labelPrefix=""
           />
 
-          <SearchableSelect
-            options={TRACKING_MODE_OPTIONS}
-            value={trackingMode}
-            onChange={setTrackingMode}
-            style={{ width: 'max-content' }}
-            triggerStyle={{
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              height: 'auto',
-              minHeight: '0',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-            }}
-            dropdownWidth="200px"
-            renderValue={(opt) => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#6b7280' }}>Mode of Stock tracking :</span>
-                <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
-              </div>
-            )}
-          />
-
-
-
           <AdvancedFilter
             fields={filterFields}
             conditions={conditions}
@@ -444,7 +428,7 @@ export function StockSummaryReportPage() {
           />
           <button
             type="button"
-            onClick={() => setAppliedFilters({ fromDate, toDate, stockFilter, trackingMode, conditions })}
+            onClick={() => setAppliedFilters({ fromDate, toDate, stockFilter, conditions })}
             style={{
               padding: '6px 12px',
               background: '#2563eb',
@@ -462,7 +446,6 @@ export function StockSummaryReportPage() {
           >
             Run Report
           </button>
-
         </div>
       </div>
 
@@ -540,7 +523,9 @@ export function StockSummaryReportPage() {
             >
               Stock Summary Report
             </h2>
-            <div style={{ fontSize: '13px', color: '#4b5563' }}>From {formattedFromDate} To {formattedToDate}</div>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>
+              From {formattedFromDate} To {formattedToDate}
+            </div>
           </div>
 
           {/* Data Table */}
@@ -717,7 +702,9 @@ export function StockSummaryReportPage() {
                                 style={{ color: '#0062ff', cursor: 'pointer' }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward&mode=${appliedFilters.trackingMode}&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`);
+                                  navigate(
+                                    `/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=inward&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`,
+                                  );
                                 }}
                               >
                                 {(row.quantityIn || 0).toFixed(2)}
@@ -735,7 +722,9 @@ export function StockSummaryReportPage() {
                                 style={{ color: '#0062ff', cursor: 'pointer' }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward&mode=${appliedFilters.trackingMode}&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`);
+                                  navigate(
+                                    `/organizations/${orgId}/reports/stock-movement?itemId=${row.itemId}&movementType=outward&fromDate=${appliedFilters.fromDate.toISOString()}&toDate=${appliedFilters.toDate.toISOString()}`,
+                                  );
                                 }}
                               >
                                 {(row.quantityOut || 0).toFixed(2)}
@@ -784,28 +773,45 @@ export function StockSummaryReportPage() {
                     }
                     if (colKey === 'openingStock') {
                       return (
-                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                        <td
+                          key={colKey}
+                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                        >
                           {grandTotalOpening.toFixed(2)}
                         </td>
                       );
                     }
                     if (colKey === 'quantityIn') {
                       return (
-                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                        <td
+                          key={colKey}
+                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                        >
                           {grandTotalIn.toFixed(2)}
                         </td>
                       );
                     }
                     if (colKey === 'quantityOut') {
                       return (
-                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                        <td
+                          key={colKey}
+                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                        >
                           {grandTotalOut.toFixed(2)}
                         </td>
                       );
                     }
                     if (colKey === 'closingStock') {
                       return (
-                        <td key={colKey} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#111827' }}>
+                        <td
+                          key={colKey}
+                          style={{
+                            ...tdStyle,
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            color: '#111827',
+                          }}
+                        >
                           {grandTotalClosing.toFixed(2)}
                         </td>
                       );
@@ -879,5 +885,3 @@ const tdStyle = {
   color: '#111827',
   borderBottom: '1px solid #f3f4f6',
 };
-
-

@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
@@ -133,6 +135,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       onClose();
     },
+    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const toggleActiveMutation = useMutation({
@@ -560,7 +563,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 {/* Opening Stock Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Building2 size={16} color="#0062ff" />
-                  <span style={{ fontSize: '14px', color: '#0062ff', fontWeight: 500 }}>
+                  <span style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>
                     Opening Stock
                   </span>
                   <span
@@ -629,7 +632,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                         Stock on Hand
                       </span>
                       <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0062ff' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
                         {ownPremisesStock.onHand.toFixed(2)}
                       </span>
                     </div>
@@ -814,7 +817,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       <path d="M6 14h12"></path>
                       <rect width="12" height="12" x="6" y="10"></rect>
                     </svg>
-                    <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0062ff', margin: 0 }}>
+                    <h3 style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a', margin: 0 }}>
                       Opening Stock Summary
                     </h3>
                   </div>

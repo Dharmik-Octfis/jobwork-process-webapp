@@ -136,6 +136,8 @@ export interface AvailabilityQuery {
   search?: string;
   /** A ceiling on rows, so an item with hundreds of live batches still answers. */
   limit?: number;
+  /** Exclude batches that are located at a vendor's location (i.e. at a processor) */
+  excludeVendorLocations?: boolean;
 }
 
 /**
@@ -193,10 +195,18 @@ export async function getAvailableStock(organizationId: string, query: Availabil
         organizationId,
         id: { in: [...new Set(batches.map((row) => row.locationId))] },
         isDeleted: false,
+        ...(query.excludeVendorLocations ? { type: { not: 'processor' } } : {}),
       },
       select: { id: true, name: true },
     });
     const locationNameById = new Map(locations.map((row) => [row.id, row.name]));
+
+    // If excluding vendor locations, drop any batches whose location was filtered out above
+    const validBatches = query.excludeVendorLocations
+      ? batches.filter((batch) => locationNameById.has(batch.locationId))
+      : batches;
+
+    if (validBatches.length === 0) return [];
 
     // One read for every item asked about — not one per item, and never one per
     // batch.
@@ -224,7 +234,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
     if (query.withUnits) {
       const units = await getAvailableBatchUnits(tx, {
         organizationId,
-        batchIds: [...new Set(batches.map((row) => row.batchId))],
+        batchIds: [...new Set(validBatches.map((row) => row.batchId))],
         locationId: query.locationId,
         ownership: query.ownership,
       });
@@ -242,7 +252,7 @@ export async function getAvailableStock(organizationId: string, query: Availabil
       }
     }
 
-    return batches.map((batch) => ({
+    return validBatches.map((batch) => ({
       batchId: batch.batchId,
       /* 🔴 Sent back on the line. A row is a batch AT A GODOWN, and the challan
          records which one — within a site there may be several. */
