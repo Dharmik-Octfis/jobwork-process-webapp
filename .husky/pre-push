@@ -1,0 +1,2 @@
+# Same self-heal as post-checkout: a push is the other action reached while the button is stuck.
+sh scripts/clear-stale-merge-head.sh

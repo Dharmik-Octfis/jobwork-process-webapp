@@ -21,12 +21,17 @@ export async function signup(input: SignupInput): Promise<AuthResponse> {
   return data;
 }
 
-export async function updateProfile(input: UpdateProfileInput): Promise<{ user: AuthResponse['user'] }> {
+export async function updateProfile(
+  input: UpdateProfileInput,
+): Promise<{ user: AuthResponse['user'] }> {
   const { data } = await apiClient.put<{ user: AuthResponse['user'] }>(endpoints.auth.me, input);
   return data;
 }
 
-export async function updateLocation(input: { latitude: number; longitude: number }): Promise<void> {
+export async function updateLocation(input: {
+  latitude: number;
+  longitude: number;
+}): Promise<void> {
   await apiClient.post(endpoints.auth.location, input);
 }
 
@@ -65,10 +70,12 @@ export async function changePassword(
   input: import('./auth.schemas').ChangePasswordInput,
 ): Promise<{ message: string }> {
   const { confirmPassword: _confirmPassword, ...payload } = input;
-  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.changePassword, payload);
+  const { data } = await apiClient.post<{ message: string }>(
+    endpoints.auth.changePassword,
+    payload,
+  );
   return data;
 }
-
 
 /**
  * POST /auth/logout — the server ends the session using the Bearer access token
@@ -77,6 +84,26 @@ export async function changePassword(
  */
 export async function logout(): Promise<{ message: string }> {
   const { data } = await apiClient.post<{ message: string }>(endpoints.auth.logout);
+  return data;
+}
+
+/** Why the server says this session is over. `null` while it is still live. */
+export type SessionEndedReason = 'revoked' | 'expired' | 'account_disabled' | 'sso_logout';
+
+export interface SessionStatus {
+  active: boolean;
+  reason: SessionEndedReason | null;
+}
+
+/**
+ * Ask whether this session is still live. Polled — see `useSessionWatch`.
+ *
+ * Answers 200 either way, so `active: false` is a real answer and not an error.
+ * A network failure still rejects, which is what keeps a flaky connection from
+ * reading as a logout.
+ */
+export async function fetchSessionStatus(): Promise<SessionStatus> {
+  const { data } = await apiClient.get<SessionStatus>(endpoints.auth.session);
   return data;
 }
 

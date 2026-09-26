@@ -6,11 +6,15 @@ export const endpoints = {
     logout: '/auth/logout',
     refresh: '/auth/refresh-token',
     me: '/auth/me',
+    /** Polled: is this session still live, or was it ended somewhere else? */
+    session: '/auth/session',
     location: '/auth/me/location',
     avatar: '/auth/me/avatar',
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
     changePassword: '/auth/change-password',
+    /** Public: what the sign-in screen needs before anyone is signed in. */
+    config: '/auth/config',
   },
   invitations: {
     /** Public: look up an invite by its raw token (for the accept page). */

@@ -7,8 +7,31 @@
 > Today's single-app model is `docs/AUTHENTICATION.md` — read that first if you have not. This
 > document does not replace it. **Almost everything in it survives**, one layer down.
 
-_Status: **design, not yet built.** Nothing described here exists in the codebase._
-_Last updated: 2026-08-18._
+_Status: **live in production.** As of 2026-08-31 `accounts.octfis.com` and `jobwork.octfis.com` are
+both deployed AppSails and SSO is the only way into production jobwork — `SSO_ENABLED=true` there, so
+local login, signup, forgot- and reset-password are unmounted. STAGING IS **CONFIGURED BUT NOT
+DEPLOYED**: both env files and the `jobwork-staging` registry row are in place, but the
+`octfis-accounts-staging` AppSail does not exist yet, so nothing is live there. 🔴 Deploy accounts
+BEFORE the api — `backend/.env.staging` already carries `SSO_ENABLED=true`, which unmounts password
+login, and the boot check proves those variables are SET without ever contacting the issuer.
+⚠️ All three environments still share one `accounts_dev` database (see §15). Sections below are
+marked ✅ built / ⚠️ partly / ❌ design._
+
+| Section                    | State                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| §2–§6 concepts, flows      | ✅ implemented as described                                                                   |
+| §7 the accounts service    | ✅ built and deployed — `accounts/`, with §7.3's schema (see the `sid` correction)            |
+| §8 client registry         | ✅ `jobwork` (local) and `jobwork-production` registered; `npm run register:client` writes it |
+| §9 what changes in jobwork | ✅ built. Signup, login, forgot- and reset-password are UNMOUNTED whenever SSO is on          |
+| §10 revocation             | ✅ built, including retries the library does not do. 🔴 untestable on localhost — see §10.3   |
+| §11 instant cross-tab      | ❌ design. Deferred out of phase 1 on purpose                                                 |
+| §12 security checklist     | ✅ every line enforced, and pinned by tests                                                   |
+| §13 migration plan         | steps 1, 3, 4, 7 ✅ · step 2 blocked on app 2 · steps 5–6 are post-cutover                    |
+| §14 portability rules      | ✅ respected in code, and rule 1 is now satisfied: the issuer is `accounts.octfis.com`        |
+| §15 deployment             | ✅ production. ⚠️ staging undeployed; every environment still shares one database             |
+
+_Last updated: 2026-08-31 — the production cutover: domain, client registration, and the `SSO_*`
+block in `backend/.env.production` that finally pointed the app at the provider._
 
 ---
 
@@ -221,10 +244,14 @@ perceptible pause. That is the entire user-visible feature.
 
 ### 6.3 Signup
 
-Apps do not have a signup form any more. "Create an account" links to
-`accounts.octfis.com/signup?client_id=jobwork&redirect_uri=…`. The user registers there, verifies
-their email, and is handed back into 6.1 from step 3. `auth.routes.ts` loses `/signup`,
-`/forgot-password`, `/reset-password`, and `/change-password` — those move to accounts.
+Apps do not have a signup form any more, and since 2026-08-31 they do not carry a signup **link**
+either: jobwork's sign-in screen is the one `Access Jobwork` button. Accounts are created at
+`accounts.octfis.com`, whose own sign-in page is where "Create Account" lives — one hop further
+along a journey the user is already taking, rather than a second door each app has to publish and
+keep working. The user registers there, verifies their email, and is handed back into 6.1 from
+step 3. `auth.routes.ts` loses `/signup`, `/forgot-password` and `/reset-password`
+(`/change-password` stays — it needs a live session and the current password, so it is not a way
+in).
 
 ### 6.4 Refresh
 
@@ -255,8 +282,11 @@ shop-floor terminals, and an operator walking away from a shared machine must be
 ```
 1. User clicks "Log out" in jobwork
 2. jobwork revokes its own row (revoked_reason: 'logout') and clears its cookies
-3. jobwork redirects browser → accounts/logout
-     ?id_token_hint=<id_token>&post_logout_redirect_uri=https://jobwork.octfis.com/logged-out
+3. jobwork redirects browser → accounts/session/end
+     ?client_id=jobwork&post_logout_redirect_uri=https://jobwork.octfis.com/logged-out
+     (client_id, not id_token_hint: §3 discards the ID token, and the hint would
+      not skip a step — the library renders its sign-out page either way)
+3b. that page submits itself with logout=yes         ← no confirmation click
 4. accounts kills the __Host-sso cookie              ← no more silent re-login
 5. accounts POSTs a signed logout token, server-to-server, to EVERY app
    holding a live session for that sid               ← §10, this is what makes it real
@@ -270,6 +300,11 @@ the user is not actually logged out of them at all.
 ---
 
 ## 7. The accounts service
+
+> ✅ **Built.** `accounts/` — its own package, database (`accounts_dev`), Prisma schema, deploy
+> entry and AppSail config. Boots, serves discovery and JWKS, and signs real tokens.
+> 🔴 One correction to §7.3 below: `SsoSession.id` is the provider's session **uid**, not a `sid`,
+> and neither is a uuid. See the note on the model.
 
 ### 7.1 Shape
 
@@ -305,10 +340,28 @@ that point, and switching is cheap as long as §14 is respected.
 | **Its own database**    | If identity sits in jobwork's DB, every other app needs a connection string to jobwork's DB — coupling two apps at the storage layer, the exact thing being escaped.                         |
 | **Blast radius**        | It holds password hashes and signing keys and should hold nothing else — no vendors, no job orders, no batches.                                                                              |
 
-**Same git repo, though — for now.** A new top-level `accounts/` folder beside `backend/` and `web/`.
-During migration both sides change together constantly, and cross-repo PRs for one logical change is
-pure friction. Split it out with `git filter-repo` once a second app exists and the service has
-stopped changing weekly. Splitting later is cheap; merging back is not.
+**Same git repo — settled 2026-08-24, and no longer "for now."** A new top-level `accounts/` folder
+beside `backend/` and `web/`. Separate database, separate code, separate deploy; shared repo.
+
+The original note here said to split it out with `git filter-repo` "once a second app exists." The
+second app now exists, and the answer went the other way on three counts:
+
+- **Separation in-repo is nearly free.** Every per-folder command — `db:draft` / `db:promote` /
+  `db:apply` / `db:check-drift`, `typecheck`, `lint`, `vitest` — lives in `backend/package.json` and
+  runs relative to `backend/`. An `accounts/package.json` with its own copies and its own
+  `prisma/schema` gets a genuinely separate database with **zero** shared-script surgery.
+- **Same repo does not mean coupled deploy.** That was the real objection, and it was true of the
+  script rather than the repo: `catalyst deploy --only appsail` pushes every entry in
+  `catalyst.json`. Generating that file per deploy with one entry fixed it — §15. `deploy.mjs` now
+  takes `<target> <service>` and neither is defaulted.
+- **A separate repo would not have removed the cross-repo friction anyway.** App 2 lives in its own
+  repo either way, so wiring it to accounts spans two repos regardless. The boundary between an app
+  and accounts is **OIDC** — a versioned protocol, not an internal API — which is precisely the kind
+  of contract that tolerates a repo boundary, and equally the kind that does not need one.
+
+The cost of a separate repo was concrete: duplicating `deploy.mjs`, `lib/targets.mjs`,
+`lib/cliLogin.mjs`, `build-app-config.mjs` and the db-sync scripts — ~600 lines of guardrail that
+would drift. Splitting later is still cheap if this changes.
 
 ### 7.3 Schema
 
@@ -428,15 +481,34 @@ They are ephemeral token storage and, like `refresh_tokens` in the app, carry no
 
 ## 8. The client registry
 
+> ✅ **Built and registered.** The `oidc_clients` table and the loader exist, secrets are
+> argon2-hashed as described, and `accounts: npm run register:client` is the reviewed database change
+> that writes a row — it hashes the secret (the column holds a hash; pasting plaintext in makes every
+> token exchange fail `invalid_client`) and prints the plaintext once. Registered today: `jobwork`
+> (localhost), `jobwork-production` and `jobwork-staging` — one row per environment, each with its
+> own secret. ⚠️ All three live in the same `accounts_dev` database, so the production accounts
+> service also loads the staging row and its `form-action` widens to include the staging origin after
+> its next restart. That is the documented consequence of deriving the CSP from the registry, and it
+> is bounded: only origins an administrator has already registered as redirect targets.
+>
+> ⚠️ The registry is read ONCE AT BOOT, and so are the CSP `form-action` origins derived from it. A
+> row written by that script does nothing until the accounts service is redeployed — and the symptom
+> of forgetting is a sign-in that dies at the form submission with a CSP violation reported against
+> the form's own same-origin action, which reads like the policy contradicting itself.
+
 Each app is registered once:
 
-| Field                  | jobwork                                                                     |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `id`                   | `jobwork`                                                                   |
-| `secretHash`           | argon2 of a 32-byte random secret, given to the app as `OIDC_CLIENT_SECRET` |
-| `redirectUris`         | `https://jobwork.octfis.com/api/auth/callback`                              |
-| `postLogoutUris`       | `https://jobwork.octfis.com/logged-out`                                     |
-| `backchannelLogoutUri` | `https://jobwork.octfis.com/api/auth/backchannel-logout`                    |
+| Field                  | jobwork                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `id`                   | `jobwork-production`                                                       |
+| `secretHash`           | argon2 of a 32-byte random secret, given to the app as `SSO_CLIENT_SECRET` |
+| `redirectUris`         | `https://jobwork.octfis.com/api/auth/sso/callback`                         |
+| `postLogoutUris`       | `https://jobwork.octfis.com/`                                              |
+| `backchannelLogoutUri` | `https://jobwork.octfis.com/api/auth/sso/backchannel-logout`               |
+
+_(These are the paths as built — the routes live under `/api/auth/sso/`, and the app env var is
+`SSO_CLIENT_SECRET`. An earlier draft of this table guessed all three and was wrong; they are matched
+by exact string equality, so copy them from here, not from memory.)_
 
 Per environment — staging and production have different hostnames and therefore **different client
 secrets and different registry rows**. Never share a secret across environments.
@@ -449,6 +521,11 @@ providers. `node-oidc-provider` enforces exact matching by default — do not co
 ---
 
 ## 9. What changes in each app
+
+> ✅ **Built** — `backend/src/modules/auth/sso/`, pinned by `sso.test.ts`.
+> ⚠️ One row of §9.1 is deliberately NOT done: signup, forgot-password and reset still exist in the
+> app. They now also exist in accounts, and removing the app's copies is §13 step 6, after every
+> active user is linked. Two implementations run side by side on purpose, for one release.
 
 ### 9.1 jobwork
 
@@ -546,53 +623,108 @@ async function linkOrCreateLocalUser(claims: IdTokenClaims) {
     }
   }
 
-  return provisionOrRefuse(claims);
+  return provisionLocalUser(claims); // §9.3 — self-signup: verified email required
 }
 ```
+
+**Every callback failure lands on a page, never on JSON** — the callback is a top-level
+navigation. A refusal (403 from `linkOrCreateLocalUser`: disabled here, or unverified email) →
+`/no-access`; anything else (expired or missing `sso_flow`, a failed code exchange) →
+`/login?sso=manual&error=signin_failed`, a retry button with a one-line message. Manual, never an
+automatic retry, so a repeating failure cannot loop. `redirectFailedSignIn` in `sso.controller.ts`.
 
 ### 9.3 🔴 Per-app entitlement — the one genuinely new problem
 
 Today, having an account in jobwork **means** you are a jobwork user. After SSO, everyone in the
 identity system can reach every app's login and obtain a valid token. Each app must independently
-decide whether this person gets in. `provisionOrRefuse` is where that decision lives, and every app
-must make it **explicitly and fail closed** — an app with no entitlement check silently turns every
-identity in the estate into one of its users. Same failure shape as a route with no
-`requirePermission`.
+decide whether this person gets in, and must make that decision **explicitly** — an app that
+never thinks about it silently turns every identity in the estate into one of its users. In
+jobwork it lives in `provisionLocalUser` (`sso.service.ts`), and the answer is self-signup:
+safe because a new user holds no membership, so the tenant checks — not this step — decide what
+it can see.
 
-| Policy          | Behaviour                                                                           | Fits                                                                                                                                      |
-| --------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **Open**        | auto-provision anyone with an account                                               | internal tools                                                                                                                            |
-| **Invite-only** | no local row → _"You don't have access to this app. Ask your admin to invite you."_ | 🟢 **jobwork** — `src/modules/invitations/` already does the other half; it stops creating passwords and starts stamping `identityUserId` |
-| **Org-gated**   | in if any of your orgs has this app enabled                                         | needs the central directory we deliberately did not build (§5)                                                                            |
+| Policy          | Behaviour                                                                                                                                     | Fits                                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Self-signup** | auto-provision any **verified** identity; it has no memberships, so it sees nothing until it creates an organization or accepts an invitation | 🟢 **jobwork** since 2026-09-22 (`provisionLocalUser`). The standard multi-tenant SaaS model; tenant isolation lives in memberships + RLS, not here |
+| **Invite-only** | no local row → _"You don't have access to this app. Ask your admin to invite you."_                                                           | jobwork from the cutover until 2026-09-22 — replaced because the cutover had removed jobwork's own signup, leaving a new customer no way in         |
+| **Org-gated**   | in if any of your orgs has this app enabled                                                                                                   | needs the central directory we deliberately did not build (§5)                                                                                      |
+
+### 9.5 🔴 One way in, enforced by the router
+
+Decided 2026-08-24, and it supersedes the earlier plan of showing the SSO button
+_beside_ the password form.
+
+When `SSO_ENABLED` is true, four routes are **not mounted at all**:
+
+| Route                        | Why it is a way IN                                        |
+| ---------------------------- | --------------------------------------------------------- |
+| `POST /auth/signup`          | creates a local account with a local password             |
+| `POST /auth/login`           | uses one                                                  |
+| `POST /auth/forgot-password` | **SETS** one — easy to miss, and a full bypass on its own |
+| `POST /auth/reset-password`  | the other half of that same bypass                        |
+
+🔴 **And a fifth, which is NOT in `auth.routes.ts` and was missed for a week** (found and
+closed 2026-08-31). `POST /invitations/:token/accept` is a public endpoint in a different
+module, and its anonymous branch created a user with a `passwordHash` and signed them in —
+exactly what the four routes above are unmounted to prevent, reached from somewhere the guard
+never looked. Counting routes in one file is not the same as counting the ways a password can
+be written: `grep` for the write (`passwordHash:`), not for the door.
+
+It is now a refusal (`401 SIGN_IN_REQUIRED`), and nothing was needed to replace it — the
+invitee signs in through the provider, and `provisionLocalUser` already creates their local
+user without a password; `returnTo` then brings them back to the invitation to accept it. The anonymous branch was
+duplicating, badly, a path that existed. `invitations.sso.test.ts` pins it, and that test was
+checked to fail when the guard is removed.
+
+`POST /auth/change-password` stays mounted on purpose: it needs a live session **and** the
+current password, so it cannot be a way in. An SSO-provisioned user has `passwordHash: null`
+and is refused by it, so it cannot be used to set a first one either.
+
+🔴 **Hiding the forms in the web app is not enforcement, it is a suggestion.** With
+the routes still mounted, `POST /auth/signup` answered **201** to anything that
+asked — verified against the running app before the guard went in, and it really did
+create an account. Anyone with curl could keep minting local accounts that the
+identity provider knows nothing about and cannot disable.
+
+The two password-recovery routes are the ones most easily forgotten. A reset does
+not merely _use_ a password, it **sets** one, so leaving them mounted leaves a way
+to give any existing account a local credential and then sign in with it — SSO
+entirely bypassed, without ever touching the login route.
+
+Not mounted rather than answering 403: an absent route cannot be reached by a stale
+client at all, and the 404 says plainly that this app no longer does this.
+
+`POST /auth/change-password` is deliberately left mounted. It needs a live session
+**and** the current password, so it is not a way in, and an account predating the
+cutover may still have a local password it wants to change.
+
+The rollback is unchanged: `SSO_ENABLED=false` restores all four routes and unmounts
+the SSO ones. One way in at a time, chosen by one variable.
 
 ### 9.4 Landing: multi-tenant vs no-tenant
 
-The only place tenancy appears in the login path. Two apps, same token, different function:
+Tenancy does **not** appear in the login path, and the interesting part is that it tried to
+twice and was wrong both times (§9.4 in `SSO_WALKTHROUGH.md` has the full account). Every app
+here ends up with the same one-liner:
 
 ```ts
-// jobwork — multi-tenant
-async function landingPathFor(user: User, returnTo?: string) {
-  const orgs = await prisma.membership.findMany({
-    where: {
-      userId: user.id,
-      isDeleted: false,
-      isActive: true,
-      organization: { isDeleted: false },
-    },
-    select: { organizationId: true },
-  });
-
-  if (orgs.length === 0) return '/no-access'; // §9.3 — never auto-create an org here
-  if (returnTo) return returnTo; // deep link the user originally wanted
-  if (orgs.length === 1) return `/organizations/${orgs[0]!.organizationId}`;
-  return '/organizations'; // the picker
+// jobwork — multi-tenant, and it makes no difference
+function landingPathFor(returnTo?: string) {
+  return returnTo ?? '/'; // '/' is OrgRedirect: last organization used, else the first
 }
 
-// an app with no tenancy — the whole difference
-async function landingPathFor(_user: User, returnTo?: string) {
+// an app with no tenancy — the same function, a different default
+function landingPathFor(returnTo?: string) {
   return returnTo ?? '/dashboard';
 }
 ```
+
+🔴 **Choosing the organization server-side is the trap.** It looks like the tenant-aware thing
+to do, and it produces a worse answer than the SPA does: the organization a browser last used
+lives in `localStorage`, so `OrgRedirect` always knows more than this function can. Doing it
+here also means the destination depends on how the user started — jobwork's button passes
+`returnTo=/` and reached `OrgRedirect`; arriving from `accounts.octfis.com` passes nothing and
+did not. Same account, two different homes.
 
 That is the entire cost of supporting mixed tenancy across the estate, and it is only possible
 because of the §5 rule that orgs never appear in the token.
@@ -600,6 +732,11 @@ because of the §5 rule that orgs never appear in the token.
 ---
 
 ## 10. Revocation
+
+> ✅ **Built.** The receiving endpoint verifies signature, `iss`, `aud`, a recent `iat`, the `events`
+> claim and the absence of `nonce`; accounts retries delivery with backoff, which the library does
+> not do on its own.
+> 🔴 It cannot be exercised against `localhost` at all — see the SSRF note in §10.3.
 
 ### 10.1 The chain, after SSO
 
@@ -641,12 +778,32 @@ The revoke itself is code that already exists — `revokeUserSessions`
 
 ### 10.3 Two honest limits
 
-**Open tabs keep working for up to 15 minutes.** Back-channel logout kills refresh tokens instantly,
-but an already-issued access token stays valid until it expires, because `authenticate` does no
-database lookup — a deliberate 2026-07-24 decision. If that feels too loose for logout specifically,
-shorten `JWT_ACCESS_TTL` to `5m`; it is cheap and cuts the window by two thirds. **Do not** close it
-by adding a per-request session lookup — that is the exact thing the architecture rejected, and
-`middlewares/authenticate.test.ts` pins the current behaviour.
+**Open tabs keep working for up to 15 minutes** — unless they ask. Back-channel logout kills refresh
+tokens instantly, but an already-issued access token stays valid until it expires, because
+`authenticate` does no database lookup — a deliberate 2026-07-24 decision. If that feels too loose
+for logout specifically, shorten `JWT_ACCESS_TTL` to `5m`; it is cheap and cuts the window by two
+thirds. **Do not** close it by adding a per-request session lookup — that is the exact thing the
+architecture rejected, and `middlewares/authenticate.test.ts` pins the current behaviour.
+
+> ✅ **Mostly closed since 2026-08-27 by the poll in §11.** `GET /auth/session` resolves the `sid`
+> against `refresh_tokens` on demand, and every visible tab calls it every 15 seconds — so a tab
+> now signs itself out in seconds rather than at the end of the access token's life. The 15 minutes
+> remains the true bound for anything that does **not** poll: a mobile client, a script, a tab left
+> in a background window. This is the "cache the lookup" shape the rule allows, taken one step
+> further: the lookup is an endpoint a client opts into, not middleware every route pays for.
+
+🔴 **Back-channel logout cannot be tested against `localhost`.** Discovered 2026-08-24 while
+building it. `oidc-provider` wraps its outgoing fetch in **SSRF protection** that refuses every
+special-use IP range, `127.0.0.0/8` included — so a client registered with a
+`http://localhost:3000/...` back-channel URI gets `fetch failed`, forever, with retries doing exactly
+what they should and never succeeding. That is the library behaving correctly: a client registry is
+attacker-influenced input, and without the guard registering a client would be a way to make the IdP
+POST to anything inside the network.
+
+The consequence is practical, not theoretical: **this one flow only works end to end against real
+hostnames**, which is another reason §15's staging domains matter. Locally, the two halves have to be
+tested separately — the receiver by posting a genuinely signed logout token at it, which is what was
+done here. Do not "fix" it by disabling the SSRF protection.
 
 **Delivery can fail.** If an app is mid-deploy when the logout fires, it misses the notification and
 its refresh token survives. Accounts must **retry with backoff and log failures** — treat it as a
@@ -656,6 +813,16 @@ notices until it matters.
 ---
 
 ## 11. Instant cross-tab sign-in and sign-out
+
+> ⚠️ **Half built.** The **sign-out** direction shipped 2026-08-27 as the polling option below —
+> `GET /auth/session` + `web/src/features/auth/useSessionWatch.ts`, mounted on `ProtectedRoute`.
+> Every visible tab checks every 15 seconds, and immediately on regaining focus, so a logout
+> anywhere signs this app out within seconds.
+>
+> The **sign-in** direction is still ❌ not built, and cannot be faked with polling: only the
+> accounts origin can see its own cookie, so a logged-out tab has nothing to ask. That needs the
+> iframe, and the iframe needs the real same-site domains — which is why it was deferred out of
+> phase 1 in the first place.
 
 The redirects in §6 give "signed in on the next navigation". The instant behaviour — every tab
 reacting within seconds, no refresh — is a **separate layer on top**, and it is what people actually
@@ -696,7 +863,7 @@ annoyance; a refresh token that survives logout is an incident.
 
 | Approach                              | Instant?     | Cross-domain?     | Cost                                                                                                                                                    |
 | ------------------------------------- | ------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Poll our own `/api/auth/session`      | ~5–30 s      | ✅                | one request per tab per interval; ~10 lines. **Start here.**                                                                                            |
+| Poll our own `/api/auth/session`      | ~15 s        | ✅                | one indexed row per **visible** tab per 15 s. ✅ **Built** — sign-out only.                                                                             |
 | Iframe + `prompt=none` (the Zoho way) | ✅           | ❌ same-site only | spec-defined, no server load                                                                                                                            |
 | Iframe + `BroadcastChannel` relay     | ✅ true push | ❌ same-site only | every app embeds an accounts-origin iframe; those iframes share one origin and broadcast to each other, each relaying to its parent. No polling at all. |
 | SSE / WebSocket from our own backend  | ✅ true push | ✅                | fed by §10. ⚠️ verify AppSail's idle-connection timeout — load balancers cut long-lived connections                                                     |
@@ -708,6 +875,9 @@ _sign-in_ direction instant.
 ---
 
 ## 12. Security checklist — non-negotiables
+
+> ✅ **Every line enforced**, and the ones that fail silently are pinned by tests:
+> `backend/.../sso.test.ts` and `accounts/src/oidc/crypto.test.ts`.
 
 | Rule                                                                                                             | What breaks without it                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -728,21 +898,38 @@ _sign-in_ direction instant.
 
 Order matters. Each step is independently deployable and reversible.
 
-1. **Stand up `accounts.octfis.com`** with its own database. Nothing points at it yet. Register the
+1. ✅ **Stand up `accounts.octfis.com`** with its own database. Nothing points at it yet. Register the
    `jobwork` client per environment.
+   **Done as code 2026-08-24** — the service runs, on its own `accounts_dev` database, with the
+   protocol endpoints, login/consent screens, signup, email verification and password reset. ⚠️ NOT
+   done as infrastructure: no staging or production database, no mapped domain, nothing deployed.
 2. **Seed identities** — the union of every app's users, deduped by email (`@db.Citext` already, so
    case is handled). Where one email has different password hashes in two apps, keep the most
    recently used and tell those users at cutover. Do not guess silently.
-3. **Add `identityUserId` to each app's `users`**, plus `idpSessionId` / `idpSubject` on
+3. ✅ **Add `identityUserId` to each app's `users`**, plus `idpSessionId` / `idpSubject` on
    `refresh_tokens`, all nullable. `npm run db:draft` → edit → `db:promote` → `db:apply`. Nullable
    columns on existing tables, no backfill, no destructive SQL.
-4. **Cut jobwork over** behind a feature flag, keeping local password login as the rollback path for
+   **Done in jobwork 2026-08-24** — `20260824064102_add_sso_identity_columns`. Every row is null,
+   nothing reads or writes them, and no code path changed; `identity_user_id` carries a UNIQUE index,
+   which is safe on an all-NULL column because Postgres treats NULLs as distinct. Still to do in the
+   second app. Note this step was deliberately taken **out of order**, ahead of step 1 — it is
+   independently deployable and reversible, so it de-risks the cutover without waiting on accounts.
+4. ✅ **Cut jobwork over** behind a feature flag, keeping local password login as the rollback path for
    one release. Existing users link on first SSO sign-in via the email branch in §9.2.
+   **Built 2026-08-24.** `SSO_ENABLED` gates it, and with the flag off the routes are not mounted at
+   all rather than merely disabled. The web app reads the flag at RUNTIME from `GET /auth/config`,
+   because a flag compiled into the bundle would need a frontend redeploy to roll back — at exactly
+   the moment nobody can sign in. The password form stays visible beneath the SSO button for the
+   same reason. Not yet switched on anywhere.
 5. **Watch the link rate.** When effectively every active user has a non-null `identityUserId`, the
    flag comes out.
 6. **Delete the email-matching branch**, then **drop `password_hash` from every app database.** A
    password stored in two places is a password that goes stale in one of them.
-7. **Add back-channel logout** (§10), then the instant sync (§11).
+7. ✅ **Add back-channel logout** (§10), then the instant sync (§11).
+   Back-channel logout is **built** — receiver, full token validation, and delivery retries the
+   library does not provide. RP-initiated logout is built too: jobwork's logout revokes locally and
+   then hands the browser to accounts, without which "log out" leaves the SSO cookie alive and the
+   next sign-in completes silently. §11 is **not** built — see the note on that section.
 
 Do not reorder 6 before 5. Until every active user is linked, the email branch is the only thing
 letting them in.
@@ -753,6 +940,12 @@ letting them in.
 
 We deploy to Catalyst AppSail today. The whole point of choosing a protocol rather than a product is
 that this stays true on AWS, a VPS, or anywhere else. Five rules protect that:
+
+🔴 **Rule 1 is the one thing on this page that is still an ACTION, not a rule to respect.** The
+code is written to it — the issuer is config, never derived from a host — but no `octfis.com` name
+points at accounts yet, so every token so far has been signed by `http://localhost:3100`. Nothing is
+lost while that is true (those tokens are local dev only). It stops being free the moment a real user
+signs in, because the issuer is baked into every token already issued.
 
 1. **Own the domain, not the host.** `https://accounts.octfis.com` is the contract; apps must never
    see a `*.catalystserverless.com` URL. 🔴 Set this up on day one — the issuer URL is baked into
@@ -786,25 +979,105 @@ not exportable — so there is no way back out.
 Catalyst allows **up to 5 mapped domains per application**, with group SSL certificates provisioned
 free, and the domain must already be hosted live. Two are needed.
 
-```json
-// catalyst.json — the appsail key is already an array
-{
-  "appsail": [
-    { "source": "backend", "name": "jobwork-api" },
-    { "source": "accounts", "name": "jobwork-accounts" }
-  ]
+**The deploy path is ready for this, and accounts is already registered** (2026-08-24, before the
+service exists). `catalyst.json` is no longer committed: `scripts/deploy.mjs` generates it per deploy
+with only the service being deployed, because `catalyst deploy --only appsail` is resource targeting
+and would otherwise push every entry in that array. What is committed today:
+
+```jsonc
+// deploy/services.json — what each service IS
+"accounts": {
+  "source": "accounts",
+  "appsail": "octfis-accounts",        // default; overridden per target
+  "appConfigBase": "accounts/app-config.base.json",
+  "appConfigOut": "accounts/app-config.json",
+  "localEnv": "accounts/.env",
+  "build": ["build:accounts"],
+  "requiredEnv": ["DATABASE_URL", "OIDC_ISSUER"]
 }
+
+// deploy/targets.json — WHERE it lands, per target
+"staging":    { "accounts": { "envFile": "accounts/.env.staging",
+                              "appsail": "octfis-accounts-staging" } }
+"production": { "accounts": { "envFile": "accounts/.env.production" } }  // default name
 ```
 
-- `deploy/targets.json` gains a service dimension — each target currently names one `envFile`
-  (`backend/.env.staging`), and accounts needs its own env file and its own generated
-  `app-config.json`.
+- ✅ **Deployed to production, 2026-08-31.** `npm run deploy:production:accounts` puts
+  `octfis-accounts` behind `accounts.octfis.com`; `npm run deploy:production:api` puts `jobwork-api`
+  behind `jobwork.octfis.com`. **Order matters and is not obvious:** accounts goes FIRST, because
+  the api deploy is what turns SSO on and the client row it authenticates with is only loaded when
+  accounts boots. Reversed, production has no password login and no working SSO at the same time.
+- ⚠️ **Staging is configured, not deployed.** Both env files carry a full `SSO_*` block and
+  `jobwork-staging` is registered. What is missing is infrastructure: the console lists exactly ONE
+  AppSail in the staging project (`jobwork-api`), so `octfis-accounts-staging` has to be created
+  before anything works, and its `url_prefix` must be `octfis-accounts-staging` for the issuer to
+  resolve. The hostname pattern is now confirmed rather than guessed — `jobwork-api` reports
+  `url_prefix: jobwork` at `jobwork.development.catalystappsail.com`, i.e.
+  `<url_prefix>.development.catalystappsail.com`. The old value here was the bare
+  `<appsail>.catalystappsail.com`, which would have failed every sign-in.
+- 🔴 **Staging's issuer stays on a Catalyst hostname, decided 2026-08-31 against §14 rule 1.** Two
+  costs were accepted: the issuer is permanent on a host we do not own, and staging shares its
+  registrable domain with every other Catalyst tenant — so its cookie topology is not production's
+  under `octfis.com`, and staging cannot rehearse that part. Mapping `accounts-staging.octfis.com`
+  remains the fix; no DNS record exists for it today.
+- 🔴 **Not named `jobwork-accounts`.** Accounts is estate-wide shared infrastructure with its own
+  domain (§14), and jobwork is only its first client; naming it after one client would bake that
+  inversion into the console and the URLs.
+- 🔴 **Accounts is a different AppSail in each target.** Staging and production are different Zoho
+  accounts in different data centres, so staging overrides the name and production takes the default.
+  The `api` service keeps one name for both; only accounts diverges. The banner printed by
+  `node scripts/deploy.mjs <target> accounts` is the authority on which name a create-flow prompt
+  wants.
+- `requiredEnv` is the minimum the design already fixes — `DATABASE_URL` because all state lives in
+  our Postgres (§14 rule 2), `OIDC_ISSUER` because the issuer is baked into every token and cannot
+  change later (§14 rule 1). Signing keys are **not** env vars: §7.3 keeps them in `signing_keys`.
+  Grow the list as the service is built.
+- 🔴 **`accounts/.env` is parked out of the upload** like `backend/.env`. `build_path` is `.` relative
+  to each source folder, so anything left there is zipped — `deploy.mjs` parks the deployed service's
+  local env to `.env.deploy-backup-<service>`.
+- A service entry may also override `catalystrc`. That is the escape hatch for the next item without
+  reshaping anything.
 - **Verify once in the console:** that two mapped domains in one project can point at two _different_
   AppSail services. If mapping turns out to be project-wide, put accounts in its own Catalyst project
-  — no design change, just another `catalystrc` and another target entry.
-- **Staging must mirror the domain topology.** Testing on the default `*.catalystserverless.com`
-  hostnames would not be same-site (that domain is very likely on the Public Suffix List), §11 would
-  fail, and it would look like the design is broken when it is not.
+  — no design change, just another `catalystrc` and a per-service override pointing at it.
+- **Staging must mirror the domain topology** — but not for the reason first written here.
+
+  _Corrected 2026-08-24._ The original claim was that the default Catalyst hostnames "would not be
+  same-site (that domain is very likely on the Public Suffix List)". A check of
+  `publicsuffix.org/list/public_suffix_list.dat` found **no entry** for `catalyst*`, `zoho` or
+  `appsail`. Treat that as probable, not certain — the list is ~250KB and the fetch may have been
+  summarised — but do not plan around the PSL claim as written.
+
+  The conclusion survives the correction, because both branches are bad:
+
+  | If `catalystappsail.com` is… | Then staging…                                                                                                                                                                                                                      |
+  | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | **not** on the PSL (likely)  | is same-site — and so is **every other Zoho customer's app**, because they share the registrable domain. `SameSite=Lax` stops treating other Catalyst tenants as cross-site. Production under `octfis.com` has no such neighbours. |
+  | on the PSL                   | is cross-site, §11 fails there while working in production, and it looks like the design is broken when it is not.                                                                                                                 |
+
+  Either way staging exercises a topology production does not have, which is the whole point of
+  having a staging environment for this.
+
+  🔴 **Be accurate about what a Catalyst hostname actually breaks**, or this reads as scaremongering
+  and gets ignored. The phase-1 login flow **works** cross-site: Authorization Code + PKCE is
+  top-level redirects, `SameSite=Lax` sends the cookie on a top-level GET navigation, `__Host-` works
+  on any HTTPS host, and back-channel logout is server-to-server. What you lose is (a) §11's silent
+  `prompt=none` iframe, which is third-party cookie territory and is deferred out of phase 1 — so it
+  bites later, in production; (b) an issuer on a host we do not own, which §14 rule 1 says is baked
+  into every token; and (c) any rehearsal of the thing that actually misbehaves when domains are wrong.
+
+  **Also practical:** a default AppSail hostname is `<app>-<zaid>.<env>.catalystappsail.com`, so
+  `accounts-staging.catalystappsail.com` is not a name that can simply be chosen — getting a clean
+  hostname means mapping a domain, at which point map one we own. ⚠️ Note that
+  `backend/.env.staging` currently has `APP_URL=https://jobwork.development.catalystappsail.com`,
+  which has no ZAID and does not match that pattern — either something is already mapped there or
+  that value is stale. Confirm before planning around it.
+
+  **The recommendation:** map `accounts-staging.octfis.com` **and** `jobwork-staging.octfis.com`.
+  We already own `octfis.com`, group SSL is free, and the limit is 5 mapped domains per app — two
+  DNS records against the cost of finding cookie problems in production. Production already has
+  `jobwork.octfis.com`, so only `accounts.octfis.com` is outstanding there.
+
 - Domain mapping targets the **production** URL of a project, so the Development environment and
   localhost have no mapped domain. Local development needs `mkcert` and hosts entries to reproduce
   the same-site relationship — do this early, because the cookie and iframe behaviour is exactly what
