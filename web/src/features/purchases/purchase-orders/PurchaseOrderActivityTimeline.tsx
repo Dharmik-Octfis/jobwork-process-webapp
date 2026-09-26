@@ -15,27 +15,35 @@ export function PurchaseOrderActivityTimeline({ orgId, poId }: PurchaseOrderActi
   });
 
   if (isLoading) {
-    return <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>Loading activity history...</div>;
+    return (
+      <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>
+        Loading activity history...
+      </div>
+    );
   }
 
   if (!activities || activities.length === 0) {
-    return <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>No activity history recorded yet.</div>;
+    return (
+      <div style={{ padding: '24px', color: '#64748b', textAlign: 'center' }}>
+        No activity history recorded yet.
+      </div>
+    );
   }
 
   return (
     <div style={{ padding: '0', width: '100%' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
         <thead>
-          <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
             <th
               style={{
                 padding: '12px 16px',
-                color: '#64748b',
-                fontSize: '12px',
+                color: '#475569',
+                fontSize: '11.5px',
                 fontWeight: 600,
                 textTransform: 'uppercase',
                 width: '220px',
-                letterSpacing: '0.5px',
+                letterSpacing: '0.04em',
               }}
             >
               DATE
@@ -43,11 +51,11 @@ export function PurchaseOrderActivityTimeline({ orgId, poId }: PurchaseOrderActi
             <th
               style={{
                 padding: '12px 16px',
-                color: '#64748b',
-                fontSize: '12px',
+                color: '#475569',
+                fontSize: '11.5px',
                 fontWeight: 600,
                 textTransform: 'uppercase',
-                letterSpacing: '0.5px',
+                letterSpacing: '0.04em',
               }}
             >
               DETAILS
@@ -58,10 +66,20 @@ export function PurchaseOrderActivityTimeline({ orgId, poId }: PurchaseOrderActi
           {activities.map((activity) => {
             const formattedDate = format(new Date(activity.createdAt), 'dd-MM-yyyy hh:mm a');
             const titleText = activity.title || activity.description || 'Activity recorded';
-            const userDisplayName = activity.performedBy ? activity.performedBy.replace(/\s*\(User\)$/i, '') : null;
+            const userDisplayName = activity.performedBy
+              ? activity.performedBy.replace(/\s*\(User\)$/i, '')
+              : null;
 
             return (
-              <tr key={activity.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+              <tr
+                key={activity.id}
+                style={{
+                  borderBottom: '1px solid #f1f5f9',
+                  transition: 'background 0.12s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
                 <td
                   style={{
                     padding: '14px 16px',
@@ -86,7 +104,10 @@ export function PurchaseOrderActivityTimeline({ orgId, poId }: PurchaseOrderActi
                   </span>
                   {userDisplayName && (
                     <span style={{ color: '#64748b', marginLeft: '6px' }}>
-                      by - <span style={{ color: '#60a5fa', cursor: 'pointer' }}>{userDisplayName}</span>
+                      by -{' '}
+                      <span style={{ color: '#0284c7', fontWeight: 500, cursor: 'pointer' }}>
+                        {userDisplayName}
+                      </span>
                     </span>
                   )}
                 </td>

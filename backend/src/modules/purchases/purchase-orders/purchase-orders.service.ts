@@ -37,6 +37,7 @@ export async function getPurchaseOrdersList(organizationId: string, opts: ListQu
         vendor: { select: { contactName: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
+        bills: { select: { id: true, totalAmount: true } },
       },
     });
 

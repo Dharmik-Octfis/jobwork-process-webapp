@@ -1,4 +1,4 @@
-﻿import { format } from 'date-fns';
+import { format } from 'date-fns';
 interface Html2PdfOptions {
   margin?: number | [number, number] | [number, number, number, number];
   filename?: string;
@@ -30,6 +30,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
 import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
+import { PurchaseOrderStatusBadge } from './PurchaseOrderStatusBadge';
 
 function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -49,7 +50,7 @@ function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: PO
         download={attachment.name || 'attachment'}
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
+        style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 500 }}
       >
         {attachment.name || 'Attachment'}
       </a>
@@ -220,22 +221,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           >
             {po.poNumber}
           </h2>
-          <span
-            style={{
-              // Lowercased: the column stores "Draft", not "draft" (the filter
-              // presets match it capitalised), so the bare compare was never true
-              // and a draft PO was painted with the issued colour.
-              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
-              color: 'white',
-              fontSize: '11px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontWeight: 500,
-              textTransform: 'capitalize',
-            }}
-          >
-            {po.status || 'Draft'}
-          </span>
+          <PurchaseOrderStatusBadge status={po.status} size="md" />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -248,14 +234,27 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             }
             style={{
               padding: '6px 12px',
-              border: '1px solid #d1d5db',
-              background: 'white',
-              borderRadius: '4px',
+              border: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              color: '#1e293b',
+              borderRadius: '6px',
               fontSize: '13px',
+              fontWeight: 500,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f0f7fd';
+              e.currentTarget.style.color = '#0284c7';
+              e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#f8fafc';
+              e.currentTarget.style.color = '#1e293b';
+              e.currentTarget.style.borderColor = '#e2e8f0';
             }}
           >
             <Edit size={14} /> <span className="action-btn-text">Edit</span>
@@ -267,17 +266,40 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
-                border: '1px solid #d1d5db',
-                background: 'white',
-                borderRadius: '4px',
+                border: isMoreOpen ? '1px solid #0284c7' : '1px solid #e2e8f0',
+                background: isMoreOpen ? '#f0f7fd' : '#f8fafc',
+                color: isMoreOpen ? '#0284c7' : '#1e293b',
+                borderRadius: '6px',
                 fontSize: '13px',
+                fontWeight: 500,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isMoreOpen) {
+                  e.currentTarget.style.backgroundColor = '#f1f5f9';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isMoreOpen) {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                }
               }}
             >
-              <span className="action-btn-text">More</span> <ChevronDown size={14} />
+              <span className="action-btn-text">More</span>{' '}
+              <ChevronDown
+                size={14}
+                color={isMoreOpen ? '#0284c7' : '#64748b'}
+                style={{
+                  transform: isMoreOpen ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s',
+                }}
+              />
             </button>
 
             {isMoreOpen && (
@@ -286,17 +308,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   position: 'absolute',
                   top: '100%',
                   right: 0,
-                  marginTop: '4px',
+                  marginTop: '6px',
                   background: 'white',
-                  border: '1px solid #eef0f3',
-                  borderRadius: '4px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
                   boxShadow:
-                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                  width: '140px',
-                  zIndex: 10,
+                    '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+                  width: '150px',
+                  zIndex: 20,
                   display: 'flex',
                   flexDirection: 'column',
-                  overflow: 'hidden',
+                  padding: '4px',
                 }}
               >
                 <div
@@ -309,14 +331,22 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   style={{
                     padding: '8px 12px',
                     fontSize: '13px',
+                    borderRadius: '4px',
                     cursor: 'pointer',
-                    color: '#334155',
+                    color: '#1e293b',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
+                    transition: 'all 0.15s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.color = '#0284c7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#1e293b';
+                  }}
                 >
                   <Copy size={14} /> Clone
                 </div>
@@ -328,14 +358,16 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   style={{
                     padding: '8px 12px',
                     fontSize: '13px',
+                    borderRadius: '4px',
                     cursor: 'pointer',
                     color: '#ef4444',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
+                    transition: 'all 0.15s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fef2f2')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
                   <Trash2 size={14} /> Delete
                 </div>
@@ -345,14 +377,27 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           <button
             onClick={onClose}
             style={{
-              padding: '6px 8px',
+              padding: '6px',
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
               color: '#64748b',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f1f5f9';
+              e.currentTarget.style.color = '#1e293b';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#64748b';
             }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
       </div>
@@ -373,28 +418,48 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div ref={pdfMenuRef}>
             <button
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
               style={{
-                padding: '12px 0',
-                border: 'none',
-                background: 'transparent',
+                padding: '6px 12px',
+                border: isPdfMenuOpen ? '1px solid #0284c7' : '1px solid #e2e8f0',
+                background: isPdfMenuOpen ? '#f0f7fd' : '#f8fafc',
+                color: isPdfMenuOpen ? '#0284c7' : '#475569',
+                borderRadius: '6px',
                 fontSize: '13px',
+                fontWeight: 500,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                color: '#777777',
-                fontWeight: 400,
+                transition: 'all 0.15s ease',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#222222')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#777777')}
+              onMouseEnter={(e) => {
+                if (!isPdfMenuOpen) {
+                  e.currentTarget.style.backgroundColor = '#f0f7fd';
+                  e.currentTarget.style.color = '#0284c7';
+                  e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isPdfMenuOpen) {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.color = '#475569';
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                }
+              }}
             >
-              <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
-              <ChevronDown size={14} />
+              <FileText size={15} /> PDF/<span className="action-btn-text">Print</span>{' '}
+              <ChevronDown
+                size={13}
+                style={{
+                  transform: isPdfMenuOpen ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s',
+                }}
+              />
             </button>
           </div>
 
@@ -407,20 +472,30 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`)
                 }
                 style={{
-                  padding: '6px 16px',
-                  background: '#0062ff',
+                  padding: '7px 16px',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   fontSize: '13px',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
+                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+                  e.currentTarget.style.transform = 'none';
                 }}
               >
-                <FileText size={16} /> Convert to Bill
+                <FileText size={15} /> Convert to Bill
               </button>
             </>
           )}
@@ -431,16 +506,16 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 position: 'absolute',
                 top: '100%',
                 left: 0,
-                marginTop: '4px',
+                marginTop: '6px',
                 background: 'white',
-                border: '1px solid #eef0f3',
-                borderRadius: '4px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                width: '130px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+                width: '150px',
                 zIndex: 20,
                 display: 'flex',
                 flexDirection: 'column',
-                overflow: 'hidden',
+                padding: '4px',
               }}
             >
               <div
@@ -448,14 +523,22 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 style={{
                   padding: '8px 12px',
                   fontSize: '13px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
-                  color: '#334155',
+                  color: '#1e293b',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '8px',
+                  transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.color = '#0284c7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#1e293b';
+                }}
               >
                 <FileText size={14} /> Download PDF
               </div>
@@ -464,14 +547,22 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 style={{
                   padding: '8px 12px',
                   fontSize: '13px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
-                  color: '#334155',
+                  color: '#1e293b',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '8px',
+                  transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.color = '#0284c7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#1e293b';
+                }}
               >
                 <Printer size={14} /> Print
               </div>
@@ -496,7 +587,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              borderBottom: '1px solid #eef0f3', // Keep borderBottom to separate tabs
+              borderBottom: '1px solid #e2e8f0',
             }}
           >
             <div style={{ display: 'flex', gap: '20px' }}>
@@ -508,24 +599,30 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   background: 'none',
                   border: 'none',
                   borderBottom:
-                    activeSubTab === 'Bills' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Bills' ? '#0062ff' : '#475569',
+                    activeSubTab === 'Bills' ? '2px solid #0284c7' : '2px solid transparent',
+                  color: activeSubTab === 'Bills' ? '#0284c7' : '#64748b',
                   fontWeight: activeSubTab === 'Bills' ? 600 : 500,
                   fontSize: '13px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
+                  transition: 'all 0.12s ease',
                 }}
               >
                 Bills{' '}
                 <span
                   style={{
-                    background: '#eff6ff',
-                    color: '#0062ff',
-                    padding: '1px 6px',
+                    background: activeSubTab === 'Bills' ? '#f0f7fd' : '#f1f5f9',
+                    color: activeSubTab === 'Bills' ? '#0284c7' : '#64748b',
+                    border:
+                      activeSubTab === 'Bills'
+                        ? '1px solid rgba(2, 132, 199, 0.25)'
+                        : '1px solid #e2e8f0',
+                    padding: '1px 7px',
                     borderRadius: '10px',
                     fontSize: '11px',
+                    fontWeight: 600,
                   }}
                 >
                   {po.bills?.length || 0}
@@ -539,24 +636,30 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   background: 'none',
                   border: 'none',
                   borderBottom:
-                    activeSubTab === 'Receives' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Receives' ? '#0062ff' : '#475569',
+                    activeSubTab === 'Receives' ? '2px solid #0284c7' : '2px solid transparent',
+                  color: activeSubTab === 'Receives' ? '#0284c7' : '#64748b',
                   fontWeight: activeSubTab === 'Receives' ? 600 : 500,
                   fontSize: '13px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
+                  transition: 'all 0.12s ease',
                 }}
               >
                 Receives{' '}
                 <span
                   style={{
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    padding: '1px 6px',
+                    background: activeSubTab === 'Receives' ? '#f0f7fd' : '#f1f5f9',
+                    color: activeSubTab === 'Receives' ? '#0284c7' : '#64748b',
+                    border:
+                      activeSubTab === 'Receives'
+                        ? '1px solid rgba(2, 132, 199, 0.25)'
+                        : '1px solid #e2e8f0',
+                    padding: '1px 7px',
                     borderRadius: '10px',
                     fontSize: '11px',
+                    fontWeight: 600,
                   }}
                 >
                   0
@@ -574,26 +677,51 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               justifyContent: 'space-between',
               marginBottom: '20px',
               fontSize: '13px',
+              background: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              marginTop: '16px',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
-              <span>
-                Receive Status : <strong style={{ color: '#64748b' }}>YET TO BE RECEIVED</strong>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#64748b', fontWeight: 500 }}>Receive Status:</span>
+                <span
+                  style={{
+                    background: '#f1f5f9',
+                    color: '#475569',
+                    border: '1px solid #e2e8f0',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                  }}
+                >
+                  YET TO BE RECEIVED
+                </span>
               </span>
-              <span style={{ color: '#cbd5e1' }}>|</span>
-              <span>
-                Bill Status :{' '}
-                <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+              <span style={{ color: '#e2e8f0' }}>|</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#64748b', fontWeight: 500 }}>Bill Status:</span>
+                <span
+                  style={{
+                    background: po.bills?.length ? '#ecfdf5' : '#f1f5f9',
+                    color: po.bills?.length ? '#059669' : '#475569',
+                    border: po.bills?.length ? '1px solid #a7f3d0' : '1px solid #e2e8f0',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                  }}
+                >
                   {po.bills?.length ? 'BILLED' : 'UNBILLED'}
-                </strong>
+                </span>
               </span>
             </div>
 
             {/* Toggle Switch */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
-              >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
                 Show PDF View
               </span>
               <label
@@ -618,8 +746,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
-                    transition: '0.3s',
+                    backgroundColor: isPdfView ? '#0284c7' : '#cbd5e1',
+                    transition: '0.2s',
                     borderRadius: '20px',
                   }}
                 />
@@ -632,8 +760,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     left: isPdfView ? '20px' : '3px',
                     bottom: '3px',
                     backgroundColor: 'white',
-                    transition: '0.3s',
+                    transition: '0.2s',
                     borderRadius: '50%',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
                   }}
                 />
               </label>
@@ -733,7 +862,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             onClick={() =>
                               navigate(`/organizations/${orgId}/purchases/bills/${bill.id}`)
                             }
-                            style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
+                            style={{ color: '#0284c7', cursor: 'pointer', fontWeight: 600 }}
                           >
                             {bill.billNumber}
                           </span>
@@ -834,7 +963,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     <div
                       style={{
                         fontSize: '13px',
-                        color: '#0062ff',
+                        color: '#0284c7',
                         fontWeight: 600,
                         marginBottom: '2px',
                       }}
@@ -899,37 +1028,31 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 }}
               >
                 <div>
-                  <div style={labelStyle}>STATUS</div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      marginTop: '4px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
-                      <span
-                        style={{
-                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
-                          color: 'white',
-                          fontSize: '10px',
-                          padding: '1px 6px',
-                          borderRadius: '3px',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {po.status || 'Draft'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
-                    </div>
+                  <div style={labelStyle}>ORDER STATUS</div>
+                  <div style={{ marginBottom: '12px', marginTop: '4px' }}>
+                    <PurchaseOrderStatusBadge status={po.status} />
+                  </div>
+
+                  <div style={labelStyle}>BILLED STATUS</div>
+                  <div style={{ marginTop: '4px' }}>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.03em',
+                        background: po.bills?.length ? '#ecfdf5' : '#f1f5f9',
+                        color: po.bills?.length ? '#059669' : '#475569',
+                        border: po.bills?.length ? '1px solid #a7f3d0' : '1px solid #e2e8f0',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
+                    </span>
                   </div>
                 </div>
 
@@ -946,16 +1069,23 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 </div>
 
                 <div>
-                  <div style={labelStyle}>PAYMENT TERMS</div>
-                  <div style={valueStyle}>{getPaymentTermLabel(po.paymentTerms)}</div>
+                  <div style={labelStyle}>REFERENCE#</div>
+                  <div style={valueStyle}>
+                    {po.referenceNumber ||
+                      ((po.customFields as Record<string, unknown>)?.referenceNumber as string) ||
+                      '-'}
+                  </div>
 
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
-                  <div style={valueStyle}>{po.deliveryType || 'Location'}</div>
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>PAYMENT TERMS</div>
+                  <div style={valueStyle}>{getPaymentTermLabel(po.paymentTerms)}</div>
                 </div>
 
                 <div>
                   <div style={labelStyle}>PO TYPE</div>
                   <div style={valueStyle}>Standard</div>
+
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
+                  <div style={valueStyle}>{po.deliveryType || 'Location'}</div>
                 </div>
               </div>
 
@@ -1051,14 +1181,21 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             style={{
                               padding: '14px 12px',
                               fontSize: '13px',
-                              color: '#0062ff',
-                              fontWeight: 500,
+                              color: '#0284c7',
+                              fontWeight: 600,
                               verticalAlign: 'top',
                             }}
                           >
                             {item.item?.name || 'Item'}
                             {item.description && (
-                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                              <div
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#64748b',
+                                  marginTop: '2px',
+                                  fontWeight: 400,
+                                }}
+                              >
                                 {item.description}
                               </div>
                             )}
@@ -1195,7 +1332,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                               color: '#1e293b',
                             }}
                           >
-                            <FileText size={14} color="#0062ff" />
+                            <FileText size={14} color="#0284c7" />
                             <POAttachmentLink orgId={orgId!} attachment={att} />
                             {att.size && (
                               <span style={{ color: '#94a3b8', fontSize: '11px' }}>

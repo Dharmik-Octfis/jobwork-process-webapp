@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
@@ -16,6 +16,7 @@ import {
   ChevronDown,
   FileText,
   X,
+  Search,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPaymentTerms } from './payment-terms.api';
@@ -157,6 +158,7 @@ export function CreatePurchaseOrder() {
     control,
     handleSubmit,
     watch,
+    getValues,
     setValue,
     reset,
     trigger,
@@ -165,7 +167,7 @@ export function CreatePurchaseOrder() {
     defaultValues: {
       status: 'Draft',
       date: new Date().toISOString().split('T')[0],
-      deliveryType: 'Location',
+      referenceNumber: '',
       lineItems: [
         {
           itemId: '',
@@ -202,6 +204,11 @@ export function CreatePurchaseOrder() {
       const resetData: CreatePurchaseOrderData = {
         vendorId: existingPo.vendorId || '',
         poNumber: isClone ? '' : existingPo.poNumber || '',
+        referenceNumber: isClone
+          ? ''
+          : existingPo.referenceNumber ||
+            ((existingPo.customFields as Record<string, unknown>)?.referenceNumber as string) ||
+            '',
         date: isClone
           ? new Date().toISOString().split('T')[0]
           : existingPo.date
@@ -243,6 +250,22 @@ export function CreatePurchaseOrder() {
 
       if (existingPo.documents && Array.isArray(existingPo.documents)) {
         setAttachedFiles(existingPo.documents);
+      }
+
+      if (existingPo.customFields && typeof existingPo.customFields === 'object') {
+        const cf = existingPo.customFields as Record<string, unknown>;
+        if (cf.taxPreference === 'tax_inclusive' || cf.taxPreference === 'tax_exclusive') {
+          setTaxPreference(cf.taxPreference);
+        }
+        if (cf.discountLevel === 'line_item' || cf.discountLevel === 'transaction') {
+          setDiscountLevel(cf.discountLevel);
+        }
+        if (cf.transactionDiscountValue !== undefined && cf.transactionDiscountValue !== null) {
+          setTransactionDiscountValue(String(cf.transactionDiscountValue));
+        }
+        if (cf.transactionDiscountType === 'fixed' || cf.transactionDiscountType === 'percentage') {
+          setTransactionDiscountType(cf.transactionDiscountType);
+        }
       }
     }
   }, [existingPo, isClone, reset]);
@@ -287,6 +310,43 @@ export function CreatePurchaseOrder() {
   const [attachedFiles, setAttachedFiles] = useState<POAttachment[]>([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+
+  // Zoho Books Style Tax & Discount preferences
+  const [taxPreference, setTaxPreference] = useState<'tax_exclusive' | 'tax_inclusive'>(
+    'tax_exclusive',
+  );
+  const [discountLevel, setDiscountLevel] = useState<'transaction' | 'line_item'>('transaction');
+  const [transactionDiscountValue, setTransactionDiscountValue] = useState<string>('');
+  const [transactionDiscountType, setTransactionDiscountType] = useState<'percentage' | 'fixed'>(
+    'percentage',
+  );
+
+  const [isTaxMenuOpen, setIsTaxMenuOpen] = useState(false);
+  const [isDiscountMenuOpen, setIsDiscountMenuOpen] = useState(false);
+  const [taxSearch, setTaxSearch] = useState('');
+  const [discountSearch, setDiscountSearch] = useState('');
+
+  const taxMenuRef = useRef<HTMLDivElement>(null);
+  const discountMenuRef = useRef<HTMLDivElement>(null);
+
+  const [submitStatus, setSubmitStatus] = useState<'Draft' | 'Issued' | 'Pending Approval'>(
+    'Draft',
+  );
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (taxMenuRef.current && !taxMenuRef.current.contains(event.target as Node)) {
+        setIsTaxMenuOpen(false);
+      }
+      if (discountMenuRef.current && !discountMenuRef.current.contains(event.target as Node)) {
+        setIsDiscountMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setFileUploadError(null);
@@ -359,18 +419,31 @@ export function CreatePurchaseOrder() {
 
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
+
   (watchItems || []).forEach((item: PurchaseOrderItem) => {
     const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
     const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
     const basePrice = qty * rate;
-    const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
-    const discType = item?.discountType || 'percentage';
-
-    const discountAmount =
-      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
     computedSubTotal += basePrice;
-    computedTotalDiscount += discountAmount;
+
+    if (discountLevel === 'line_item') {
+      const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
+      const discType = item?.discountType || 'percentage';
+      const discountAmount =
+        discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
+      computedTotalDiscount += discountAmount;
+    }
   });
+
+  if (discountLevel === 'transaction') {
+    const tDiscVal = isNaN(Number(transactionDiscountValue)) ? 0 : Number(transactionDiscountValue);
+    if (transactionDiscountType === 'percentage') {
+      computedTotalDiscount = (computedSubTotal * tDiscVal) / 100;
+    } else {
+      computedTotalDiscount = tDiscVal;
+    }
+  }
+
   const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
 
   useEffect(() => {
@@ -389,7 +462,7 @@ export function CreatePurchaseOrder() {
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('poNumber');
+      const currentValue = getValues('poNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
         setValue('poNumber', generatedNumber);
@@ -397,7 +470,7 @@ export function CreatePurchaseOrder() {
         setPoPrefix(preference.prefix);
       }
     }
-  }, [preference, setValue, watch, lastPrefilledNumber, isEdit]);
+  }, [preference, setValue, getValues, lastPrefilledNumber, isEdit]);
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
@@ -458,6 +531,7 @@ export function CreatePurchaseOrder() {
 
     const finalData = {
       ...data,
+      status: submitStatus || data.status || 'Draft',
       deliveryCustomerId: data.deliveryCustomerId || null,
       deliveryLocationId: data.deliveryLocationId || null,
       deliveryDate: data.deliveryDate || null,
@@ -470,7 +544,12 @@ export function CreatePurchaseOrder() {
       documents: attachedFiles,
       customFields: {
         ...data.customFields,
+        ...(data.referenceNumber ? { referenceNumber: data.referenceNumber } : {}),
         ...(customDeliveryName ? { customDeliveryName } : {}),
+        taxPreference,
+        discountLevel,
+        transactionDiscountValue: transactionDiscountValue ? Number(transactionDiscountValue) : 0,
+        transactionDiscountType,
       },
     };
     console.log('Submitting PO data:', finalData);
@@ -734,24 +813,11 @@ export function CreatePurchaseOrder() {
                 </div>
 
                 {watchDeliveryType === 'Location' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <SearchableSelect
-                      options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
-                      value={watch('deliveryLocationId') || undefined}
-                      onChange={(val) => setValue('deliveryLocationId', val)}
-                      placeholder="Select Location"
-                      footerAction={{
-                        text: 'New Location',
-                        icon: <PlusCircle size={16} />,
-                        onClick: () => navigate(`/organizations/${orgId}/settings/locations/new`),
-                      }}
-                      style={searchableSelectStyle}
-                    />
-
-                    {selectedLocation && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {selectedLocation ? (
                       <div
                         style={{
-                          padding: '8px 0',
+                          padding: '4px 0',
                           color: '#555',
                           fontSize: '13px',
                           lineHeight: '1.6',
@@ -786,7 +852,7 @@ export function CreatePurchaseOrder() {
                                   padding: '4px 8px',
                                   fontSize: '14px',
                                   fontWeight: 500,
-                                  border: '1px solid #0062ff',
+                                  border: '1px solid #0284c7',
                                   borderRadius: '4px',
                                   outline: 'none',
                                   color: '#111',
@@ -808,7 +874,7 @@ export function CreatePurchaseOrder() {
                               <span>{customDeliveryName || selectedLocation.name}</span>
                               <Pencil
                                 size={14}
-                                color="#0062ff"
+                                color="#0284c7"
                                 style={{ cursor: 'pointer' }}
                                 onClick={() => {
                                   setCustomDeliveryName(
@@ -829,11 +895,10 @@ export function CreatePurchaseOrder() {
                         <div>
                           {selectedLocation.country}, {selectedLocation.zip}
                         </div>
-                        <div>{selectedLocation.phone}</div>
                         <div
                           style={{
                             marginTop: '12px',
-                            color: '#0062ff',
+                            color: '#0284c7',
                             cursor: 'pointer',
                             display: 'inline-block',
                             fontWeight: 500,
@@ -842,6 +907,20 @@ export function CreatePurchaseOrder() {
                         >
                           Change destination to deliver
                         </div>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          marginTop: '4px',
+                          color: '#0284c7',
+                          cursor: 'pointer',
+                          display: 'inline-block',
+                          fontWeight: 500,
+                          fontSize: '13px',
+                        }}
+                        onClick={() => setIsDeliveryAddressModalOpen(true)}
+                      >
+                        Select destination to deliver
                       </div>
                     )}
                   </div>
@@ -902,7 +981,7 @@ export function CreatePurchaseOrder() {
                                   padding: '4px 8px',
                                   fontSize: '14px',
                                   fontWeight: 500,
-                                  border: '1px solid #0062ff',
+                                  border: '1px solid #0284c7',
                                   borderRadius: '4px',
                                   outline: 'none',
                                   color: '#111',
@@ -924,7 +1003,7 @@ export function CreatePurchaseOrder() {
                               <span>{customDeliveryName || selectedCustomer.contactName}</span>
                               <Pencil
                                 size={14}
-                                color="#0062ff"
+                                color="#0284c7"
                                 style={{ cursor: 'pointer' }}
                                 onClick={() => {
                                   setCustomDeliveryName(
@@ -949,7 +1028,7 @@ export function CreatePurchaseOrder() {
                         <div
                           style={{
                             marginTop: '12px',
-                            color: '#0062ff',
+                            color: '#0284c7',
                             cursor: 'pointer',
                             display: 'inline-block',
                             fontWeight: 500,
@@ -996,6 +1075,16 @@ export function CreatePurchaseOrder() {
                 )}
               </div>
 
+              <label style={labelStyle}>Reference#</label>
+              <div>
+                <input
+                  type="text"
+                  placeholder="e.g. SO-LHK-06431"
+                  {...register('referenceNumber')}
+                  style={{ ...inputStyle, maxWidth: '440px' }}
+                />
+              </div>
+
               <label style={{ ...labelStyle, color: '#ef4444' }}>Date*</label>
               <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
                 <Controller
@@ -1009,7 +1098,7 @@ export function CreatePurchaseOrder() {
                         field.onChange(next);
                         // Delivery date is validated against this one, so it has to
                         // be re-checked whenever this moves.
-                        if (watch('deliveryDate')) trigger('deliveryDate');
+                        if (getValues('deliveryDate')) trigger('deliveryDate');
                       }}
                       ariaLabel="Purchase order date"
                       style={{ ...inputStyle, maxWidth: '100%' }}
@@ -1077,7 +1166,7 @@ export function CreatePurchaseOrder() {
           >
             <div
               style={{
-                padding: '14px 20px',
+                padding: '12px 20px',
                 borderBottom: '1px solid #e2e8f0',
                 background: '#f8fafc',
                 fontWeight: 600,
@@ -1091,6 +1180,244 @@ export function CreatePurchaseOrder() {
               }}
             >
               <span>Item Details</span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {/* Tax Preference Dropdown */}
+                <div ref={taxMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTaxMenuOpen((prev) => !prev);
+                      setIsDiscountMenuOpen(false);
+                      setTaxSearch('');
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '5px 12px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                    }}
+                  >
+                    <span>
+                      {taxPreference === 'tax_exclusive' ? 'Tax Exclusive' : 'Tax Inclusive'}
+                    </span>
+                    <ChevronDown size={14} color="#64748b" />
+                  </button>
+
+                  {isTaxMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        right: 0,
+                        width: '200px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        zIndex: 50,
+                        padding: '6px 0',
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          borderBottom: '1px solid #f1f5f9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <Search size={13} color="#94a3b8" />
+                        <input
+                          type="text"
+                          value={taxSearch}
+                          onChange={(e) => setTaxSearch(e.target.value)}
+                          placeholder="Search"
+                          autoFocus
+                          style={{
+                            border: 'none',
+                            outline: 'none',
+                            fontSize: '12px',
+                            width: '100%',
+                            color: '#1e293b',
+                            background: 'transparent',
+                          }}
+                        />
+                      </div>
+                      <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                        {[
+                          { label: 'Tax Exclusive', value: 'tax_exclusive' as const },
+                          { label: 'Tax Inclusive', value: 'tax_inclusive' as const },
+                        ]
+                          .filter((opt) =>
+                            opt.label.toLowerCase().includes(taxSearch.toLowerCase()),
+                          )
+                          .map((opt) => (
+                            <div
+                              key={opt.value}
+                              onClick={() => {
+                                setTaxPreference(opt.value);
+                                setIsTaxMenuOpen(false);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                color: taxPreference === opt.value ? '#0284c7' : '#334155',
+                                fontWeight: taxPreference === opt.value ? 600 : 400,
+                                background: taxPreference === opt.value ? '#f0f9ff' : 'transparent',
+                                cursor: 'pointer',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (taxPreference !== opt.value) {
+                                  e.currentTarget.style.background = '#f8fafc';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (taxPreference !== opt.value) {
+                                  e.currentTarget.style.background = 'transparent';
+                                }
+                              }}
+                            >
+                              <span>{opt.label}</span>
+                              {taxPreference === opt.value && <Check size={14} color="#0284c7" />}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Discount Level Dropdown */}
+                <div ref={discountMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDiscountMenuOpen((prev) => !prev);
+                      setIsTaxMenuOpen(false);
+                      setDiscountSearch('');
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '5px 12px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                    }}
+                  >
+                    <span>
+                      {discountLevel === 'transaction'
+                        ? 'At Transaction Level'
+                        : 'At Line Item Level'}
+                    </span>
+                    <ChevronDown size={14} color="#64748b" />
+                  </button>
+
+                  {isDiscountMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        right: 0,
+                        width: '210px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        zIndex: 50,
+                        padding: '6px 0',
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          borderBottom: '1px solid #f1f5f9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <Search size={13} color="#94a3b8" />
+                        <input
+                          type="text"
+                          value={discountSearch}
+                          onChange={(e) => setDiscountSearch(e.target.value)}
+                          placeholder="Search"
+                          autoFocus
+                          style={{
+                            border: 'none',
+                            outline: 'none',
+                            fontSize: '12px',
+                            width: '100%',
+                            color: '#1e293b',
+                            background: 'transparent',
+                          }}
+                        />
+                      </div>
+                      <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                        {[
+                          { label: 'At Transaction Level', value: 'transaction' as const },
+                          { label: 'At Line Item Level', value: 'line_item' as const },
+                        ]
+                          .filter((opt) =>
+                            opt.label.toLowerCase().includes(discountSearch.toLowerCase()),
+                          )
+                          .map((opt) => (
+                            <div
+                              key={opt.value}
+                              onClick={() => {
+                                setDiscountLevel(opt.value);
+                                setIsDiscountMenuOpen(false);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                color: discountLevel === opt.value ? '#0284c7' : '#334155',
+                                fontWeight: discountLevel === opt.value ? 600 : 400,
+                                background: discountLevel === opt.value ? '#f0f9ff' : 'transparent',
+                                cursor: 'pointer',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (discountLevel !== opt.value) {
+                                  e.currentTarget.style.background = '#f8fafc';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (discountLevel !== opt.value) {
+                                  e.currentTarget.style.background = 'transparent';
+                                }
+                              }}
+                            >
+                              <span>{opt.label}</span>
+                              {discountLevel === opt.value && <Check size={14} color="#0284c7" />}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="responsive-table-wrapper">
               <table
@@ -1115,7 +1442,7 @@ export function CreatePurchaseOrder() {
                     <th
                       style={{
                         padding: '10px 16px',
-                        width: '35%',
+                        width: discountLevel === 'line_item' ? '34%' : '38%',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
                       }}
@@ -1125,7 +1452,7 @@ export function CreatePurchaseOrder() {
                     <th
                       style={{
                         padding: '10px 16px',
-                        width: '13%',
+                        width: discountLevel === 'line_item' ? '13%' : '16%',
                         textAlign: 'right',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
@@ -1136,7 +1463,7 @@ export function CreatePurchaseOrder() {
                     <th
                       style={{
                         padding: '10px 16px',
-                        width: '15%',
+                        width: discountLevel === 'line_item' ? '16%' : '20%',
                         textAlign: 'right',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
@@ -1144,21 +1471,23 @@ export function CreatePurchaseOrder() {
                     >
                       RATE
                     </th>
+                    {discountLevel === 'line_item' && (
+                      <th
+                        style={{
+                          padding: '10px 16px',
+                          width: '16%',
+                          textAlign: 'right',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                        }}
+                      >
+                        DISCOUNT
+                      </th>
+                    )}
                     <th
                       style={{
                         padding: '10px 16px',
-                        width: '18%',
-                        textAlign: 'right',
-                        borderBottom: '1px solid #e2e8f0',
-                        borderRight: '1px solid #e2e8f0',
-                      }}
-                    >
-                      DISCOUNT
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 16px',
-                        width: '15%',
+                        width: discountLevel === 'line_item' ? '16%' : '20%',
                         textAlign: 'right',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
@@ -1169,7 +1498,7 @@ export function CreatePurchaseOrder() {
                     <th
                       style={{
                         padding: '10px 12px',
-                        width: '4%',
+                        width: '5%',
                         textAlign: 'center',
                         borderBottom: '1px solid #e2e8f0',
                       }}
@@ -1191,7 +1520,11 @@ export function CreatePurchaseOrder() {
                       : Number(curItem?.discountValue);
                     const discType = curItem?.discountType || 'percentage';
                     const discountAmount =
-                      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
+                      discountLevel === 'line_item'
+                        ? discType === 'percentage'
+                          ? (basePrice * discountVal) / 100
+                          : discountVal
+                        : 0;
                     const calculatedRowAmount = Math.max(0, basePrice - discountAmount);
 
                     return (
@@ -1312,7 +1645,7 @@ export function CreatePurchaseOrder() {
                               >
                                 <span
                                   style={{
-                                    background: '#0062ff',
+                                    background: '#0284c7',
                                     color: '#ffffff',
                                     padding: '3px 8px',
                                     borderRadius: '3px',
@@ -1327,7 +1660,7 @@ export function CreatePurchaseOrder() {
                                 {selectedItem.hsnCode && (
                                   <span style={{ color: '#475569', fontWeight: 500 }}>
                                     HSN Code:{' '}
-                                    <span style={{ color: '#2563eb', fontWeight: 600 }}>
+                                    <span style={{ color: '#0284c7', fontWeight: 600 }}>
                                       {selectedItem.hsnCode}
                                     </span>
                                   </span>
@@ -1392,78 +1725,80 @@ export function CreatePurchaseOrder() {
                             }}
                           />
                         </td>
-                        <td
-                          style={{
-                            padding: '14px 16px',
-                            verticalAlign: 'top',
-                            borderBottom: '1px solid #e2e8f0',
-                            borderRight: '1px solid #e2e8f0',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          <div
+                        {discountLevel === 'line_item' && (
+                          <td
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              width: '100%',
+                              padding: '14px 16px',
+                              verticalAlign: 'top',
+                              borderBottom: '1px solid #e2e8f0',
+                              borderRight: '1px solid #e2e8f0',
                               boxSizing: 'border-box',
-                              border: '1px solid #d1d5db',
-                              borderRadius: '6px',
-                              background: '#ffffff',
                             }}
                           >
-                            <input
-                              type="number"
-                              step="0.01"
-                              {...register(`lineItems.${index}.discountValue`, {
-                                valueAsNumber: true,
-                                min: 0,
-                              })}
+                            <div
                               style={{
-                                border: 'none',
-                                outline: 'none',
-                                padding: '8px 10px',
+                                display: 'flex',
+                                alignItems: 'center',
                                 width: '100%',
-                                minWidth: 0,
-                                textAlign: 'right',
-                                fontSize: '13px',
-                                background: 'transparent',
-                                font: 'inherit',
-                                color: '#0f172a',
                                 boxSizing: 'border-box',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '6px',
+                                background: '#ffffff',
                               }}
-                              placeholder="0.00"
-                            />
-                            <Select
-                              value={watchItems?.[index]?.discountType || 'percentage'}
-                              onChange={(val) => {
-                                setValue(
-                                  `lineItems.${index}.discountType`,
-                                  val as 'percentage' | 'fixed',
-                                );
-                              }}
-                              options={[
-                                { value: 'percentage', label: '%' },
-                                { value: 'fixed', label: '₹' },
-                              ]}
-                              minWidth={50}
-                              fullWidth={false}
-                              containerStyle={{ flexShrink: 0, height: '100%' }}
-                              buttonStyle={{
-                                border: 'none',
-                                borderLeft: '1px solid #eef0f3',
-                                background: '#f8fafc',
-                                padding: '8px 8px',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                color: '#475569',
-                                borderRadius: '0 6px 6px 0',
-                                height: '100%',
-                                gap: '4px',
-                              }}
-                            />
-                          </div>
-                        </td>
+                            >
+                              <input
+                                type="number"
+                                step="0.01"
+                                {...register(`lineItems.${index}.discountValue`, {
+                                  valueAsNumber: true,
+                                  min: 0,
+                                })}
+                                style={{
+                                  border: 'none',
+                                  outline: 'none',
+                                  padding: '8px 10px',
+                                  width: '100%',
+                                  minWidth: 0,
+                                  textAlign: 'right',
+                                  fontSize: '13px',
+                                  background: 'transparent',
+                                  font: 'inherit',
+                                  color: '#0f172a',
+                                  boxSizing: 'border-box',
+                                }}
+                                placeholder="0.00"
+                              />
+                              <Select
+                                value={watchItems?.[index]?.discountType || 'percentage'}
+                                onChange={(val) => {
+                                  setValue(
+                                    `lineItems.${index}.discountType`,
+                                    val as 'percentage' | 'fixed',
+                                  );
+                                }}
+                                options={[
+                                  { value: 'percentage', label: '%' },
+                                  { value: 'fixed', label: '₹' },
+                                ]}
+                                minWidth={50}
+                                fullWidth={false}
+                                containerStyle={{ flexShrink: 0, height: '100%' }}
+                                buttonStyle={{
+                                  border: 'none',
+                                  borderLeft: '1px solid #eef0f3',
+                                  background: '#f8fafc',
+                                  padding: '8px 8px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  color: '#475569',
+                                  borderRadius: '0 6px 6px 0',
+                                  height: '100%',
+                                  gap: '4px',
+                                }}
+                              />
+                            </div>
+                          </td>
+                        )}
                         <td
                           style={{
                             padding: '14px 16px',
@@ -1548,13 +1883,14 @@ export function CreatePurchaseOrder() {
                   alignItems: 'center',
                   gap: '6px',
                   padding: '8px 16px',
-                  background: '#eff6ff',
-                  color: '#2563eb',
-                  border: '1px solid #bfdbfe',
+                  background: '#f0f7fd',
+                  color: '#0284c7',
+                  border: '1px solid rgba(2, 132, 199, 0.25)',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   fontSize: '13px',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <Plus size={15} /> Add another line
@@ -1612,6 +1948,62 @@ export function CreatePurchaseOrder() {
                   ₹{computedSubTotal.toFixed(2)}
                 </span>
               </div>
+
+              {discountLevel === 'transaction' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '10px',
+                    color: '#475569',
+                  }}
+                >
+                  <span>Discount</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={transactionDiscountValue}
+                      onChange={(e) => setTransactionDiscountValue(e.target.value)}
+                      placeholder="0.00"
+                      style={{
+                        width: '76px',
+                        padding: '4px 8px',
+                        fontSize: '13px',
+                        textAlign: 'right',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        outline: 'none',
+                        color: '#0f172a',
+                        background: '#ffffff',
+                      }}
+                    />
+                    <select
+                      value={transactionDiscountType}
+                      onChange={(e) =>
+                        setTransactionDiscountType(e.target.value as 'percentage' | 'fixed')
+                      }
+                      style={{
+                        padding: '4px 6px',
+                        fontSize: '12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        background: '#f8fafc',
+                        fontWeight: 600,
+                        color: '#475569',
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="percentage">%</option>
+                      <option value="fixed">₹</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
               <div
                 style={{
                   display: 'flex',
@@ -1823,24 +2215,52 @@ export function CreatePurchaseOrder() {
       </div>
 
       {/* Fixed Bottom Action Bar */}
-      <div className="form-actions-footer page-footer">
+      <div
+        className="form-actions-footer page-footer"
+        style={{ display: 'flex', alignItems: 'center', gap: '10px' }}
+      >
         <button
           form="create-po-form"
           type="submit"
+          onClick={() => setSubmitStatus('Draft')}
           disabled={mutation.isPending}
           style={{
-            padding: '6px 20px',
-            background: '#0062ff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
+            padding: '7px 20px',
+            background: '#ffffff',
+            color: '#1e293b',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
+            cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
             fontSize: '13px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            transition: 'all 0.15s ease',
           }}
         >
-          {mutation.isPending ? 'Saving...' : 'Save'}
+          {mutation.isPending && submitStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
         </button>
+
+        <button
+          form="create-po-form"
+          type="submit"
+          onClick={() => setSubmitStatus('Issued')}
+          disabled={mutation.isPending}
+          style={{
+            padding: '7px 22px',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
+            fontSize: '13px',
+            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          {mutation.isPending && submitStatus === 'Issued' ? 'Saving...' : 'Save and Submit'}
+        </button>
+
         <button
           type="button"
           onClick={() => {
@@ -1852,14 +2272,15 @@ export function CreatePurchaseOrder() {
             }
           }}
           style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
+            padding: '7px 20px',
+            background: '#f8fafc',
+            color: '#475569',
+            border: '1px solid #e2e8f0',
+            borderRadius: '6px',
             cursor: 'pointer',
             fontWeight: 500,
             fontSize: '13px',
+            transition: 'all 0.15s ease',
           }}
         >
           Cancel
@@ -1943,7 +2364,7 @@ export function CreatePurchaseOrder() {
           if (selectedItems.length === 0 || multiSelectTargetIndex === null) return;
 
           const targetIndex = multiSelectTargetIndex;
-          const currentItems = watch('lineItems');
+          const currentItems = getValues('lineItems');
 
           selectedItems.forEach((item, i) => {
             const isFirst = i === 0;

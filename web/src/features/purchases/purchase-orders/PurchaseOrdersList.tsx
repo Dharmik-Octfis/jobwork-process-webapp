@@ -17,8 +17,21 @@ import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
+import { format } from 'date-fns';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { PurchaseOrder } from './purchase-orders.schemas';
+import { PurchaseOrderStatusBadge } from './PurchaseOrderStatusBadge';
+
+function formatDate(val: unknown): string {
+  if (!val) return '-';
+  try {
+    const d = new Date(String(val));
+    if (isNaN(d.getTime())) return '-';
+    return format(d, 'dd MMM yyyy');
+  } catch {
+    return String(val);
+  }
+}
 
 function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
   if (key === 'paymentTerms') {
@@ -30,17 +43,30 @@ function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[
     if (value === null || value === undefined || value === '') return '-';
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
+  if (key === 'referenceNumber') {
+    return (
+      po.referenceNumber ||
+      ((po.customFields as Record<string, unknown>)?.referenceNumber as string) ||
+      ((po.customFields as Record<string, unknown>)?.reference as string) ||
+      '-'
+    );
+  }
+  if (key === 'billedStatus') {
+    const hasBills = Boolean(po.bills && po.bills.length > 0);
+    return hasBills ? 'BILLED' : 'YET TO BE BILLED';
+  }
   if (key === 'vendor') {
     return po.vendor?.contactName || '-';
   }
   if (key === 'totalAmount' || key === 'total') {
-    return `₹${Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(2)}`;
+    const amt = Number((po as Record<string, unknown>).total || po.totalAmount || 0);
+    return `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (key === 'date' || key === 'deliveryDate' || key === 'createdAt' || key === 'updatedAt') {
+    return formatDate((po as unknown as Record<string, unknown>)[key]);
   }
   const value = (po as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'date' || key === 'deliveryDate' || key === 'createdAt' || key === 'updatedAt') {
-    return new Date(String(value)).toLocaleDateString();
-  }
   return String(value);
 }
 
@@ -158,7 +184,7 @@ export function PurchaseOrdersList() {
                 alignItems: 'center',
                 padding: selectedPoId ? '12px 16px' : '16px 24px',
                 background: '#fff',
-                borderBottom: '1px solid #eef0f3',
+                borderBottom: '1px solid #e2e8f0',
                 gap: 8,
               }}
             >
@@ -171,23 +197,34 @@ export function PurchaseOrdersList() {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 {!selectedPoId && (
                   <button
                     onClick={() => setIsColumnsOpen(true)}
                     title="Customize Columns"
+                    aria-label="Customize Columns"
                     style={{
-                      background: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '4px',
-                      padding: '6px 10px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 6,
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
                       cursor: 'pointer',
-                      color: '#475569',
-                      fontSize: '13px',
-                      whiteSpace: 'nowrap',
+                      color: '#64748b',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.color = '#0284c7';
+                      e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff';
+                      e.currentTarget.style.color = '#64748b';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
                     }}
                   >
                     <SlidersHorizontal size={15} />
@@ -201,18 +238,28 @@ export function PurchaseOrdersList() {
                     })
                   }
                   style={{
-                    background: '#186337',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                     color: 'white',
                     border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '4px',
-                    fontWeight: 500,
+                    padding: '7px 14px',
+                    borderRadius: '6px',
+                    fontWeight: 600,
                     fontSize: '13px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 4,
+                    gap: 5,
                     whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+                    e.currentTarget.style.transform = 'none';
                   }}
                 >
                   <Plus size={16} /> New
@@ -273,14 +320,24 @@ export function PurchaseOrdersList() {
                     })
                   }
                   style={{
-                    background: '#28a745',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                     color: 'white',
                     border: 'none',
                     padding: '10px 24px',
-                    borderRadius: '4px',
+                    borderRadius: '6px',
                     fontWeight: 600,
                     fontSize: 14,
                     cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(2, 132, 199, 0.35)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(2, 132, 199, 0.25)';
+                    e.currentTarget.style.transform = 'none';
                   }}
                 >
                   Create Purchase Order
@@ -292,60 +349,68 @@ export function PurchaseOrdersList() {
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <div
                       style={{
-                        padding: '8px 16px',
+                        padding: '10px 16px',
                         fontSize: '12px',
                         fontWeight: 600,
                         color: '#64748b',
-                        background: '#f9f9fb',
-                        borderBottom: '1px solid #eef0f3',
+                        background: '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        letterSpacing: '0.03em',
+                        textTransform: 'uppercase',
                       }}
                     >
-                      Purchase Orders
+                      {filters.find((f) => f.key === filter)?.label ?? 'All Purchase Orders'}
                     </div>
-                    {purchaseOrders.map((po) => (
-                      <div
-                        key={po.id}
-                        onClick={() => setSearchParams({ id: po.id })}
-                        style={{
-                          padding: '12px 16px',
-                          borderBottom: '1px solid #eef0f3',
-                          cursor: 'pointer',
-                          background: selectedPoId === po.id ? '#f1f5f9' : 'transparent',
-                          transition: 'background 0.1s',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedPoId !== po.id) e.currentTarget.style.background = '#f8fafc';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedPoId !== po.id)
-                            e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        {/* Status rides along here too: while the detail is open
-                            this pane is the only view of the other POs, and the
-                            table column it comes from is off screen. */}
+                    {purchaseOrders.map((po) => {
+                      const isSelected = selectedPoId === po.id;
+                      return (
                         <div
+                          key={po.id}
+                          onClick={() => setSearchParams({ id: po.id })}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 8,
-                            marginBottom: '4px',
+                            padding: '12px 16px',
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                            background: isSelected ? '#f0f7fd' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
+                            transition: 'all 0.12s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <span style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
-                            {po.poNumber}
-                          </span>
-                          <span style={{ fontSize: '12px', color: '#64748b' }}>
-                            {renderPoCell(po, 'status', paymentTerms)}
-                          </span>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              marginBottom: '6px',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: isSelected ? 600 : 500,
+                                color: isSelected ? '#0284c7' : '#1e293b',
+                              }}
+                            >
+                              {po.poNumber}
+                            </span>
+                            <PurchaseOrderStatusBadge status={po.status} />
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            {po.vendor?.contactName || '-'} • ₹
+                            {Number(
+                              (po as Record<string, unknown>).total || po.totalAmount || 0,
+                            ).toFixed(2)}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.vendor?.contactName || '-'} • ₹
-                          {(po as Record<string, unknown>).total || po.totalAmount || 0}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="responsive-table-wrapper">
@@ -353,9 +418,9 @@ export function PurchaseOrdersList() {
                       <thead>
                         <tr
                           style={{
-                            background: '#f9f9fb',
-                            borderTop: '1px solid #eef0f3',
-                            borderBottom: '1px solid #eef0f3',
+                            background: '#f8fafc',
+                            borderTop: '1px solid #e2e8f0',
+                            borderBottom: '1px solid #e2e8f0',
                           }}
                         >
                           <th
@@ -373,7 +438,7 @@ export function PurchaseOrdersList() {
                                 selectedIds.length === purchaseOrders.length
                               }
                               onChange={toggleAll}
-                              style={{ cursor: 'pointer' }}
+                              style={{ cursor: 'pointer', accentColor: '#0284c7' }}
                             />
                           </th>
                           {columns.map((col) => (
@@ -384,53 +449,61 @@ export function PurchaseOrdersList() {
                         </tr>
                       </thead>
                       <tbody>
-                        {purchaseOrders.map((po) => (
-                          <tr
-                            key={po.id}
-                            onClick={() => setSearchParams({ id: po.id })}
-                            style={{
-                              borderBottom: '1px solid #eef0f3',
-                              transition: 'background 0.1s',
-                              cursor: 'pointer',
-                              background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => {
-                              if (!selectedIds.includes(po.id))
-                                e.currentTarget.style.background = 'transparent';
-                            }}
-                          >
-                            <td
+                        {purchaseOrders.map((po) => {
+                          const isChecked = selectedIds.includes(po.id);
+                          return (
+                            <tr
+                              key={po.id}
+                              onClick={() => setSearchParams({ id: po.id })}
                               style={{
-                                width: 48,
-                                padding: '12px 16px',
-                                paddingRight: 0,
-                                textAlign: 'center',
+                                borderBottom: '1px solid #f1f5f9',
+                                transition: 'background 0.12s ease',
+                                cursor: 'pointer',
+                                background: isChecked ? '#f0f7fd' : 'transparent',
                               }}
-                              onClick={(e) => e.stopPropagation()}
+                              onMouseEnter={(e) => {
+                                if (!isChecked) e.currentTarget.style.background = '#f8fafc';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isChecked) e.currentTarget.style.background = 'transparent';
+                              }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.includes(po.id)}
-                                onChange={() => toggleSelection(po.id)}
-                                style={{ cursor: 'pointer' }}
-                              />
-                            </td>
-                            {columns.map((col) => (
                               <td
-                                key={col.key}
                                 style={{
+                                  width: 48,
                                   padding: '12px 16px',
-                                  color: col.key === 'poNumber' ? '#0062ff' : '#333',
-                                  fontSize: 13,
-                                  fontWeight: col.key === 'poNumber' ? 500 : 400,
+                                  paddingRight: 0,
+                                  textAlign: 'center',
                                 }}
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {renderPoCell(po, col.key, paymentTerms)}
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleSelection(po.id)}
+                                  style={{ cursor: 'pointer', accentColor: '#0284c7' }}
+                                />
                               </td>
-                            ))}
-                          </tr>
-                        ))}
+                              {columns.map((col) => (
+                                <td
+                                  key={col.key}
+                                  style={{
+                                    padding: '12px 16px',
+                                    color: col.key === 'poNumber' ? '#0284c7' : '#334155',
+                                    fontSize: 13,
+                                    fontWeight: col.key === 'poNumber' ? 600 : 400,
+                                  }}
+                                >
+                                  {col.key === 'status' ? (
+                                    <PurchaseOrderStatusBadge status={po.status} variant="text" />
+                                  ) : (
+                                    renderPoCell(po, col.key, paymentTerms)
+                                  )}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

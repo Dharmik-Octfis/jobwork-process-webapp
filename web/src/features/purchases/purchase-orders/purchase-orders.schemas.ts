@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
 import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
@@ -33,6 +32,7 @@ export const PurchaseOrderSchema = z.object({
   deliveryCustomerId: z.string().nullable().optional(),
   locationId: z.string().nullable().optional(),
   poNumber: z.string(),
+  referenceNumber: z.string().nullable().optional(),
   date: z.string(),
   deliveryDate: z.string().nullable().optional(),
   paymentTerms: z.string().nullable().optional(),
