@@ -1,0 +1,219 @@
+import { Router, urlencoded, type Request, type Response } from 'express';
+import { z } from 'zod';
+import { env } from '../config/env.ts';
+import * as service from './account.service.ts';
+import { bindingOf, bindThisBrowser, clearBinding } from './binding.ts';
+import {
+  checkInboxPage,
+  donePage,
+  forgotPasswordPage,
+  resetPasswordPage,
+  signupPage,
+  verifyEmailPage,
+} from './account.views.ts';
+
+/**
+ * Account management — §7.1's `login/`. Mounted before the provider's catch-all,
+ * with the body parser per route for the reason given in interaction/routes.ts.
+ */
+
+/**
+ * 🔴 The minimum is 8 characters and nothing else. No composition rules: forcing a
+ * symbol and a digit reliably produces `Password1!`, which is worse than a longer
+ * passphrase, and NIST dropped the advice years ago. Length is the property that
+ * matters, and argon2 covers the rest.
+ */
+const password = z.string().min(8, 'Password must be at least 8 characters.');
+const email = z.string().trim().toLowerCase().email('Enter a valid email address.');
+const otp = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, 'The code is 6 digits.');
+
+export const signupSchema = z.object({
+  email,
+  password,
+  firstName: z.string().trim().min(1, 'First name is required.').max(40),
+  lastName: z.string().trim().min(1, 'Last name is required.').max(40),
+});
+
+export const verifySchema = z.object({ email, otp });
+
+/** First error message, or undefined. The forms show one thing at a time. */
+export function firstError(error: z.ZodError): string {
+  return error.issues[0]?.message ?? 'Please check the form.';
+}
+
+export function accountRouter(): Router {
+  const router = Router();
+  const form = urlencoded({ extended: false });
+
+  /**
+   * `?email=` prefills the address, and it matters more than a convenience.
+   *
+   * The person arriving here usually came from an invitation addressed to ONE
+   * address, and the app joins them to the organization by matching that address.
+   * Register a different one and everything succeeds — account created, email
+   * verified, signed in — except the invitation, which that account cannot accept.
+   *
+   * Only ever a default: it is an editable field, and nothing downstream trusts
+   * it. Entitlement is decided against the address the user actually VERIFIES.
+   */
+  router.get('/signup', (req: Request, res: Response) => {
+    const email = typeof req.query['email'] === 'string' ? req.query['email'] : undefined;
+    res.type('html').send(signupPage({ email }));
+  });
+
+  router.post('/signup', form, async (req: Request, res: Response) => {
+    const parsed = signupSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      res
+        .status(400)
+        .type('html')
+        .send(
+          signupPage({
+            email: typeof req.body?.['email'] === 'string' ? req.body['email'] : undefined,
+            error: firstError(parsed.error),
+          }),
+        );
+      return;
+    }
+
+    await service.signup(parsed.data, bindThisBrowser(res));
+
+    /**
+     * The same page whether or not the address was already registered. Signup is
+     * otherwise a way to ask "does this person have an account here"; the honest
+     * answer goes to the inbox, not to the screen. Straight to the code form, with
+     * the address filled in, rather than a page with a link to it.
+     */
+    res.type('html').send(
+      verifyEmailPage({
+        email: parsed.data.email,
+        notice: `If ${parsed.data.email} can receive mail, a 6-digit code is on its way.`,
+      }),
+    );
+  });
+
+  router.get('/verify-email', (req: Request, res: Response) => {
+    const value = req.query['email'];
+    res
+      .type('html')
+      .send(verifyEmailPage({ email: typeof value === 'string' ? value : undefined }));
+  });
+
+  router.post('/verify-email', form, async (req: Request, res: Response) => {
+    const parsed = verifySchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      res
+        .status(400)
+        .type('html')
+        .send(verifyEmailPage({ error: firstError(parsed.error) }));
+      return;
+    }
+
+    const accountId = await service.verifyEmail(parsed.data.email, parsed.data.otp, bindingOf(req));
+
+    if (!accountId) {
+      res
+        .status(400)
+        .type('html')
+        .send(
+          verifyEmailPage({ email: parsed.data.email, error: 'That code is invalid or expired.' }),
+        );
+      return;
+    }
+
+    clearBinding(res);
+
+    /**
+     * This page is only for someone who opened accounts directly. Anyone sent here by
+     * an app signs up inside that app's interaction (interaction/routes.ts) and is
+     * signed in and returned automatically, never shown this.
+     */
+    res.type('html').send(
+      donePage(
+        'Email verified',
+        'Your account is ready. Open the app you want to use to sign in.',
+        {
+          href: env.productSiteUrl,
+          label: 'Continue to octfis.com',
+        },
+      ),
+    );
+  });
+
+  router.get('/forgot-password', (_req: Request, res: Response) => {
+    res.type('html').send(forgotPasswordPage());
+  });
+
+  router.post('/forgot-password', form, async (req: Request, res: Response) => {
+    const parsed = z.object({ email }).safeParse(req.body);
+
+    if (!parsed.success) {
+      res
+        .status(400)
+        .type('html')
+        .send(forgotPasswordPage({ error: firstError(parsed.error) }));
+      return;
+    }
+
+    await service.requestPasswordReset(parsed.data.email);
+
+    // Always the same answer — see the service.
+    res.type('html').send(checkInboxPage(parsed.data.email, '/reset-password'));
+  });
+
+  router.get('/reset-password', (req: Request, res: Response) => {
+    const value = req.query['email'];
+    res
+      .type('html')
+      .send(resetPasswordPage({ email: typeof value === 'string' ? value : undefined }));
+  });
+
+  router.post('/reset-password', form, async (req: Request, res: Response) => {
+    const parsed = z.object({ email, otp, password }).safeParse(req.body);
+
+    if (!parsed.success) {
+      res
+        .status(400)
+        .type('html')
+        .send(resetPasswordPage({ error: firstError(parsed.error) }));
+      return;
+    }
+
+    const outcome = await service.resetPassword(
+      parsed.data.email,
+      parsed.data.otp,
+      parsed.data.password,
+    );
+
+    if (outcome === 'invalid') {
+      // One message for a bad code, an expired code and an address with no usable
+      // account — telling them apart would say which addresses are registered.
+      res
+        .status(400)
+        .type('html')
+        .send(
+          resetPasswordPage({
+            email: parsed.data.email,
+            error: 'That code is invalid or expired.',
+          }),
+        );
+      return;
+    }
+
+    res
+      .type('html')
+      .send(
+        donePage(
+          'Password changed',
+          'You have been signed out everywhere. Sign in with your new password.',
+        ),
+      );
+  });
+
+  return router;
+}

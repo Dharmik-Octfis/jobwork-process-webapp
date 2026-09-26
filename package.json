@@ -12,13 +12,16 @@
     "git:fix-merge": "sh scripts/clear-stale-merge-head.sh",
     "build:web": "cd web && npm install && npm run build",
     "build:backend": "cd backend && npm install && npm run build",
+    "build:accounts": "cd accounts && npm install && npm run build",
     "config:appsail": "node scripts/build-app-config.mjs",
     "deploy": "node scripts/deploy.mjs",
-    "deploy:staging": "node scripts/deploy.mjs staging",
-    "deploy:production": "node scripts/deploy.mjs production",
+    "deploy:staging:api": "node scripts/deploy.mjs staging api",
+    "deploy:production:api": "node scripts/deploy.mjs production api",
+    "deploy:staging:accounts": "node scripts/deploy.mjs staging accounts",
+    "deploy:production:accounts": "node scripts/deploy.mjs production accounts",
     "capture:staging": "node scripts/capture-target.mjs staging",
     "capture:production": "node scripts/capture-target.mjs production",
-    "deploy:appsail": "node -e \"console.error('\\n  deploy:appsail is gone — a deploy must name its target.\\n  Staging and production live under different Zoho accounts.\\n\\n    npm run deploy:staging\\n    npm run deploy:production\\n'); process.exit(1)\""
+    "deploy:appsail": "node -e \"console.error('\\n  deploy:appsail is gone — a deploy must name its target and its service.\\n  Staging and production live under different Zoho accounts.\\n\\n    npm run deploy:staging:api\\n    npm run deploy:production:api\\n    npm run deploy:production:accounts\\n'); process.exit(1)\""
   },
   "repository": {
     "type": "git",

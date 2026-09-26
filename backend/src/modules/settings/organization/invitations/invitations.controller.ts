@@ -13,15 +13,29 @@ export async function createInvitation(req: Request, res: Response): Promise<voi
   // membership-checked (CLAUDE.md).
   const organizationId = req.tenantId!;
 
-  const invitation = await invitationsService.createInvitation(
+  const { invitation, emailDelivered } = await invitationsService.createInvitation(
     req.user.id,
     organizationId,
     req.body as CreateInvitationInput,
   );
 
-  // `data` keeps the { invitation } shape the client already reads — the web
-  // interceptor unwraps the envelope and hands this inner object to feature code.
-  sendSuccess(res, { invitation }, 'Invitation sent.', 201);
+  /**
+   * `data` keeps the { invitation } shape the client already reads — the web
+   * interceptor unwraps the envelope and hands this inner object to feature code.
+   *
+   * 🔴 The message reports what actually happened. The web interceptor toasts this
+   * string verbatim for every mutation, so "Invitation sent." on an invitation that
+   * was never delivered is not a wording nicety — it IS the bug report the admin
+   * never got. It said exactly that while the mail provider was out of credit.
+   */
+  sendSuccess(
+    res,
+    { invitation, emailDelivered },
+    emailDelivered
+      ? 'Invitation sent.'
+      : 'Invitation created, but the email could not be sent. Check the mail provider, then use Resend.',
+    201,
+  );
 }
 
 export async function listInvitations(req: Request, res: Response): Promise<void> {

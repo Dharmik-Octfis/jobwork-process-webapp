@@ -91,9 +91,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   Written: ${target.catalystrcRelative}, deploy/targets.json
 
-  Next: create ${target.envFileRelative} from backend/.env.production.example.
-        Its ZC_PROJECT_ID / ZC_PROJECT_KEY / ZC_ENVIRONMENT must be the three
-        values above — \`npm run deploy:${target.name}\` refuses to deploy if they disagree.
+  Next: create an env file for each service this target deploys —
+${Object.entries(target.services)
+  .map(([name, s]) => `          ${name.padEnd(10)} ${s.envFile}`)
+  .join('\n')}
+        Their ZC_PROJECT_ID / ZC_PROJECT_KEY / ZC_ENVIRONMENT must be the three
+        values above — \`npm run deploy:${target.name}:<service>\` refuses to deploy
+        if they disagree.
 `);
   } catch (err) {
     if (!(err instanceof DeployError)) throw err;

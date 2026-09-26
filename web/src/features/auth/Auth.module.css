@@ -66,7 +66,7 @@
 }
 
 .switch {
-  margin-top: 12px; 
+  margin-top: 12px;
   text-align: center;
   color: #64748b;
   font-size: 12px;
@@ -114,4 +114,64 @@
   width: 1px;
   height: 10px;
   background-color: #cbd5e1;
+}
+/* SSO entry point — shown only when the API reports SSO is enabled. */
+.ssoBlock {
+  margin-bottom: 4px;
+}
+
+/* A short explanation above the one action on a no-form page (NoAccessPage). */
+.notice {
+  margin: 0 0 16px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/*
+  A labelled rule between the two ways in. The password form stays visible
+  underneath on purpose: it is the rollback path during the cutover, so the
+  divider explains the choice rather than implying SSO replaced it.
+*/
+.ssoDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ssoDivider::before,
+.ssoDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+/*
+  A link that performs an action rather than navigating — used where "Create
+  Account" leaves this origin for the identity provider. A <button> rather than an
+  <a>, because it is not a URL the browser should let you open in a new tab or
+  copy: the server decides where accounts lives.
+*/
+.linkButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: #0284c7;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
+.linkButton:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+  border-radius: 2px;
 }

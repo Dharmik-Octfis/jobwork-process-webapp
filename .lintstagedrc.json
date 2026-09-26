@@ -7,5 +7,9 @@
     "prettier --write",
     "node backend/node_modules/eslint/bin/eslint.js --fix"
   ],
+  "accounts/**/*.{ts,js}": [
+    "prettier --write",
+    "node accounts/node_modules/eslint/bin/eslint.js --fix"
+  ],
   "*.{json,css,md,html}": ["prettier --write"]
 }
