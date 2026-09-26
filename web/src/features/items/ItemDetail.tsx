@@ -83,6 +83,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
+  const { data: stockSummary } = useQuery({
+    queryKey: ['itemStockSummary', orgId, itemId],
+    queryFn: () => itemsApi.getStockSummary(orgId!, itemId),
+    enabled: Boolean(orgId && itemId),
+  });
+
   const { data: allLocations = [] } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId!),
@@ -98,13 +104,19 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const { totalOpeningStock, totalStockOnHand } = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
       return {
-        totalOpeningStock: openingStockRows.reduce((acc, row) => acc + declaredOpeningOf(row), 0),
-        totalStockOnHand: openingStockRows.reduce((acc, row) => acc + stockOnHandOf(row), 0),
+        totalOpeningStock: openingStockRows.reduce((acc, row) => {
+          if (!ownLocationIds.has(row.locationId)) return acc;
+          return acc + declaredOpeningOf(row);
+        }, 0),
+        totalStockOnHand: openingStockRows.reduce((acc, row) => {
+          if (!ownLocationIds.has(row.locationId)) return acc;
+          return acc + stockOnHandOf(row);
+        }, 0),
       };
     }
     const declared = Number(item?.openingStock ?? 0);
     return { totalOpeningStock: declared, totalStockOnHand: declared };
-  }, [openingStockRows, item]);
+  }, [openingStockRows, item, ownLocationIds]);
 
   const ownPremisesStock = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
@@ -857,8 +869,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                          {stockSummary?.stockIn?.toFixed(2) ?? '0.00'}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          {item.unit || 'Qty'}
+                        </span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock In</div>
                     </div>
@@ -875,8 +891,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                          {stockSummary?.stockOut?.toFixed(2) ?? '0.00'}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          {item.unit || 'Qty'}
+                        </span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock Out</div>
                     </div>

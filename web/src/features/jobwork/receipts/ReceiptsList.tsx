@@ -424,9 +424,13 @@ export function ReceiptsList() {
             <ReceiptDetail
               receiptId={selectedId}
               onClose={() => {
-                const next = new URLSearchParams(searchParams);
-                next.delete('id');
-                setSearchParams(next);
+                if (location.state?.returnUrl) {
+                  navigate(location.state.returnUrl);
+                } else {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('id');
+                  setSearchParams(next);
+                }
               }}
               onOpenJobOrder={(jobOrderId) =>
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderId}`)

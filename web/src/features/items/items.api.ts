@@ -90,6 +90,11 @@ export const itemsApi = {
     return response.data;
   },
 
+  getStockSummary: async (orgId: string, id: string): Promise<{ stockIn: number; stockOut: number }> => {
+    const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/stock-summary`);
+    return response.data;
+  },
+
   getItemBatches: async (orgId: string, id: string): Promise<ItemBatchDto[]> => {
     const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/batches`);
     return response.data;

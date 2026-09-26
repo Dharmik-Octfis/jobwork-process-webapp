@@ -132,9 +132,13 @@ export function IssuesList() {
     setSearchParams(next);
   };
   const closeDetail = () => {
-    const next = new URLSearchParams(searchParams);
-    next.delete('id');
-    setSearchParams(next);
+    if (location.state?.returnUrl) {
+      navigate(location.state.returnUrl);
+    } else {
+      const next = new URLSearchParams(searchParams);
+      next.delete('id');
+      setSearchParams(next);
+    }
   };
 
   return (

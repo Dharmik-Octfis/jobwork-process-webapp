@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   CheckCircle2,
   ChevronDown,
@@ -407,6 +407,7 @@ interface Props {
 
 export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId, id: routeId } = useParams<{ orgId: string; id: string }>();
   const id = jobOrderId ?? routeId;
@@ -567,7 +568,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
    * to open it is the same impulse. */
   const openDocument = (event: ActivityEvent) => {
     const module = event.kind === 'issue' ? 'issues' : 'receipts';
-    navigate(`/organizations/${orgId}/jobwork/${module}?id=${event.id}`);
+    navigate(`/organizations/${orgId}/jobwork/${module}?id=${event.id}`, {
+      state: { returnUrl: location.pathname + location.search },
+    });
   };
 
   return (

@@ -1296,6 +1296,24 @@ export class ItemsService {
    * A batch is created either way — `none` just means the user never names it
    * (schema: `Item.inventoryTracking`).
    */
+  async getStockSummary(itemId: string, organizationId: string) {
+    return runAsTenant(organizationId, async (tx) => {
+      const stockInOutQuery = await tx.stockLedgerEntry.aggregate({
+        where: {
+          organizationId,
+          itemId,
+          sourceDocType: { not: 'item_opening_stock' },
+          location: { type: { notIn: ['processor', 'in_transit', 'customer_site'] } },
+        },
+        _sum: { qtyIn: true, qtyOut: true },
+      });
+      return {
+        stockIn: Number(stockInOutQuery._sum.qtyIn ?? 0),
+        stockOut: Number(stockInOutQuery._sum.qtyOut ?? 0),
+      };
+    });
+  }
+
   async saveOpeningStock(
     itemId: string,
     organizationId: string,

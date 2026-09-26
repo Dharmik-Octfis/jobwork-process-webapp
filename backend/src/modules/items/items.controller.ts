@@ -96,6 +96,10 @@ export class ItemsController {
     sendSuccess(res, await itemsService.getOpeningStock(req.params.id as string, req.tenantId!));
   }
 
+  async getStockSummary(req: Request, res: Response) {
+    sendSuccess(res, await itemsService.getStockSummary(req.params.id as string, req.tenantId!));
+  }
+
   async getItemBatches(req: Request, res: Response) {
     sendSuccess(res, await itemsService.getItemBatches(req.params.id as string, req.tenantId!));
   }
