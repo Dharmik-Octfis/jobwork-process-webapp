@@ -734,6 +734,97 @@ export class ItemsService {
     });
   }
 
+  async getItemIssues(itemId: string, organizationId: string, opts: ListQuery) {
+    const { page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!item) {
+        throw ApiError.notFound('Item not found');
+      }
+
+      const rows = await tx.jobIssueLine.findMany({
+        where: {
+          itemId: itemId,
+          isDeleted: false,
+          jobIssue: {
+            organizationId: organizationId,
+            isDeleted: false,
+            ...searchWhere<Prisma.JobIssueWhereInput>(opts.search, ['challanNumber', 'status']),
+          },
+        },
+        orderBy: { jobIssue: { issueDate: 'desc' } },
+        skip: (page - 1) * perPage,
+        take: takeForPage(perPage),
+        include: {
+          jobIssue: true,
+        },
+      });
+
+      const paginated = pageSlice(rows, page, perPage);
+
+      return {
+        ...paginated,
+        results: paginated.results.map((row) => ({
+          id: row.id,
+          issueId: row.jobIssue?.id,
+          issueDate: row.jobIssue?.issueDate,
+          issueNumber: row.jobIssue?.challanNumber,
+          vendorName: row.jobIssue?.processorNameSnapshot,
+          quantity: Number(row.qty),
+          status: row.jobIssue?.status,
+        })),
+      };
+    });
+  }
+
+  async getItemReceipts(itemId: string, organizationId: string, opts: ListQuery) {
+    const { page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!item) {
+        throw ApiError.notFound('Item not found');
+      }
+
+      const rows = await tx.jobReceiptOutput.findMany({
+        where: {
+          itemId: itemId,
+          jobReceipt: {
+            organizationId: organizationId,
+            isDeleted: false,
+            ...searchWhere<Prisma.JobReceiptWhereInput>(opts.search, ['receiptNumber', 'status']),
+          },
+        },
+        orderBy: { jobReceipt: { receiptDate: 'desc' } },
+        skip: (page - 1) * perPage,
+        take: takeForPage(perPage),
+        include: {
+          jobReceipt: true,
+        },
+      });
+
+      const paginated = pageSlice(rows, page, perPage);
+
+      return {
+        ...paginated,
+        results: paginated.results.map((row) => ({
+          id: row.id,
+          receiptId: row.jobReceipt?.id,
+          receiptDate: row.jobReceipt?.receiptDate,
+          receiptNumber: row.jobReceipt?.receiptNumber,
+          vendorName: row.jobReceipt?.processorNameSnapshot,
+          quantity: Number(row.receivedQty),
+          status: row.jobReceipt?.status,
+        })),
+      };
+    });
+  }
+
   async create(organizationId: string, rawData: CreateItemDto, userId?: string) {
     const data = normalizeItemDto(rawData);
     return runAsTenant(organizationId, async (tx) => {

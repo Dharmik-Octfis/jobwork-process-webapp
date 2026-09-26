@@ -181,6 +181,8 @@ router.get('/count', requirePermission('item:read'), itemsController.getItemCoun
 router.get('/:id', requirePermission('item:read'), itemsController.getItem);
 router.get('/:id/activities', requirePermission('item:read'), itemsController.getItemActivities);
 router.get('/:id/transactions/bills', requirePermission('item:read'), itemsController.getItemBills);
+router.get('/:id/transactions/issues', requirePermission('item:read'), itemsController.getItemIssues);
+router.get('/:id/transactions/receipts', requirePermission('item:read'), itemsController.getItemReceipts);
 router.get('/:id/signed-url', requirePermission('item:read'), itemsController.getSignedUrl);
 router.put(
   '/:id',
