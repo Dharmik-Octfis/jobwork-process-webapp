@@ -46,7 +46,9 @@ Identity only — never organizations or roles.
 
 `:uid` = the sign-in in progress. The `_interaction` cookie (scoped to `/interaction/:uid`) proves
 it is the same browser. When it is missing or the sign-in expired (30 min), every route below
-answers "This sign-in has expired. Go back to the app and sign in again." (400).
+answers "This sign-in has expired. Start again from the app you were signing in to." (400), with a
+**Go to your Octfis apps** link to `PRODUCT_SITE_URL`. The expired sign-in no longer says which app
+started it, so the product site — where every app's Sign In button lives — is the way back.
 
 🔴 **Never put a `path` in `cookies.short`** (`oidc/provider.ts`). The library spreads those
 options _over_ the per-sign-in path, so a `path: '/'` there leaves the browser ONE `_interaction`

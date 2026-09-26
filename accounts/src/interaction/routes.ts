@@ -1,6 +1,7 @@
 import { Router, urlencoded, type Request, type Response } from 'express';
 import argon2 from 'argon2';
 import type Provider from 'oidc-provider';
+import { env } from '../config/env.ts';
 import { prisma } from '../db/prisma.ts';
 import { ACTIVE_USER } from '../lib/activeUser.ts';
 import * as service from '../login/account.service.ts';
@@ -272,11 +273,20 @@ async function detailsOrNull(provider: Provider, req: Request, res: Response) {
   }
 }
 
+/**
+ * An expired interaction no longer says which app started it, so the way back is
+ * the product site, where every app's Sign In button lives — not a dead end.
+ */
 function expired(res: Response): void {
   res
     .status(400)
     .type('html')
-    .send(errorPage('This sign-in has expired. Go back to the app and sign in again.'));
+    .send(
+      errorPage('This sign-in has expired. Start again from the app you were signing in to.', {
+        href: env.productSiteUrl,
+        label: 'Go to your Octfis apps',
+      }),
+    );
 }
 
 /** Form target and links that keep a signup inside interaction `uid`. */
@@ -305,10 +315,7 @@ async function approveConsent(
   const accountId = session?.accountId;
   const clientId = String(params['client_id'] ?? '');
 
-  if (!accountId) {
-    res.status(400).type('html').send(errorPage('Sign-in expired. Please start again.'));
-    return;
-  }
+  if (!accountId) return expired(res);
 
   // Reuse the existing grant when the user has been here before, so re-approving
   // widens the same record instead of leaving a trail of one-scope grants.
@@ -316,10 +323,7 @@ async function approveConsent(
     ? await provider.Grant.find(grantId)
     : new provider.Grant({ accountId, clientId });
 
-  if (!grant) {
-    res.status(400).type('html').send(errorPage('Sign-in expired. Please start again.'));
-    return;
-  }
+  if (!grant) return expired(res);
 
   const missing = prompt.details['missingOIDCScope'];
   if (Array.isArray(missing)) grant.addOIDCScope(missing.join(' '));
