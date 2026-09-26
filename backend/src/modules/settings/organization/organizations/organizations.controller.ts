@@ -94,6 +94,7 @@ async function mapToZohoFormat(org: Organization & { industry?: Pick<Industry, '
     account_created_date: org.createdAt.toISOString(),
     industry: org.industry, // from include
     settings: org.settings,
+    maxUsersLimit: org.maxUsersLimit,
     // Date-only, matching what the API accepts: the client renders this straight
     // into a `<input type="date">`, and an instant would show the wrong day to
     // anyone east of UTC.

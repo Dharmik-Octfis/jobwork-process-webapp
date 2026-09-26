@@ -115,4 +115,5 @@ export interface Organization {
   } | null;
   /** Date-only (`YYYY-MM-DD`), or null when the organization never migrated. */
   migrationDate?: string | null;
+  maxUsersLimit?: number;
 }

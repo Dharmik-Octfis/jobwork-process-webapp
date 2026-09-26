@@ -301,6 +301,7 @@ model Organization {
   orgAddress             String?                 @map("org_address")
   website                String?                 @map("website")
   taxIdValue             String?                 @map("tax_id_value")
+  maxUsersLimit          Int                     @default(10) @map("max_users_limit")
   /// 🔴 THE DAY THIS ORGANIZATION'S BOOKS BEGIN HERE — Zoho Books calls it the
   /// migration date, and it carries the same three rules: opening stock is stated
   /// AS AT this day, no document may be dated before it, and it stops being

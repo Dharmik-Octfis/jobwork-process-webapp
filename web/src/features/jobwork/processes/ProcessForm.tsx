@@ -6,6 +6,8 @@ export interface ProcessFormProps {
   onSubmit: (data: CreateProcessData) => void;
   isPending: boolean;
   onCancel: () => void;
+  formId?: string;
+  hideFooter?: boolean;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -45,7 +47,7 @@ const errorStyle: React.CSSProperties = {
  * (CLAUDE.md). DOM order is also tab order here — the fields are one column, so
  * the two cannot silently diverge the way they do in a multi-column grid.
  */
-export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: ProcessFormProps) {
+export function ProcessForm({ initialData, onSubmit, isPending, onCancel, formId, hideFooter }: ProcessFormProps) {
   const {
     register,
     handleSubmit,
@@ -69,12 +71,16 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
 
   return (
     <form
-      onSubmit={handleSubmit(submit)}
+      id={formId}
+      onSubmit={(e) => {
+        e.stopPropagation();
+        handleSubmit(submit)(e);
+      }}
       noValidate
       // 200px padding ensures that the form can be scrolled high enough for the
       // dropdowns at the bottom (like the ItemComboBox) to open downwards without
       // being clipped by the window's bottom edge or overlapping the fixed action bar.
-      style={{ padding: '24px 32px', paddingBottom: 200 }}
+      style={hideFooter ? { padding: '8px 0' } : { padding: '24px 32px', paddingBottom: 200 }}
     >
       <section style={{ maxWidth: 640, marginBottom: 32 }}>
         <div style={{ marginBottom: 20 }}>
@@ -118,7 +124,7 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
         </div>
       </section>
 
-      <section style={{ maxWidth: 640, marginBottom: 32 }}>
+      <section style={{ maxWidth: 640, marginBottom: hideFooter ? 0 : 32 }}>
         <h2
           style={{
             fontSize: 13,
@@ -137,7 +143,7 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
             display: 'flex',
             gap: 10,
             alignItems: 'flex-start',
-            marginBottom: 16,
+            marginBottom: hideFooter ? 0 : 16,
             cursor: 'pointer',
           }}
         >
@@ -160,59 +166,61 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel }: Proc
         per-org fields on it were a section nobody filled in.
       */}
 
-      <div
-        className="form-actions-footer"
-        style={{
-          height: 44,
-          boxSizing: 'border-box',
-          position: 'fixed',
-          bottom: 0,
-          // 250, not 220: this form renders inside SettingsLayout, whose sidebar is
-          // wider than the main one.
-          left: 250,
-          right: 0,
-          background: '#fff',
-          padding: '0 24px',
-          borderTop: '1px solid #eef0f3',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          zIndex: 100,
-        }}
-      >
-        <button
-          type="submit"
-          disabled={isPending}
+      {!hideFooter && (
+        <div
+          className="form-actions-footer"
           style={{
-            padding: '6px 20px',
-            background: '#0062ff',
-            color: 'white',
-            border: 'none',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: 13,
+            height: 44,
+            boxSizing: 'border-box',
+            position: 'fixed',
+            bottom: 0,
+            // 250, not 220: this form renders inside SettingsLayout, whose sidebar is
+            // wider than the main one.
+            left: 250,
+            right: 0,
+            background: '#fff',
+            padding: '0 24px',
+            borderTop: '1px solid #eef0f3',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            zIndex: 100,
           }}
         >
-          {isPending ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: 13,
-          }}
-        >
-          Cancel
-        </button>
-      </div>
+          <button
+            type="submit"
+            disabled={isPending}
+            style={{
+              padding: '6px 20px',
+              background: '#0062ff',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: 13,
+            }}
+          >
+            {isPending ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '6px 20px',
+              background: 'white',
+              color: '#333',
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: 13,
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </form>
   );
 }

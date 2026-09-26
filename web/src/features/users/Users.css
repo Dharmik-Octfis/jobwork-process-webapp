@@ -451,3 +451,22 @@ button.users-badge:active {
   opacity: 1;
   transform: translateX(-50%) translateY(-2px);
 }
+
+.users-tooltip-bottom-right {
+  bottom: auto;
+  top: 150%;
+  left: auto;
+  right: 0;
+  transform: translateY(10px);
+}
+.users-tooltip-bottom-right::after {
+  top: auto;
+  bottom: 100%;
+  left: auto;
+  right: 15px;
+  border-color: transparent transparent #1e293b transparent;
+}
+.users-tooltip-wrapper:hover .users-tooltip-bottom-right {
+  transform: translateY(2px);
+}
+

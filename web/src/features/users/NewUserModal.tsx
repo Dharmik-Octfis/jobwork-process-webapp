@@ -90,6 +90,7 @@ export function NewUserModal({
       // have to refetch — they come from the same query.
       void queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['invitations', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['org-total-users-count', orgId] });
       onClose();
     },
     onError: (err) => setServerError(toApiErrorMessage(err)),

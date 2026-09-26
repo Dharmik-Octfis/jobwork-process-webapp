@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { organizationsApi } from '../organizations/organizations.api';
 import { rolesApi } from '../roles/roles.api';
 import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
@@ -210,6 +211,14 @@ export function UsersPage() {
   });
   const activeOrg = organizations?.find((o) => o.organizationId === orgId);
 
+  const { data: absoluteTotal } = useQuery({
+    queryKey: ['org-total-users-count', orgId, 'all_users'],
+    queryFn: () => membersApi.count(orgId!, { filter: 'all_users' }),
+    enabled: Boolean(orgId),
+  });
+  const maxUsersLimit = activeOrg?.maxUsersLimit ?? 10;
+  const isLimitReached = (absoluteTotal ?? 0) >= maxUsersLimit;
+
   const { data: me } = useQuery({
     queryKey: ['org-users-me', orgId],
     queryFn: () => membersApi.getMe(orgId!),
@@ -349,25 +358,33 @@ export function UsersPage() {
               {/* Adding a user IS sending an invitation — nobody gets a password set
                   for them — so this opens a window rather than routing to a create
                   page: there is no record to build yet, only an invite to address. */}
-              <button
-                onClick={() => setIsNewOpen(true)}
-                style={{
-                  background: '#186337',
-                  color: 'white',
-                  border: 'none',
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={16} /> New
-              </button>
+              <span style={{ display: 'inline-block' }}>
+                <button
+                  onClick={() => {
+                    if (isLimitReached) {
+                      toast.error(`User limit of ${maxUsersLimit} reached.`);
+                    } else {
+                      setIsNewOpen(true);
+                    }
+                  }}
+                  style={{
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Plus size={16} /> New
+                </button>
+              </span>
             </div>
           </header>
 
@@ -416,21 +433,29 @@ export function UsersPage() {
                     ? 'Everyone who was invited has either joined or been revoked.'
                     : 'Invite someone to this organization. They choose their own password from the link they receive.'}
                 </p>
-                <button
-                  onClick={() => setIsNewOpen(true)}
-                  style={{
-                    background: '#28a745',
-                    color: 'white',
-                    border: 'none',
-                    padding: '10px 24px',
-                    borderRadius: '4px',
-                    fontWeight: 600,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Invite User
-                </button>
+                <span style={{ display: 'inline-block' }}>
+                  <button
+                    onClick={() => {
+                      if (isLimitReached) {
+                        toast.error(`User limit of ${maxUsersLimit} reached.`);
+                      } else {
+                        setIsNewOpen(true);
+                      }
+                    }}
+                    style={{
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      padding: '10px 24px',
+                      borderRadius: '4px',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Invite User
+                  </button>
+                </span>
               </div>
             ) : selectedId ? (
               // Narrow master pane beside the detail panel.
