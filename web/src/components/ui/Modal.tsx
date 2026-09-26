@@ -208,7 +208,7 @@ export function Modal({
         tabIndex={-1}
         style={{
           background: '#fff',
-          borderRadius: position === 'fullScreen' ? 0 : position === 'right' ? 8 : 6,
+          borderRadius: position === 'fullScreen' ? 0 : position === 'right' ? 8 : '0 0 6px 6px',
           width: '100%',
           maxWidth: position === 'fullScreen' ? '100%' : width,
           boxShadow: position === 'fullScreen' ? 'none' : '0 12px 40px rgba(15, 23, 42, 0.25)',

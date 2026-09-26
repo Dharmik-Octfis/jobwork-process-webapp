@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { Select } from '../../../components/ui/Select';
+import { Modal } from '../../../components/ui/Modal';
 import { createProcess, fetchProcesses } from './processes.api';
-import type { Process } from './processes.schemas';
+import type { Process, CreateProcessData } from './processes.schemas';
+import { ProcessForm } from './ProcessForm';
 
 interface Props {
   value: string | null;
@@ -58,7 +60,6 @@ export function ProcessSelect({
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
-  const [newName, setNewName] = useState('');
   const triggerRef = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
@@ -73,10 +74,9 @@ export function ProcessSelect({
   const processes = data?.results ?? [];
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => createProcess(orgId!, { name }),
+    mutationFn: (data: CreateProcessData) => createProcess(orgId!, data),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['processes', orgId] });
-      setNewName('');
       setIsCreating(false);
       onChange(created.id, created);
       // Focus goes back where it came from, not to the top of the document.
@@ -87,13 +87,8 @@ export function ProcessSelect({
     },
   });
 
-  const trimmed = newName.trim();
-  const isDuplicate = processes.some((p) => p.name.toLowerCase() === trimmed.toLowerCase());
-  const canCreate = trimmed.length > 0 && !isDuplicate && !createMutation.isPending;
-
   const cancelCreate = () => {
     setIsCreating(false);
-    setNewName('');
     triggerRef.current?.querySelector('button')?.focus();
   };
 
@@ -118,6 +113,8 @@ export function ProcessSelect({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Close the dropdown menu first
+                triggerRef.current?.querySelector('button')?.click();
                 setIsCreating(true);
               }}
               style={{
@@ -140,76 +137,57 @@ export function ProcessSelect({
         />
       </div>
 
-      {isCreating && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  // The select sits inside a form; Enter here must create a
-                  // process, not submit the form behind it.
-                  e.preventDefault();
-                  if (canCreate) createMutation.mutate(trimmed);
-                }
-                if (e.key === 'Escape') cancelCreate();
-              }}
-              placeholder="New process name"
-              aria-label="New process name"
-              autoFocus
+      <Modal
+        isOpen={isCreating}
+        title="New Process"
+        onClose={cancelCreate}
+        width={500}
+        footer={
+          <>
+            <button
+              type="submit"
+              form="process-select-modal-form"
+              disabled={createMutation.isPending}
               style={{
-                width: '100%',
-                padding: '5px 8px',
+                padding: '6px 20px',
+                background: '#0062ff',
+                color: 'white',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 500,
                 fontSize: 13,
+              }}
+            >
+              {createMutation.isPending ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={cancelCreate}
+              style={{
+                padding: '6px 20px',
+                background: 'white',
+                color: '#333',
                 border: '1px solid #d1d5db',
                 borderRadius: 4,
-                minHeight: 30,
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: 13,
               }}
-            />
-            {isDuplicate && (
-              <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: '#e54d4d' }}>
-                A process with that name already exists.
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            disabled={!canCreate}
-            onClick={() => createMutation.mutate(trimmed)}
-            style={{
-              padding: '5px 10px',
-              fontSize: 12,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: canCreate ? '#fff' : '#f1f5f9',
-              color: canCreate ? '#0062ff' : '#94a3b8',
-              cursor: canCreate ? 'pointer' : 'not-allowed',
-              whiteSpace: 'nowrap',
-              minHeight: 30,
-            }}
-          >
-            {createMutation.isPending ? 'Creating…' : 'Create'}
-          </button>
-          <button
-            type="button"
-            onClick={cancelCreate}
-            style={{
-              padding: '5px 10px',
-              fontSize: 12,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: '#fff',
-              color: '#64748b',
-              cursor: 'pointer',
-              minHeight: 30,
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      )}
+            >
+              Cancel
+            </button>
+          </>
+        }
+      >
+        <ProcessForm
+          formId="process-select-modal-form"
+          hideFooter
+          onSubmit={(data) => createMutation.mutate(data)}
+          isPending={createMutation.isPending}
+          onCancel={cancelCreate}
+        />
+      </Modal>
     </div>
   );
 }
