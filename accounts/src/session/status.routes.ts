@@ -15,7 +15,7 @@ import { ACTIVE_USER } from '../lib/activeUser.ts';
  *
  * 🔴 A boolean and NOTHING else. No email, no name, no list of apps. This is
  * unauthenticated surface reachable from a public page; "signed in as …" would turn
- * it into identity disclosure and needs its own decision.
+ * it into identity disclosure. Decided 2026-09-26: boolean-only permanently.
  */
 
 /**

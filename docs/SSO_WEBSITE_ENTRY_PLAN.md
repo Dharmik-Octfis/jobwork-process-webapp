@@ -51,7 +51,7 @@ the CSP `form-action` list were untouched by the move; only §4.5 and §5.6 carr
 | §6 the four flows                  | —                     | ✅ checked on the live hosts 2026-09-26, plus a brand-new invitee end to end (run locally)                                                                  |
 | §7 traps                           | —                     | 🔴 read before implementing                                                                                                                                 |
 | §8 build order                     | —                     | ✅ every step deployed (last: step 5 B, 2026-09-26)                                                                                                         |
-| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy decided 2026-09-22                                                                            |
+| §9 open decisions                  | —                     | ✅ all decided — `/no-access` copy 2026-09-22, status endpoint boolean-only 2026-09-26                                                                      |
 | §10 documents this will invalidate | —                     | ✅ edited 2026-09-22 (walkthrough, identity doc, the accounts `No CORS` comment)                                                                            |
 
 _Last updated: 2026-09-26 — the website page moved from `/job-work-1` to `/jobwork` and is
@@ -172,9 +172,9 @@ library sets `signed: true`, `provider.ts:107`), then resolve it against `oidc_p
 
 🔴 **A boolean and nothing else.** No email, no name, no avatar, no list of apps. Same reasoning as
 `GET /api/auth/config` returning only `ssoEnabled` (`SSO_WALKTHROUGH.md` step 0): this is
-unauthenticated surface reachable from a public page, and the estate's shape is not public. Adding
-"signed in as james@…" later is a _different_ decision — it turns this into identity disclosure and
-needs its own thought.
+unauthenticated surface reachable from a public page, and the estate's shape is not public.
+**Decided 2026-09-26 that it stays this way** (§9): "signed in as james@…" would turn it into
+identity disclosure, and is not to be added.
 
 ### 4.2 The `No CORS, deliberately` rule gains its first exception
 
@@ -420,7 +420,8 @@ front of this, not part of it.
    organization's administrator — ask them to restore it."_, _"Or sign out and sign in with a
    different account."_, and one button, _"Sign out and use another account"_. The "ask to be
    invited" wording went with invite-only.
-4. **The status endpoint's answer** — boolean only, now and later? (§4.1)
+4. ~~**The status endpoint's answer**~~ — decided 2026-09-26: **boolean only, permanently**
+   (`{ "signedIn": boolean }`, §4.1). No email, name or app list, now or later.
 
 _Decided:_ **the website URL** — `https://www.octfis.com/jobwork` (2026-09-26, replacing
 `/job-work-1` from 2026-09-21). Any later rename is a coordinated change: §4.5's registry entry, both §5.6 variables,
