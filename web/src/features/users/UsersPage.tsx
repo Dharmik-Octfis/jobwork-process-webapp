@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { organizationsApi } from '../organizations/organizations.api';
 import { rolesApi } from '../roles/roles.api';
 import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
@@ -357,12 +358,15 @@ export function UsersPage() {
               {/* Adding a user IS sending an invitation — nobody gets a password set
                   for them — so this opens a window rather than routing to a create
                   page: there is no record to build yet, only an invite to address. */}
-              <span
-                className={isLimitReached ? "users-tooltip-wrapper" : ""}
-                style={{ display: 'inline-block', cursor: isLimitReached ? 'not-allowed' : 'auto' }}
-              >
+              <span style={{ display: 'inline-block' }}>
                 <button
-                  onClick={() => setIsNewOpen(true)}
+                  onClick={() => {
+                    if (isLimitReached) {
+                      toast.error(`User limit of ${maxUsersLimit} reached.`);
+                    } else {
+                      setIsNewOpen(true);
+                    }
+                  }}
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -371,23 +375,15 @@ export function UsersPage() {
                     borderRadius: '4px',
                     fontWeight: 500,
                     fontSize: '13px',
-                    cursor: isLimitReached ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 4,
                     whiteSpace: 'nowrap',
-                    opacity: isLimitReached ? 0.6 : 1,
-                    pointerEvents: isLimitReached ? 'none' : 'auto',
                   }}
-                  disabled={isLimitReached}
                 >
                   <Plus size={16} /> New
                 </button>
-                {isLimitReached && (
-                  <span className="users-tooltip-text users-tooltip-bottom-right">
-                    User limit of {maxUsersLimit} reached.
-                  </span>
-                )}
               </span>
             </div>
           </header>
@@ -437,12 +433,15 @@ export function UsersPage() {
                     ? 'Everyone who was invited has either joined or been revoked.'
                     : 'Invite someone to this organization. They choose their own password from the link they receive.'}
                 </p>
-                <span
-                  className={isLimitReached ? "users-tooltip-wrapper" : ""}
-                  style={{ display: 'inline-block', cursor: isLimitReached ? 'not-allowed' : 'auto' }}
-                >
+                <span style={{ display: 'inline-block' }}>
                   <button
-                    onClick={() => setIsNewOpen(true)}
+                    onClick={() => {
+                      if (isLimitReached) {
+                        toast.error(`User limit of ${maxUsersLimit} reached.`);
+                      } else {
+                        setIsNewOpen(true);
+                      }
+                    }}
                     style={{
                       background: '#28a745',
                       color: 'white',
@@ -451,19 +450,11 @@ export function UsersPage() {
                       borderRadius: '4px',
                       fontWeight: 600,
                       fontSize: 14,
-                      cursor: isLimitReached ? 'not-allowed' : 'pointer',
-                      opacity: isLimitReached ? 0.6 : 1,
-                      pointerEvents: isLimitReached ? 'none' : 'auto',
+                      cursor: 'pointer',
                     }}
-                    disabled={isLimitReached}
                   >
                     Invite User
                   </button>
-                  {isLimitReached && (
-                    <span className="users-tooltip-text">
-                      User limit of {maxUsersLimit} reached.
-                    </span>
-                  )}
                 </span>
               </div>
             ) : selectedId ? (

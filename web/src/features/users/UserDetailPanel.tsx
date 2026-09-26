@@ -202,6 +202,8 @@ export function UserDetailPanel({
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['org-users', orgId] });
+    await queryClient.invalidateQueries({ queryKey: ['org-users-count', orgId] });
+    await queryClient.invalidateQueries({ queryKey: ['org-total-users-count', orgId] });
   };
 
   const updateMutation = useMutation({
