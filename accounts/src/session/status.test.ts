@@ -179,7 +179,7 @@ describe('isExactOrigin', () => {
 
   it.each([
     'https://www.octfis.com/', // trailing slash — the browser never sends one
-    'https://www.octfis.com/job-work-1', // a page, not an origin
+    'https://www.octfis.com/jobwork', // a page, not an origin
     'http://www.octfis.com', // plain http off localhost
     '*',
     'https://*.octfis.com',

@@ -18,7 +18,7 @@ const env = vi.hoisted(() => ({
     clientId: 'jobwork',
     redirectUri: 'https://jobwork.example/api/auth/sso/callback',
     postLogoutRedirectUri: undefined as string | undefined,
-    websiteUrl: 'https://www.octfis.example/job-work-1' as string | undefined,
+    websiteUrl: 'https://www.octfis.example/jobwork' as string | undefined,
   },
 }));
 vi.mock('../../../config/env.ts', () => ({ env }));
@@ -66,7 +66,7 @@ function flowCookie(flow: Record<string, unknown>) {
 beforeEach(() => {
   authorizationCodeGrant.mockReset();
   authorizationCodeGrant.mockRejectedValue(new Error('exchange attempted'));
-  env.sso.websiteUrl = 'https://www.octfis.example/job-work-1';
+  env.sso.websiteUrl = 'https://www.octfis.example/jobwork';
 });
 
 describe('startLogin', () => {
@@ -124,7 +124,7 @@ describe('callback after a silent attempt', () => {
         res,
       );
 
-      expect(redirect).toHaveBeenCalledWith('https://www.octfis.example/job-work-1');
+      expect(redirect).toHaveBeenCalledWith('https://www.octfis.example/jobwork');
       expect(authorizationCodeGrant).not.toHaveBeenCalled();
     },
   );

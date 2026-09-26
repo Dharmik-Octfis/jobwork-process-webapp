@@ -38,7 +38,7 @@ accounts itself so it can present (or receive) the accounts session cookie. Only
 
 ## 0. Website sets the button label
 
-The product page at `https://www.octfis.com/job-work-1` asks accounts whether this browser is
+The product page at `https://www.octfis.com/jobwork` asks accounts whether this browser is
 already signed in, only to choose between **Sign In** and **Access Jobwork**. Both labels link to
 the same URL (step 1).
 
@@ -356,7 +356,7 @@ loop guard). accounts then never shows a form:
 
 - signed in there → a code, and the flow continues at step 6;
 - not signed in → `/api/auth/sso/callback?error=login_required&state=…`, which jobwork turns into
-  a redirect to the website (`https://www.octfis.com/job-work-1`) to sign in from there — or to
+  a redirect to the website (`https://www.octfis.com/jobwork`) to sign in from there — or to
   `/login?sso=manual` where no website URL is configured (local dev).
 
 `/login?sso=manual` skips the redirect and shows the **Access Jobwork** button instead.

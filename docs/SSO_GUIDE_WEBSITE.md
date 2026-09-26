@@ -1,7 +1,7 @@
 # SSO guide 2 of 3 — the app's product page on www.octfis.com
 
 **Who this is for:** the website developer (Zoho Sites) who builds one product page per Octfis
-app, e.g. `https://www.octfis.com/job-work-1` for Jobwork.
+app, e.g. `https://www.octfis.com/jobwork` for Jobwork.
 **Other guides:** `SSO_GUIDE_NEW_APP.md` (the app itself) · `SSO_GUIDE_ACCOUNTS.md` (accounts).
 
 ---
@@ -31,7 +31,7 @@ must be **public** (no IP restriction) before the app team points at it.
 
 | Value           | Jobwork (example)                               | Your app                                      |
 | --------------- | ----------------------------------------------- | --------------------------------------------- |
-| Page address    | `https://www.octfis.com/job-work-1`             | `https://www.octfis.com/<slug>`               |
+| Page address    | `https://www.octfis.com/jobwork`                | `https://www.octfis.com/<slug>`               |
 | Button link     | `https://jobwork.octfis.com/api/auth/sso/login` | `https://<app>.octfis.com/api/auth/sso/login` |
 | Signed-in label | `Access Jobwork`                                | `Access <App>`                                |
 | Label check URL | `https://accounts.octfis.com/session/status`    | same for every app                            |

@@ -142,7 +142,7 @@ const envSchema = z.object({
    * NOWHERE is sent when a silent sign-in (`prompt=none`) finds no session at
    * accounts. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.2, §5.6.
    *
-   * 🔴 Exact, `www` included: production is `https://www.octfis.com/job-work-1`. The
+   * 🔴 Exact, `www` included: production is `https://www.octfis.com/jobwork`. The
    * bare domain does not serve the site, so dropping `www` sends every signed-out
    * visitor to a 404.
    *

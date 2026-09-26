@@ -1,7 +1,7 @@
 # SSO website entry: sign-in moves to octfis.com
 
 > **Purpose.** Today sign-in starts on jobwork's own `/login` screen. It is moving to a public
-> product website — `https://www.octfis.com/job-work-1`, one page per app — which is what Google
+> product website — `https://www.octfis.com/jobwork`, one page per app — which is what Google
 > indexes and what carries the button. This document is the plan: what changes on each of the three sites, what
 > deliberately does not, and the traps between them.
 >
@@ -9,25 +9,27 @@
 > `docs/SSO_WALKTHROUGH.md`. **Neither is superseded.** This changes where a sign-in _starts_ and
 > where an unauthenticated visitor is _sent_ — the entry and the exit, not the flow between them.
 
-_Status: **✅ deployed to production 2026-09-21 from `feat/singleSignOn`, except phase B of step 5**
-— the two jobwork URL values in §5.6, which wait for `www.octfis.com/job-work-1` to be public.
-Until then a signed-out visitor sees jobwork's own "Access Jobwork" button and logout returns to
-`jobwork.octfis.com/`. `feat/singleSignOn` is not merged to `dev`, so a production deploy from
+_Status: **✅ fully deployed to production from `feat/singleSignOn`** — steps 1–4 and phase A
+on 2026-09-21, phase B (§5.6) on 2026-09-26 once the page moved to the public
+`www.octfis.com/jobwork`. Verified live that day: a signed-out direct visit bounces to the website,
+a second silent attempt within 30 s falls to `/login?sso=manual`, and logout hands accounts
+`post_logout_redirect_uri=https://www.octfis.com/jobwork`, which it accepts. `feat/singleSignOn` is not merged to `dev`, so a production deploy from
 `dev` removes all of it. The website page is owned by a different developer;
 what they need from us is a link and one endpoint, and that contract is already handed over (§3).
 Sections below are marked with the site they belong to._
 
-🔴 **The website URL is `https://www.octfis.com/job-work-1` — exactly that string, decided
-2026-09-21.** Not `octfis.com/jobwork`, which is what earlier drafts of this plan said. Three things
-on our side match it by exact string or exact origin (§4.2, §4.5, §5.6), so it is a contract: the
-page is not renamed without changing all three in the same release. Two facts that fell out of
-checking the real site:
+🔴 **The website URL is `https://www.octfis.com/jobwork` — exactly that string, decided
+2026-09-26.** It replaces `https://www.octfis.com/job-work-1` (decided 2026-09-21), which now
+answers 404: the button and probe script moved onto the existing `/jobwork` page, which had been
+the public page for the _Zoho Creator_ Jobwork app. Three things on our side match it by exact
+string or exact origin (§4.2, §4.5, §5.6), so it is a contract: the page is not renamed without
+changing all three in the same release. The origin did not change, so §4.2's CORS allowlist and
+the CSP `form-action` list were untouched by the move; only §4.5 and §5.6 carry the path.
 
-- **`www` is the only host that serves it.** Bare `https://octfis.com/job-work-1` answers 404, so
+- **`www` is the only host that serves it.** Bare `https://octfis.com/jobwork` answers 404, so
   the origin is `https://www.octfis.com`, never `https://octfis.com`.
-- **`www.octfis.com/jobwork` also exists** — the older public page for the _Zoho Creator_ Jobwork
-  app, linked from the site menu. It is a different page for a different product and nothing here
-  points at it.
+- **No trailing slash.** `https://www.octfis.com/jobwork/` answers 404 too, and accounts matches
+  the post-logout URI byte for byte.
 
 🔴 **Two prerequisites sat in front of all of this on 2026-09-21:**
 
@@ -35,9 +37,9 @@ checking the real site:
    redeployed from `feat/singleSignOn` with `SSO_ENABLED=true`. It had been running a `dev` build
    with no SSO code and the flag off. It will regress the same way on the next deploy from `dev`
    until the branch is merged._
-2. **The website page is IP-restricted** — still true; while it is being built (visitors outside the office see
-   _"Access Restricted"_), and its content is still the Zoho Sites template. §5.2's bounce and §5.6's
-   post-logout both land there, so the page must be public before either ships.
+2. ~~**The website page is IP-restricted.**~~ _Resolved 2026-09-26: the button moved to the
+   already-public `www.octfis.com/jobwork` (200 from outside the office, probe script in place).
+   §5.2's bounce and §5.6's post-logout both land there._
 
 | Section                            | Site                  | State                                                                                                                                               |
 | ---------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -45,15 +47,15 @@ checking the real site:
 | §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                  |
 | §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                   |
 | §4 the identity provider           | `accounts.octfis.com` | ✅ §4.1–§4.5 and noindex **deployed to production 2026-09-21** (`/` → `https://www.octfis.com`; `jobwork-production` accepts both post-logout URIs) |
-| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 and §5.7 **deployed to production 2026-09-21** (SSO on); ⏳ §5.6 values (phase B) wait for the website page to be public               |
+| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 and §5.7 **deployed to production 2026-09-21** (SSO on); ✅ §5.6 values (phase B) **deployed 2026-09-26**                              |
 | §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                             |
 | §7 traps                           | —                     | 🔴 read before implementing                                                                                                                         |
 | §8 build order                     | —                     | ❌                                                                                                                                                  |
 | §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy decided 2026-09-22                                                                    |
 | §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                         |
 
-_Last updated: 2026-09-21 — the real page (`www.octfis.com/job-work-1`, Zoho Sites) replaces the
-assumed `octfis.com/jobwork` throughout; build-order steps 1–4 and step 5 phase A deployed._
+_Last updated: 2026-09-26 — the website page moved from `/job-work-1` to `/jobwork` and is
+public; phase B deployed. Build-order steps 1–4 and step 5 phase A deployed 2026-09-21._
 
 ---
 
@@ -75,7 +77,7 @@ The risky half of SSO stays where it is. What moves is the front door.
 
 ## 2. The one hard problem, and the fact that solves it
 
-> "If the user is already logged in at `accounts.octfis.com`, then `www.octfis.com/job-work-1`
+> "If the user is already logged in at `accounts.octfis.com`, then `www.octfis.com/jobwork`
 > shows **Access Jobwork** instead of **Sign In**."
 
 `www.octfis.com` is a public page. It has no session of its own, and accounts' `_session` cookie is
@@ -100,7 +102,7 @@ touched by this work.
 
 ---
 
-## 3. `www.octfis.com/job-work-1` — the website (external)
+## 3. `www.octfis.com/jobwork` — the website (external)
 
 Owned by the website developer, not this repo. The site is **Zoho Sites 2.0**, and the page's one
 call to action is a native Zoho Sites button (**Get Started Now**, `href="javascript:;"`,
@@ -112,6 +114,10 @@ call to action is a native Zoho Sites button (**Get Started Now**, `href="javasc
 | ~15 lines of page JS      | `fetch` our status endpoint, swap the label to `Access Jobwork` when it answers `signedIn`                            |
 | One CSS rule              | `min-width` on the button so the label swap does not shift the layout                                                 |
 | Publish the page publicly | lift the IP restriction — §5.2's bounce and §5.6's post-logout land here, so a restricted page is a dead end for both |
+
+_As published on `/jobwork` (checked 2026-09-26), the developer used a plain anchor,
+`id="octfis-jobwork-cta"`, and the script sets its `textContent` — no new tab, no query string.
+That meets the contract; the two notes below applied to the native-button version handed over._
 
 Two Zoho Sites specifics decide how the script is written:
 
@@ -125,7 +131,7 @@ The site sends **no Content-Security-Policy** and already runs inline scripts, s
 code can call `accounts.octfis.com` without any change on their side.
 
 **Handed over as a standalone page:** <https://claude.ai/artifact/JE5FkNwuyYNMAFeLYiHnWS> (version 2,
-2026-09-21 — Zoho Sites specifics and the `www.octfis.com/job-work-1` address)
+2026-09-21 — Zoho Sites specifics and the `www.octfis.com/jobwork` address)
 
 ### Two properties that make this safe to hand to someone else
 
@@ -218,7 +224,7 @@ Review it by reading, not by line count.
 
 ### 4.5 Register the new post-logout URI
 
-Add `https://www.octfis.com/job-work-1` to the `jobwork-production` client's `post_logout_uris`,
+Add `https://www.octfis.com/jobwork` to the `jobwork-production` client's `post_logout_uris`,
 exact string (`clients.ts:79-80` — matched exactly, never as a pattern; no trailing slash, since
 that is a different string).
 
@@ -252,7 +258,7 @@ same thing and that decision survives intact. Keep `/` redirecting to `/home` fo
 jobwork.octfis.com  →  no local session
    →  /api/auth/sso/login?prompt=none&returnTo=/home
       ├─ accounts has a session → code → local session → /home        (no UI at all)
-      └─ no session → ?error=login_required → 302 https://www.octfis.com/job-work-1
+      └─ no session → ?error=login_required → 302 https://www.octfis.com/jobwork
 ```
 
 **Why `prompt=none` and not the §4.1 probe.** This is a top-level navigation, so the `Lax` cookie is
@@ -269,7 +275,7 @@ Two changes in `sso.controller.ts` make it work:
 ### 5.3 🔴 The invitation deep link must be carved out of the bounce
 
 Invite emails link to `/invite/accept?token=…`. An invitee has **no accounts identity yet**, so
-`prompt=none` always fails for them — and bouncing them to `www.octfis.com/job-work-1` **throws their
+`prompt=none` always fails for them — and bouncing them to `www.octfis.com/jobwork` **throws their
 invitation token away**. The flow in `SSO_WALKTHROUGH.md` §6.2 breaks silently.
 
 **The rule:** silent-then-bounce applies only when there is no meaningful `returnTo`. A deep link does
@@ -299,10 +305,10 @@ but with SSO on it does the silent attempt / bounce instead of rendering the `Ac
 
 ### 5.6 Two environment values
 
-| Variable                       | Now                              | Becomes                                                        |
-| ------------------------------ | -------------------------------- | -------------------------------------------------------------- |
-| `SSO_POST_LOGOUT_REDIRECT_URI` | jobwork's own `/` (`env.ts:139`) | `https://www.octfis.com/job-work-1`                            |
-| _new_ — the website URL        | —                                | `https://www.octfis.com/job-work-1` — where §5.2's bounce goes |
+| Variable                       | Now                              | Becomes                                                     |
+| ------------------------------ | -------------------------------- | ----------------------------------------------------------- |
+| `SSO_POST_LOGOUT_REDIRECT_URI` | jobwork's own `/` (`env.ts:139`) | `https://www.octfis.com/jobwork`                            |
+| _new_ — the website URL        | —                                | `https://www.octfis.com/jobwork` — where §5.2's bounce goes |
 
 Same value twice, on purpose: one is where accounts sends the browser after logout (and must equal
 the §4.5 registry entry), the other is where jobwork itself sends an unauthenticated visitor. They
@@ -315,18 +321,18 @@ jobwork's root instead would only bounce through §5.2 to the same place.
 
 On the whole app, and on all of accounts (only its root sets it today, `app.ts:147`). Otherwise Google
 surfaces the app's login screen for "octfis jobwork" — which is exactly the search result
-`www.octfis.com/job-work-1` exists to own.
+`www.octfis.com/jobwork` exists to own.
 
 ---
 
 ## 6. The four flows
 
-| Visitor                                                    | What happens                                                                                              |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Google → `www.octfis.com/job-work-1`, not signed in        | Probe says `false` → **Sign In**. Click → accounts login form → callback → `/home`                        |
-| `www.octfis.com/job-work-1`, already signed in at accounts | Probe says `true` → **Access Jobwork**. Click → accounts answers silently → callback → `/home`. No screen |
-| Direct `jobwork.octfis.com`, signed in at accounts         | No local session → `prompt=none` → code → `/home`. **Needs §4.4**, or the first-ever visit falls to row 4 |
-| Direct `jobwork.octfis.com`, not signed in                 | `prompt=none` → `login_required` → 302 `https://www.octfis.com/job-work-1`                                |
+| Visitor                                                 | What happens                                                                                              |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Google → `www.octfis.com/jobwork`, not signed in        | Probe says `false` → **Sign In**. Click → accounts login form → callback → `/home`                        |
+| `www.octfis.com/jobwork`, already signed in at accounts | Probe says `true` → **Access Jobwork**. Click → accounts answers silently → callback → `/home`. No screen |
+| Direct `jobwork.octfis.com`, signed in at accounts      | No local session → `prompt=none` → code → `/home`. **Needs §4.4**, or the first-ever visit falls to row 4 |
+| Direct `jobwork.octfis.com`, not signed in              | `prompt=none` → `login_required` → 302 `https://www.octfis.com/jobwork`                                   |
 
 ---
 
@@ -344,7 +350,7 @@ Collected because each one fails in a way that points somewhere other than its c
 | `/no-access` still unbuilt                                | A successful sign-in ends on the catch-all, reading as sign-in failure     | §5.4 |
 | Probe called server-side by the website                   | Always `signedIn: false`, for everyone, with no error                      | §3   |
 | CORS allowlist says `https://octfis.com` (no `www`)       | Label never flips, anywhere. The probe fails into `.catch()` silently      | §4.2 |
-| Website page renamed away from `/job-work-1`              | Sign-out lands on a 404, or accounts refuses the post-logout URI           | top  |
+| Website page renamed away from `/jobwork`                 | Sign-out lands on a 404, or accounts refuses the post-logout URI           | top  |
 | Website page still IP-restricted when §5.2 ships          | Every signed-out visitor is bounced to "Access Restricted"                 | top  |
 | Website button published before an SSO build is deployed  | The button 404s — production is on a non-SSO build today                   | top  |
 
@@ -378,20 +384,22 @@ Each step is independently deployable and leaves the estate working.
    - Verified locally against real accounts: `prompt=none` with no session → `login_required` →
      `/login?sso=manual`, and the guard refuses a second attempt. The signed-in success path and
      the website bounce need the real hostnames.
-     🔴 **Blocked until `www.octfis.com/job-work-1` is public** — it is where the bounce lands.
+     The bounce lands on `www.octfis.com/jobwork`, public since 2026-09-26 — see step 5 B.
 5. **Repoint the roots** (§4.3, §4.5, §5.6, §5.7) — config and registry. Same blocker as step 4 for
    the post-logout half. Code built 2026-09-21, in two phases so nothing waits on the website:
    - **A — safe now.** `DEFAULT_APP_SIGNIN_URL` renamed to `ROOT_REDIRECT_URL` (accounts `/` →
      `https://www.octfis.com`, the public home page; `deploy/services.json` requires the new name);
-     `X-Robots-Tag: noindex, nofollow` on every response of both services. Registry: add
-     `https://www.octfis.com/job-work-1` to `jobwork-production`'s post-logout URIs, KEEPING
-     `https://jobwork.octfis.com/` so either value of the jobwork variable works and rollback needs
-     no registry change:
-     `npm run register:client -- --id jobwork-production --name Jobwork --redirect https://jobwork.octfis.com/api/auth/sso/callback --post-logout https://jobwork.octfis.com/ --post-logout https://www.octfis.com/job-work-1 --backchannel https://jobwork.octfis.com/api/auth/sso/backchannel-logout --apply`
-     then deploy accounts (the registry and CSP `form-action` are read at boot), then the api.
-   - **B — once `www.octfis.com/job-work-1` is public.** In `backend/.env.production` set
-     `SSO_POST_LOGOUT_REDIRECT_URI` and `SSO_WEBSITE_URL` to `https://www.octfis.com/job-work-1`,
-     then redeploy the api. Before that, both would land visitors on "Access Restricted".
+     `X-Robots-Tag: noindex, nofollow` on every response of both services. Registry: added the
+     website URL of the day (`https://www.octfis.com/job-work-1`) to `jobwork-production`'s
+     post-logout URIs, KEEPING `https://jobwork.octfis.com/` so either value of the jobwork
+     variable works and rollback needs no registry change.
+   - **B — ✅ deployed 2026-09-26.** The page moved to `/jobwork`, so the registry row changed
+     first. `register:client` REPLACES the whole list, so name every URI to keep:
+     `npm run register:client -- --id jobwork-production --name Jobwork --redirect https://jobwork.octfis.com/api/auth/sso/callback --post-logout https://jobwork.octfis.com/ --post-logout https://www.octfis.com/jobwork --backchannel https://jobwork.octfis.com/api/auth/sso/backchannel-logout --apply`
+     then deploy accounts (the registry is read at boot — the api must not go first, or every
+     logout ends on accounts' "post_logout_redirect_uri not registered" page). Then in
+     `backend/.env.production` set `SSO_POST_LOGOUT_REDIRECT_URI` and `SSO_WEBSITE_URL` to
+     `https://www.octfis.com/jobwork` and deploy the api.
 
 ⚠️ **Step 4 cannot be fully verified on localhost.** `SSO_AND_IDENTITY.md` §10.3 already records that
 `oidc-provider` refuses to POST logout tokens to `127.0.0.0/8`; the three-host cookie and CSP
@@ -414,8 +422,8 @@ front of this, not part of it.
    invited" wording went with invite-only.
 4. **The status endpoint's answer** — boolean only, now and later? (§4.1)
 
-_Decided:_ **the website URL** — `https://www.octfis.com/job-work-1`, kept as is for now
-(2026-09-21). Any later rename is a coordinated change: §4.5's registry entry, both §5.6 variables,
+_Decided:_ **the website URL** — `https://www.octfis.com/jobwork` (2026-09-26, replacing
+`/job-work-1` from 2026-09-21). Any later rename is a coordinated change: §4.5's registry entry, both §5.6 variables,
 and the website in one release.
 
 ---

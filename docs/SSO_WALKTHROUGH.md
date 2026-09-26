@@ -11,7 +11,7 @@ with request and response and none of the reasoning, that is
 > `SSO_ENABLED=true` in `backend/.env` and `.env.production`, so local dev and production both
 > sign in through it. Staging is configured the same way but not deployed yet. Since
 > 2026-09-21 a sign-in usually starts from the product site
-> (`https://www.octfis.com/job-work-1`, see `SSO_WEBSITE_ENTRY_PLAN.md`); from step 1 on the
+> (`https://www.octfis.com/jobwork`, see `SSO_WEBSITE_ENTRY_PLAN.md`); from step 1 on the
 > flow below is the same.
 
 ---

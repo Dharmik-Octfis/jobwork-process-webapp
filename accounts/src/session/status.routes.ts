@@ -8,7 +8,7 @@ import { ACTIVE_USER } from '../lib/activeUser.ts';
  * `GET /session/status` → `{ "signedIn": boolean }`.
  * docs/SSO_WEBSITE_ENTRY_PLAN.md §4.1–§4.2.
  *
- * Asked by the product website (`https://www.octfis.com/job-work-1`) to choose between
+ * Asked by the product website (`https://www.octfis.com/jobwork`) to choose between
  * "Sign In" and "Access Jobwork". Both labels link to the same sign-in URL, so this
  * answer is cosmetic: a wrong `false` costs nothing, and every failure here — a 500,
  * a blocked request — lands the website on "Sign In", which still works.
