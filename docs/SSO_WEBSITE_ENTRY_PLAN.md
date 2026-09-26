@@ -13,8 +13,8 @@ _Status: **✅ fully deployed to production from `feat/singleSignOn`** — steps
 on 2026-09-21, phase B (§5.6) on 2026-09-26 once the page moved to the public
 `www.octfis.com/jobwork`. Verified live that day: a signed-out direct visit bounces to the website,
 a second silent attempt within 30 s falls to `/login?sso=manual`, and logout hands accounts
-`post_logout_redirect_uri=https://www.octfis.com/jobwork`, which it accepts. `feat/singleSignOn` is not merged to `dev`, so a production deploy from
-`dev` removes all of it. The website page is owned by a different developer;
+`post_logout_redirect_uri=https://www.octfis.com/jobwork`, which it accepts. `feat/singleSignOn` was merged into `dev` on 2026-09-26 (`05e4f08`), so a
+deploy from `dev` carries all of it. The website page is owned by a different developer;
 what they need from us is a link and one endpoint, and that contract is already handed over (§3).
 Sections below are marked with the site they belong to._
 
@@ -35,8 +35,8 @@ the CSP `form-action` list were untouched by the move; only §4.5 and §5.6 carr
 
 1. ~~**Production jobwork is not running an SSO build.**~~ _Resolved the same day: production was
    redeployed from `feat/singleSignOn` with `SSO_ENABLED=true`. It had been running a `dev` build
-   with no SSO code and the flag off. It will regress the same way on the next deploy from `dev`
-   until the branch is merged._
+   with no SSO code and the flag off. That regression risk ended when the branch was merged into
+   `dev` on 2026-09-26._
 2. ~~**The website page is IP-restricted.**~~ _Resolved 2026-09-26: the button moved to the
    already-public `www.octfis.com/jobwork` (200 from outside the office, probe script in place).
    §5.2's bounce and §5.6's post-logout both land there._
@@ -352,7 +352,7 @@ Collected because each one fails in a way that points somewhere other than its c
 | CORS allowlist says `https://octfis.com` (no `www`)       | Label never flips, anywhere. The probe fails into `.catch()` silently      | §4.2 |
 | Website page renamed away from `/jobwork`                 | Sign-out lands on a 404, or accounts refuses the post-logout URI           | top  |
 | Website page still IP-restricted when §5.2 ships          | Every signed-out visitor is bounced to "Access Restricted"                 | top  |
-| Website button published before an SSO build is deployed  | The button 404s — production is on a non-SSO build today                   | top  |
+| Website button published before an SSO build is deployed  | The button 404s — a deploy of a branch without SSO code would do this      | top  |
 
 ---
 
