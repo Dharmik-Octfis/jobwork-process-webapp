@@ -241,21 +241,21 @@ export async function createInvitation(
 
   // Enforce organization user limit with a row-level lock and create invitation
   const invite = await prisma.$transaction(async (tx) => {
-    const org = await tx.$queryRaw<{ max_users_limit: number }[]>`
-      SELECT max_users_limit FROM organizations WHERE id = ${organizationId}::uuid FOR UPDATE
+    const org = await tx.$queryRaw<{ maxUsersLimit: number }[]>`
+      SELECT max_users_limit as "maxUsersLimit" FROM organizations WHERE id = ${organizationId}::uuid FOR UPDATE
     `;
-    const maxLimit = org[0]?.max_users_limit || 10;
-    
+    const maxLimit = org[0]?.maxUsersLimit || 10;
+
     const activeMembersCount = await tx.membership.count({
       where: { organizationId, isDeleted: false }
     });
-    
+
     const pendingInvitesCount = await tx.invitation.count({
-      where: { 
-        organizationId, 
-        status: 'pending', 
+      where: {
+        organizationId,
+        status: 'pending',
         expiresAt: { gt: new Date() },
-        email: { not: input.email } 
+        email: { not: input.email }
       }
     });
 
@@ -270,7 +270,7 @@ export async function createInvitation(
     });
 
     if (activeMembersCount + pendingInvitesCount >= maxLimit) {
-      throw ApiError.badRequest('Organization user limit reached. Please upgrade your plan to add more users.');
+      throw ApiError.badRequest('Organization user limit reached.');
     }
 
     return tx.invitation.upsert({

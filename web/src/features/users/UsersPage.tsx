@@ -357,7 +357,7 @@ export function UsersPage() {
               {/* Adding a user IS sending an invitation — nobody gets a password set
                   for them — so this opens a window rather than routing to a create
                   page: there is no record to build yet, only an invite to address. */}
-              <span 
+              <span
                 className={isLimitReached ? "users-tooltip-wrapper" : ""}
                 style={{ display: 'inline-block', cursor: isLimitReached ? 'not-allowed' : 'auto' }}
               >
@@ -385,7 +385,7 @@ export function UsersPage() {
                 </button>
                 {isLimitReached && (
                   <span className="users-tooltip-text users-tooltip-bottom-right">
-                    User limit of {maxUsersLimit} reached. Upgrade plan to add more users.
+                    User limit of {maxUsersLimit} reached.
                   </span>
                 )}
               </span>
@@ -437,7 +437,7 @@ export function UsersPage() {
                     ? 'Everyone who was invited has either joined or been revoked.'
                     : 'Invite someone to this organization. They choose their own password from the link they receive.'}
                 </p>
-                <span 
+                <span
                   className={isLimitReached ? "users-tooltip-wrapper" : ""}
                   style={{ display: 'inline-block', cursor: isLimitReached ? 'not-allowed' : 'auto' }}
                 >
@@ -461,7 +461,7 @@ export function UsersPage() {
                   </button>
                   {isLimitReached && (
                     <span className="users-tooltip-text">
-                      User limit of {maxUsersLimit} reached. Upgrade plan to add more users.
+                      User limit of {maxUsersLimit} reached.
                     </span>
                   )}
                 </span>
