@@ -41,18 +41,18 @@ the CSP `form-action` list were untouched by the move; only §4.5 and §5.6 carr
    already-public `www.octfis.com/jobwork` (200 from outside the office, probe script in place).
    §5.2's bounce and §5.6's post-logout both land there._
 
-| Section                            | Site                  | State                                                                                                                                               |
-| ---------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                   |
-| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                  |
-| §3 the website                     | `www.octfis.com`      | ❌ external — handed over, see §3                                                                                                                   |
-| §4 the identity provider           | `accounts.octfis.com` | ✅ §4.1–§4.5 and noindex **deployed to production 2026-09-21** (`/` → `https://www.octfis.com`; `jobwork-production` accepts both post-logout URIs) |
-| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 and §5.7 **deployed to production 2026-09-21** (SSO on); ✅ §5.6 values (phase B) **deployed 2026-09-26**                              |
-| §6 the four flows                  | —                     | ❌ what §3–§5 add up to                                                                                                                             |
-| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                         |
-| §8 build order                     | —                     | ❌                                                                                                                                                  |
-| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy decided 2026-09-22                                                                    |
-| §10 documents this will invalidate | —                     | edit these AFTER the code lands, not before                                                                                                         |
+| Section                            | Site                  | State                                                                                                                                                       |
+| ---------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 what does not change            | —                     | ✅ true today, and must stay true                                                                                                                           |
+| §2 the same-site cookie            | —                     | the fact the whole design rests on                                                                                                                          |
+| §3 the website                     | `www.octfis.com`      | ✅ external — live on `www.octfis.com/jobwork` (button + probe), checked 2026-09-26                                                                         |
+| §4 the identity provider           | `accounts.octfis.com` | ✅ §4.1–§4.5 and noindex **deployed to production 2026-09-21** (`/` is now the login form + My Account; `jobwork-production` accepts both post-logout URIs) |
+| §5 the app                         | `jobwork.octfis.com`  | ✅ §5.1–§5.5 and §5.7 **deployed to production 2026-09-21** (SSO on); ✅ §5.6 values (phase B) **deployed 2026-09-26**                                      |
+| §6 the four flows                  | —                     | ✅ checked on the live hosts 2026-09-26, plus a brand-new invitee end to end (run locally)                                                                  |
+| §7 traps                           | —                     | 🔴 read before implementing                                                                                                                                 |
+| §8 build order                     | —                     | ✅ every step deployed (last: step 5 B, 2026-09-26)                                                                                                         |
+| §9 open decisions                  | —                     | 🔴 one open (the status endpoint's answer); `/no-access` copy decided 2026-09-22                                                                            |
+| §10 documents this will invalidate | —                     | ✅ edited 2026-09-22 (walkthrough, identity doc, the accounts `No CORS` comment)                                                                            |
 
 _Last updated: 2026-09-26 — the website page moved from `/job-work-1` to `/jobwork` and is
 public; phase B deployed. Build-order steps 1–4 and step 5 phase A deployed 2026-09-21._
