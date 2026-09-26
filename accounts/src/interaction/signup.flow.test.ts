@@ -233,6 +233,9 @@ describe('an invitee with no account, signing up inside the sign-in', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(await res.text()).toContain('This sign-in has expired');
+    const html = await res.text();
+    expect(html).toContain('This sign-in has expired');
+    // A way back, not a dead end: the product site, where every app's Sign In lives.
+    expect(html).toContain('<a href="https://www.octfis.example">Go to your Octfis apps</a>');
   });
 });

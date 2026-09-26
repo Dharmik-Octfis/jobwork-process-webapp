@@ -347,11 +347,12 @@ export function loginPage(options: {
   );
 }
 
-export function errorPage(message: string): string {
+export function errorPage(message: string, next?: { href: string; label: string }): string {
   return shell(
     'Sign-in problem',
     `
       <h1>Sign-in problem</h1>
-      <p class="sub">${escapeHtml(message)}</p>`,
+      <p class="sub">${escapeHtml(message)}</p>
+      ${next ? `<p><a href="${escapeHtml(next.href)}">${escapeHtml(next.label)}</a></p>` : ''}`,
   );
 }
