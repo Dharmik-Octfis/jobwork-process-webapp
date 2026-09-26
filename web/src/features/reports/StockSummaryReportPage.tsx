@@ -528,8 +528,9 @@ export function StockSummaryReportPage() {
           </div>
 
           {/* Data Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+              <thead>
               <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                 {visibleColumns.map((colKey) => {
                   switch (colKey) {
@@ -827,6 +828,7 @@ export function StockSummaryReportPage() {
               )}
             </tbody>
           </table>
+          </div>
 
           <Pagination
             pageContext={{
@@ -851,7 +853,7 @@ export function StockSummaryReportPage() {
           catalog={[
             { key: 'itemName', label: 'ITEM NAME', locked: true, defaultVisible: true },
             { key: 'categoryName', label: 'CATEGORY NAME', defaultVisible: false },
-            { key: 'sku', label: 'SKU', defaultVisible: false },
+            { key: 'sku', label: 'SKU', locked: true, defaultVisible: true },
             { key: 'hsnCode', label: 'HSN CODE', defaultVisible: false },
             ...customFields.map((cf) => ({
               key: `cf_${cf.key}`,
@@ -859,8 +861,10 @@ export function StockSummaryReportPage() {
               defaultVisible: false,
             })),
             { key: 'uomName', label: 'UNIT', defaultVisible: false },
-            { key: 'stockOnHand', label: 'STOCK ON HAND', defaultVisible: true },
-            { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', defaultVisible: true },
+            { key: 'openingStock', label: 'OPENING STOCK', locked: true, defaultVisible: true },
+            { key: 'quantityIn', label: 'QUANTITY IN', locked: true, defaultVisible: true },
+            { key: 'quantityOut', label: 'QUANTITY OUT', locked: true, defaultVisible: true },
+            { key: 'closingStock', label: 'CLOSING STOCK', locked: true, defaultVisible: true },
           ]}
           visible={visibleColumns}
           onSave={(newCols) => {

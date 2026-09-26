@@ -579,8 +579,9 @@ export function InventoryValuationSummaryPage() {
           </div>
 
           {/* Data Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+              <thead>
               <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                 {visibleColumns.map((colKey) => {
                   switch (colKey) {
@@ -806,6 +807,7 @@ export function InventoryValuationSummaryPage() {
               )}
             </tbody>
           </table>
+          </div>
 
           <Pagination
             pageContext={{
@@ -838,8 +840,8 @@ export function InventoryValuationSummaryPage() {
               defaultVisible: false,
             })),
             { key: 'uomName', label: 'UNIT', defaultVisible: false },
-            { key: 'stockOnHand', label: 'STOCK ON HAND', defaultVisible: true },
-            { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', defaultVisible: true },
+            { key: 'stockOnHand', label: 'STOCK ON HAND', locked: true, defaultVisible: true },
+            { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', locked: true, defaultVisible: true },
           ]}
           visible={visibleColumns}
           onSave={(newCols) => {

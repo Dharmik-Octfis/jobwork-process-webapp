@@ -278,8 +278,9 @@ export function StockMovementReportPage() {
           </div>
 
           {/* Data Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+              <thead>
               <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
                 <th style={thStyle}>TRANSACTION DATE</th>
                 <th style={thStyle}>TRANSACTION NUMBER</th>
@@ -378,6 +379,7 @@ export function StockMovementReportPage() {
               </tfoot>
             )}
           </table>
+          </div>
         </div>
       </div>
     </div>
