@@ -223,6 +223,7 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
                     options={masterData?.countries.map((c) => ({ label: c.name, value: c.name })) || []}
                     placeholder="Select Country"
                     disabled={!masterData}
+                    portal
                   />
                 )}
               />
@@ -245,6 +246,7 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
                         options={stateOptions}
                         placeholder="Select State"
                         disabled={stateOptions.length === 0}
+                        portal
                       />
                     )}
                   />
@@ -266,6 +268,7 @@ export function AdditionalAddressModal({ isOpen, onClose, onSubmit, title = 'Add
                         options={cityOptions}
                         placeholder="Select City"
                         disabled={!watch('state') || cityOptions.length === 0}
+                        portal
                       />
                     )}
                   />

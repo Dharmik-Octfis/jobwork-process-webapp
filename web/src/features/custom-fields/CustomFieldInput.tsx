@@ -152,7 +152,9 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
             { value: '', label: 'Select…' },
             ...options.map((o) => ({ value: o.id, label: o.label })),
           ]}
-          buttonStyle={{ maxWidth: '440px', height: '36px' }}
+          portal={portal}
+          containerStyle={{ maxWidth: '440px' }}
+          buttonStyle={{ height: '36px' }}
         />
       );
       break;

@@ -633,7 +633,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     onClick={() => frontImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: frontImageFile ? '4px' : '32px 16px',
+                      padding: frontImageFile ? '4px' : '0 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -644,7 +644,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       gap: 8,
                       cursor: 'pointer',
                       overflow: 'hidden',
-                      height: frontImageFile || formData.frontImage ? '112px' : 'auto',
+                      height: '85px',
                       position: 'relative',
                     }}
                   >
@@ -726,7 +726,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     onClick={() => rearImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: rearImageFile ? '4px' : '32px 16px',
+                      padding: rearImageFile ? '4px' : '0 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -737,7 +737,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       gap: 8,
                       cursor: 'pointer',
                       overflow: 'hidden',
-                      height: rearImageFile || formData.rearImage ? '112px' : 'auto',
+                      height: '85px',
                       position: 'relative',
                     }}
                   >
@@ -821,8 +821,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   style={{
                     width: '100%',
                     flex: 1,
-                    minHeight: '180px',
-                    padding: otherImageFiles.length > 0 ? '8px' : '24px 16px',
+                    height: '200px',
+                    padding: otherImageFiles.length > 0 ? '8px' : '0 16px',
                     border: '1px dashed #cbd5e1',
                     borderRadius: '6px',
                     background: '#ffffff',

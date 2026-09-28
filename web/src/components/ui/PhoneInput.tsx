@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, ChevronUp } from 'lucide-react';
 
 type CountryCode = {
@@ -37,6 +38,8 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({ value, onChange, countri
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({});
 
   if (value !== prevValue) {
     setPrevValue(value);
@@ -56,13 +59,37 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({ value, onChange, countri
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+      const target = event.target as Node;
+      if (dropdownRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setIsOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const place = () => {
+      const anchor = dropdownRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const dropUp = spaceBelow < 250 && spaceAbove > spaceBelow;
+      setMenuPosition({
+        left: rect.left,
+        ...(dropUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [isOpen]);
 
   const handleDialCodeSelect = (newDialCode: string) => {
     setDialCode(newDialCode);
@@ -133,19 +160,19 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({ value, onChange, countri
         {isOpen ? <ChevronUp size={14} color="#3b82f6" /> : <ChevronDown size={14} color="#6b7280" />}
       </div>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
+          ref={menuRef}
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
+            position: 'fixed',
             width: '280px',
             backgroundColor: '#fff',
             border: '1px solid #e5e7eb',
             borderRadius: '8px',
             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-            zIndex: 1000,
+            zIndex: 1200,
             overflow: 'hidden',
+            ...menuPosition,
           }}
         >
           <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
@@ -202,7 +229,8 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({ value, onChange, countri
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <input

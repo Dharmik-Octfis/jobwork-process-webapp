@@ -551,7 +551,7 @@ export function EditCompositeItemPage() {
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>SKU</label>
                 <div>
                   <input
                     name="sku"

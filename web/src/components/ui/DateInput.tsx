@@ -424,7 +424,7 @@ export function DateInput({
           {days.map((day) => {
             const iso = format(day, ISO);
             const isActive = iso === format(activeDay, ISO);
-            const isSelected = type === 'datetime' 
+            const isSelected = type === 'datetime'
               ? iso === format(activeDay, ISO)
               : Boolean(selected) && iso === format(selected!, ISO);
             const isOutside = day.getMonth() !== viewMonth.getMonth();
@@ -523,7 +523,7 @@ export function DateInput({
                 cursor: 'pointer',
               }}
             >
-              Apply Time
+              Apply
             </button>
           </div>
         </div>
