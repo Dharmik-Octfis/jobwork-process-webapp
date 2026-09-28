@@ -742,7 +742,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         <td style={{ padding: '14px 16px', fontSize: '13px' }}>
                           <span
                             onClick={() =>
-                              navigate(`/organizations/${orgId}/purchases/bills/${bill.id}`)
+                              navigate(`/organizations/${orgId}/purchases/bills?id=${bill.id}`)
                             }
                             style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
                           >
