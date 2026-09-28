@@ -64,15 +64,34 @@ function receiptChargeLine(receipt: {
   id: string;
   receiptNumber: string;
   jobOrder?: { jobOrderNumber?: string | null } | null;
+  outputs?: { acceptedQty?: string | number; rate?: string | number; isPrimary?: boolean }[];
+  totalAcceptedQty?: string | number;
 }): BillItem {
+  let qtyNum = 0;
+  let rateNum = 0;
+
+  if (receipt.outputs && Array.isArray(receipt.outputs)) {
+    qtyNum = receipt.outputs.reduce((acc, curr) => acc + (Number(curr.acceptedQty) || 0), 0);
+    const primary = receipt.outputs.find((o) => o.isPrimary) || receipt.outputs[0];
+    if (primary) {
+      rateNum = Number(primary.rate) || 0;
+    }
+  } else if ('totalAcceptedQty' in receipt) {
+    qtyNum = Number(receipt.totalAcceptedQty) || 0;
+  }
+
+  const quantity = qtyNum > 0 ? qtyNum : ('' as unknown as number);
+  const rate = rateNum > 0 ? rateNum : ('' as unknown as number);
+  const amount = qtyNum * rateNum || 0;
+
   return {
     itemId: '',
-    quantity: '' as unknown as number,
-    rate: '' as unknown as number,
+    quantity,
+    rate,
     discountValue: '' as unknown as number,
     discountType: 'percentage',
-    amount: 0,
-    itemTotal: 0,
+    amount,
+    itemTotal: amount,
     jobReceiptId: receipt.id,
     description: `Job work charges for Job Order ${receipt.jobOrder?.jobOrderNumber ?? ''} / Receive ${receipt.receiptNumber}`,
   };
@@ -1130,20 +1149,20 @@ export function CreateBill() {
                                     });
                                     setValue(`lineItems.${index}.item`, val);
                                     const selected = val;
-                                    // A receipt line keeps its description: it names the receipt it settles.
-                                    const keepsDescription = Boolean(curItem?.jobReceiptId);
+                                    // A receipt line keeps its description, rate and qty: it names the receipt it settles.
+                                    const isReceiptLine = Boolean(curItem?.jobReceiptId);
                                     if (selected) {
-                                      setValue(
-                                        `lineItems.${index}.rate`,
-                                        (selected.costPrice ||
-                                          selected.sellingPrice ||
-                                          '') as unknown as number,
-                                      );
-                                      setValue(
-                                        `lineItems.${index}.quantity`,
-                                        1 as unknown as number,
-                                      );
-                                      if (!keepsDescription) {
+                                      if (!isReceiptLine) {
+                                        setValue(
+                                          `lineItems.${index}.rate`,
+                                          (selected.costPrice ||
+                                            selected.sellingPrice ||
+                                            '') as unknown as number,
+                                        );
+                                        setValue(
+                                          `lineItems.${index}.quantity`,
+                                          1 as unknown as number,
+                                        );
                                         setValue(
                                           `lineItems.${index}.description`,
                                           selected.purchaseDescription ||
@@ -1152,19 +1171,19 @@ export function CreateBill() {
                                         );
                                       }
                                     } else {
-                                      setValue(`lineItems.${index}.rate`, '' as unknown as number);
-                                      setValue(
-                                        `lineItems.${index}.quantity`,
-                                        '' as unknown as number,
-                                      );
+                                      if (!isReceiptLine) {
+                                        setValue(`lineItems.${index}.rate`, '' as unknown as number);
+                                        setValue(
+                                          `lineItems.${index}.quantity`,
+                                          '' as unknown as number,
+                                        );
+                                        setValue(`lineItems.${index}.description`, '');
+                                      }
                                       setValue(
                                         `lineItems.${index}.discountValue`,
                                         '' as unknown as number,
                                       );
                                       setValue(`lineItems.${index}.discountType`, 'percentage');
-                                      if (!keepsDescription) {
-                                        setValue(`lineItems.${index}.description`, '');
-                                      }
                                     }
                                   }}
                                   filter={curItem?.jobReceiptId ? 'services' : undefined}
