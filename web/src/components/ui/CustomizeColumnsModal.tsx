@@ -182,6 +182,9 @@ export function CustomizeColumnsModal({
                 onDragEnd={() => setDragKey(null)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dropOn(row.key)}
+                onClick={() => {
+                  if (!row.locked) toggle(row.key);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -192,10 +195,20 @@ export function CustomizeColumnsModal({
                   border: '1px solid #eef0f3',
                   borderRadius: 6,
                   opacity: dragKey === row.key ? 0.5 : 1,
-                  cursor: row.locked || query ? 'default' : 'grab',
+                  cursor: row.locked ? 'default' : 'pointer',
+                  userSelect: 'none',
                 }}
               >
-                <GripVertical size={15} color={row.locked || query ? '#e2e8f0' : '#94a3b8'} />
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: row.locked || query ? 'default' : 'grab',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <GripVertical size={15} color={row.locked || query ? '#e2e8f0' : '#94a3b8'} />
+                </div>
                 {row.locked ? (
                   <Lock size={14} color="#94a3b8" />
                 ) : (
@@ -203,6 +216,7 @@ export function CustomizeColumnsModal({
                     type="checkbox"
                     checked={row.checked}
                     onChange={() => toggle(row.key)}
+                    onClick={(e) => e.stopPropagation()}
                     style={{
                       width: 15,
                       height: 15,
@@ -211,7 +225,7 @@ export function CustomizeColumnsModal({
                     }}
                   />
                 )}
-                <span style={{ fontSize: 13, color: '#1e293b' }}>{row.label}</span>
+                <span style={{ fontSize: 13, color: '#1e293b', flex: 1 }}>{row.label}</span>
                 {row.locked && (
                   <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 'auto' }}>
                     Always shown
