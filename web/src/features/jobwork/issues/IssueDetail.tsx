@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
@@ -79,6 +80,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const unitLabel = useBatchUnitLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonMissing, setCancelReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -501,19 +503,34 @@ export function IssueDetail({ issueId, onClose }: Props) {
               on the 3rd and was cancelled on the 5th&rdquo; is a question someone will ask. This is
               not possible once goods have been received against it.
             </p>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-              Reason
+            <label
+              htmlFor="cancel-challan-reason"
+              style={{
+                display: 'block',
+                fontSize: 12,
+                color: '#ef4444',
+                fontWeight: 500,
+                marginBottom: 4,
+              }}
+            >
+              Reason*
             </label>
             <input
+              id="cancel-challan-reason"
               type="text"
+              required
+              aria-required="true"
               value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              aria-label="Reason for cancelling"
+              aria-invalid={cancelReasonMissing}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                if (e.target.value.trim()) setCancelReasonMissing(false);
+              }}
               style={{
                 width: '100%',
                 padding: '6px 8px',
                 fontSize: 13,
-                border: '1px solid #d1d5db',
+                border: `1px solid ${cancelReasonMissing ? '#ef4444' : '#d1d5db'}`,
                 borderRadius: 4,
                 minHeight: 32,
               }}
@@ -523,11 +540,17 @@ export function IssueDetail({ issueId, onClose }: Props) {
         confirmText={cancelMutation.isPending ? 'Cancelling…' : 'Cancel challan'}
         cancelText="Keep it"
         onConfirm={() => {
-          if (cancelReason.trim()) cancelMutation.mutate();
+          if (!cancelReason.trim()) {
+            setCancelReasonMissing(true);
+            toast.error('Enter a reason for cancelling.');
+            return;
+          }
+          cancelMutation.mutate();
         }}
         onCancel={() => {
           setCancelOpen(false);
           setCancelReason('');
+          setCancelReasonMissing(false);
         }}
       />
 
