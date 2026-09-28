@@ -44,7 +44,7 @@ export function errorHandler(
     statusCode: 500,
     message: 'Something went wrong. Please try again.',
     data: null,
-    ...(env.isProduction ? {} : { debug: error instanceof Error ? error.message : String(error) }),
+    ...(env.isProduction ? {} : { debug: error instanceof Error ? error.stack : JSON.stringify(error, Object.getOwnPropertyNames(error as object)) }),
   });
 }
 

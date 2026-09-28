@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { itemsApi } from './items.api.ts';
-import type { ItemFormData, ItemImageAttachment } from './items.schemas.ts';
+import type { ItemFormData } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
 import { Select } from '../../components/ui/Select.tsx';
@@ -56,9 +56,6 @@ export function EditItemPage() {
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [initializedId, setInitializedId] = useState<string | null>(null);
 
-  const frontImageRef = useRef<HTMLInputElement>(null);
-  const rearImageRef = useRef<HTMLInputElement>(null);
-  const otherImagesRef = useRef<HTMLInputElement>(null);
 
   const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
   const [rearImageFile, setRearImageFile] = useState<File | null>(null);
@@ -131,7 +128,6 @@ export function EditItemPage() {
           await itemsApi.uploadImages(orgId!, id!, formDataUpload);
         } catch (error) {
           console.error('Failed to upload images:', error);
-          alert('Item updated, but image upload failed.');
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
@@ -148,7 +144,6 @@ export function EditItemPage() {
         return;
       }
       console.error('Failed to update item:', error);
-      alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update item.');
     },
   });
 
@@ -202,7 +197,7 @@ export function EditItemPage() {
     }
   };
 
-  const handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       if (e.target.files[0].size > 2 * 1024 * 1024) {
         alert('Front image exceeds 2 MB limit.');
@@ -212,7 +207,7 @@ export function EditItemPage() {
     }
   };
 
-  const handleRearImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleRearImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       if (e.target.files[0].size > 2 * 1024 * 1024) {
         alert('Rear image exceeds 2 MB limit.');
@@ -222,7 +217,7 @@ export function EditItemPage() {
     }
   };
 
-  const handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       const validFiles = files.filter((f) => f.size <= 2 * 1024 * 1024);
@@ -237,6 +232,7 @@ export function EditItemPage() {
       }
     }
   };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -542,10 +538,11 @@ export function EditItemPage() {
               </div>
             </div>
 
-            {/* Image Upload Area */}
-            <div
-              style={{
-                width: '360px',
+            {/* Image Upload Area removed for Edit mode */}
+            {/* (
+              <div
+                style={{
+                  width: '360px',
                 border: '1px solid #e5e7eb',
                 borderRadius: '8px',
                 padding: '16px',
@@ -740,6 +737,7 @@ export function EditItemPage() {
                 </button>
               </div>
             </div>
+            )} */}
           </div>
 
           {/* Sales and Purchase Information */}

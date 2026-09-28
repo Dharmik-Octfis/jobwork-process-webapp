@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Trash2 } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 
 interface CreateItemPageProps {
@@ -116,6 +116,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
   const [rearImageFile, setRearImageFile] = useState<File | null>(null);
   const [otherImageFiles, setOtherImageFiles] = useState<File[]>([]);
+  const [selectedOtherImageIndex, setSelectedOtherImageIndex] = useState(0);
+  const [hoveredImage, setHoveredImage] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (data: ItemFormData) => itemsApi.createItem(orgId!, data),
@@ -136,7 +138,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             'Status:',
             err.response?.status,
           );
-          alert(`Image upload failed: ${JSON.stringify(err.response?.data || err.message)}`);
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
@@ -161,7 +162,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         return;
       }
       console.error('Failed to create item:', errorMsg, details);
-      alert(`${errorMsg}${details ? '\n' + JSON.stringify(details, null, 2) : ''}`);
     },
   });
 
@@ -242,11 +242,16 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
       if (validFiles.length < files.length) {
         alert('Some images were ignored because they exceed the 2 MB limit.');
       }
-      if (validFiles.length > 3) {
-        alert('You can only select up to 3 additional images.');
-        setOtherImageFiles(validFiles.slice(0, 3));
-      } else {
-        setOtherImageFiles(validFiles);
+      setOtherImageFiles((prev) => {
+        const newFiles = [...prev, ...validFiles];
+        if (newFiles.length > 3) {
+          alert('You can only select up to 3 additional images.');
+          return newFiles.slice(0, 3);
+        }
+        return newFiles;
+      });
+      if (e.target) {
+        e.target.value = '';
       }
     }
   };
@@ -624,51 +629,89 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
-                  <button
-                    type="button"
+                  <div
                     onClick={() => frontImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '18px 16px',
+                      padding: frontImageFile ? '4px' : '32px 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
                       display: 'flex',
-                      flexDirection: 'column',
+                      flexDirection: frontImageFile || formData.frontImage ? 'column' : 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 8,
                       cursor: 'pointer',
+                      overflow: 'hidden',
+                      height: frontImageFile || formData.frontImage ? '112px' : 'auto',
+                      position: 'relative',
                     }}
                   >
-                    <div
-                      style={{
-                        color: '#0062ff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 16,
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      ↑
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: '#1e293b',
-                        textAlign: 'center',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      {frontImageFile
-                        ? frontImageFile.name
-                        : formData.frontImage
-                          ? (formData.frontImage as ItemImageAttachment).name ||
-                            'Existing Front Image'
-                          : 'Upload Front Image'}
-                    </div>
-                  </button>
+                    {frontImageFile ? (
+                      <div
+                        onMouseEnter={() => setHoveredImage('front')}
+                        onMouseLeave={() => setHoveredImage(null)}
+                        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img
+                          src={URL.createObjectURL(frontImageFile)}
+                          alt="Front View"
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        />
+                        {hoveredImage === 'front' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFrontImageFile(null);
+                              if (frontImageRef.current) frontImageRef.current.value = '';
+                              setHoveredImage(null);
+                            }}
+                            style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ) : formData.frontImage ? (
+                      <div
+                        style={{
+                          fontSize: 14,
+                          color: '#1e293b',
+                          textAlign: 'center',
+                          wordBreak: 'break-all',
+                        }}
+                      >
+                        {(formData.frontImage as ItemImageAttachment).name || 'Existing Front Image'}
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          style={{
+                            color: '#0062ff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          ↑
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: '#1e293b',
+                            textAlign: 'center',
+                            wordBreak: 'break-all',
+                          }}
+                        >
+                          Upload Front Image
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <div style={{ fontSize: 12, marginBottom: 6, color: '#4b5563' }}>Rear View</div>
@@ -679,51 +722,89 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
-                  <button
-                    type="button"
+                  <div
                     onClick={() => rearImageRef.current?.click()}
                     style={{
                       width: '100%',
-                      padding: '32px 16px',
+                      padding: rearImageFile ? '4px' : '32px 16px',
                       border: '1px dashed #cbd5e1',
                       borderRadius: '6px',
                       background: '#ffffff',
                       display: 'flex',
-                      flexDirection: 'column',
+                      flexDirection: rearImageFile || formData.rearImage ? 'column' : 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 8,
                       cursor: 'pointer',
+                      overflow: 'hidden',
+                      height: rearImageFile || formData.rearImage ? '112px' : 'auto',
+                      position: 'relative',
                     }}
                   >
-                    <div
-                      style={{
-                        color: '#0062ff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 16,
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      ↑
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: '#1e293b',
-                        textAlign: 'center',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      {rearImageFile
-                        ? rearImageFile.name
-                        : formData.rearImage
-                          ? (formData.rearImage as ItemImageAttachment).name ||
-                            'Existing Rear Image'
-                          : 'Upload Rear Image'}
-                    </div>
-                  </button>
+                    {rearImageFile ? (
+                      <div
+                        onMouseEnter={() => setHoveredImage('rear')}
+                        onMouseLeave={() => setHoveredImage(null)}
+                        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <img
+                          src={URL.createObjectURL(rearImageFile)}
+                          alt="Rear View"
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        />
+                        {hoveredImage === 'rear' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRearImageFile(null);
+                              if (rearImageRef.current) rearImageRef.current.value = '';
+                              setHoveredImage(null);
+                            }}
+                            style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ) : formData.rearImage ? (
+                      <div
+                        style={{
+                          fontSize: 14,
+                          color: '#1e293b',
+                          textAlign: 'center',
+                          wordBreak: 'break-all',
+                        }}
+                      >
+                        {(formData.rearImage as ItemImageAttachment).name || 'Existing Rear Image'}
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          style={{
+                            color: '#0062ff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          ↑
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: '#1e293b',
+                            textAlign: 'center',
+                            wordBreak: 'break-all',
+                          }}
+                        >
+                          Upload Rear Image
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -736,68 +817,160 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   accept="image/*"
                   multiple
                 />
-                <button
-                  type="button"
-                  onClick={() => otherImagesRef.current?.click()}
+                <div
                   style={{
                     width: '100%',
                     flex: 1,
                     minHeight: '180px',
-                    padding: '24px 16px',
+                    padding: otherImageFiles.length > 0 ? '8px' : '24px 16px',
                     border: '1px dashed #cbd5e1',
                     borderRadius: '6px',
                     background: '#ffffff',
                     display: 'flex',
                     flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
+                    overflow: 'hidden',
                   }}
                 >
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: '50%',
-                      background: '#0062ff',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 12,
-                      marginBottom: 4,
-                    }}
-                  >
-                    ↑
-                  </div>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 12,
-                      color: '#1e293b',
-                      textAlign: 'center',
-                      wordBreak: 'break-all',
-                    }}
-                  >
-                    {otherImageFiles.length > 0
-                      ? `${otherImageFiles.length} new files selected`
-                      : formData.images && formData.images.length > 0
-                        ? `${formData.images.length} existing image(s)`
-                        : 'Drag & Drop Images'}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: '#64748b',
-                      textAlign: 'center',
-                      lineHeight: 1.4,
-                      marginTop: 4,
-                    }}
-                  >
-                    You can add up to 3 images, each not exceeding 2 MB.
-                  </div>
-                </button>
+                  {otherImageFiles.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+                      <div
+                        onMouseEnter={() => setHoveredImage('other')}
+                        onMouseLeave={() => setHoveredImage(null)}
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', minHeight: 0, position: 'relative' }}
+                      >
+                        {otherImageFiles[selectedOtherImageIndex] ? (
+                          <img
+                            src={URL.createObjectURL(otherImageFiles[selectedOtherImageIndex])}
+                            alt="Main Preview"
+                            style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'contain' }}
+                          />
+                        ) : (
+                          <img
+                            src={URL.createObjectURL(otherImageFiles[0])}
+                            alt="Main Preview"
+                            style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'contain' }}
+                          />
+                        )}
+                        {hoveredImage === 'other' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOtherImageFiles((prev) => {
+                                const newFiles = [...prev];
+                                const indexToRemove = selectedOtherImageIndex < newFiles.length ? selectedOtherImageIndex : 0;
+                                newFiles.splice(indexToRemove, 1);
+                                return newFiles;
+                              });
+                              setSelectedOtherImageIndex(0);
+                              if (otherImagesRef.current) otherImagesRef.current.value = '';
+                              setHoveredImage(null);
+                            }}
+                            style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center', width: '100%' }}>
+                        {otherImageFiles.map((file, idx) => (
+                          <div
+                            key={idx}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedOtherImageIndex(idx);
+                            }}
+                            style={{ flex: '0 0 40px', width: '40px', height: '40px', borderRadius: '4px', border: `2px solid ${idx === (selectedOtherImageIndex < otherImageFiles.length ? selectedOtherImageIndex : 0) ? '#0062ff' : 'transparent'}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                          >
+                            <img src={URL.createObjectURL(file)} alt={`Thumb ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </div>
+                        ))}
+                        {otherImageFiles.length < 3 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                otherImagesRef.current?.click();
+                            }}
+                            style={{ flex: '0 0 40px', width: '40px', height: '40px', borderRadius: '4px', border: '2px dashed #0062ff', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                          >
+                            <div style={{ color: '#0062ff', fontSize: '20px', fontWeight: 'bold' }}>+</div>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : formData.images && formData.images.length > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 14,
+                          color: '#1e293b',
+                          textAlign: 'center',
+                          wordBreak: 'break-all',
+                        }}
+                      >
+                        {`${formData.images.length} existing image(s)`}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => otherImagesRef.current?.click()}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background: 'transparent',
+                        border: 'none',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: '#0062ff',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 16,
+                          marginBottom: 8,
+                        }}
+                      >
+                        ↑
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 14,
+                          color: '#1e293b',
+                          textAlign: 'center',
+                          wordBreak: 'break-all',
+                        }}
+                      >
+                        Drag & Drop Images
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: '#64748b',
+                          textAlign: 'center',
+                          lineHeight: 1.4,
+                          marginTop: 8,
+                        }}
+                      >
+                        You can add up to 3 images, each not exceeding 2 MB.
+                      </div>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

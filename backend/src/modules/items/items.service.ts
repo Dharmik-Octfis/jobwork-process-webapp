@@ -1204,8 +1204,14 @@ export class ItemsService {
             files.images.filter(Boolean).map((file) => processFile(file)),
           );
 
-          // Replace existing images array with new ones
-          updateData.images = uploadedImageObjects as unknown as Prisma.InputJsonValue;
+          const currentImages = Array.isArray(item.images) ? item.images : [];
+          const combinedImages = [...currentImages, ...uploadedImageObjects];
+
+          if (combinedImages.length > 3) {
+            throw ApiError.badRequest('You can only have up to 3 other images in total.');
+          }
+
+          updateData.images = combinedImages as unknown as Prisma.InputJsonValue;
         }
 
         if (Object.keys(updateData).length === 0) {
