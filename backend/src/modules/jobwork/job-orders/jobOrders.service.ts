@@ -1187,6 +1187,7 @@ export const JOB_ORDER_WITH_STEPS_SELECT = {
       seq: true,
       processNameSnapshot: true,
       processorNameSnapshot: true,
+      status: true,
     },
   },
 } satisfies Prisma.JobOrderSelect;
@@ -2198,9 +2199,11 @@ export async function getJobOrderOverview(
       /**
        * Enabled whenever the step lists something to issue, NOT by the ledger:
        * the Issue screen shows what is on hand per godown, and the save refuses
-       * any quantity that is not there.
+       * any quantity that is not there. A completed or closed-short step is
+       * refused by `jobIssues.service` (R9), so it is off there too.
        */
-      canIssue: step.inputs.length > 0,
+      canIssue:
+        step.inputs.length > 0 && step.status !== 'completed' && step.status !== 'short_closed',
       /**
        * Inputs an earlier step produces and has not returned yet, per item
        * (`getChainWarnings`). Informational — issuing them draws on stock

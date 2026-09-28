@@ -127,7 +127,7 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
          * beats a block, which beats a plain invitation to start.
          */
         const note =
-          rework > 0
+          rework > 0 && !settled
             ? `${formatQty(rework)} to rework`
             : outstanding > 0
               ? `${qtyWithUnit(outstanding, unit)} still out`

@@ -944,6 +944,14 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               be undone — nothing more can be issued, received or cancelled against the step
               afterwards.
             </p>
+            {/* reworkQty is every rework ever received, not what is still waiting,
+                so this is worded to hold either way. */}
+            {completeStepTarget && toNumber(completeStepTarget.totals.reworkQty) > 0 && (
+              <p style={{ margin: '12px 0 0 0', lineHeight: 1.6, color: '#92400e' }}>
+                Rework that has not been issued back to this step yet can no longer be reworked
+                here.
+              </p>
+            )}
           </div>
         }
         confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}

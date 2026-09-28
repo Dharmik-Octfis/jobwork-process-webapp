@@ -89,6 +89,7 @@ export const jobOrderWithStepsSchema = z.object({
         seq: z.number(),
         processNameSnapshot: z.string(),
         processorNameSnapshot: z.string().nullable(),
+        status: z.string(),
       }),
     )
     .default([]),

@@ -108,7 +108,8 @@ export function JobOrderStepDetail({
 
   const settled = step.status === 'completed' || step.status === 'short_closed';
 
-  const reworkPending = toNumber(step.totals.reworkQty) > 0;
+  // A settled step takes no more issues (R9), so "issue it back" would be a dead end.
+  const reworkPending = !settled && toNumber(step.totals.reworkQty) > 0;
 
   return (
     <section style={{ border: '1px solid #eef0f3', borderRadius: 10, background: '#fff' }}>
@@ -147,27 +148,31 @@ export function JobOrderStepDetail({
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {!step.canIssue && (
+          {/* Hidden, not disabled, once settled: the server refuses every issue
+              against a completed step (R9), and the status badge says why. */}
+          {!settled && !step.canIssue && (
             <span style={{ fontSize: 11, color: '#94a3b8', maxWidth: 320 }}>
               {/* 🔴 The REASON, not just a disabled button. */}
               This step has nothing listed to issue.
             </span>
           )}
-          <button
-            className="action-btn"
-            type="button"
-            onClick={() => onIssue(step)}
-            disabled={!step.canIssue}
-            style={{
-              ...actionButton,
-              background: step.canIssue ? '#0062ff' : '#f1f5f9',
-              color: step.canIssue ? '#fff' : '#94a3b8',
-              border: 'none',
-              cursor: step.canIssue ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <Send size={14} /> <span className="action-btn-text">Issue</span>
-          </button>
+          {!settled && (
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() => onIssue(step)}
+              disabled={!step.canIssue}
+              style={{
+                ...actionButton,
+                background: step.canIssue ? '#0062ff' : '#f1f5f9',
+                color: step.canIssue ? '#fff' : '#94a3b8',
+                border: 'none',
+                cursor: step.canIssue ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Send size={14} /> <span className="action-btn-text">Issue</span>
+            </button>
+          )}
           {step.canReceive && (
             <button
               className="action-btn"
