@@ -64,7 +64,11 @@ function receiptChargeLine(receipt: {
   id: string;
   receiptNumber: string;
   jobOrder?: { jobOrderNumber?: string | null } | null;
-  outputs?: { acceptedQty?: string | number; rate?: string | number; isPrimary?: boolean }[];
+  outputs?: {
+    acceptedQty?: string | number | null;
+    rate?: string | number | null;
+    isPrimary?: boolean;
+  }[];
   totalAcceptedQty?: string | number;
 }): BillItem {
   let qtyNum = 0;
@@ -1172,7 +1176,10 @@ export function CreateBill() {
                                       }
                                     } else {
                                       if (!isReceiptLine) {
-                                        setValue(`lineItems.${index}.rate`, '' as unknown as number);
+                                        setValue(
+                                          `lineItems.${index}.rate`,
+                                          '' as unknown as number,
+                                        );
                                         setValue(
                                           `lineItems.${index}.quantity`,
                                           '' as unknown as number,
