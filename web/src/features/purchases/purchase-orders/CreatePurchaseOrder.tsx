@@ -44,6 +44,9 @@ import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { DeliveryAddressModal } from './DeliveryAddressModal';
 import { CreateVendorModal } from '../vendors/CreateVendorModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
+import type { ItemOpeningStockLocationRowDto } from '../../items/items.schemas';
+import { LineItemStockDisplay } from '../bills/components/LineItemStockDisplay';
+import { WarehouseLocationsPopover } from '../bills/components/WarehouseLocationsPopover';
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -120,6 +123,10 @@ export function CreatePurchaseOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+  const [stockPopoverAnchor, setStockPopoverAnchor] = useState<{
+    element: HTMLElement;
+    stockRows: ItemOpeningStockLocationRowDto[];
+  } | null>(null);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['purchaseOrder', orgId, poIdToFetch],
@@ -1363,6 +1370,38 @@ export function CreatePurchaseOrder() {
                               borderRadius: '6px',
                             }}
                           />
+                          {/* read-only — a line is always in the item's own unit */}
+                          {selectedItem?.stockingUom?.symbol && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                textAlign: 'right',
+                                fontSize: '12px',
+                                color: '#64748b',
+                              }}
+                            >
+                              {selectedItem.stockingUom.symbol}
+                            </div>
+                          )}
+                          {selectedItem && (
+                            <div style={{ marginTop: '6px' }}>
+                              <LineItemStockDisplay
+                                orgId={orgId!}
+                                itemId={selectedItem.id}
+                                unit={selectedItem.stockingUom?.symbol}
+                                deliveryLocationId={
+                                  watchLocationId || watchDeliveryLocationId || ''
+                                }
+                                locations={locations}
+                                onClick={(e, rows) =>
+                                  setStockPopoverAnchor({
+                                    element: e.currentTarget,
+                                    stockRows: rows,
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1391,6 +1430,18 @@ export function CreatePurchaseOrder() {
                               borderRadius: '6px',
                             }}
                           />
+                          {selectedItem?.stockingUom?.symbol && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                textAlign: 'right',
+                                fontSize: '12px',
+                                color: '#64748b',
+                              }}
+                            >
+                              per {selectedItem.stockingUom.symbol}
+                            </div>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1906,6 +1957,15 @@ export function CreatePurchaseOrder() {
         selectedCustomerId={watchDeliveryCustomerId || undefined}
         onSelectLocation={(locId) => setValue('deliveryLocationId', locId)}
         onSelectCustomer={(custId) => setValue('deliveryCustomerId', custId)}
+      />
+
+      <WarehouseLocationsPopover
+        isOpen={!!stockPopoverAnchor}
+        onClose={() => setStockPopoverAnchor(null)}
+        anchorEl={stockPopoverAnchor?.element || null}
+        locations={locations}
+        stockRows={stockPopoverAnchor?.stockRows || []}
+        selectedLocationId={watchLocationId || watchDeliveryLocationId || undefined}
       />
       <CreateVendorModal
         isOpen={isVendorModalOpen}

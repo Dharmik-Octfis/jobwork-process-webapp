@@ -35,12 +35,12 @@ import {
 } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
 import { JobOrderStepDetail } from './JobOrderStepDetail';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import type {
   ActivityEvent,
   JobOrderOverviewData,
   OverviewStep,
   JobOrder,
-  JobOrdersPage,
 } from './jobOrders.schemas';
 
 const metaItem: React.CSSProperties = { fontSize: 12, color: '#64748b' };
@@ -326,7 +326,7 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
     ? (front.inputs[0].uom.symbol ?? front.inputs[0].uom.unitName)
     : '';
   const outstanding = toNumber(front.totals.outstandingQty);
-  const rework = toNumber(front.totals.reworkQty);
+  const rework = toNumber(front.totals.pendingReworkQty);
 
   // When it went out, off the step's own last issue — "out since" is the fact
   // people chase a processor with, and it is not derivable from a total.
@@ -453,19 +453,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-      queryClient.setQueriesData(
-        { queryKey: ['job-orders', orgId], type: 'active' },
-        (old: JobOrdersPage | undefined) => {
-          if (!old || !old.results) return old;
-          return {
-            ...old,
-            results: old.results.map((item: JobOrder) =>
-              item.id === id ? { ...item, status: 'short_closed' } : item,
-            ),
-          };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
+      patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, { status: 'short_closed' });
       setShortCloseOpen(false);
       setShortCloseReason('');
     },
@@ -495,19 +483,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
-      queryClient.setQueriesData(
-        { queryKey: ['job-orders', orgId], type: 'active' },
-        (old: JobOrdersPage | undefined) => {
-          if (!old || !old.results) return old;
-          return {
-            ...old,
-            results: old.results.map((item: JobOrder) =>
-              item.id === id ? { ...item, status: updated.jobOrder.status } : item,
-            ),
-          };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
+      patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, {
+        status: updated.jobOrder.status,
+      });
       setCompleteStepTarget(null);
     },
   });
@@ -521,6 +499,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const remove = useMutation({
     mutationFn: () => deleteJobOrder(orgId!, id!),
     onSuccess: () => {
+      releaseListRow(['job-orders', orgId], id!);
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       setDeleteOpen(false);
       // The panel is showing a row that no longer exists; the standalone page is
@@ -914,19 +893,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             // The list too: appending to a completed order reopens it as
             // in_progress, and the row would otherwise keep saying "Completed".
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-            queryClient.setQueriesData(
-              { queryKey: ['job-orders', orgId], type: 'active' },
-              (old: JobOrdersPage | undefined) => {
-                if (!old || !old.results) return old;
-                return {
-                  ...old,
-                  results: old.results.map((item: JobOrder) =>
-                    item.id === id ? { ...item, status: 'in_progress' } : item,
-                  ),
-                };
-              },
-            );
-            queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
+            patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, {
+              status: 'in_progress',
+            });
           }}
         />
       )}
@@ -944,6 +913,12 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               be undone — nothing more can be issued, received or cancelled against the step
               afterwards.
             </p>
+            {completeStepTarget && toNumber(completeStepTarget.totals.pendingReworkQty) > 0 && (
+              <p style={{ margin: '12px 0 0 0', lineHeight: 1.6, color: '#92400e' }}>
+                {formatQty(completeStepTarget.totals.pendingReworkQty)} of rework has not been
+                issued back yet and can no longer be reworked on this step.
+              </p>
+            )}
           </div>
         }
         confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}

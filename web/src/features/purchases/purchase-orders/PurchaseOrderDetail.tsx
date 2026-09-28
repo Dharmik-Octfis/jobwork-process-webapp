@@ -23,6 +23,9 @@ import {
 } from './purchase-orders.api';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
+import { toast } from 'react-hot-toast';
+import { toApiErrorMessage } from '../../../api/client';
+import { invalidateStockQueries } from '../../jobwork/stockCache';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -139,7 +142,15 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     mutationFn: (billId: string) => deleteBill(orgId!, billId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // Deleting a posted bill withdraws its stock.
+      invalidateStockQueries(queryClient, orgId);
       setBillToDelete(null);
+    },
+    // A bill whose stock was used is refused, naming the document — say so.
+    onError: (error) => {
+      setBillToDelete(null);
+      toast.error(toApiErrorMessage(error));
     },
   });
 
@@ -928,7 +939,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
+                      Bill:{' '}
+                      <span style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+                        {po.bills?.length ? 'Billed' : 'Unbilled'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1072,7 +1086,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                               verticalAlign: 'top',
                             }}
                           >
-                            {item.quantity} PCS
+                            {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                           </td>
                           <td
                             style={{
@@ -1563,7 +1577,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             textAlign: 'center',
                           }}
                         >
-                          {item.quantity}
+                          {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                         </td>
                         <td
                           style={{

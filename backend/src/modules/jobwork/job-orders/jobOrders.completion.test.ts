@@ -329,6 +329,7 @@ describe('completing a step — the write-off', { timeout: 120_000 }, () => {
 
     const overview = await getJobOrderOverview(orgId, jobOrderId);
     expect(overview.steps.map((step) => step.status)).toEqual(['short_closed', 'short_closed']);
+    expect(overview.steps.map((step) => step.canIssue)).toEqual([false, false]);
   });
 });
 
@@ -337,7 +338,10 @@ describe('a completed step is closed (R9)', { timeout: 120_000 }, () => {
     const run = await dyeingRun();
     const second = await issue(run.stepId, run.cotton, run.batch.id, 50);
     await receive(run.stepId, [run.challan.id], run.cotton, run.dyed, 500);
-    await manuallyCompleteStep(orgId, run.jobOrderId, run.stepId, undefined);
+    const overview = await manuallyCompleteStep(orgId, run.jobOrderId, run.stepId, undefined);
+
+    // The Overview's Issue button reads this — it must agree with the refusal below.
+    expect(overview.steps[0]!.canIssue).toBe(false);
 
     await expect(issue(run.stepId, run.cotton, run.batch.id, 10)).rejects.toMatchObject({
       status: 409,

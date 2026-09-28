@@ -775,9 +775,21 @@ export function CreateAssemblyPage() {
                                           cursor: locationId ? 'pointer' : 'not-allowed',
                                         }}
                                       >
-                                        {Object.keys(componentBatches[comp.id] ?? {}).length > 0
-                                          ? `${Object.keys(componentBatches[comp.id]!).length} ${trackingLabel.plural.toLowerCase()} picked`
-                                          : `+ Add ${trackingLabel.plural}`}
+                                        {(() => {
+                                          // One selection per taka — count the batches behind them.
+                                          const batchCount = new Set(
+                                            Object.values(componentBatches[comp.id] ?? {}).map(
+                                              (sel) => sel.batch.batchId,
+                                            ),
+                                          ).size;
+                                          return batchCount > 0
+                                            ? `${batchCount} ${
+                                                batchCount === 1
+                                                  ? trackingLabel.singular.toLowerCase()
+                                                  : trackingLabel.plural.toLowerCase()
+                                              } picked`
+                                            : `+ Add ${trackingLabel.plural}`;
+                                        })()}
                                       </button>
                                     )}
                                   </div>
@@ -936,7 +948,8 @@ export function CreateAssemblyPage() {
                                       >
                                         The global stock for this item is less than the total
                                         quantity required. Note: Even if global stock is sufficient,
-                                        you must ensure the stock is physically present at the selected location.
+                                        you must ensure the stock is physically present at the
+                                        selected location.
                                         <div
                                           style={{
                                             content: '""',

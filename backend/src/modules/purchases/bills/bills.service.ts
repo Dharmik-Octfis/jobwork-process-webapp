@@ -1129,7 +1129,7 @@ export async function getBillById(orgId: string, id: string) {
       include: {
         lineItems: {
           where: { isDeleted: false },
-          include: { item: true },
+          include: { item: { include: { stockingUom: { select: { symbol: true } } } } },
         },
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         location: true,

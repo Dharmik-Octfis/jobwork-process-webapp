@@ -59,6 +59,8 @@ export interface ItemLedgerRow {
   sourceDocType?: string | null;
   sourceDocId?: string | null;
   sourceDocNumber?: string | null;
+  /** The line is the document's cancellation, not a fresh movement. */
+  isCancellation?: boolean;
 }
 
 export interface ItemLedgerResponse {

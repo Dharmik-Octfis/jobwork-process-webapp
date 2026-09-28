@@ -24,6 +24,8 @@ import {
   updateBill,
   type BillAttachment,
 } from './bills.api';
+import type { Bill } from './bills.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -131,7 +133,10 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const deleteMutation = useMutation({
     mutationFn: () => deleteBill(orgId!, poId),
     onSuccess: () => {
+      releaseListRow(['bills', orgId], poId);
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // The source PO derives its bill status from its live bills.
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       // Deleting a posted bill withdraws its stock.
       invalidateStockQueries(queryClient, orgId);
       setIsConfirmDeleteOpen(false);
@@ -146,9 +151,11 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
   const updateMutation = useMutation({
     mutationFn: updateBill,
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
-      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
+      // Patched, not invalidated: the Draft view would drop the bill just opened.
+      patchListRow<Bill>(queryClient, ['bills', orgId], poId, { status: updated.status });
       // "Open Bill" posts the draft's stock.
       invalidateStockQueries(queryClient, orgId);
     },
@@ -818,7 +825,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                                 verticalAlign: 'top',
                               }}
                             >
-                              {item.quantity} PCS
+                              {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                             </td>
                             <td
                               style={{
@@ -1491,7 +1498,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                               textAlign: 'center',
                             }}
                           >
-                            {item.quantity}
+                            {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                           </td>
                           <td
                             style={{

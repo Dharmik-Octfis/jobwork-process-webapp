@@ -31,6 +31,7 @@ export const itemSchema = z.object({
    * the two are one control on the form.
    */
   stockingUomId: z.string().nullable().optional(),
+  stockingUom: z.object({ symbol: z.string() }).nullable().optional(),
   nature: z.string().optional(),
   defaultRouteId: z.string().nullable().optional(),
   isSalesInfo: z.boolean().default(true),
@@ -60,63 +61,73 @@ export const itemSchema = z.object({
   isDeleted: z.boolean().optional(),
 });
 
-export const itemFormSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  itemType: z.enum(['goods', 'service']).default('goods'),
-  category: z.string().optional().nullable(),
-  hsnCode: z.string().optional().nullable(),
-  itemStructure: z.enum(['single', 'variants', 'composite']).default('single'),
-  unit: z.string().min(1, 'Unit is required'),
-  /**
-   * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit
-   * (jobwork domain §5.1): every batch, challan line and balance is denominated in
-   * it, and nothing converts between units anywhere in the system.
-   *
-   * Set from the same dropdown as `unit` above, which is the legacy free string
-   * the lists still render. Nullable because items created before the field
-   * existed have none — the jobwork screens then fall back to asking, rather
-   * than inventing one.
-   */
-  stockingUomId: z.string().nullable().optional(),
-  sku: z.string().optional().default(''),
+export const itemFormSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required'),
+    itemType: z.enum(['goods', 'service']).default('goods'),
+    category: z.string().optional().nullable(),
+    hsnCode: z.string().optional().nullable(),
+    itemStructure: z.enum(['single', 'variants', 'composite']).default('single'),
+    unit: z.string().min(1, 'Unit is required'),
+    /**
+     * 🔴 The unit the STOCK LEDGER moves this item in. One item, one stocking unit
+     * (jobwork domain §5.1): every batch, challan line and balance is denominated in
+     * it, and nothing converts between units anywhere in the system.
+     *
+     * Set from the same dropdown as `unit` above, which is the legacy free string
+     * the lists still render. Nullable because items created before the field
+     * existed have none — the jobwork screens then fall back to asking, rather
+     * than inventing one.
+     */
+    stockingUomId: z.string().nullable().optional(),
+    sku: z.string().optional().default(''),
 
-  isSalesInfo: z.boolean().default(true),
-  sellingPrice: z.number({ message: 'Selling price must be a number' }).min(0, 'Selling price must be positive').optional().nullable(),
-  salesDescription: z.string().optional().nullable(),
+    isSalesInfo: z.boolean().default(true),
+    sellingPrice: z
+      .number({ message: 'Selling price must be a number' })
+      .min(0, 'Selling price must be positive')
+      .optional()
+      .nullable(),
+    salesDescription: z.string().optional().nullable(),
 
-  isPurchaseInfo: z.boolean().default(true),
-  costPrice: z.number({ message: 'Cost price must be a number' }).min(0, 'Cost price must be positive').optional().nullable(),
-  purchaseDescription: z.string().optional().nullable(),
-  packaging: z.string().optional().nullable(),
+    isPurchaseInfo: z.boolean().default(true),
+    costPrice: z
+      .number({ message: 'Cost price must be a number' })
+      .min(0, 'Cost price must be positive')
+      .optional()
+      .nullable(),
+    purchaseDescription: z.string().optional().nullable(),
+    packaging: z.string().optional().nullable(),
 
-  frontImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
-  rearImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
-  images: z.array(z.union([itemImageAttachmentSchema, z.string()])).default([]),
+    frontImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
+    rearImage: z.union([itemImageAttachmentSchema, z.string()]).nullable().optional(),
+    images: z.array(z.union([itemImageAttachmentSchema, z.string()])).default([]),
 
-  trackInventory: z.boolean().default(true),
-  inventoryTracking: z.string().nullable().optional(),
-  openingStock: z.number().nullable().optional(),
-  openingStockValuePerUnit: z.number().nullable().optional(),
+    trackInventory: z.boolean().default(true),
+    inventoryTracking: z.string().nullable().optional(),
+    openingStock: z.number().nullable().optional(),
+    openingStockValuePerUnit: z.number().nullable().optional(),
 
-  // Dynamic per-org custom fields; validated server-side against the org's definitions.
-  customFields: z.record(z.string(), z.unknown()).optional(),
-  isActive: z.boolean().optional(),
-}).superRefine((data, ctx) => {
-  if (data.isSalesInfo && typeof data.sellingPrice !== 'number') {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Selling price is required',
-      path: ['sellingPrice'],
-    });
-  }
-  if (data.isPurchaseInfo && typeof data.costPrice !== 'number') {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Cost price is required',
-      path: ['costPrice'],
-    });
-  }
-});
+    // Dynamic per-org custom fields; validated server-side against the org's definitions.
+    customFields: z.record(z.string(), z.unknown()).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.isSalesInfo && typeof data.sellingPrice !== 'number') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selling price is required',
+        path: ['sellingPrice'],
+      });
+    }
+    if (data.isPurchaseInfo && typeof data.costPrice !== 'number') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Cost price is required',
+        path: ['costPrice'],
+      });
+    }
+  });
 
 export type Item = z.infer<typeof itemSchema>;
 export type ItemFormData = z.infer<typeof itemFormSchema>;

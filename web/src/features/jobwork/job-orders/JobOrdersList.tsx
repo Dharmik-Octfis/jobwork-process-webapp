@@ -7,6 +7,7 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
+import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
@@ -93,11 +94,16 @@ export function JobOrdersList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('all');
 
+  const structuralSharing = useListRowRetention(
+    ['job-orders', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading } = useQuery({
     queryKey: ['job-orders', orgId, search, filter, page, perPage],
     queryFn: () => fetchJobOrders(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const orders = data?.results ?? [];
@@ -210,7 +216,9 @@ export function JobOrdersList() {
               )}
               <button
                 type="button"
-                onClick={() => navigate(newPath, { state: { returnUrl: location.pathname + location.search } })}
+                onClick={() =>
+                  navigate(newPath, { state: { returnUrl: location.pathname + location.search } })
+                }
                 style={{
                   background: '#186337',
                   color: 'white',

@@ -89,14 +89,70 @@ export const updateUomById = async (
   });
 };
 
+const live = { where: { isDeleted: false } };
+
 export const deleteUomById = async (orgId: string, id: string, userId?: string) => {
   return runAsTenant(orgId, async (tx) => {
+    // One query with a sub-count per referencing table. The ledger has no
+    // isDeleted and is counted whole: stock already moved in a unit keeps it forever.
     const existingUom = await tx.unitOfMeasurement.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
+      select: {
+        unitName: true,
+        _count: {
+          select: {
+            stockedItems: live,
+            ledgerEntries: true,
+            batches: live,
+            batchUnits: live,
+            compositeComponentRows: live,
+            itemAssemblies: live,
+            itemAssemblyLines: live,
+            jobOrderInputUoms: live,
+            routeStepInputUoms: live,
+            routeStepOutputUoms: live,
+            jobOrderStepInputUoms: live,
+            jobOrderStepOutputUoms: live,
+            jobOrderStepOutputComponentUoms: live,
+            jobIssueLineUoms: live,
+            jobReceiptOutputRowUoms: live,
+          },
+        },
+      },
     });
 
     if (!existingUom) {
       throw ApiError.notFound('UOM not found');
+    }
+
+    const c = existingUom._count;
+    const uses = [
+      [c.stockedItems, 'item'],
+      [c.ledgerEntries, 'stock movement'],
+      [c.batches + c.batchUnits, 'batch'],
+      [
+        c.compositeComponentRows + c.itemAssemblies + c.itemAssemblyLines,
+        'composite or assembly row',
+      ],
+      [
+        c.jobOrderInputUoms +
+          c.routeStepInputUoms +
+          c.routeStepOutputUoms +
+          c.jobOrderStepInputUoms +
+          c.jobOrderStepOutputUoms +
+          c.jobOrderStepOutputComponentUoms +
+          c.jobIssueLineUoms +
+          c.jobReceiptOutputRowUoms,
+        'job work row',
+      ],
+    ] as const;
+    const inUse = uses
+      .filter(([n]) => n > 0)
+      .map(([n, label]) => `${n} ${label}${n === 1 ? '' : 's'}`);
+    if (inUse.length > 0) {
+      throw ApiError.conflict(
+        `${existingUom.unitName} is used by ${inUse.join(', ')}, so it cannot be deleted.`,
+      );
     }
 
     return tx.unitOfMeasurement.update({

@@ -7,11 +7,11 @@ import {
 } from './customers.api';
 import {
   type Customer,
-  type CustomersPage,
   type UpdateCustomerData,
   type CustomerAddress,
   type CustomerContactPerson,
 } from './customers.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -86,6 +86,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteCustomer(orgId!, customerId),
     onSuccess: () => {
+      releaseListRow(['customers', orgId], customerId);
       queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
       onClose();
     },
@@ -110,16 +111,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       });
     },
     onSuccess: (_, newStatus) => {
-      queryClient.setQueriesData({ queryKey: ['customers', orgId], type: 'active' }, (old: CustomersPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: Customer) =>
-            item.id === customerId ? { ...item, status: newStatus } : item
-          ),
-        };
-      });
-      queryClient.invalidateQueries({ queryKey: ['customers', orgId], type: 'inactive' });
+      patchListRow<Customer>(queryClient, ['customers', orgId], customerId, { status: newStatus });
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
     },
   });
@@ -448,7 +440,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/sales/customers/new`, { state: { customerToClone , returnUrl: location.pathname + location.search } });
+    navigate(`/organizations/${orgId}/sales/customers/new`, {
+      state: { customerToClone, returnUrl: location.pathname + location.search },
+    });
   };
 
   if (isLoading) {
@@ -511,7 +505,10 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
             {customer.contactName}
           </h2>
           <span
@@ -534,8 +531,13 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button className="action-btn"
-            onClick={() => navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
+          <button
+            className="action-btn"
+            onClick={() =>
+              navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
+            }
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -552,7 +554,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button className="action-btn"
+            <button
+              className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -795,7 +798,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                         }}
                         onMouseLeave={() => setHoveredContactSetting('Edit')}
                       >
-                        <button className="action-btn"
+                        <button
+                          className="action-btn"
                           style={{
                             display: 'block',
                             width: '100%',
@@ -1335,7 +1339,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                                         overflow: 'hidden',
                                       }}
                                     >
-                                      <button className="action-btn"
+                                      <button
+                                        className="action-btn"
                                         onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
                                         onClick={() => {
                                           setContactPersonEditIndex(index);

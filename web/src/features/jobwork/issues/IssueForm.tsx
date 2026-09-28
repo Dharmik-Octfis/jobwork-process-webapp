@@ -602,21 +602,23 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
-      let gone = 0;
+      // Batch ids, not a counter — a line is one per taka, so two takas of one
+      // batch would otherwise report as two batches.
+      const gone = new Set<string>();
 
       for (const line of mine) {
         const batch = offered.find(
           (row) => row.batchId === line.batchId && row.locationId === effectiveSourceId,
         );
         if (!batch) {
-          gone += 1;
+          gone.add(line.batchId);
           continue;
         }
         const unit = line.batchUnitId
           ? (batch.units.find((u) => u.batchUnitId === line.batchUnitId) ?? null)
           : null;
         if (line.batchUnitId && !unit) {
-          gone += 1;
+          gone.add(line.batchId);
           continue;
         }
         const qty = toNumber(line.qty);
@@ -629,8 +631,11 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         setSelection((prev) => ({ ...prev, ...seeded }));
         setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
       }
-      if (gone > 0) {
-        setPlanUnmatched((prev) => ({ ...prev, [input.itemId]: { gone, elsewhere: [] } }));
+      if (gone.size > 0) {
+        setPlanUnmatched((prev) => ({
+          ...prev,
+          [input.itemId]: { gone: gone.size, elsewhere: [] },
+        }));
       }
     });
   }, [draft, inputItems, batchQueries, effectiveSourceId]);
@@ -662,8 +667,9 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
-      let gone = 0;
-      const elsewhere = new Map<string, number>();
+      // Batch ids, not counters — see the draft seed above.
+      const gone = new Set<string>();
+      const elsewhere = new Map<string, Set<string>>();
 
       /**
        * 🔴 THE CEILING IS WHAT IS STILL TO BE ISSUED, not what was planned.
@@ -688,7 +694,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         if (planned.locationId !== effectiveSourceId) {
           const name =
             allLocations.find((l) => l.id === planned.locationId)?.name ?? 'another godown';
-          elsewhere.set(name, (elsewhere.get(name) ?? 0) + 1);
+          elsewhere.set(name, (elsewhere.get(name) ?? new Set()).add(planned.batchId));
           continue;
         }
 
@@ -696,7 +702,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           (row) => row.batchId === planned.batchId && row.locationId === planned.locationId,
         );
         if (!batch) {
-          gone += 1;
+          gone.add(planned.batchId);
           continue;
         }
 
@@ -710,7 +716,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           ? (batch.units.find((u) => u.batchUnitId === planned.batchUnitId) ?? null)
           : null;
         if (planned.batchUnitId && !unit) {
-          gone += 1;
+          gone.add(planned.batchId);
           continue;
         }
 
@@ -719,7 +725,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         const ceiling = unit ? toNumber(unit.availableQty) : toNumber(batch.availableQty);
         const qty = Math.min(Number(planned.qty), ceiling, toBeIssued);
         if (qty <= 0) {
-          gone += 1;
+          gone.add(planned.batchId);
           continue;
         }
         seeded[selectionKey(batch, unit?.batchUnitId ?? null)] = { batch, unit, qty };
@@ -731,12 +737,12 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         setSelection((prev) => ({ ...prev, ...seeded }));
         setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
       }
-      if (gone > 0 || elsewhere.size > 0) {
+      if (gone.size > 0 || elsewhere.size > 0) {
         setPlanUnmatched((prev) => ({
           ...prev,
           [input.itemId]: {
-            gone,
-            elsewhere: [...elsewhere].map(([name, count]) => ({ name, count })),
+            gone: gone.size,
+            elsewhere: [...elsewhere].map(([name, ids]) => ({ name, count: ids.size })),
           },
         }));
       }
@@ -1565,9 +1571,12 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                    flash a false "nothing on the books". */
                   const available = availableByItem.get(input.itemId) ?? 0;
                   /** How many batch rows this item carries — "…added to N batches". */
-                  const pickedBatchCount = Object.values(selection).filter(
-                    (sel) => sel.batch.itemId === input.itemId && sel.qty > 0,
-                  ).length;
+                  // Distinct batches — a selection is one per taka, not one per batch.
+                  const pickedBatchCount = new Set(
+                    Object.values(selection)
+                      .filter((sel) => sel.batch.itemId === input.itemId && sel.qty > 0)
+                      .map((sel) => sel.batch.batchId),
+                  ).size;
                   /* ⚠️ The same set `lines` reads — see `batchlessItemIds`. */
                   const showUnstockedInput = batchlessItemIds.has(input.itemId);
                   const isEmptyHere = !query?.isLoading && !search && available === 0;

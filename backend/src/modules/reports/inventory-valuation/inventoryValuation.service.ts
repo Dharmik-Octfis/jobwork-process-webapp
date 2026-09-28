@@ -178,6 +178,11 @@ const DOC_LABELS: Record<string, string> = {
   purchase_order: 'Purchase Order',
 };
 
+// Documents whose cancel posts its reversals on the cancel date, so a group made
+// only of reversals is the cancellation. Bills are absent: an edit's reversal
+// carries the bill's own date and lands in the posting's group instead.
+const CANCELLED_BY_REVERSAL = new Set(['job_issue', 'job_receipt', 'item_assembly']);
+
 /**
  * One row per document per place per posting moment, at the value the ledger
  * posted — so the running value here always ends at the Summary's figure for the
@@ -207,6 +212,7 @@ export async function getItemLedger(
         sourceDocType: string;
         sourceDocId: string | null;
         createdAt: Date;
+        isReversal: boolean;
       }[]
     >`
       SELECT
@@ -215,7 +221,8 @@ export async function getItemLedger(
         SUM(l.value_in - l.value_out) AS "value",
         l.source_doc_type AS "sourceDocType",
         l.source_doc_id AS "sourceDocId",
-        MIN(l.created_at) AS "createdAt"
+        MIN(l.created_at) AS "createdAt",
+        BOOL_AND(l.movement_type = 'reversal') AS "isReversal"
       FROM stock_ledger l
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.item_id = ${itemId}::uuid
@@ -387,6 +394,11 @@ export async function getItemLedger(
           currentValue += drawValue;
 
           rows.push({
+            isCancellation:
+              !isSameAsPrevious &&
+              first &&
+              entry.isReversal &&
+              CANCELLED_BY_REVERSAL.has(entry.sourceDocType),
             date: !isSameAsPrevious && first ? entry.date.toISOString() : null,
             transactionDetails:
               !isSameAsPrevious && first
@@ -413,6 +425,8 @@ export async function getItemLedger(
         currentValue += value;
 
         rows.push({
+          isCancellation:
+            !isSameAsPrevious && entry.isReversal && CANCELLED_BY_REVERSAL.has(entry.sourceDocType),
           date: isSameAsPrevious ? null : entry.date.toISOString(),
           transactionDetails: isSameAsPrevious
             ? ''

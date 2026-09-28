@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
@@ -10,7 +11,8 @@ import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '
 import { invalidateStockQueries } from '../stockCache';
 import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
 import { printChallan } from './printChallan';
-import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
+import type { JobIssue } from './jobIssues.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
@@ -39,10 +41,9 @@ const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#33
  * so a refetch DELETES the row from the view the operator is looking at the
  * instant they act on it: press Issue on a draft and the Drafts list drops it
  * mid-click, which reads as the challan having been removed rather than sent.
- * Both transitions rewrite the row in place (`createNewJobIssue` updates it —
- * same id, same challan number), so `status` is the only thing the cached list
- * is now wrong about. The row leaves the view on the next real fetch: a
- * refresh, or `staleTime` expiring.
+ * Both transitions rewrite the row in place (same id, same challan number), so
+ * `status` is the only thing the cached list is wrong about, and the row stays
+ * until the view changes (`useListRowRetention`).
  */
 function patchStatusInLists(
   queryClient: QueryClient,
@@ -50,24 +51,7 @@ function patchStatusInLists(
   issueId: string,
   status: string,
 ) {
-  const swap = (rows: JobIssue[]) =>
-    rows.map((item) => (item.id === issueId ? { ...item, status } : item));
-
-  queryClient.setQueriesData(
-    { queryKey: ['job-issues', orgId], type: 'active' },
-    // Two shapes live under this key: the paginated list, and the unpaginated
-    // "every challan against one step" read (`?stepId=`). That one is not
-    // filtered on status, so its row STAYS — it just has to say the right thing.
-    (old: JobIssuesPage | JobIssue[] | undefined) => {
-      if (!old) return old;
-      if (Array.isArray(old)) return swap(old);
-      if (!old.results) return old;
-      return { ...old, results: swap(old.results) };
-    },
-  );
-  // The pages nobody is looking at are refetched instead — nothing is on screen
-  // for the row to disappear from, and they must be right when next opened.
-  queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
+  patchListRow<JobIssue>(queryClient, ['job-issues', orgId], issueId, { status });
 }
 
 export function IssueDetail({ issueId, onClose }: Props) {
@@ -79,6 +63,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const unitLabel = useBatchUnitLabel();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonMissing, setCancelReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -143,6 +128,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteJobIssue(orgId!, issueId),
     onSuccess: () => {
+      releaseListRow(['job-issues', orgId], issueId);
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       setDeleteOpen(false);
@@ -501,19 +487,34 @@ export function IssueDetail({ issueId, onClose }: Props) {
               on the 3rd and was cancelled on the 5th&rdquo; is a question someone will ask. This is
               not possible once goods have been received against it.
             </p>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-              Reason
+            <label
+              htmlFor="cancel-challan-reason"
+              style={{
+                display: 'block',
+                fontSize: 12,
+                color: '#ef4444',
+                fontWeight: 500,
+                marginBottom: 4,
+              }}
+            >
+              Reason*
             </label>
             <input
+              id="cancel-challan-reason"
               type="text"
+              required
+              aria-required="true"
               value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              aria-label="Reason for cancelling"
+              aria-invalid={cancelReasonMissing}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                if (e.target.value.trim()) setCancelReasonMissing(false);
+              }}
               style={{
                 width: '100%',
                 padding: '6px 8px',
                 fontSize: 13,
-                border: '1px solid #d1d5db',
+                border: `1px solid ${cancelReasonMissing ? '#ef4444' : '#d1d5db'}`,
                 borderRadius: 4,
                 minHeight: 32,
               }}
@@ -523,11 +524,17 @@ export function IssueDetail({ issueId, onClose }: Props) {
         confirmText={cancelMutation.isPending ? 'Cancelling…' : 'Cancel challan'}
         cancelText="Keep it"
         onConfirm={() => {
-          if (cancelReason.trim()) cancelMutation.mutate();
+          if (!cancelReason.trim()) {
+            setCancelReasonMissing(true);
+            toast.error('Enter a reason for cancelling.');
+            return;
+          }
+          cancelMutation.mutate();
         }}
         onCancel={() => {
           setCancelOpen(false);
           setCancelReason('');
+          setCancelReasonMissing(false);
         }}
       />
 

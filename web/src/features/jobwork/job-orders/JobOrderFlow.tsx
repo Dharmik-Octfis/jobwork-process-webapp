@@ -113,7 +113,7 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
 
         const issued = toNumber(step.totals.issuedQty);
         const outstanding = toNumber(step.totals.outstandingQty);
-        const rework = toNumber(step.totals.reworkQty);
+        const rework = toNumber(step.totals.pendingReworkQty);
         // The principal input's unit — row 1 of CONSUMES, which is what the
         // step's own totals are counted in.
         const issueUom = step.inputs[0]?.uom;
@@ -127,7 +127,7 @@ export function JobOrderFlow({ steps, selectedId, currentId, onSelect, onAppend 
          * beats a block, which beats a plain invitation to start.
          */
         const note =
-          rework > 0
+          rework > 0 && !settled
             ? `${formatQty(rework)} to rework`
             : outstanding > 0
               ? `${qtyWithUnit(outstanding, unit)} still out`

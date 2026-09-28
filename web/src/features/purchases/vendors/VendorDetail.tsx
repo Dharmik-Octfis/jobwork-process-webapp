@@ -5,8 +5,8 @@ import {
   type UpdateVendorData,
   type VendorAddress,
   type VendorContactPerson,
-  type VendorsPage,
 } from './vendors.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, User, Settings, Plus } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -80,6 +80,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteVendor(orgId!, vendorId),
     onSuccess: () => {
+      releaseListRow(['vendors', orgId], vendorId);
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       onClose();
     },
@@ -100,16 +101,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
     onSuccess: (_, newStatus) => {
-      queryClient.setQueriesData({ queryKey: ['vendors', orgId], type: 'active' }, (old: VendorsPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: Vendor) =>
-            item.id === vendorId ? { ...item, status: newStatus } : item
-          ),
-        };
-      });
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId], type: 'inactive' });
+      patchListRow<Vendor>(queryClient, ['vendors', orgId], vendorId, { status: newStatus });
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
     },
   });
@@ -408,7 +400,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone , returnUrl: location.pathname + location.search } });
+    navigate(`/organizations/${orgId}/purchases/vendors/new`, {
+      state: { vendorToClone, returnUrl: location.pathname + location.search },
+    });
   };
 
   if (isLoading) {
@@ -474,7 +468,10 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
             {vendor.contactName}
           </h2>
           <span
@@ -497,8 +494,13 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button className="action-btn"
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
+          <button
+            className="action-btn"
+            onClick={() =>
+              navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
+            }
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -515,7 +517,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button className="action-btn"
+            <button
+              className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -758,7 +761,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                         }}
                         onMouseLeave={() => setHoveredContactSetting('Edit')}
                       >
-                        <button className="action-btn"
+                        <button
+                          className="action-btn"
                           style={{
                             display: 'block',
                             width: '100%',
@@ -1294,7 +1298,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       overflow: 'hidden',
                                     }}
                                   >
-                                    <button className="action-btn"
+                                    <button
+                                      className="action-btn"
                                       onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
                                       onClick={() => {
                                         setContactPersonEditIndex(index);

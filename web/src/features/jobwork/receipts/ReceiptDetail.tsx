@@ -22,7 +22,8 @@ import {
   fetchJobReceiptById,
   postJobReceipt,
 } from './jobReceipts.api';
-import type { JobReceipt, JobReceiptsPage } from './jobReceipts.schemas';
+import type { JobReceipt } from './jobReceipts.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 
 interface Props {
@@ -111,10 +112,9 @@ function BatchChip({
  * The Drafts preset filters on `status`, so a refetch DELETES the row from the
  * view the operator is looking at the instant they act on it — press Post on a
  * draft and it drops mid-click, which reads as the receipt having been removed
- * rather than posted. Both transitions rewrite the row in place
- * (`createNewJobReceipt` updates it — same id, same receipt number), so `status`
- * is the only thing the cached list is now wrong about. The row leaves the view
- * on the next real fetch: a refresh, or `staleTime` expiring. Mirrors
+ * rather than posted. Both transitions rewrite the row in place (same id, same
+ * receipt number), so `status` is the only thing the cached list is wrong about,
+ * and the row stays until the view changes (`useListRowRetention`). Mirrors
  * `IssueDetail`.
  */
 function patchStatusInLists(
@@ -123,24 +123,7 @@ function patchStatusInLists(
   receiptId: string,
   status: string,
 ) {
-  const swap = (rows: JobReceipt[]) =>
-    rows.map((item) => (item.id === receiptId ? { ...item, status } : item));
-
-  queryClient.setQueriesData(
-    { queryKey: ['job-receipts', orgId], type: 'active' },
-    // Two shapes live under this key: the paginated list, and the unpaginated
-    // "every receipt against one step" read (`?stepId=`). That one is not
-    // filtered on status, so its row STAYS — it just has to say the right thing.
-    (old: JobReceiptsPage | JobReceipt[] | undefined) => {
-      if (!old) return old;
-      if (Array.isArray(old)) return swap(old);
-      if (!old.results) return old;
-      return { ...old, results: swap(old.results) };
-    },
-  );
-  // The pages nobody is looking at are refetched instead — nothing is on screen
-  // for the row to disappear from, and they must be right when next opened.
-  queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
+  patchListRow<JobReceipt>(queryClient, ['job-receipts', orgId], receiptId, { status });
 }
 
 export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
@@ -209,6 +192,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteJobReceipt(orgId!, receiptId),
     onSuccess: () => {
+      releaseListRow(['job-receipts', orgId], receiptId);
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       setDeleteOpen(false);
@@ -375,7 +359,9 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                   className="action-btn"
                   type="button"
                   onClick={() =>
-                    navigate(`/organizations/${orgId}/purchases/bills/new?fromJobReceipt=${receipt.id}`)
+                    navigate(
+                      `/organizations/${orgId}/purchases/bills/new?fromJobReceipt=${receipt.id}`,
+                    )
                   }
                   style={{
                     padding: '6px 12px',

@@ -64,7 +64,11 @@ function receiptChargeLine(receipt: {
   id: string;
   receiptNumber: string;
   jobOrder?: { jobOrderNumber?: string | null } | null;
-  outputs?: { acceptedQty?: string | number; rate?: string | number; isPrimary?: boolean }[];
+  outputs?: {
+    acceptedQty?: string | number | null;
+    rate?: string | number | null;
+    isPrimary?: boolean;
+  }[];
   totalAcceptedQty?: string | number;
 }): BillItem {
   let qtyNum = 0;
@@ -1172,7 +1176,10 @@ export function CreateBill() {
                                       }
                                     } else {
                                       if (!isReceiptLine) {
-                                        setValue(`lineItems.${index}.rate`, '' as unknown as number);
+                                        setValue(
+                                          `lineItems.${index}.rate`,
+                                          '' as unknown as number,
+                                        );
                                         setValue(
                                           `lineItems.${index}.quantity`,
                                           '' as unknown as number,
@@ -1286,12 +1293,26 @@ export function CreateBill() {
                               borderRadius: '6px',
                             }}
                           />
+                          {/* read-only — a line is always in the item's own unit */}
+                          {selectedItem?.stockingUom?.symbol && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                textAlign: 'right',
+                                fontSize: '12px',
+                                color: '#64748b',
+                              }}
+                            >
+                              {selectedItem.stockingUom.symbol}
+                            </div>
+                          )}
                           {/* Stock Display (above batch button) */}
                           {selectedItem && (
                             <div style={{ marginTop: '6px' }}>
                               <LineItemStockDisplay
                                 orgId={orgId!}
                                 itemId={selectedItem.id}
+                                unit={selectedItem.stockingUom?.symbol}
                                 deliveryLocationId={
                                   watchLocationId || watchDeliveryLocationId || ''
                                 }
@@ -1356,6 +1377,18 @@ export function CreateBill() {
                               borderRadius: '6px',
                             }}
                           />
+                          {selectedItem?.stockingUom?.symbol && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                textAlign: 'right',
+                                fontSize: '12px',
+                                color: '#64748b',
+                              }}
+                            >
+                              per {selectedItem.stockingUom.symbol}
+                            </div>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1985,11 +2018,7 @@ export function CreateBill() {
           onClose={() => setBatchModalIndex(null)}
           itemName={watchItems[batchModalIndex].item?.name || 'Unknown Item'}
           sku={watchItems[batchModalIndex].item?.sku}
-          uomLabel={
-            watchItems[batchModalIndex].item?.stockingUom?.code ||
-            watchItems[batchModalIndex].item?.stocking_uom?.code ||
-            'pcs'
-          }
+          uomLabel={watchItems[batchModalIndex].item?.stockingUom?.symbol || ''}
           locationId={watchLocationId || watchDeliveryLocationId || undefined}
           locationName={
             locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))

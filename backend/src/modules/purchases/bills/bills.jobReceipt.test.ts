@@ -364,8 +364,15 @@ describe('a service item is never stocked', { timeout: 60_000 }, () => {
         name: `Stitching ${unique()}`,
         itemType: 'service',
         trackInventory: true,
+        stockingUomId: metreId,
       }),
-    ).rejects.toMatchObject({ status: 400 });
+    ).rejects.toMatchObject({ status: 400, message: 'A service item cannot track inventory.' });
+  });
+
+  it('refuses an item with no unit', async () => {
+    await expect(
+      itemsService.create(orgId, { name: `Stitching ${unique()}`, itemType: 'service' }),
+    ).rejects.toMatchObject({ status: 400, message: 'Select a unit for this item.' });
   });
 
   it('refuses deleting an item that still has stock, and deletes one that has none', async () => {

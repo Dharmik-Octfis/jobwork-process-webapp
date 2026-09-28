@@ -89,6 +89,7 @@ export const jobOrderWithStepsSchema = z.object({
         seq: z.number(),
         processNameSnapshot: z.string(),
         processorNameSnapshot: z.string().nullable(),
+        status: z.string(),
       }),
     )
     .default([]),
@@ -105,7 +106,10 @@ export const stepTotalsSchema = z.object({
   consumedQty: z.string(),
   receivedQty: z.string(),
   acceptedQty: z.string(),
+  /** Every rework ever received — history, it never goes down. */
   reworkQty: z.string(),
+  /** Rework still on our premises waiting to be issued back. What every prompt reads. */
+  pendingReworkQty: z.string().default('0'),
   scrapQty: z.string(),
   returnedQty: z.string(),
   outstandingQty: z.string(),

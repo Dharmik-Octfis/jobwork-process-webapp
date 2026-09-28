@@ -96,6 +96,7 @@ export interface ItemLedgerRow {
   sourceDocType?: string | null;
   sourceDocId?: string | null;
   sourceDocNumber?: string | null;
+  isCancellation?: boolean;
 }
 
 export interface ItemLedgerResponse {
