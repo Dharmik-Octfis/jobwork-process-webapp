@@ -260,6 +260,7 @@ const RejectionReasonsList = lazyPage(
   'RejectionReasonsList',
 );
 const ItemsList = lazyPage(() => import('../features/items/ItemsList'), 'ItemsList');
+const ItemDetail = lazyPage(() => import('../features/items/ItemDetail'), 'ItemDetail');
 const CreateItemPage = lazyPage(() => import('../features/items/CreateItemPage'), 'CreateItemPage');
 const EditItemPage = lazyPage(() => import('../features/items/EditItemPage'), 'EditItemPage');
 const OpeningStockPage = lazyPage(
@@ -364,9 +365,18 @@ export const router = createBrowserRouter([
                 children: [
                   { path: '/organizations/:orgId', element: <DashboardPage /> },
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
-                  { path: '/organizations/:orgId/reports/fifo-cost-lot-tracking', element: <FifoCostLotTrackingPage /> },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation-summary',
+                    element: <InventoryValuationSummaryPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation/:itemId',
+                    element: <InventoryValuationDetailPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/fifo-cost-lot-tracking',
+                    element: <FifoCostLotTrackingPage />,
+                  },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {
@@ -454,6 +464,7 @@ export const router = createBrowserRouter([
                   },
                   { path: '/organizations/:orgId/items', element: <ItemsList /> },
                   { path: '/organizations/:orgId/items/new', element: <CreateItemPage /> },
+                  { path: '/organizations/:orgId/items/:id', element: <ItemDetail /> },
                   { path: '/organizations/:orgId/items/:id/edit', element: <EditItemPage /> },
                   {
                     path: '/organizations/:orgId/items/:id/opening-stock',

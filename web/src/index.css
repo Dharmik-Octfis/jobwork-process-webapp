@@ -395,7 +395,14 @@ input[type='number'] {
 /* Responsive Table Wrapper */
 .responsive-table-wrapper {
   overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
   width: 100%;
+}
+.responsive-table-wrapper::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
 }
 
 @media (max-width: 768px) {
