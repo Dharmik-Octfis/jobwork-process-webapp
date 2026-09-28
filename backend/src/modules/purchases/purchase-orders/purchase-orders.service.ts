@@ -65,7 +65,8 @@ export async function getPurchaseOrderById(orgId: string, id: string) {
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
-        bills: true,
+        // a deleted bill must drop off the PO, or it still reads BILLED and links to a 404
+        bills: { where: { isDeleted: false } },
       },
     }),
   );

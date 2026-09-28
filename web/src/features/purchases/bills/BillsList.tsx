@@ -94,6 +94,7 @@ export function BillsList() {
     onSuccess: (_, id) => {
       releaseListRow(['bills', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       setPoToDelete(null);
     },
     // A bill whose stock was used is refused, naming the document — say so.
@@ -501,6 +502,7 @@ export function BillsList() {
             await Promise.allSettled(selectedIds.map((id) => deleteBill(orgId!, id)));
             selectedIds.forEach((id) => releaseListRow(['bills', orgId], id));
             queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+            queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
             setSelectedIds([]);
           } finally {
             setIsProcessing(false);

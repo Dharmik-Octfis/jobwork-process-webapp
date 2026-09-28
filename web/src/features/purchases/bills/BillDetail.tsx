@@ -135,6 +135,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     onSuccess: () => {
       releaseListRow(['bills', orgId], poId);
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // The source PO derives its bill status from its live bills.
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       // Deleting a posted bill withdraws its stock.
       invalidateStockQueries(queryClient, orgId);
       setIsConfirmDeleteOpen(false);
@@ -151,6 +153,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     mutationFn: updateBill,
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       // Patched, not invalidated: the Draft view would drop the bill just opened.
       patchListRow<Bill>(queryClient, ['bills', orgId], poId, { status: updated.status });
       // "Open Bill" posts the draft's stock.
