@@ -1072,7 +1072,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                               verticalAlign: 'top',
                             }}
                           >
-                            {item.quantity} PCS
+                            {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                           </td>
                           <td
                             style={{
@@ -1563,7 +1563,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             textAlign: 'center',
                           }}
                         >
-                          {item.quantity}
+                          {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                         </td>
                         <td
                           style={{

@@ -49,18 +49,24 @@ export function toItemResponse(item: Record<string, unknown> | null | undefined)
  * tenants' queries afterwards (jobwork.refs.ts). The id arrives from a client
  * and is therefore a claim; this is what turns it into a fact.
  */
-async function assertStockingUom(
+async function resolveStockingUom(
   tx: TenantClient,
   organizationId: string,
   stockingUomId: string | null | undefined,
 ) {
-  if (!stockingUomId) return;
+  if (!stockingUomId) return null;
   const uom = await tx.unitOfMeasurement.findFirst({
     where: { id: stockingUomId, organizationId, isDeleted: false },
-    select: { id: true },
+    select: { id: true, unitName: true },
   });
   if (!uom) throw ApiError.badRequest('Unknown unit of measurement.');
+  return uom;
 }
+
+// The web form has required a unit since 7988a5e, but the API never did — so
+// items still landed with none and showed no unit on bills or POs.
+const UNIT_REQUIRED = () =>
+  ApiError.badRequest('Select a unit for this item.', { unit: 'Select a unit.' });
 
 /** A bill posts stock for every tracked line, so a tracked service would create stock of work done. */
 function assertServiceNotStocked(
@@ -629,6 +635,8 @@ export class ItemsService {
       // No COUNT here — one row beyond the page answers "is there a next page?".
       const rows = await tx.item.findMany({
         where: this.listWhere(organizationId, opts),
+        // the symbol purchase lines show beside quantity and rate
+        include: { stockingUom: { select: { symbol: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * perPage,
         take: takeForPage(perPage),
@@ -653,6 +661,7 @@ export class ItemsService {
     return runAsTenant(organizationId, async (tx) => {
       const item = await tx.item.findFirst({
         where: { id, organizationId, isDeleted: false },
+        include: { stockingUom: { select: { symbol: true } } },
       });
       if (!item) {
         throw ApiError.notFound('Item not found');
@@ -830,7 +839,8 @@ export class ItemsService {
     return runAsTenant(organizationId, async (tx) => {
       const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
 
-      await assertStockingUom(tx, organizationId, rest.stockingUomId);
+      const uom = await resolveStockingUom(tx, organizationId, rest.stockingUomId);
+      if (!uom) throw UNIT_REQUIRED();
       assertServiceNotStocked(rest.itemType, rest.trackInventory);
 
       const defs = await loadActiveDefinitions(tx, organizationId, 'item');
@@ -851,7 +861,8 @@ export class ItemsService {
       const item = await tx.item.create({
         data: {
           ...rest,
-          unit: rest.unit ?? '',
+          // the name follows the linked unit, never a client string that could disagree
+          unit: uom.unitName,
           sku: rest.sku ?? '',
           customFields,
           frontImage: frontImage === null ? Prisma.DbNull : (frontImage as Prisma.InputJsonValue),
@@ -861,6 +872,8 @@ export class ItemsService {
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
         },
+        // a purchase line created from "New Product" shows this symbol straight away
+        include: { stockingUom: { select: { symbol: true } } },
       });
 
       /**
@@ -990,7 +1003,11 @@ export class ItemsService {
 
       const { customFields: rawCustomFields, frontImage, rearImage, images, ...rest } = data;
 
-      await assertStockingUom(tx, organizationId, rest.stockingUomId);
+      // An edit that omits the unit leaves it alone; one that clears it is refused,
+      // so a legacy item without one is fixed by the first full save of its form.
+      if (rest.stockingUomId === null) throw UNIT_REQUIRED();
+      const uom = await resolveStockingUom(tx, organizationId, rest.stockingUomId);
+      if (uom) rest.unit = uom.unitName;
       assertServiceNotStocked(
         rest.itemType ?? item.itemType,
         rest.trackInventory ?? item.trackInventory,

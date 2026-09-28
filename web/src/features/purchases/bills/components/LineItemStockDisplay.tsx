@@ -6,6 +6,7 @@ import { stockOnHandOf } from '../../../items/stockFigures';
 interface LineItemStockDisplayProps {
   orgId: string;
   itemId: string;
+  unit?: string | null;
   deliveryLocationId: string;
   locations: Location[];
   onClick: (e: React.MouseEvent<HTMLButtonElement>, rows: ItemOpeningStockLocationRowDto[]) => void;
@@ -14,6 +15,7 @@ interface LineItemStockDisplayProps {
 export function LineItemStockDisplay({
   orgId,
   itemId,
+  unit,
   deliveryLocationId,
   locations,
   onClick,
@@ -53,7 +55,9 @@ export function LineItemStockDisplay({
       }}
     >
       <div style={{ color: '#1e293b' }}>Stock on Hand:</div>
-      <div style={{ fontWeight: 500, color: '#0f172a' }}>{locationOnHand.toFixed(2)} pcs</div>
+      <div style={{ fontWeight: 500, color: '#0f172a' }}>
+        {locationOnHand.toFixed(2)} {unit ?? ''}
+      </div>
       <button
         type="button"
         onClick={(e) => onClick(e, openingStockRows)}

@@ -818,7 +818,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                                 verticalAlign: 'top',
                               }}
                             >
-                              {item.quantity} PCS
+                              {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                             </td>
                             <td
                               style={{
@@ -1491,7 +1491,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                               textAlign: 'center',
                             }}
                           >
-                            {item.quantity}
+                            {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                           </td>
                           <td
                             style={{
