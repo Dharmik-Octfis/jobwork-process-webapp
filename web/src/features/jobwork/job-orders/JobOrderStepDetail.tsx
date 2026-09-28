@@ -109,7 +109,7 @@ export function JobOrderStepDetail({
   const settled = step.status === 'completed' || step.status === 'short_closed';
 
   // A settled step takes no more issues (R9), so "issue it back" would be a dead end.
-  const reworkPending = !settled && toNumber(step.totals.reworkQty) > 0;
+  const reworkPending = !settled && toNumber(step.totals.pendingReworkQty) > 0;
 
   return (
     <section style={{ border: '1px solid #eef0f3', borderRadius: 10, background: '#fff' }}>
@@ -221,8 +221,8 @@ export function JobOrderStepDetail({
           >
             <AlertTriangle size={14} color="#b45309" style={{ marginTop: 1, flexShrink: 0 }} />
             <span style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>
-              {formatQty(step.totals.reworkQty)} {receiveUnit} came back needing rework. It sits in
-              its own batch — issue it back to this step to run it again.
+              {formatQty(step.totals.pendingReworkQty)} {receiveUnit} came back needing rework. It
+              sits in its own batch — issue it back to this step to run it again.
             </span>
           </div>
         )}

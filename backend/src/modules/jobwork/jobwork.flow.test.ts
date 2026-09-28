@@ -422,6 +422,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     // ---------------------------------------------------------------------
     // Rework — back to the SAME step, counted as a second attempt
     // ---------------------------------------------------------------------
+    const beforeRework = await getJobOrderOverview(orgId, jobOrder.id);
+    expect(beforeRework.steps[0]!.totals.pendingReworkQty).toBe('50');
+
     const reworkIssue = await createNewJobIssue(orgId, {
       jobOrderStepId: step1.id,
       sourceLocationId: godownId,
@@ -430,6 +433,11 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     });
     expect(reworkIssue.isRework).toBe(true);
     expect(reworkIssue.attemptNo).toBeGreaterThan(1);
+
+    // Sent back to the dyer, so no longer waiting — but it still came back once.
+    const afterRework = await getJobOrderOverview(orgId, jobOrder.id);
+    expect(afterRework.steps[0]!.totals.pendingReworkQty).toBe('0');
+    expect(afterRework.steps[0]!.totals.reworkQty).toBe('50');
 
     // ---------------------------------------------------------------------
     // Step 2 — cutting. A different item, in a different unit, from a process

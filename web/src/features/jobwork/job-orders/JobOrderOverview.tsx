@@ -326,7 +326,7 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
     ? (front.inputs[0].uom.symbol ?? front.inputs[0].uom.unitName)
     : '';
   const outstanding = toNumber(front.totals.outstandingQty);
-  const rework = toNumber(front.totals.reworkQty);
+  const rework = toNumber(front.totals.pendingReworkQty);
 
   // When it went out, off the step's own last issue — "out since" is the fact
   // people chase a processor with, and it is not derivable from a total.
@@ -944,12 +944,10 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               be undone — nothing more can be issued, received or cancelled against the step
               afterwards.
             </p>
-            {/* reworkQty is every rework ever received, not what is still waiting,
-                so this is worded to hold either way. */}
-            {completeStepTarget && toNumber(completeStepTarget.totals.reworkQty) > 0 && (
+            {completeStepTarget && toNumber(completeStepTarget.totals.pendingReworkQty) > 0 && (
               <p style={{ margin: '12px 0 0 0', lineHeight: 1.6, color: '#92400e' }}>
-                Rework that has not been issued back to this step yet can no longer be reworked
-                here.
+                {formatQty(completeStepTarget.totals.pendingReworkQty)} of rework has not been
+                issued back yet and can no longer be reworked on this step.
               </p>
             )}
           </div>

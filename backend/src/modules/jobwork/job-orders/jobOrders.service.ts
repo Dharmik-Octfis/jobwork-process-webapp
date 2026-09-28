@@ -2074,6 +2074,51 @@ export async function getJobOrderOverview(
           })
         : [];
 
+    // Rework still waiting = what its batches hold on our own premises. The
+    // receipts' reworkQty never goes down, so a rework already sent back to the
+    // processor, scrapped or re-received would still read as waiting.
+    const reworkBatchRows = await tx.jobReceiptOutputBatch.findMany({
+      where: {
+        organizationId,
+        kind: 'rework',
+        isDeleted: false,
+        jobReceipt: { jobOrderId: id, isDeleted: false },
+      },
+      select: { batchId: true, jobReceipt: { select: { jobOrderStepId: true } } },
+    });
+    const reworkStepByBatch = new Map<string, string>();
+    for (const row of reworkBatchRows) {
+      if (!reworkStepByBatch.has(row.batchId)) {
+        reworkStepByBatch.set(row.batchId, row.jobReceipt.jobOrderStepId);
+      }
+    }
+    const reworkBalances =
+      reworkStepByBatch.size > 0
+        ? await tx.stockLedgerEntry.groupBy({
+            by: ['batchId'],
+            where: {
+              organizationId,
+              batchId: { in: [...reworkStepByBatch.keys()] },
+              stockEffect: { in: ['physical', 'both'] },
+              // Same "own premises" as the item's Stock on Hand (items.service).
+              location: { type: { notIn: ['processor', 'in_transit', 'customer_site'] } },
+            },
+            _sum: { qtyIn: true, qtyOut: true },
+          })
+        : [];
+    const pendingReworkByStep = new Map<string, Prisma.Decimal>();
+    for (const row of reworkBalances) {
+      const stepId = reworkStepByBatch.get(row.batchId)!;
+      const qty = (row._sum.qtyIn ?? new Prisma.Decimal(0)).minus(
+        row._sum.qtyOut ?? new Prisma.Decimal(0),
+      );
+      if (qty.lessThanOrEqualTo(0)) continue;
+      pendingReworkByStep.set(
+        stepId,
+        (pendingReworkByStep.get(stepId) ?? new Prisma.Decimal(0)).plus(qty),
+      );
+    }
+
     // Filtered: no figures transaction, so the totals are read here.
     const ownFigures = filterStepId
       ? await stepFigures(
@@ -2083,11 +2128,11 @@ export async function getJobOrderOverview(
         )
       : null;
 
-    return { order, batches, chainWarningsMap, balances, ownFigures };
+    return { order, batches, chainWarningsMap, balances, ownFigures, pendingReworkByStep };
   });
 
   const [main, figures] = await Promise.all([mainPromise, figuresPromise]);
-  const { order, batches, chainWarningsMap, balances } = main;
+  const { order, batches, chainWarningsMap, balances, pendingReworkByStep } = main;
 
   let { totals: allTotalsMap, refs: flowRefs } = main.ownFigures ?? figures!;
   // A step added between the two transactions' reads has no totals yet. Read
@@ -2176,6 +2221,8 @@ export async function getJobOrderOverview(
         receivedQty: totals.receivedQty.toString(),
         acceptedQty: totals.acceptedQty.toString(),
         reworkQty: totals.reworkQty.toString(),
+        // What the step still has to run again — reworkQty is every rework received.
+        pendingReworkQty: (pendingReworkByStep.get(step.id) ?? new Prisma.Decimal(0)).toString(),
         scrapQty: totals.scrapQty.toString(),
         returnedQty: totals.returnedQty.toString(),
         outstandingQty: outstanding.toString(),
