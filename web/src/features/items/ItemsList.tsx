@@ -759,7 +759,7 @@ export function ItemsList() {
                   </>
                 )}
 
-                {/* Primary New Item button (emerald green matching Zoho Screenshot 1) */}
+                {/* Primary New Item button (brand ocean blue) */}
                 <button
                   onClick={() =>
                     navigate(`/organizations/${orgId}/items/new`, {
@@ -767,7 +767,7 @@ export function ItemsList() {
                     })
                   }
                   style={{
-                    background: '#15803d',
+                    background: '#0284c7',
                     color: 'white',
                     border: 'none',
                     padding: '7px 15px',
@@ -779,14 +779,14 @@ export function ItemsList() {
                     alignItems: 'center',
                     gap: 6,
                     whiteSpace: 'nowrap',
-                    boxShadow: '0 2px 6px rgba(21, 128, 61, 0.25)',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
                     transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#166534';
+                    e.currentTarget.style.background = '#0369a1';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#15803d';
+                    e.currentTarget.style.background = '#0284c7';
                   }}
                 >
                   <Plus size={16} /> New
@@ -809,10 +809,10 @@ export function ItemsList() {
                         width: 32,
                         height: 32,
                         borderRadius: 6,
-                        border: '1px solid #d1d5db',
-                        background: isMoreMenuOpen ? '#f0f7fd' : '#fff',
+                        border: isMoreMenuOpen ? '1px solid #bae6fd' : '1px solid #d1d5db',
+                        background: isMoreMenuOpen ? '#f0f9ff' : '#fff',
                         cursor: 'pointer',
-                        color: isMoreMenuOpen ? '#2563eb' : '#4b5563',
+                        color: isMoreMenuOpen ? '#0284c7' : '#4b5563',
                         transition: 'all 0.15s ease',
                       }}
                     >
@@ -851,7 +851,7 @@ export function ItemsList() {
                               justifyContent: 'space-between',
                               padding: '9px 16px',
                               cursor: 'pointer',
-                              background: activeSubmenu === 'sort' ? '#2563eb' : 'transparent',
+                              background: activeSubmenu === 'sort' ? '#0284c7' : 'transparent',
                               color: activeSubmenu === 'sort' ? '#ffffff' : '#334155',
                               fontSize: 13,
                               fontWeight: 500,
@@ -861,7 +861,7 @@ export function ItemsList() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <ArrowUpDown
                                 size={15}
-                                color={activeSubmenu === 'sort' ? '#ffffff' : '#2563eb'}
+                                color={activeSubmenu === 'sort' ? '#ffffff' : '#0284c7'}
                               />
                               Sort by
                             </span>
@@ -912,8 +912,8 @@ export function ItemsList() {
                                       width: '100%',
                                       padding: '8px 16px',
                                       border: 'none',
-                                      background: isSelected ? '#eef2ff' : 'transparent',
-                                      color: isSelected ? '#1e293b' : '#334155',
+                                      background: isSelected ? '#f0f9ff' : 'transparent',
+                                      color: isSelected ? '#0284c7' : '#334155',
                                       fontWeight: isSelected ? 600 : 400,
                                       fontSize: 13,
                                       cursor: 'pointer',
@@ -930,9 +930,9 @@ export function ItemsList() {
                                     <span>{option.label}</span>
                                     {isSelected &&
                                       (sortAsc ? (
-                                        <ArrowUp size={14} color="#2563eb" />
+                                        <ArrowUp size={14} color="#0284c7" />
                                       ) : (
-                                        <ArrowDown size={14} color="#2563eb" />
+                                        <ArrowDown size={14} color="#0284c7" />
                                       ))}
                                   </button>
                                 );
@@ -956,7 +956,7 @@ export function ItemsList() {
                               justifyContent: 'space-between',
                               padding: '9px 16px',
                               cursor: 'pointer',
-                              background: activeSubmenu === 'import' ? '#2563eb' : 'transparent',
+                              background: activeSubmenu === 'import' ? '#0284c7' : 'transparent',
                               color: activeSubmenu === 'import' ? '#ffffff' : '#334155',
                               fontSize: 13,
                               fontWeight: 500,
@@ -966,7 +966,7 @@ export function ItemsList() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <Download
                                 size={15}
-                                color={activeSubmenu === 'import' ? '#ffffff' : '#2563eb'}
+                                color={activeSubmenu === 'import' ? '#ffffff' : '#0284c7'}
                               />
                               Import
                             </span>
@@ -1012,7 +1012,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Import Items
@@ -1035,7 +1035,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Import Opening Stock
@@ -1057,7 +1057,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Import Items Images
@@ -1081,7 +1081,7 @@ export function ItemsList() {
                               justifyContent: 'space-between',
                               padding: '9px 16px',
                               cursor: 'pointer',
-                              background: activeSubmenu === 'export' ? '#2563eb' : 'transparent',
+                              background: activeSubmenu === 'export' ? '#0284c7' : 'transparent',
                               color: activeSubmenu === 'export' ? '#ffffff' : '#334155',
                               fontSize: 13,
                               fontWeight: 500,
@@ -1091,7 +1091,7 @@ export function ItemsList() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <Upload
                                 size={15}
-                                color={activeSubmenu === 'export' ? '#ffffff' : '#2563eb'}
+                                color={activeSubmenu === 'export' ? '#ffffff' : '#0284c7'}
                               />
                               Export
                             </span>
@@ -1133,7 +1133,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Items
@@ -1152,7 +1152,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Current View
@@ -1171,7 +1171,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Opening Stock
@@ -1193,7 +1193,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Item Images
@@ -1220,10 +1220,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <Settings size={15} color="#2563eb" />
+                          <Settings size={15} color="#0284c7" />
                           Preferences
                         </div>
 
@@ -1245,10 +1245,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <RefreshCw size={15} color="#2563eb" />
+                          <RefreshCw size={15} color="#0284c7" />
                           Refresh List
                         </div>
 
@@ -1279,10 +1279,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <RotateCcw size={15} color="#2563eb" />
+                          <RotateCcw size={15} color="#0284c7" />
                           Reset Column Width
                         </div>
 
@@ -1303,10 +1303,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <CheckCircle2 size={15} color="#2563eb" />
+                          <CheckCircle2 size={15} color="#0284c7" />
                           Validate HSN/SAC
                         </div>
 
@@ -1327,10 +1327,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <History size={15} color="#2563eb" />
+                          <History size={15} color="#0284c7" />
                           HSN/SAC Update History
                         </div>
                       </div>
