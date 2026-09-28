@@ -84,13 +84,13 @@ export function EditItemPage() {
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
-      isSalesInfo: true,
+      isSalesInfo: rawItem.isSalesInfo ?? true,
       sellingPrice:
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
           : (null as unknown as number),
       salesDescription: (rawItem.salesDescription as string) || '',
-      isPurchaseInfo: true,
+      isPurchaseInfo: rawItem.isPurchaseInfo ?? true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
@@ -393,7 +393,7 @@ export function EditItemPage() {
                 <div>
                   <input
                     name="sku"
-                    value={formData.sku || ''}
+                    value={formData.sku ?? ''}
                     onChange={handleChange}
                     style={{
                       width: '100%',
@@ -528,7 +528,7 @@ export function EditItemPage() {
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
-                  value={formData.hsnCode || ''}
+                  value={formData.hsnCode ?? ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
@@ -807,7 +807,7 @@ export function EditItemPage() {
                             type="number"
                             step="0.01"
                             name="sellingPrice"
-                            value={formData.sellingPrice || ''}
+                            value={formData.sellingPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -847,7 +847,7 @@ export function EditItemPage() {
                         </label>
                         <textarea
                           name="salesDescription"
-                          value={formData.salesDescription || ''}
+                          value={formData.salesDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -906,7 +906,7 @@ export function EditItemPage() {
                             type="number"
                             step="0.01"
                             name="costPrice"
-                            value={formData.costPrice || ''}
+                            value={formData.costPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -944,7 +944,7 @@ export function EditItemPage() {
                         </label>
                         <textarea
                           name="purchaseDescription"
-                          value={formData.purchaseDescription || ''}
+                          value={formData.purchaseDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -1086,7 +1086,7 @@ export function EditItemPage() {
                             type="number"
                             step="0.01"
                             name="openingStock"
-                            value={formData.openingStock || ''}
+                            value={formData.openingStock ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '140px',
@@ -1112,7 +1112,7 @@ export function EditItemPage() {
                             type="number"
                             step="0.01"
                             name="openingStockValuePerUnit"
-                            value={formData.openingStockValuePerUnit || ''}
+                            value={formData.openingStockValuePerUnit ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '140px',
@@ -1214,3 +1214,5 @@ export function EditItemPage() {
     </div>
   );
 }
+
+

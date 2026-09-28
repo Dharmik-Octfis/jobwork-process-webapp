@@ -34,13 +34,11 @@ export const itemSchema = z.object({
   nature: z.string().optional(),
   defaultRouteId: z.string().nullable().optional(),
   isSalesInfo: z.boolean().default(true),
-  sellingPrice: z
-    .number({ message: 'Selling price is required' })
-    .min(0, 'Selling price must be positive'),
+  sellingPrice: z.number().nullable().optional(),
   mrp: z.union([z.string(), z.number()]).nullable().optional(),
   salesDescription: z.string().nullable().optional(),
   isPurchaseInfo: z.boolean().default(true),
-  costPrice: z.number({ message: 'Cost price is required' }).min(0, 'Cost price must be positive'),
+  costPrice: z.number().nullable().optional(),
   purchaseDescription: z.string().nullable().optional(),
   packaging: z.string().max(100).nullable().optional(),
   deliveryDate: z.string().nullable().optional(),
@@ -83,13 +81,11 @@ export const itemFormSchema = z.object({
   sku: z.string().optional().default(''),
 
   isSalesInfo: z.boolean().default(true),
-  sellingPrice: z
-    .number({ message: 'Selling price is required' })
-    .min(0, 'Selling price must be positive'),
+  sellingPrice: z.number({ message: 'Selling price must be a number' }).min(0, 'Selling price must be positive').optional().nullable(),
   salesDescription: z.string().optional().nullable(),
 
   isPurchaseInfo: z.boolean().default(true),
-  costPrice: z.number({ message: 'Cost price is required' }).min(0, 'Cost price must be positive'),
+  costPrice: z.number({ message: 'Cost price must be a number' }).min(0, 'Cost price must be positive').optional().nullable(),
   purchaseDescription: z.string().optional().nullable(),
   packaging: z.string().optional().nullable(),
 
@@ -105,6 +101,21 @@ export const itemFormSchema = z.object({
   // Dynamic per-org custom fields; validated server-side against the org's definitions.
   customFields: z.record(z.string(), z.unknown()).optional(),
   isActive: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.isSalesInfo && typeof data.sellingPrice !== 'number') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Selling price is required',
+      path: ['sellingPrice'],
+    });
+  }
+  if (data.isPurchaseInfo && typeof data.costPrice !== 'number') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Cost price is required',
+      path: ['costPrice'],
+    });
+  }
 });
 
 export type Item = z.infer<typeof itemSchema>;

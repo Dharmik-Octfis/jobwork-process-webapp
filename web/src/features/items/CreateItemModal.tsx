@@ -88,3 +88,4 @@ export function CreateItemModal({ isOpen, onClose, onSuccess }: CreateItemModalP
     </div>
   );
 }
+

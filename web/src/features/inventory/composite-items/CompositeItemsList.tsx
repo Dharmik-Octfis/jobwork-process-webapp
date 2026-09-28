@@ -228,3 +228,4 @@ export function CompositeItemsList({ itemId }: CompositeItemsListProps) {
     </div>
   );
 }
+

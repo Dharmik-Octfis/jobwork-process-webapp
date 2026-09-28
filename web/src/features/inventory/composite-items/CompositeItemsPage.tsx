@@ -760,3 +760,4 @@ export function CompositeItemsPage() {
     </div>
   );
 }
+

@@ -45,13 +45,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         unit: itemToClone.unit || '',
         stockingUomId: itemToClone.stockingUomId ?? null,
         sku: itemToClone.sku || '',
-        isSalesInfo: true,
+        isSalesInfo: itemToClone.isSalesInfo ?? true,
         sellingPrice:
           itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
             ? Number(itemToClone.sellingPrice)
             : (null as unknown as number),
         salesDescription: itemToClone.salesDescription || itemToClone.salesDescription || '',
-        isPurchaseInfo: true,
+        isPurchaseInfo: itemToClone.isPurchaseInfo ?? true,
         costPrice:
           itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
             ? Number(itemToClone.costPrice)
@@ -171,7 +171,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
       type === 'checkbox'
         ? (e.target as HTMLInputElement).checked
         : type === 'number'
-          ? parseFloat(value) || null
+          ? value === '' || isNaN(Number(value))
+            ? null
+            : Number(value)
           : value;
 
     setFormData((prev) => {
@@ -437,7 +439,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 <div>
                   <input
                     name="sku"
-                    value={formData.sku || ''}
+                    value={formData.sku ?? ''}
                     onChange={handleChange}
                     style={{
                       width: '100%',
@@ -586,7 +588,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
-                  value={formData.hsnCode || ''}
+                  value={formData.hsnCode ?? ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
@@ -865,7 +867,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             type="number"
                             step="0.01"
                             name="sellingPrice"
-                            value={formData.sellingPrice || ''}
+                            value={formData.sellingPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -905,7 +907,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         </label>
                         <textarea
                           name="salesDescription"
-                          value={formData.salesDescription || ''}
+                          value={formData.salesDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -964,7 +966,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             type="number"
                             step="0.01"
                             name="costPrice"
-                            value={formData.costPrice || ''}
+                            value={formData.costPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -1002,7 +1004,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         </label>
                         <textarea
                           name="purchaseDescription"
-                          value={formData.purchaseDescription || ''}
+                          value={formData.purchaseDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -1144,7 +1146,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             type="number"
                             step="0.01"
                             name="openingStock"
-                            value={formData.openingStock || ''}
+                            value={formData.openingStock ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '140px',
@@ -1170,7 +1172,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             type="number"
                             step="0.01"
                             name="openingStockValuePerUnit"
-                            value={formData.openingStockValuePerUnit || ''}
+                            value={formData.openingStockValuePerUnit ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '140px',
@@ -1296,3 +1298,5 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
     </div>
   );
 }
+
+

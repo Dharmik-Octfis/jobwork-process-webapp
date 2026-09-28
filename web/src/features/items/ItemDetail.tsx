@@ -396,7 +396,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           ...(isInventoryTracked ? ['Locations'] : []),
           ...(isBatchTracked ? [batchTabName] : []),
           'Transactions',
-          'Related Lists',
           'History',
           ...(showComponentsTab ? ['Components'] : []),
         ].map((tab) => (
@@ -969,3 +968,4 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     </div>
   );
 }
+

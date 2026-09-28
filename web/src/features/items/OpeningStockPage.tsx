@@ -1569,3 +1569,4 @@ export function OpeningStockPage() {
     </div>
   );
 }
+
