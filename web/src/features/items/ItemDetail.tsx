@@ -7,14 +7,11 @@ import {
   ChevronDown,
   Package,
   DollarSign,
-  TrendingUp,
   Layers,
   Archive,
   Copy,
   Trash2,
-  Tag,
   Warehouse,
-  CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -584,375 +581,215 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
         </div>
       </div>
 
-      {/* Main Content Container */}
-      <div style={{ width: '100%', padding: '20px 20px' }}>
-        {/* 2. Executive KPI Metrics Cards */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 16,
-            marginBottom: 24,
-          }}
-        >
-          {/* Card 1: Stock on Hand */}
+      {/* 2. Executive Inline Metrics Strip (Seamless, No Boxes, Modern Stripe/Linear Style) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 28,
+          padding: '12px 24px',
+          borderBottom: '1px solid #e2e8f0',
+          background: '#f8fafc',
+          flexWrap: 'wrap',
+        }}
+      >
+        {/* Metric 1: Stock On Hand */}
+        <div>
           <div
             style={{
-              background: '#fff',
-              borderRadius: 12,
-              padding: '18px 22px',
-              border: '1px solid #f1f5f9',
-              boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Stock On Hand
-              </span>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: '#f0f9ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Package size={17} color="#0284c7" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 26, fontWeight: 700, color: '#0f172a' }}>
-                {totalStockOnHand.toFixed(2)}
-              </span>
-              <span style={{ fontSize: 13, color: '#64748b' }}>{item.unit || 'Units'}</span>
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-              {inStock ? (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontSize: 11,
-                    color: '#15803d',
-                    background: '#f0fdf4',
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    fontWeight: 600,
-                  }}
-                >
-                  <CheckCircle2 size={12} /> Available in Warehouse
-                </span>
-              ) : (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontSize: 11,
-                    color: '#b45309',
-                    background: '#fef3c7',
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    fontWeight: 600,
-                  }}
-                >
-                  <AlertCircle size={12} /> Low / Out of Stock
-                </span>
-              )}
-            </div>
+            Stock on Hand
           </div>
-
-          {/* Card 2: Cost Price */}
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 12,
-              padding: '18px 22px',
-              border: '1px solid #f1f5f9',
-              boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+            <span style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
+              {totalStockOnHand.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 12, color: '#64748b' }}>{item.unit || 'Units'}</span>
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
+                fontSize: 11,
+                fontWeight: 600,
+                color: inStock ? '#15803d' : '#b45309',
+                marginLeft: 4,
               }}
             >
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Purchase Rate (Cost)
-              </span>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: '#f8fafc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <DollarSign size={17} color="#475569" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ fontSize: 26, fontWeight: 700, color: '#0f172a' }}>
-                ₹{cost > 0 ? Number(cost).toFixed(2) : '0.00'}
-              </span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>/ {item.unit || 'unit'}</span>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
-              Base procurement cost
-            </div>
-          </div>
-
-          {/* Card 3: Selling Price */}
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 12,
-              padding: '18px 22px',
-              border: '1px solid #f1f5f9',
-              boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Selling Rate
-              </span>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: '#f0fdf4',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <TrendingUp size={17} color="#16a34a" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ fontSize: 26, fontWeight: 700, color: '#0f172a' }}>
-                ₹{price > 0 ? Number(price).toFixed(2) : '0.00'}
-              </span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>/ {item.unit || 'unit'}</span>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
-              Standard retail / invoice price
-            </div>
-          </div>
-
-          {/* Card 4: Profit Margin */}
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 12,
-              padding: '18px 22px',
-              border: '1px solid #f1f5f9',
-              boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Gross Margin
-              </span>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: '#f0f9ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Tag size={17} color="#0284c7" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span
-                style={{
-                  fontSize: 26,
-                  fontWeight: 700,
-                  color: Number(marginPercentage) >= 0 ? '#15803d' : '#ef4444',
-                }}
-              >
-                {marginPercentage ? `${marginPercentage}%` : 'N/A'}
-              </span>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
-              {price > cost
-                ? `Profit of ₹${(price - cost).toFixed(2)} per unit`
-                : 'Margin based on retail & cost'}
-            </div>
+              • {inStock ? 'In Stock' : 'Low / Out of Stock'}
+            </span>
           </div>
         </div>
 
-        {/* 3. Modern Segmented Navigation Tabs (No underlines) */}
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            marginBottom: 20,
-            background: '#f1f5f9',
-            padding: '3px',
-            borderRadius: 8,
-            overflowX: 'auto',
-            maxWidth: '100%',
-          }}
-        >
-          {[
-            'Overview',
-            ...(isInventoryTracked ? ['Locations'] : []),
-            ...(isBatchTracked ? [batchTabName] : []),
-            'Transactions',
-            'Images',
-            'History',
-            ...(showComponentsTab ? ['Components'] : []),
-          ].map((tab) => {
-            const isTabActive = effectiveActiveTab === tab;
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  background: isTabActive ? '#ffffff' : 'transparent',
-                  color: isTabActive ? '#0284c7' : '#475569',
-                  fontWeight: isTabActive ? 600 : 500,
-                  border: 'none',
-                  padding: '7px 16px',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  boxShadow: isTabActive
-                    ? '0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04)'
-                    : 'none',
-                  transition: 'all 0.15s ease',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {tab}
-              </button>
-            );
-          })}
+        <div style={{ width: 1, height: 26, background: '#cbd5e1' }} />
+
+        {/* Metric 2: Purchase Rate */}
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Purchase Rate
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 2 }}>
+            <span style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
+              ₹{cost > 0 ? cost.toFixed(2) : '0.00'}
+            </span>
+            <span style={{ fontSize: 12, color: '#64748b' }}>/ {item.unit || 'unit'}</span>
+          </div>
         </div>
 
-        {/* 4. Tab Body Content */}
+        <div style={{ width: 1, height: 26, background: '#cbd5e1' }} />
+
+        {/* Metric 3: Selling Rate */}
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Selling Rate
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 2 }}>
+            <span style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
+              ₹{price > 0 ? Number(price).toFixed(2) : '0.00'}
+            </span>
+            <span style={{ fontSize: 12, color: '#64748b' }}>/ {item.unit || 'unit'}</span>
+          </div>
+        </div>
+
+        <div style={{ width: 1, height: 26, background: '#cbd5e1' }} />
+
+        {/* Metric 4: Gross Margin */}
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Gross Margin
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+            <span
+              style={{
+                fontSize: 17,
+                fontWeight: 700,
+                color: Number(marginPercentage) >= 0 ? '#15803d' : '#ef4444',
+              }}
+            >
+              {marginPercentage ? `${marginPercentage}%` : 'N/A'}
+            </span>
+            {price > cost && (
+              <span style={{ fontSize: 11.5, color: '#64748b' }}>
+                (+₹{(price - cost).toFixed(2)}/unit)
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Clean Underline Navigation Tabs (No Box Background) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 28,
+          padding: '0 24px',
+          borderBottom: '1px solid #e2e8f0',
+          background: '#ffffff',
+          overflowX: 'auto',
+        }}
+      >
+        {[
+          'Overview',
+          ...(isInventoryTracked ? ['Locations'] : []),
+          ...(isBatchTracked ? [batchTabName] : []),
+          'Transactions',
+          'Images',
+          'History',
+          ...(showComponentsTab ? ['Components'] : []),
+        ].map((tab) => {
+          const isTabActive = effectiveActiveTab === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              style={{
+                background: 'transparent',
+                color: isTabActive ? '#0284c7' : '#64748b',
+                fontWeight: isTabActive ? 600 : 500,
+                border: 'none',
+                borderBottom: isTabActive ? '2px solid #0284c7' : '2px solid transparent',
+                padding: '12px 2px',
+                fontSize: 13,
+                cursor: 'pointer',
+                marginBottom: -1,
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => {
+                if (!isTabActive) e.currentTarget.style.color = '#0f172a';
+              }}
+              onMouseLeave={(e) => {
+                if (!isTabActive) e.currentTarget.style.color = '#64748b';
+              }}
+            >
+              {tab}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Content Area — Seamless Canvas (No Heavy Card Boxes or Nested Borders) */}
+      <div style={{ width: '100%', padding: '24px 24px', boxSizing: 'border-box' }}>
+        {/* Tab: Overview */}
         {effectiveActiveTab === 'Overview' && (
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: 'minmax(0, 1.8fr) minmax(320px, 1fr)',
-              gap: 24,
+              gap: 36,
               alignItems: 'start',
             }}
           >
-            {/* Left Main Column: Specs & Pricing */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* General Information Card */}
-              <div
-                style={{
-                  background: '#fff',
-                  borderRadius: 12,
-                  padding: '24px 28px',
-                  border: '1px solid #f1f5f9',
-                  boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.03)',
-                }}
-              >
+            {/* Left Main Column: Specs & Pricing (Flowing Sections without Box Cards) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+              {/* Section 1: Item Specifications */}
+              <div>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    marginBottom: 20,
-                    paddingBottom: 12,
-                    borderBottom: '1px solid #f1f5f9',
+                    marginBottom: 16,
+                    paddingBottom: 8,
+                    borderBottom: '1px solid #e2e8f0',
                   }}
                 >
-                  <Package size={18} color="#0284c7" />
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>
+                  <Package size={17} color="#0284c7" />
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
                     Item Specifications
                   </h3>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {[
                     { label: 'Item Name', value: item.name },
                     { label: 'SKU Code', value: item.sku || '-' },
@@ -970,22 +807,21 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                         ? `Tracked (${item.inventoryTracking || 'Standard'})`
                         : 'Not Tracked',
                     },
-                  ].map((row, idx) => (
+                  ].map((row) => (
                     <div
                       key={row.label}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '180px 1fr',
-                        padding: '8px 12px',
-                        background: idx % 2 === 0 ? '#f8fafc' : 'transparent',
-                        borderRadius: 6,
+                        gridTemplateColumns: '200px 1fr',
+                        padding: '10px 0',
+                        borderBottom: '1px solid #f1f5f9',
                         alignItems: 'center',
                       }}
                     >
                       <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>
                         {row.label}
                       </span>
-                      <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600 }}>
+                      <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
                         {row.value}
                       </span>
                     </div>
@@ -993,28 +829,20 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                 </div>
               </div>
 
-              {/* Pricing & Commercials Card */}
-              <div
-                style={{
-                  background: '#fff',
-                  borderRadius: 12,
-                  padding: '24px 28px',
-                  border: '1px solid #f1f5f9',
-                  boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.03)',
-                }}
-              >
+              {/* Section 2: Commercial & Valuation Details */}
+              <div>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    marginBottom: 20,
-                    paddingBottom: 12,
-                    borderBottom: '1px solid #f1f5f9',
+                    marginBottom: 16,
+                    paddingBottom: 8,
+                    borderBottom: '1px solid #e2e8f0',
                   }}
                 >
-                  <DollarSign size={18} color="#0284c7" />
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>
+                  <DollarSign size={17} color="#0284c7" />
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
                     Commercial & Valuation Details
                   </h3>
                 </div>
@@ -1022,22 +850,22 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                    gap: 20,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                    gap: 24,
                   }}
                 >
                   {/* Purchase Side */}
                   <div
                     style={{
+                      padding: '14px 18px',
                       background: '#f8fafc',
-                      borderRadius: 8,
-                      padding: '16px 20px',
-                      border: '1px solid #eef2f6',
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
                     }}
                   >
-                    <span
+                    <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 600,
                         color: '#64748b',
                         textTransform: 'uppercase',
@@ -1045,35 +873,36 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                       }}
                     >
                       Purchase / Cost
-                    </span>
+                    </div>
                     <div
                       style={{
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: 700,
                         color: '#0f172a',
                         marginTop: 4,
-                        marginBottom: 12,
+                        marginBottom: 8,
                       }}
                     >
                       ₹{cost.toFixed(2)}
                     </div>
                     <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                      <strong>Description:</strong> {item.purchaseDescription || 'None provided'}
+                      <strong style={{ color: '#475569' }}>Description:</strong>{' '}
+                      {item.purchaseDescription || 'None provided'}
                     </div>
                   </div>
 
                   {/* Sales Side */}
                   <div
                     style={{
+                      padding: '14px 18px',
                       background: '#f8fafc',
-                      borderRadius: 8,
-                      padding: '16px 20px',
-                      border: '1px solid #eef2f6',
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
                     }}
                   >
-                    <span
+                    <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 600,
                         color: '#64748b',
                         textTransform: 'uppercase',
@@ -1081,48 +910,41 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                       }}
                     >
                       Sales / Retail
-                    </span>
+                    </div>
                     <div
                       style={{
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: 700,
                         color: '#0f172a',
                         marginTop: 4,
-                        marginBottom: 12,
+                        marginBottom: 8,
                       }}
                     >
                       ₹{price.toFixed(2)}
                     </div>
                     <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                      <strong>Description:</strong> {item.salesDescription || 'None provided'}
+                      <strong style={{ color: '#475569' }}>Description:</strong>{' '}
+                      {item.salesDescription || 'None provided'}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Custom Fields (if present) */}
+              {/* Section 3: Custom Fields (if present) */}
               {item.customFields && Object.keys(item.customFields).length > 0 && (
-                <div
-                  style={{
-                    background: '#fff',
-                    borderRadius: 12,
-                    padding: '24px 28px',
-                    border: '1px solid #f1f5f9',
-                    boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.03)',
-                  }}
-                >
+                <div>
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
-                      marginBottom: 20,
-                      paddingBottom: 12,
-                      borderBottom: '1px solid #f1f5f9',
+                      marginBottom: 16,
+                      paddingBottom: 8,
+                      borderBottom: '1px solid #e2e8f0',
                     }}
                   >
-                    <Layers size={18} color="#0284c7" />
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>
+                    <Layers size={17} color="#0284c7" />
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
                       Organization Custom Fields
                     </h3>
                   </div>
@@ -1138,10 +960,10 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                       <div
                         key={key}
                         style={{
-                          background: '#f8fafc',
                           padding: '10px 14px',
+                          background: '#f8fafc',
                           borderRadius: 6,
-                          border: '1px solid #f1f5f9',
+                          border: '1px solid #e2e8f0',
                         }}
                       >
                         <div
@@ -1166,30 +988,22 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
               )}
             </div>
 
-            {/* Right Column: Inventory Context & Media */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* Inventory & Stock Breakdown */}
-              <div
-                style={{
-                  background: '#fff',
-                  borderRadius: 12,
-                  padding: '24px 24px',
-                  border: '1px solid #f1f5f9',
-                  boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.03)',
-                }}
-              >
+            {/* Right Column: Inventory Context & Media (Clean Flow) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+              {/* Warehouse Stock Breakdown */}
+              <div>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: 18,
-                    paddingBottom: 12,
-                    borderBottom: '1px solid #f1f5f9',
+                    marginBottom: 16,
+                    paddingBottom: 8,
+                    borderBottom: '1px solid #e2e8f0',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Warehouse size={18} color="#0284c7" />
+                    <Warehouse size={17} color="#0284c7" />
                     <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
                       Warehouse Stock Breakdown
                     </h3>
@@ -1208,19 +1022,18 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      background: '#f8fafc',
-                      borderRadius: 8,
+                      padding: '10px 0',
+                      borderBottom: '1px solid #f1f5f9',
                     }}
                   >
                     <span style={{ fontSize: 13, color: '#475569' }}>Own Premises Stock</span>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
                       {ownPremisesStock.onHand.toFixed(2)}
                     </span>
                   </div>
@@ -1230,13 +1043,12 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      background: '#f8fafc',
-                      borderRadius: 8,
+                      padding: '10px 0',
+                      borderBottom: '1px solid #f1f5f9',
                     }}
                   >
                     <span style={{ fontSize: 13, color: '#475569' }}>Committed Stock</span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#64748b' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}>
                       {ownPremisesStock.committed.toFixed(2)}
                     </span>
                   </div>
@@ -1246,16 +1058,14 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      background: '#f0fdf4',
-                      borderRadius: 8,
-                      border: '1px solid #dcfce7',
+                      padding: '10px 0',
+                      borderBottom: '1px solid #f1f5f9',
                     }}
                   >
                     <span style={{ fontSize: 13, fontWeight: 500, color: '#166534' }}>
                       Available for Sale
                     </span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#15803d' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>
                       {ownPremisesStock.available.toFixed(2)}
                     </span>
                   </div>
@@ -1266,15 +1076,14 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '10px 14px',
-                        background: '#f8fafc',
-                        borderRadius: 8,
+                        padding: '10px 0',
+                        borderBottom: '1px solid #f1f5f9',
                       }}
                     >
                       <span style={{ fontSize: 13, color: '#475569' }}>
                         Outside / Jobwork Stock
                       </span>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: '#0284c7' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#0284c7' }}>
                         {outsidePremisesStock.toFixed(2)}
                       </span>
                     </div>
@@ -1285,44 +1094,54 @@ export function ItemDetail({ itemId: propItemId, onClose: propOnClose }: ItemDet
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      background: '#f8fafc',
-                      borderRadius: 8,
+                      padding: '10px 0',
+                      borderBottom: '1px solid #f1f5f9',
                     }}
                   >
                     <span style={{ fontSize: 13, color: '#475569' }}>Initial Opening Stock</span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
                       {totalOpeningStock.toFixed(2)}
                     </span>
                   </div>
                 </div>
 
-                <div style={{ marginTop: 18 }}>
+                <div style={{ marginTop: 14 }}>
                   <button
                     onClick={() => setActiveTab('Locations')}
                     style={{
-                      width: '100%',
-                      padding: '9px 14px',
-                      background: '#f1f5f9',
-                      border: 'none',
-                      borderRadius: 6,
+                      padding: '6px 12px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 4,
                       fontSize: 12,
-                      fontWeight: 600,
+                      fontWeight: 500,
                       color: '#0284c7',
                       cursor: 'pointer',
-                      textAlign: 'center',
                       transition: 'all 0.15s ease',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#e0f2fe')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                   >
                     View All Warehouse Locations &rarr;
                   </button>
                 </div>
               </div>
 
-              {/* Item Media Gallery Card */}
-              <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
+              {/* Item Media Gallery */}
+              <div>
+                <div
+                  style={{
+                    marginBottom: 16,
+                    paddingBottom: 8,
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
+                    Item Images
+                  </h3>
+                </div>
+                <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
+              </div>
             </div>
           </div>
         )}

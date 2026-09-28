@@ -13,7 +13,17 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
 import { ItemImageGallery } from './components/ItemImageGallery.tsx';
-import { Check, TrendingUp, ArrowLeft, Loader2, Plus } from 'lucide-react';
+import {
+  Check,
+  TrendingUp,
+  ArrowLeft,
+  Loader2,
+  Plus,
+  Package,
+  Layers,
+  Sparkles,
+  Warehouse,
+} from 'lucide-react';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -104,7 +114,7 @@ export function EditItemPage() {
     });
   }
 
-  // Calculate live profit margin
+  // Calculate live profit margin for the Executive Metrics Strip
   const marginMetrics = useMemo(() => {
     const sp = Number(formData.sellingPrice);
     const cp = Number(formData.costPrice);
@@ -220,13 +230,15 @@ export function EditItemPage() {
     );
   }
 
-  const fieldLabelStyle = {
+  const fieldLabelStyle: React.CSSProperties = {
     fontSize: 13,
     fontWeight: 500,
     color: '#334155',
+    display: 'block',
+    marginBottom: 6,
   };
 
-  const inputStyle = {
+  const inputStyle: React.CSSProperties = {
     height: 36,
     padding: '6px 12px',
     borderRadius: 4,
@@ -236,13 +248,14 @@ export function EditItemPage() {
     color: '#0f172a',
     outline: 'none',
     width: '100%',
-    boxSizing: 'border-box' as const,
+    boxSizing: 'border-box',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
   };
 
   return (
     <div className="page-container">
-      {/* Top Header */}
-      <div className="page-header">
+      {/* 1. Top Header */}
+      <div className="page-header" style={{ padding: '14px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             type="button"
@@ -265,9 +278,25 @@ export function EditItemPage() {
             <div style={{ fontSize: 11.5, color: '#64748b', marginBottom: 2 }}>
               Items Catalog / {formData.name || 'Item'} / Edit
             </div>
-            <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#0f172a' }}>
-              Edit Item
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#0f172a' }}>
+                Edit Item
+              </h1>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  padding: '1px 8px',
+                  borderRadius: 10,
+                  background: formData.itemType === 'goods' ? '#f0f9ff' : '#faf5ff',
+                  color: formData.itemType === 'goods' ? '#0284c7' : '#9333ea',
+                  border: formData.itemType === 'goods' ? '1px solid #bae6fd' : '1px solid #e9d5ff',
+                }}
+              >
+                {formData.itemType}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -311,13 +340,189 @@ export function EditItemPage() {
               opacity: updateMutation.isPending ? 0.7 : 1,
             }}
           >
-            <Check size={14} strokeWidth={2.5} />
+            {updateMutation.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Check size={14} strokeWidth={2.5} />
+            )}
             {updateMutation.isPending ? 'Updating...' : 'Save Changes'}
           </button>
         </div>
       </div>
 
-      {/* Main Scrollable Body — balanced professional 2-column layout */}
+      {/* 2. Executive Inline Metrics Strip (Matching ItemDetail UI 3 — Seamless, Zero Boxes) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 28,
+          padding: '10px 28px',
+          borderBottom: '1px solid #e2e8f0',
+          background: '#f8fafc',
+          flexWrap: 'wrap',
+          flexShrink: 0,
+        }}
+      >
+        {/* Metric 1: Selling Price */}
+        <div>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Selling Rate
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 1 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+              ₹
+              {formData.isSalesInfo && formData.sellingPrice
+                ? Number(formData.sellingPrice).toFixed(2)
+                : '0.00'}
+            </span>
+            <span style={{ fontSize: 11.5, color: '#64748b' }}>/ {formData.unit || 'unit'}</span>
+          </div>
+        </div>
+
+        <div style={{ width: 1, height: 24, background: '#cbd5e1' }} />
+
+        {/* Metric 2: Cost Price */}
+        <div>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Purchase Rate
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 1 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+              ₹
+              {formData.isPurchaseInfo && formData.costPrice
+                ? Number(formData.costPrice).toFixed(2)
+                : '0.00'}
+            </span>
+            <span style={{ fontSize: 11.5, color: '#64748b' }}>/ {formData.unit || 'unit'}</span>
+          </div>
+        </div>
+
+        <div style={{ width: 1, height: 24, background: '#cbd5e1' }} />
+
+        {/* Metric 3: Live Margin */}
+        <div>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <TrendingUp size={12} color="#0284c7" />
+              Live Gross Margin
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 1 }}>
+            <span
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: marginMetrics
+                  ? marginMetrics.isProfitable
+                    ? '#0284c7'
+                    : '#dc2626'
+                  : '#64748b',
+              }}
+            >
+              {marginMetrics ? `₹${marginMetrics.margin.toFixed(2)}` : '—'}
+            </span>
+            {marginMetrics && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: marginMetrics.isProfitable ? '#0369a1' : '#dc2626',
+                  background: marginMetrics.isProfitable ? '#f0f9ff' : '#fef2f2',
+                  padding: '1px 6px',
+                  borderRadius: 10,
+                  border: marginMetrics.isProfitable ? '1px solid #bae6fd' : '1px solid #fecaca',
+                }}
+              >
+                {marginMetrics.marginPercent.toFixed(1)}%
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ width: 1, height: 24, background: '#cbd5e1' }} />
+
+        {/* Metric 4: Inventory Tracking */}
+        <div>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Tracking Mode
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
+            <Warehouse size={13} color="#64748b" />
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+              {formData.itemType === 'goods' && formData.trackInventory
+                ? formData.inventoryTracking === 'batch'
+                  ? `${singular} Tracking`
+                  : 'Standard Tracking'
+                : 'Non-inventory'}
+            </span>
+          </div>
+        </div>
+
+        {formData.sku && (
+          <>
+            <div style={{ width: 1, height: 24, background: '#cbd5e1' }} />
+            <div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                SKU / Code
+              </div>
+              <div style={{ marginTop: 1 }}>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    fontWeight: 600,
+                    color: '#475569',
+                  }}
+                >
+                  {formData.sku}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 3. Main Form Body — Seamless Layout Without Card Boxes */}
       <div
         className="page-body"
         style={{
@@ -332,13 +537,15 @@ export function EditItemPage() {
           onSubmit={handleSubmit}
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.35fr) minmax(420px, 1fr)',
-            gap: 36,
+            gridTemplateColumns: 'minmax(0, 1.45fr) minmax(380px, 1fr)',
+            gap: 48,
             alignItems: 'start',
             width: '100%',
+            maxWidth: 1400,
+            margin: '0 auto',
           }}
         >
-          {/* LEFT: Primary Form Details */}
+          {/* LEFT: Primary Form Fields */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
             {/* Section 1: General Details */}
             <div>
@@ -350,38 +557,14 @@ export function EditItemPage() {
                   paddingBottom: 8,
                   marginBottom: 20,
                   borderBottom: '1px solid #e2e8f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
                 }}
               >
-                <span>General Information</span>
-                {marginMetrics && (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: marginMetrics.isProfitable ? '#0284c7' : '#dc2626',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      background: '#f0f9ff',
-                      padding: '2px 10px',
-                      borderRadius: 12,
-                    }}
-                  >
-                    <TrendingUp size={13} />
-                    Margin: ₹{marginMetrics.margin.toFixed(2)} (
-                    {marginMetrics.marginPercent.toFixed(1)}%)
-                  </span>
-                )}
+                General Information
               </div>
 
-              {/* Type */}
+              {/* Type Switcher */}
               <div style={{ marginBottom: 18 }}>
-                <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 6 }}>
-                  Item Type
-                </label>
+                <label style={fieldLabelStyle}>Item Type</label>
                 <div
                   style={{
                     display: 'inline-flex',
@@ -395,6 +578,9 @@ export function EditItemPage() {
                     type="button"
                     onClick={() => setFormData((prev) => ({ ...prev, itemType: 'goods' }))}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
                       padding: '6px 20px',
                       borderRadius: 4,
                       border: 'none',
@@ -406,6 +592,7 @@ export function EditItemPage() {
                       transition: 'all 0.15s ease',
                     }}
                   >
+                    <Package size={14} />
                     Goods
                   </button>
                   <button
@@ -418,6 +605,9 @@ export function EditItemPage() {
                       }))
                     }
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
                       padding: '6px 20px',
                       borderRadius: 4,
                       border: 'none',
@@ -429,6 +619,7 @@ export function EditItemPage() {
                       transition: 'all 0.15s ease',
                     }}
                   >
+                    <Layers size={14} />
                     Service
                   </button>
                 </div>
@@ -436,7 +627,7 @@ export function EditItemPage() {
 
               {/* Item Name */}
               <div style={{ marginBottom: 18 }}>
-                <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 6 }}>
+                <label style={fieldLabelStyle}>
                   Item Name <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
@@ -464,9 +655,7 @@ export function EditItemPage() {
                 }}
               >
                 <div>
-                  <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 6 }}>
-                    SKU / Item Code
-                  </label>
+                  <label style={fieldLabelStyle}>SKU / Item Code</label>
                   <input
                     name="sku"
                     value={formData.sku || ''}
@@ -483,9 +672,7 @@ export function EditItemPage() {
                 </div>
 
                 <div>
-                  <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 6 }}>
-                    Category
-                  </label>
+                  <label style={fieldLabelStyle}>Category</label>
                   <CategorySelectDropdown
                     value={formData.category || null}
                     onChange={(val) => handleSelectChange('category', val)}
@@ -497,7 +684,7 @@ export function EditItemPage() {
               {/* Row: Stocking Unit & HSN/SAC */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
-                  <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 6 }}>
+                  <label style={fieldLabelStyle}>
                     Stocking Unit <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -565,7 +752,7 @@ export function EditItemPage() {
                 </div>
 
                 <div>
-                  <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 6 }}>
+                  <label style={fieldLabelStyle}>
                     {formData.itemType === 'service' ? 'SAC Code' : 'HSN Code'}
                   </label>
                   <input
@@ -626,7 +813,7 @@ export function EditItemPage() {
                   {formData.isSalesInfo && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                       <div>
-                        <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 4 }}>
+                        <label style={fieldLabelStyle}>
                           Selling Price (₹) <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <input
@@ -649,9 +836,7 @@ export function EditItemPage() {
                       </div>
 
                       <div>
-                        <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 4 }}>
-                          Sales Description
-                        </label>
+                        <label style={fieldLabelStyle}>Sales Description</label>
                         <textarea
                           name="salesDescription"
                           value={formData.salesDescription || ''}
@@ -699,7 +884,7 @@ export function EditItemPage() {
                   {formData.isPurchaseInfo && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                       <div>
-                        <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 4 }}>
+                        <label style={fieldLabelStyle}>
                           Cost Price (₹) <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <input
@@ -722,9 +907,7 @@ export function EditItemPage() {
                       </div>
 
                       <div>
-                        <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 4 }}>
-                          Purchase Description
-                        </label>
+                        <label style={fieldLabelStyle}>Purchase Description</label>
                         <textarea
                           name="purchaseDescription"
                           value={formData.purchaseDescription || ''}
@@ -845,9 +1028,7 @@ export function EditItemPage() {
                         }}
                       >
                         <div>
-                          <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 4 }}>
-                            Opening Stock Quantity
-                          </label>
+                          <label style={fieldLabelStyle}>Opening Stock Quantity</label>
                           <input
                             type="number"
                             step="0.01"
@@ -859,9 +1040,7 @@ export function EditItemPage() {
                           />
                         </div>
                         <div>
-                          <label style={{ ...fieldLabelStyle, display: 'block', marginBottom: 4 }}>
-                            Value per Unit (₹)
-                          </label>
+                          <label style={fieldLabelStyle}>Value per Unit (₹)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -904,110 +1083,43 @@ export function EditItemPage() {
             )}
           </div>
 
-          {/* RIGHT: Media & Live Intelligence Sidebar */}
+          {/* RIGHT: Media & Photos — Seamless Canvas, No Box Borders */}
           <div
             style={{
               position: 'sticky',
               top: 24,
               display: 'flex',
               flexDirection: 'column',
-              gap: 18,
+              gap: 20,
             }}
           >
-            {/* Real Item Images Gallery (matching Detail page with full view, upload & delete support) */}
-            {item && <ItemImageGallery orgId={orgId!} itemId={id!} item={item} />}
-
-            {/* Live Profitability Card */}
-            {marginMetrics && (
+            {/* Item Images Section Header */}
+            <div>
               <div
                 style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderLeft: `3px solid ${marginMetrics.isProfitable ? '#0284c7' : '#ef4444'}`,
-                  borderRadius: 8,
-                  padding: 16,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: '#0f172a',
+                  paddingBottom: 8,
+                  marginBottom: 16,
+                  borderBottom: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#64748b',
-                    textTransform: 'uppercase',
-                    marginBottom: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span>Profit Margin</span>
-                  <TrendingUp
-                    size={14}
-                    color={marginMetrics.isProfitable ? '#0284c7' : '#ef4444'}
-                  />
-                </div>
-                <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: marginMetrics.isProfitable ? '#0284c7' : '#ef4444',
-                  }}
-                >
-                  ₹{marginMetrics.margin.toFixed(2)}
-                </div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                  Margin Percentage: <strong>{marginMetrics.marginPercent.toFixed(1)}%</strong>
-                </div>
+                <Sparkles size={15} color="#0284c7" />
+                <span>Item Images</span>
               </div>
-            )}
 
-            {/* Item Configuration Overview */}
-            <div
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                padding: 16,
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 10 }}>
-                Item Overview
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748b' }}>Item Type:</span>
-                  <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>
-                    {formData.itemType}
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748b' }}>Inventory:</span>
-                  <strong
-                    style={{
-                      color:
-                        formData.itemType === 'goods' && formData.trackInventory
-                          ? '#16a34a'
-                          : '#64748b',
-                    }}
-                  >
-                    {formData.itemType === 'goods' && formData.trackInventory
-                      ? 'Tracked'
-                      : 'Not Tracked'}
-                  </strong>
-                </div>
-                {formData.unit && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748b' }}>Stocking Unit:</span>
-                    <strong style={{ color: '#0f172a' }}>{formData.unit}</strong>
-                  </div>
-                )}
-              </div>
+              {/* Real Item Images Gallery without outer card box */}
+              {item && <ItemImageGallery orgId={orgId!} itemId={id!} item={item} />}
             </div>
           </div>
         </form>
       </div>
 
-      {/* Docked Page Footer — Standard across the whole application */}
+      {/* 4. Docked Page Footer */}
       <div className="form-actions-footer page-footer">
         <button
           form="edit-item-form"

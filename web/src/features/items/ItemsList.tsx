@@ -24,9 +24,6 @@ import {
   History,
   ArrowDown,
   ArrowUp,
-  AlertCircle,
-  Layers,
-  Tag,
 } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -1422,259 +1419,171 @@ export function ItemsList() {
             </header>
           )}
 
-          {/* Executive KPI summary ribbon */}
+          {/* Executive KPI Minimalist Filter Strip (Seamless, No Boxes) */}
           <div
             style={{
-              padding: '14px 24px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 14,
+              padding: '10px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 20,
               background: '#f8fafc',
               borderBottom: '1px solid #eef2f6',
+              flexWrap: 'wrap',
             }}
           >
             {/* 1. Total Catalog Items */}
-            <div
+            <button
+              type="button"
               onClick={() => {
                 setFilter('all');
                 setPage(1);
               }}
               style={{
-                background: isTotalActive ? '#f0f9ff' : '#fff',
-                borderRadius: 10,
-                padding: '12px 18px',
-                border: isTotalActive ? '1.5px solid #0284c7' : '1px solid #eef2f6',
-                boxShadow: isTotalActive
-                  ? '0 2px 10px rgba(2, 132, 199, 0.15)'
-                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                gap: 8,
+                background: 'transparent',
+                border: 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                padding: '4px 8px',
+                borderRadius: 4,
+                color: isTotalActive ? '#0284c7' : '#475569',
               }}
-              onMouseEnter={(e) => {
-                if (!isTotalActive) e.currentTarget.style.borderColor = '#cbd5e1';
-              }}
-              onMouseLeave={(e) => {
-                if (!isTotalActive) e.currentTarget.style.borderColor = '#eef2f6';
-              }}
-              title="Click to view All Catalog Items"
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: isTotalActive ? '#0284c7' : '#64748b',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Total Catalog Items
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
-                  {totalCatalogCount}
-                </div>
-              </div>
-              <div
+              <span style={{ fontSize: 12.5, fontWeight: isTotalActive ? 600 : 500 }}>
+                All Items
+              </span>
+              <span
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 8,
-                  background: isTotalActive ? '#e0f2fe' : '#f0f9ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: isTotalActive ? '#e0f2fe' : '#e2e8f0',
+                  color: isTotalActive ? '#0284c7' : '#475569',
+                  padding: '1px 7px',
+                  borderRadius: 10,
                 }}
               >
-                <Package size={17} color="#0284c7" />
-              </div>
-            </div>
+                {totalCatalogCount}
+              </span>
+            </button>
+
+            <div style={{ width: 1, height: 18, background: '#cbd5e1' }} />
 
             {/* 2. Active Goods */}
-            <div
+            <button
+              type="button"
               onClick={() => {
                 setFilter(isGoodsActive ? 'all' : 'goods');
                 setPage(1);
               }}
               style={{
-                background: isGoodsActive ? '#f0fdf4' : '#fff',
-                borderRadius: 10,
-                padding: '12px 18px',
-                border: isGoodsActive ? '1.5px solid #16a34a' : '1px solid #eef2f6',
-                boxShadow: isGoodsActive
-                  ? '0 2px 10px rgba(22, 163, 74, 0.15)'
-                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                gap: 8,
+                background: 'transparent',
+                border: 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                padding: '4px 8px',
+                borderRadius: 4,
+                color: isGoodsActive ? '#0284c7' : '#475569',
               }}
-              onMouseEnter={(e) => {
-                if (!isGoodsActive) e.currentTarget.style.borderColor = '#cbd5e1';
-              }}
-              onMouseLeave={(e) => {
-                if (!isGoodsActive) e.currentTarget.style.borderColor = '#eef2f6';
-              }}
-              title="Click to filter Goods only"
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: isGoodsActive ? '#16a34a' : '#64748b',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Active Goods
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
-                  {goodsCount}
-                </div>
-              </div>
-              <div
+              <span style={{ fontSize: 12.5, fontWeight: isGoodsActive ? 600 : 500 }}>
+                Active Goods
+              </span>
+              <span
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 8,
-                  background: isGoodsActive ? '#dcfce7' : '#f0fdf4',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: isGoodsActive ? '#e0f2fe' : '#e2e8f0',
+                  color: isGoodsActive ? '#0284c7' : '#475569',
+                  padding: '1px 7px',
+                  borderRadius: 10,
                 }}
               >
-                <Layers size={17} color="#16a34a" />
-              </div>
-            </div>
+                {goodsCount}
+              </span>
+            </button>
+
+            <div style={{ width: 1, height: 18, background: '#cbd5e1' }} />
 
             {/* 3. Services */}
-            <div
+            <button
+              type="button"
               onClick={() => {
                 setFilter(isServicesActive ? 'all' : 'services');
                 setPage(1);
               }}
               style={{
-                background: isServicesActive ? '#f0f9ff' : '#fff',
-                borderRadius: 10,
-                padding: '12px 18px',
-                border: isServicesActive ? '1.5px solid #0284c7' : '1px solid #eef2f6',
-                boxShadow: isServicesActive
-                  ? '0 2px 10px rgba(2, 132, 199, 0.15)'
-                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                gap: 8,
+                background: 'transparent',
+                border: 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                padding: '4px 8px',
+                borderRadius: 4,
+                color: isServicesActive ? '#0284c7' : '#475569',
               }}
-              onMouseEnter={(e) => {
-                if (!isServicesActive) e.currentTarget.style.borderColor = '#cbd5e1';
-              }}
-              onMouseLeave={(e) => {
-                if (!isServicesActive) e.currentTarget.style.borderColor = '#eef2f6';
-              }}
-              title="Click to filter Services only"
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: isServicesActive ? '#0284c7' : '#64748b',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Services
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
-                  {serviceCount}
-                </div>
-              </div>
-              <div
+              <span style={{ fontSize: 12.5, fontWeight: isServicesActive ? 600 : 500 }}>
+                Services
+              </span>
+              <span
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 8,
-                  background: isServicesActive ? '#e0f2fe' : '#f0f9ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: isServicesActive ? '#e0f2fe' : '#e2e8f0',
+                  color: isServicesActive ? '#0284c7' : '#475569',
+                  padding: '1px 7px',
+                  borderRadius: 10,
                 }}
               >
-                <Tag size={17} color="#0284c7" />
-              </div>
-            </div>
+                {serviceCount}
+              </span>
+            </button>
+
+            <div style={{ width: 1, height: 18, background: '#cbd5e1' }} />
 
             {/* 4. Low / Out of Stock */}
-            <div
+            <button
+              type="button"
               onClick={() => {
                 setFilter(isLowStockActive ? 'all' : 'low_stock');
                 setPage(1);
               }}
               style={{
-                background: isLowStockActive ? '#fffbeb' : '#fff',
-                borderRadius: 10,
-                padding: '12px 18px',
-                border: isLowStockActive ? '1.5px solid #d97706' : '1px solid #eef2f6',
-                boxShadow: isLowStockActive
-                  ? '0 2px 10px rgba(217, 119, 6, 0.15)'
-                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                gap: 8,
+                background: 'transparent',
+                border: 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                padding: '4px 8px',
+                borderRadius: 4,
+                color: isLowStockActive ? '#d97706' : '#475569',
               }}
-              onMouseEnter={(e) => {
-                if (!isLowStockActive) e.currentTarget.style.borderColor = '#cbd5e1';
-              }}
-              onMouseLeave={(e) => {
-                if (!isLowStockActive) e.currentTarget.style.borderColor = '#eef2f6';
-              }}
-              title="Click to filter Low / Out of stock items"
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: isLowStockActive ? '#d97706' : '#64748b',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Low / Out of Stock
-                </div>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: lowStockCount > 0 ? '#b45309' : '#0f172a',
-                    marginTop: 2,
-                  }}
-                >
-                  {lowStockCount}
-                </div>
-              </div>
-              <div
+              <span style={{ fontSize: 12.5, fontWeight: isLowStockActive ? 600 : 500 }}>
+                Low / Out of Stock
+              </span>
+              <span
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 8,
+                  fontSize: 11.5,
+                  fontWeight: 700,
                   background: isLowStockActive
                     ? '#fef3c7'
                     : lowStockCount > 0
                       ? '#fef3c7'
-                      : '#f8fafc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                      : '#e2e8f0',
+                  color: lowStockCount > 0 ? '#b45309' : '#475569',
+                  padding: '1px 7px',
+                  borderRadius: 10,
                 }}
               >
-                <AlertCircle size={17} color={lowStockCount > 0 ? '#d97706' : '#94a3b8'} />
-              </div>
-            </div>
+                {lowStockCount}
+              </span>
+            </button>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
