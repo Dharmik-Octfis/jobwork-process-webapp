@@ -1250,11 +1250,37 @@ export class ItemsService {
 
   async getItemBatches(itemId: string, organizationId: string) {
     return runAsTenant(organizationId, async (tx) => {
-      const grouped = await tx.stockLedgerEntry.groupBy({
-        by: ['batchId', 'locationId'],
+      // A reversal nets against the side it undoes instead of counting as fresh
+      // movement — a cancelled challan's stock coming back is not a new receipt.
+      const byType = await tx.stockLedgerEntry.groupBy({
+        by: ['batchId', 'locationId', 'movementType'],
         where: { organizationId, itemId },
         _sum: { qtyIn: true, qtyOut: true },
       });
+      const netted = new Map<
+        string,
+        { batchId: string; locationId: string; qtyIn: number; qtyOut: number }
+      >();
+      for (const g of byType) {
+        const key = `${g.batchId}@${g.locationId}`;
+        const row = netted.get(key) ?? {
+          batchId: g.batchId,
+          locationId: g.locationId,
+          qtyIn: 0,
+          qtyOut: 0,
+        };
+        const sumIn = Number(g._sum.qtyIn || 0);
+        const sumOut = Number(g._sum.qtyOut || 0);
+        if (g.movementType === 'reversal') {
+          row.qtyIn -= sumOut;
+          row.qtyOut -= sumIn;
+        } else {
+          row.qtyIn += sumIn;
+          row.qtyOut += sumOut;
+        }
+        netted.set(key, row);
+      }
+      const grouped = [...netted.values()];
 
       const batchIds = [...new Set(grouped.map((g) => g.batchId))];
       const batches = await tx.batch.findMany({
@@ -1323,9 +1349,9 @@ export class ItemsService {
         const b = batchMap.get(g.batchId);
         if (!b) continue;
 
-        const qtyIn = Number(g._sum.qtyIn || 0);
-        const qtyOut = Number(g._sum.qtyOut || 0);
-        const qtyAvailable = qtyIn - qtyOut;
+        const qtyIn = Number(g.qtyIn.toFixed(4));
+        const qtyOut = Number(g.qtyOut.toFixed(4));
+        const qtyAvailable = Number((qtyIn - qtyOut).toFixed(4));
 
         if (qtyIn === 0 && qtyOut === 0) continue;
 
@@ -1389,7 +1415,8 @@ export class ItemsService {
    */
   async getStockSummary(itemId: string, organizationId: string) {
     return runAsTenant(organizationId, async (tx) => {
-      const stockInOutQuery = await tx.stockLedgerEntry.aggregate({
+      const byType = await tx.stockLedgerEntry.groupBy({
+        by: ['movementType'],
         where: {
           organizationId,
           itemId,
@@ -1398,9 +1425,23 @@ export class ItemsService {
         },
         _sum: { qtyIn: true, qtyOut: true },
       });
+      // Same netting as getItemBatches: a reversal undoes the side it mirrors.
+      let stockIn = 0;
+      let stockOut = 0;
+      for (const g of byType) {
+        const sumIn = Number(g._sum.qtyIn ?? 0);
+        const sumOut = Number(g._sum.qtyOut ?? 0);
+        if (g.movementType === 'reversal') {
+          stockIn -= sumOut;
+          stockOut -= sumIn;
+        } else {
+          stockIn += sumIn;
+          stockOut += sumOut;
+        }
+      }
       return {
-        stockIn: Number(stockInOutQuery._sum.qtyIn ?? 0),
-        stockOut: Number(stockInOutQuery._sum.qtyOut ?? 0),
+        stockIn: Number(stockIn.toFixed(4)),
+        stockOut: Number(stockOut.toFixed(4)),
       };
     });
   }

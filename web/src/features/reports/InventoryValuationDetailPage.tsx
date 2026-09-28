@@ -239,117 +239,121 @@ export function InventoryValuationDetailPage() {
           <div style={{ overflowX: 'auto', width: '100%' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
-              <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
-                <th style={thStyle}>DATE</th>
-                <th style={thStyle}>TRANSACTION DETAILS</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>UNIT COST</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>TOTAL COST</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>STOCK ON HAND</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>INVENTORY ASSET VALUE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
-                    Loading...
-                  </td>
+                <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
+                  <th style={thStyle}>DATE</th>
+                  <th style={thStyle}>TRANSACTION DETAILS</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>UNIT COST</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>TOTAL COST</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>STOCK ON HAND</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>INVENTORY ASSET VALUE</th>
                 </tr>
-              ) : !data || data.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
-                    No data found
-                  </td>
-                </tr>
-              ) : (
-                data.rows.map((row, idx, arr) => {
-                  let rowSpan = 1;
-                  if (row.transactionDetails !== '') {
-                    let j = idx + 1;
-                    while (j < arr.length && arr[j].transactionDetails === '') {
-                      rowSpan++;
-                      j++;
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
+                      Loading...
+                    </td>
+                  </tr>
+                ) : !data || data.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
+                      No data found
+                    </td>
+                  </tr>
+                ) : (
+                  data.rows.map((row, idx, arr) => {
+                    let rowSpan = 1;
+                    if (row.transactionDetails !== '') {
+                      let j = idx + 1;
+                      while (j < arr.length && arr[j].transactionDetails === '') {
+                        rowSpan++;
+                        j++;
+                      }
+                    } else {
+                      rowSpan = 0;
                     }
-                  } else {
-                    rowSpan = 0;
-                  }
 
-                  const isSpecial = row.isOpeningStock || row.isClosingStock;
-                  const docLink = getDocLink(row);
+                    const isSpecial = row.isOpeningStock || row.isClosingStock;
+                    const docLink = getDocLink(row);
 
-                  return (
-                    <tr key={idx} className="table-row-hover">
-                      {rowSpan > 0 && (
-                        <td
-                          style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }}
-                          rowSpan={rowSpan}
-                        >
-                          {row.date
-                            ? format(new Date(row.date), 'dd-MM-yyyy')
-                            : row.isOpeningStock
-                              ? format(fromDate, 'dd-MM-yyyy')
-                              : row.isClosingStock
-                                ? format(toDate, 'dd-MM-yyyy')
-                                : ''}
-                        </td>
-                      )}
-                      {rowSpan > 0 && (
-                        <td style={{ ...tdStyle, verticalAlign: 'top' }} rowSpan={rowSpan}>
-                          {isSpecial ? (
-                            <span style={{ color: '#059669', fontStyle: 'italic' }}>
-                              {row.transactionDetails}
-                            </span>
-                          ) : docLink ? (
-                            <Link to={docLink} style={{ color: '#2563eb', textDecoration: 'none' }}>
-                              {row.transactionDetails}{' '}
-                              {row.sourceDocNumber
-                                ? '# ' + row.sourceDocNumber
-                                : row.sourceDocId
-                                  ? '# ' + row.sourceDocId.substring(0, 8)
+                    return (
+                      <tr key={idx} className="table-row-hover">
+                        {rowSpan > 0 && (
+                          <td
+                            style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }}
+                            rowSpan={rowSpan}
+                          >
+                            {row.date
+                              ? format(new Date(row.date), 'dd-MM-yyyy')
+                              : row.isOpeningStock
+                                ? format(fromDate, 'dd-MM-yyyy')
+                                : row.isClosingStock
+                                  ? format(toDate, 'dd-MM-yyyy')
                                   : ''}
-                            </Link>
-                          ) : (
-                            <span>{row.transactionDetails}</span>
-                          )}
+                          </td>
+                        )}
+                        {rowSpan > 0 && (
+                          <td style={{ ...tdStyle, verticalAlign: 'top' }} rowSpan={rowSpan}>
+                            {isSpecial ? (
+                              <span style={{ color: '#059669', fontStyle: 'italic' }}>
+                                {row.transactionDetails}
+                              </span>
+                            ) : docLink ? (
+                              <Link
+                                to={docLink}
+                                style={{ color: '#2563eb', textDecoration: 'none' }}
+                              >
+                                {row.transactionDetails}{' '}
+                                {row.sourceDocNumber
+                                  ? '# ' + row.sourceDocNumber
+                                  : row.sourceDocId
+                                    ? '# ' + row.sourceDocId.substring(0, 8)
+                                    : ''}
+                                {row.isCancellation && ' (cancelled)'}
+                              </Link>
+                            ) : (
+                              <span>{row.transactionDetails}</span>
+                            )}
+                          </td>
+                        )}
+                        <td
+                          style={{
+                            ...tdStyle,
+                            textAlign: 'right',
+                            fontWeight: 500,
+                            color: row.quantity < 0 ? '#ef4444' : '#222',
+                          }}
+                        >
+                          {row.quantity !== 0 ? row.quantity.toFixed(2) : ''}
                         </td>
-                      )}
-                      <td
-                        style={{
-                          ...tdStyle,
-                          textAlign: 'right',
-                          fontWeight: 500,
-                          color: row.quantity < 0 ? '#ef4444' : '#222',
-                        }}
-                      >
-                        {row.quantity !== 0 ? row.quantity.toFixed(2) : ''}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                        {row.unitCost !== null ? row.unitCost.toFixed(2) : ''}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                        {row.totalCost !== 0
-                          ? row.totalCost.toLocaleString('en-IN', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          : ''}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                        {row.stockOnHand.toFixed(2)}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                        {row.inventoryAssetValue.toLocaleString('en-IN', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
+                          {row.unitCost !== null ? row.unitCost.toFixed(2) : ''}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
+                          {row.totalCost !== 0
+                            ? row.totalCost.toLocaleString('en-IN', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : ''}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
+                          {row.stockOnHand.toFixed(2)}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
+                          {row.inventoryAssetValue.toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
