@@ -27,7 +27,7 @@ import { toast } from 'react-hot-toast';
 import { toApiErrorMessage } from '../../../api/client';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 import { organizationsApi } from '../../organizations/organizations.api';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -740,14 +740,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         }}
                       >
                         <td style={{ padding: '14px 16px', fontSize: '13px' }}>
-                          <span
-                            onClick={() =>
-                              navigate(`/organizations/${orgId}/purchases/bills?id=${bill.id}`)
-                            }
-                            style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
+                          <Link
+                            to={`/organizations/${orgId}/purchases/bills?id=${bill.id}`}
+                            style={{ color: '#0062ff', fontWeight: 500, textDecoration: 'none' }}
                           >
                             {bill.billNumber}
-                          </span>
+                          </Link>
                         </td>
                         <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
                           {bill.billDate ? format(new Date(bill.billDate), 'dd-MM-yyyy') : '-'}
