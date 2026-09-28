@@ -124,10 +124,15 @@ export const createBillSchema = baseBillSchema
     path: ['dueDate'],
   });
 
-export const updateBillSchema = baseBillSchema.partial().refine(validateDueDate, {
-  message: 'Due date must be equal to or after Bill date',
-  path: ['dueDate'],
-});
+// The source PO is fixed at creation: the edit form never sends it, and a null here
+// used to unlink the bill from its PO on every save.
+export const updateBillSchema = baseBillSchema
+  .omit({ sourcePoId: true })
+  .partial()
+  .refine(validateDueDate, {
+    message: 'Due date must be equal to or after Bill date',
+    path: ['dueDate'],
+  });
 
 export const billQuerySchema = z.object({
   search: z.string().optional(),

@@ -606,10 +606,9 @@ export function CreateBill() {
       if (id) {
         queryClient.invalidateQueries({ queryKey: ['bill', orgId, id] });
       }
-      if (fromPo) {
-        queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, fromPo] });
-        queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
-      }
+      // an edited bill's number, status and amount show on its source PO too
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
@@ -647,7 +646,8 @@ export function CreateBill() {
 
     const finalData = {
       ...data,
-      sourcePoId: isFromPo ? fromPo : null,
+      // only a create links a PO — an edit sending null would unlink it
+      ...(isEdit ? {} : { sourcePoId: isFromPo ? fromPo : null }),
       deliveryCustomerId: data.deliveryCustomerId || null,
       deliveryLocationId: data.deliveryLocationId || null,
       dueDate: data.dueDate || null,
