@@ -565,17 +565,18 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               <ItemImageGallery orgId={orgId!} itemId={itemId} item={item} />
 
               {/* Opening Stock & Inventory Detailed Summary Card */}
-              <div
-                style={{
-                  background: '#f8fafc',
-                  padding: '20px 24px',
-                  borderRadius: '8px',
-                  border: '1px solid #f1f5f9',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '20px',
-                }}
-              >
+              {item.itemType !== 'service' && (
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    padding: '20px 24px',
+                    borderRadius: '8px',
+                    border: '1px solid #f1f5f9',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
+                  }}
+                >
                 {/* Opening Stock Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Building2 size={16} color="#0062ff" />
@@ -805,10 +806,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     </div>
                   </div>
                 </div>
-              </div>
+                </div>
+              )}
 
               {/* Opening Stock (4-box summary) - PLACED LAST */}
-              {isInventoryTracked && (
+              {isInventoryTracked && item.itemType !== 'service' && (
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
                   <div
                     style={{
