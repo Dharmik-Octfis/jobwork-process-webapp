@@ -19,6 +19,8 @@ import {
   type Location,
 } from '../configuration/locations/locations.api';
 import { availableOf, declaredOpeningOf, stockOnHandOf } from './stockFigures';
+import type { Item } from './items.schemas';
+import { patchListRow, releaseListRow } from '../../hooks/useListRowRetention';
 
 interface ItemDetailProps {
   itemId: string;
@@ -144,6 +146,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const deleteMutation = useMutation({
     mutationFn: () => itemsApi.deleteItem(orgId!, itemId),
     onSuccess: () => {
+      releaseListRow(['items', orgId], itemId);
+      releaseListRow(['compositeItems', orgId], itemId);
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       onClose();
     },
@@ -153,10 +157,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const toggleActiveMutation = useMutation({
     mutationFn: (newIsActive: boolean) =>
       itemsApi.updateItem({ orgId: orgId!, id: itemId, data: { isActive: newIsActive } }),
-    onSuccess: () => {
+    onSuccess: (_, newIsActive) => {
       queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
-      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
+      // Patched, not invalidated: "Active Items" would drop the row just marked inactive.
+      patchListRow<Item>(queryClient, ['items', orgId], itemId, { isActive: newIsActive });
+      patchListRow<Item>(queryClient, ['compositeItems', orgId], itemId, { isActive: newIsActive });
       setIsMoreOpen(false);
     },
   });
@@ -968,4 +973,3 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     </div>
   );
 }
-

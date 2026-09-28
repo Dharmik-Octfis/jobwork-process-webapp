@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillDetail } from './BillDetail';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { releaseListRow, useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -50,11 +51,16 @@ export function BillsList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
+  const structuralSharing = useListRowRetention(
+    ['bills', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading, isError } = useQuery({
     queryKey: ['bills', orgId, search, filter, page, perPage],
     queryFn: () => fetchBills(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const { data: paymentTerms = [] } = useQuery({
@@ -85,7 +91,8 @@ export function BillsList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteBill(orgId!, id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      releaseListRow(['bills', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
       setPoToDelete(null);
     },
@@ -492,6 +499,7 @@ export function BillsList() {
           setIsProcessing(true);
           try {
             await Promise.allSettled(selectedIds.map((id) => deleteBill(orgId!, id)));
+            selectedIds.forEach((id) => releaseListRow(['bills', orgId], id));
             queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
             setSelectedIds([]);
           } finally {

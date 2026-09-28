@@ -12,6 +12,11 @@ import { CustomerDetail } from './CustomerDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import {
+  patchListRow,
+  releaseListRow,
+  useListRowRetention,
+} from '../../../hooks/useListRowRetention';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -50,11 +55,16 @@ export function CustomersList() {
   // Search term (from the global top-bar box, via `?search=`) + page cursor.
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('active');
 
+  const structuralSharing = useListRowRetention(
+    ['customers', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading } = useQuery({
     queryKey: ['customers', orgId, search, filter, page, perPage],
     queryFn: () => fetchCustomers(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const customers = data?.results ?? [];
@@ -87,7 +97,8 @@ export function CustomersList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteCustomer(orgId!, id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      releaseListRow(['customers', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
       setCustomerToDelete(null);
     },
@@ -103,10 +114,10 @@ export function CustomersList() {
   const setStatusForSelected = async (status: 'active' | 'inactive') => {
     setIsProcessing(true);
     try {
-      await Promise.allSettled(
+      const outcomes = await Promise.allSettled(
         selectedIds.map((id) => {
           const customer = customers.find((c) => c.id === id);
-          if (!customer) return Promise.resolve();
+          if (!customer) return Promise.reject(new Error('Customer not on this page'));
           return updateCustomer({
             orgId: orgId!,
             id,
@@ -119,7 +130,12 @@ export function CustomersList() {
           });
         }),
       );
-      queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
+      // Patched, not invalidated: "Active Customers" would drop every row just marked inactive.
+      selectedIds.forEach((id, index) => {
+        if (outcomes[index]!.status === 'fulfilled') {
+          patchListRow<Customer>(queryClient, ['customers', orgId], id, { status });
+        }
+      });
       setSelectedIds([]);
     } finally {
       setIsProcessing(false);
@@ -156,7 +172,10 @@ export function CustomersList() {
       }}
     >
       {/* Main Content Area */}
-      <div className={`master-detail-container ${selectedCustomerId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedCustomerId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
           className="master-pane"
           style={{
@@ -217,7 +236,11 @@ export function CustomersList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/sales/customers/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -284,7 +307,11 @@ export function CustomersList() {
                   purchase orders and bills.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/sales/customers/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/sales/customers/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -354,8 +381,23 @@ export function CustomersList() {
                           </div>
                         </div>
                         {customer.status === 'inactive' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
-                            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-end',
+                              marginLeft: '12px',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                color: '#94a3b8',
+                                marginTop: '4px',
+                              }}
+                            >
                               INACTIVE
                             </div>
                           </div>
@@ -366,91 +408,91 @@ export function CustomersList() {
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th
-                          style={{
-                            width: 48,
-                            ...headerStyle,
-                            paddingRight: 0,
-                            textAlign: 'center',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              customers.length > 0 && selectedIds.length === customers.length
-                            }
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customers.map((customer) => (
+                      <thead>
                         <tr
-                          key={customer.id}
-                          onClick={() => setSearchParams({ id: customer.id })}
                           style={{
+                            background: '#f9f9fb',
+                            borderTop: '1px solid #eef0f3',
                             borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                            background: selectedIds.includes(customer.id)
-                              ? '#f8fafc'
-                              : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => {
-                            if (!selectedIds.includes(customer.id))
-                              e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td
+                          <th
                             style={{
                               width: 48,
-                              padding: '12px 16px',
+                              ...headerStyle,
                               paddingRight: 0,
                               textAlign: 'center',
                             }}
-                            onClick={(e) => e.stopPropagation()}
                           >
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(customer.id)}
-                              onChange={() => toggleSelection(customer.id)}
+                              checked={
+                                customers.length > 0 && selectedIds.length === customers.length
+                              }
+                              onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
-                          </td>
+                          </th>
                           {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                fontSize: 13,
-                                // The locked column is the identity you click through on.
-                                color: col.locked ? '#0062ff' : '#333',
-                                fontWeight: col.locked ? 500 : 400,
-                              }}
-                            >
-                              {renderCustomerCell(customer, col.key)}
-                            </td>
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {customers.map((customer) => (
+                          <tr
+                            key={customer.id}
+                            onClick={() => setSearchParams({ id: customer.id })}
+                            style={{
+                              borderBottom: '1px solid #eef0f3',
+                              transition: 'background 0.1s',
+                              cursor: 'pointer',
+                              background: selectedIds.includes(customer.id)
+                                ? '#f8fafc'
+                                : 'transparent',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={(e) => {
+                              if (!selectedIds.includes(customer.id))
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <td
+                              style={{
+                                width: 48,
+                                padding: '12px 16px',
+                                paddingRight: 0,
+                                textAlign: 'center',
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(customer.id)}
+                                onChange={() => toggleSelection(customer.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </td>
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '12px 16px',
+                                  fontSize: 13,
+                                  // The locked column is the identity you click through on.
+                                  color: col.locked ? '#0062ff' : '#333',
+                                  fontWeight: col.locked ? 500 : 400,
+                                }}
+                              >
+                                {renderCustomerCell(customer, col.key)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -511,6 +553,7 @@ export function CustomersList() {
           setIsProcessing(true);
           try {
             await Promise.allSettled(selectedIds.map((id) => deleteCustomer(orgId!, id)));
+            selectedIds.forEach((id) => releaseListRow(['customers', orgId], id));
             queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
             setSelectedIds([]);
           } finally {

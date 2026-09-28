@@ -7,13 +7,10 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
+import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
-import {
-  ISSUE_STATUS_META,
-  formatQty,
-  statusMeta,
-} from '../jobwork.schemas';
+import { ISSUE_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
 import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
 import { IssueDetail } from './IssueDetail';
 import type { JobIssue } from './jobIssues.schemas';
@@ -93,11 +90,16 @@ export function IssuesList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('all');
 
+  const structuralSharing = useListRowRetention(
+    ['job-issues', orgId],
+    `${search}|${filter}|${page}|${perPage}|${stepId ?? ''}`,
+  );
   const { data: pageData, isLoading: pageLoading } = useQuery({
     queryKey: ['job-issues', orgId, search, filter, page, perPage],
     queryFn: () => fetchJobIssues(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId) && !stepId,
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const { data: stepIssues, isLoading: stepLoading } = useQuery({
