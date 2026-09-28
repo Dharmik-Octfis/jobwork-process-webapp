@@ -40,6 +40,7 @@ interface CustomerFormProps {
   isEdit?: boolean;
   customFieldErrors?: Record<string, string>;
   isModal?: boolean;
+  onCancel?: () => void;
 }
 
 export function CustomerForm({
@@ -49,6 +50,7 @@ export function CustomerForm({
   isEdit = false,
   customFieldErrors,
   isModal = false,
+  onCancel,
 }: CustomerFormProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -981,6 +983,10 @@ export function CustomerForm({
         <button
           type="button"
           onClick={() => {
+            if (onCancel) {
+              onCancel();
+              return;
+            }
             const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
             if (returnUrl) {
               navigate(returnUrl);

@@ -92,6 +92,7 @@ model Item {
   updatedByUser      User?                 @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
   stockingUom        UnitOfMeasurement?    @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
   purchaseOrderItems PurchaseOrderItem[]
+  salesOrderItems    SalesOrderItem[]
   billItems          BillItem[]
   batches            Batch[]
   ledgerEntries      StockLedgerEntry[]
