@@ -784,13 +784,19 @@ function ItemList({
                         disabled || !(row.plannedQty && row.plannedQty > 0) ? '#cbd5e1' : '#0062ff',
                     }}
                   >
-                    {(row.plannedBatches?.length ?? 0) === 0
-                      ? `Add ${trackingLabel.plural}`
-                      : `${row.plannedBatches!.length} ${
-                          row.plannedBatches!.length === 1
-                            ? trackingLabel.singular.toLowerCase()
-                            : trackingLabel.plural.toLowerCase()
-                        } planned`}
+                    {(() => {
+                      // One plan row per taka, so two takas of one batch are two rows.
+                      const batchCount = new Set(
+                        (row.plannedBatches ?? []).map((planned) => planned.batchId),
+                      ).size;
+                      return batchCount === 0
+                        ? `Add ${trackingLabel.plural}`
+                        : `${batchCount} ${
+                            batchCount === 1
+                              ? trackingLabel.singular.toLowerCase()
+                              : trackingLabel.plural.toLowerCase()
+                          } planned`;
+                    })()}
                   </button>
                 )}
               </div>
