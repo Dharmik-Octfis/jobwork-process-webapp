@@ -1058,6 +1058,18 @@ export function StepsGrid<T extends StepGridRow>({
     ),
   });
 
+  /**
+   * Flips once per opening, when the batch list first arrives. `AddBatchesModal`
+   * seeds on mount, so mounted before the list it seeds the saved plan against
+   * nothing — the dialog opened empty the first time and Save then wiped the plan.
+   * Latched rather than read off `isLoading`, which a search re-raises and would
+   * remount the dialog over the user's edits.
+   */
+  const [planReady, setPlanReady] = useState(false);
+  // Adjusted during render, not in an effect — React re-renders at once, no cascade.
+  if (!planning && planReady) setPlanReady(false);
+  else if (planning && !planningBatchesLoading && !planReady) setPlanReady(true);
+
   const update = (index: number, patch: Partial<StepGridRow>) => {
     onChange(steps.map((step, i) => (i === index ? { ...step, ...patch } : step)));
   };
@@ -1453,7 +1465,7 @@ export function StepsGrid<T extends StepGridRow>({
       */}
       {planning && planningRow?.itemId && (
         <AddBatchesModal
-          key={`${planning.stepIndex}-${planning.rowIndex}-${planningRow.itemId}`}
+          key={`${planning.stepIndex}-${planning.rowIndex}-${planningRow.itemId}-${planReady}`}
           isOpen
           onClose={() => {
             setPlanning(null);
