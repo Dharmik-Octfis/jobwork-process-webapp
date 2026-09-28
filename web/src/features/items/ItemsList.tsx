@@ -24,10 +24,12 @@ import {
   History,
   ArrowDown,
   ArrowUp,
+  AlertCircle,
+  Layers,
+  Tag,
 } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { ItemDetail } from './ItemDetail';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -41,6 +43,9 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { formatDate } from '../../lib/formatDate';
 import type { CustomFieldDefinition } from '../custom-fields/customFields.schemas';
 import { BulkActionBar } from '../../components/ui/BulkActionBar';
+import { ImportItemsModal } from './components/ImportItemsModal';
+import { HsnSacValidationModal } from './components/HsnSacValidationModal';
+import { HsnSacHistoryModal } from './components/HsnSacHistoryModal';
 
 /** Default columns matching Zoho Books Item List */
 const DEFAULT_ZOHO_ITEM_COLUMNS: ColumnDef[] = [
@@ -179,7 +184,7 @@ function renderItemCell(
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  maxWidth: '260px',
+                  maxWidth: '180px',
                 }
               : {}),
           }}
@@ -198,11 +203,12 @@ function renderItemCell(
   if (key === 'purchaseDescription') {
     return (
       <span
+        title={item.purchaseDescription || undefined}
         style={
           isTextClipped
             ? {
                 display: 'inline-block',
-                maxWidth: '180px',
+                maxWidth: '95px',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -216,19 +222,22 @@ function renderItemCell(
   }
 
   if (key === 'costPrice') {
-    return item.costPrice !== null && item.costPrice !== undefined
-      ? `₹${Number(item.costPrice).toFixed(2)}`
-      : '-';
+    return item.costPrice !== null && item.costPrice !== undefined ? (
+      <span style={{ whiteSpace: 'nowrap' }}>₹{Number(item.costPrice).toFixed(2)}</span>
+    ) : (
+      '-'
+    );
   }
 
   if (key === 'salesDescription') {
     return (
       <span
+        title={item.salesDescription || undefined}
         style={
           isTextClipped
             ? {
                 display: 'inline-block',
-                maxWidth: '180px',
+                maxWidth: '95px',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -242,21 +251,28 @@ function renderItemCell(
   }
 
   if (key === 'sellingPrice') {
-    return item.sellingPrice !== null && item.sellingPrice !== undefined
-      ? `₹${Number(item.sellingPrice).toFixed(2)}`
-      : '₹0.00';
+    return (
+      <span style={{ whiteSpace: 'nowrap' }}>
+        ₹
+        {item.sellingPrice !== null && item.sellingPrice !== undefined
+          ? Number(item.sellingPrice).toFixed(2)
+          : '0.00'}
+      </span>
+    );
   }
 
   if (key === 'openingStock') {
-    return Number(item.openingStock ?? 0).toFixed(2);
+    return (
+      <span style={{ whiteSpace: 'nowrap' }}>{Number(item.openingStock ?? 0).toFixed(2)}</span>
+    );
   }
 
   if (key === 'hsnCode') {
-    return item.hsnCode || '-';
+    return <span style={{ whiteSpace: 'nowrap' }}>{item.hsnCode || '-'}</span>;
   }
 
   if (key === 'unit') {
-    return item.unit || '-';
+    return <span style={{ whiteSpace: 'nowrap' }}>{item.unit || '-'}</span>;
   }
 
   if (key === 'type') {
@@ -348,6 +364,10 @@ export function ItemsList() {
   // Detailed sorting matching Zoho Books
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isHsnValidationModalOpen, setIsHsnValidationModalOpen] = useState(false);
+  const [isHsnHistoryModalOpen, setIsHsnHistoryModalOpen] = useState(false);
+  const [showRefreshToast, setShowRefreshToast] = useState(false);
 
   const columnMenuRef = useRef<HTMLDivElement>(null);
   const viewModeMenuRef = useRef<HTMLDivElement>(null);
@@ -371,6 +391,42 @@ export function ItemsList() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
+  // Redirect legacy ?id= to dedicated full-page overview
+  useEffect(() => {
+    if (selectedItemId) {
+      navigate(`/organizations/${orgId}/items/${selectedItemId}`, { replace: true });
+    }
+  }, [selectedItemId, orgId, navigate]);
+
+  // Overall KPI counts query (keeps stable totals even when a specific filter like Services is active)
+  const { data: allItemsKpiData } = useQuery({
+    queryKey: ['items-kpi-all', orgId],
+    queryFn: () => itemsApi.getItems(orgId!, { perPage: 100 }),
+    enabled: Boolean(orgId),
+    staleTime: 30000,
+  });
+
+  const kpiItems = allItemsKpiData?.results ?? items;
+  const totalCatalogCount = total ?? allItemsKpiData?.results.length ?? items.length;
+  const goodsCount = useMemo(
+    () => kpiItems.filter((i) => i.itemType === 'goods').length,
+    [kpiItems],
+  );
+  const serviceCount = useMemo(
+    () => kpiItems.filter((i) => i.itemType === 'service').length,
+    [kpiItems],
+  );
+  const lowStockCount = useMemo(
+    () =>
+      kpiItems.filter((i) => i.itemType === 'goods' && (Number(i.openingStock) || 0) <= 0).length,
+    [kpiItems],
+  );
+
+  const isTotalActive = !filter || filter === 'all';
+  const isGoodsActive = filter === 'goods';
+  const isServicesActive = filter === 'services';
+  const isLowStockActive = filter === 'low_stock';
+
   // Sorted items
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -392,7 +448,17 @@ export function ItemsList() {
           result = Number(a.sellingPrice ?? 0) - Number(b.sellingPrice ?? 0);
           break;
         case 'reorderLevel':
-          result = 0;
+          result =
+            Number(
+              (a as unknown as Record<string, unknown>).reorderPoint ??
+                (a as unknown as Record<string, unknown>).reorderLevel ??
+                0,
+            ) -
+            Number(
+              (b as unknown as Record<string, unknown>).reorderPoint ??
+                (b as unknown as Record<string, unknown>).reorderLevel ??
+                0,
+            );
           break;
         case 'updatedAt':
           result = new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
@@ -423,12 +489,13 @@ export function ItemsList() {
   });
 
   const headerStyle: React.CSSProperties = {
-    padding: '11px 16px',
+    padding: '9px 8px',
     fontWeight: 600,
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#475569',
-    letterSpacing: '0.04em',
+    letterSpacing: '0.03em',
     textTransform: 'uppercase',
+    whiteSpace: 'nowrap',
   };
 
   const handleMarkActive = async () => {
@@ -477,7 +544,7 @@ export function ItemsList() {
     }
   };
 
-  const cellPadding = viewDensity === 'expanded' ? '12px 16px' : '7px 16px';
+  const cellPadding = viewDensity === 'expanded' ? '9px 8px' : '5px 8px';
 
   // Export helper
   const handleExportCsv = (type: 'items' | 'view' | 'stock') => {
@@ -564,21 +631,25 @@ export function ItemsList() {
     >
       {/* Main Content Area */}
       <div
-        className={`master-detail-container ${selectedItemId ? 'has-selection' : ''}`}
-        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          background: '#f8fafc',
+        }}
       >
         <div
-          className="master-pane"
           style={{
-            flex: selectedItemId ? '0 0 320px' : 1,
-            borderRight: selectedItemId ? '1px solid #e2e8f0' : 'none',
+            flex: 1,
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
+            overflow: 'hidden',
           }}
         >
           {/* Page Header */}
-          {!selectedItemId && selectedIds.length > 0 ? (
+          {selectedIds.length > 0 ? (
             <BulkActionBar
               selectedCount={selectedIds.length}
               onClearSelection={() => setSelectedIds([])}
@@ -595,7 +666,7 @@ export function ItemsList() {
                 alignItems: 'center',
                 padding: '14px 24px',
                 background: '#fff',
-                borderBottom: '1px solid #e2e8f0',
+                borderBottom: '1px solid #eef2f6',
               }}
             >
               <ListFilterDropdown
@@ -607,159 +678,157 @@ export function ItemsList() {
 
               {/* Zoho-styled top right controls */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {!selectedItemId && (
-                  <>
-                    {/* View density dropdown (Expanded / Collapsed View) */}
-                    <div ref={viewModeMenuRef} style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => setIsViewModeMenuOpen((o) => !o)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          background: '#fff',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          padding: '6px 9px',
-                          fontSize: 12.5,
-                          fontWeight: 500,
-                          color: '#475569',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                        title="View Density"
-                      >
-                        <List size={14} />
-                        <ChevronDown size={13} />
-                      </button>
-                      {isViewModeMenuOpen && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            right: 0,
-                            marginTop: 5,
-                            background: '#fff',
-                            borderRadius: 8,
-                            boxShadow:
-                              '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
-                            border: '1px solid #e2e8f0',
-                            minWidth: 165,
-                            zIndex: 60,
-                            padding: '4px 0',
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setViewDensity('expanded');
-                              setIsViewModeMenuOpen(false);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              width: '100%',
-                              padding: '8px 14px',
-                              border: 'none',
-                              background: viewDensity === 'expanded' ? '#0284c7' : 'none',
-                              color: viewDensity === 'expanded' ? '#fff' : '#1e293b',
-                              fontSize: 13,
-                              fontWeight: 500,
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                            }}
-                          >
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <List size={14} />
-                              Expanded View
-                            </span>
-                            {viewDensity === 'expanded' && <Check size={14} />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setViewDensity('collapsed');
-                              setIsViewModeMenuOpen(false);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              width: '100%',
-                              padding: '8px 14px',
-                              border: 'none',
-                              background: viewDensity === 'collapsed' ? '#0284c7' : 'none',
-                              color: viewDensity === 'collapsed' ? '#fff' : '#1e293b',
-                              fontSize: 13,
-                              fontWeight: 500,
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                            }}
-                          >
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <AlignLeft size={14} />
-                              Collapsed View
-                            </span>
-                            {viewDensity === 'collapsed' && <Check size={14} />}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Table View / Grid View toggle buttons */}
-                    <div
+                <>
+                  {/* View density dropdown (Expanded / Collapsed View) */}
+                  <div ref={viewModeMenuRef} style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsViewModeMenuOpen((o) => !o)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        background: '#f1f5f9',
-                        borderRadius: 6,
-                        padding: 2,
+                        gap: 5,
+                        background: '#fff',
                         border: '1px solid #e2e8f0',
+                        borderRadius: 6,
+                        padding: '6px 9px',
+                        fontSize: 12.5,
+                        fontWeight: 500,
+                        color: '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="View Density"
+                    >
+                      <List size={14} />
+                      <ChevronDown size={13} />
+                    </button>
+                    {isViewModeMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 5,
+                          background: '#fff',
+                          borderRadius: 8,
+                          boxShadow:
+                            '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                          border: '1px solid #e2e8f0',
+                          minWidth: 165,
+                          zIndex: 60,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewDensity('expanded');
+                            setIsViewModeMenuOpen(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            width: '100%',
+                            padding: '8px 14px',
+                            border: 'none',
+                            background: viewDensity === 'expanded' ? '#0284c7' : 'none',
+                            color: viewDensity === 'expanded' ? '#fff' : '#1e293b',
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <List size={14} />
+                            Expanded View
+                          </span>
+                          {viewDensity === 'expanded' && <Check size={14} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewDensity('collapsed');
+                            setIsViewModeMenuOpen(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            width: '100%',
+                            padding: '8px 14px',
+                            border: 'none',
+                            background: viewDensity === 'collapsed' ? '#0284c7' : 'none',
+                            color: viewDensity === 'collapsed' ? '#fff' : '#1e293b',
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <AlignLeft size={14} />
+                            Collapsed View
+                          </span>
+                          {viewDensity === 'collapsed' && <Check size={14} />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Table View / Grid View toggle buttons */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      background: '#f1f5f9',
+                      borderRadius: 6,
+                      padding: 2,
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setLayoutMode('table')}
+                      title="List View"
+                      style={{
+                        padding: '4px 7px',
+                        border: 'none',
+                        borderRadius: 4,
+                        background: layoutMode === 'table' ? '#fff' : 'transparent',
+                        color: layoutMode === 'table' ? '#0284c7' : '#64748b',
+                        boxShadow: layoutMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
                       }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => setLayoutMode('table')}
-                        title="List View"
-                        style={{
-                          padding: '4px 7px',
-                          border: 'none',
-                          borderRadius: 4,
-                          background: layoutMode === 'table' ? '#fff' : 'transparent',
-                          color: layoutMode === 'table' ? '#0284c7' : '#64748b',
-                          boxShadow: layoutMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <List size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLayoutMode('grid')}
-                        title="Grid / Gallery View"
-                        style={{
-                          padding: '4px 7px',
-                          border: 'none',
-                          borderRadius: 4,
-                          background: layoutMode === 'grid' ? '#fff' : 'transparent',
-                          color: layoutMode === 'grid' ? '#0284c7' : '#64748b',
-                          boxShadow: layoutMode === 'grid' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <LayoutGrid size={15} />
-                      </button>
-                    </div>
-                  </>
-                )}
+                      <List size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLayoutMode('grid')}
+                      title="Grid / Gallery View"
+                      style={{
+                        padding: '4px 7px',
+                        border: 'none',
+                        borderRadius: 4,
+                        background: layoutMode === 'grid' ? '#fff' : 'transparent',
+                        color: layoutMode === 'grid' ? '#0284c7' : '#64748b',
+                        boxShadow: layoutMode === 'grid' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <LayoutGrid size={15} />
+                    </button>
+                  </div>
+                </>
 
-                {/* Primary New Item button (brand ocean blue) */}
+                {/* Primary New Item button (theme cerulean blue #0284c7) */}
                 <button
                   onClick={() =>
                     navigate(`/organizations/${orgId}/items/new`, {
@@ -809,7 +878,7 @@ export function ItemsList() {
                         width: 32,
                         height: 32,
                         borderRadius: 6,
-                        border: isMoreMenuOpen ? '1px solid #bae6fd' : '1px solid #d1d5db',
+                        border: isMoreMenuOpen ? '1px solid #0284c7' : '1px solid #d1d5db',
                         background: isMoreMenuOpen ? '#f0f9ff' : '#fff',
                         cursor: 'pointer',
                         color: isMoreMenuOpen ? '#0284c7' : '#4b5563',
@@ -871,14 +940,14 @@ export function ItemsList() {
                             />
                           </div>
 
-                          {/* Sort Submenu to the LEFT (Screenshot 1) */}
+                          {/* Sort Submenu to the LEFT */}
                           {activeSubmenu === 'sort' && (
                             <div
                               style={{
                                 position: 'absolute',
                                 top: 0,
                                 right: '100%',
-                                marginRight: 6,
+                                marginRight: 4,
                                 background: '#fff',
                                 borderRadius: 8,
                                 border: '1px solid #e2e8f0',
@@ -976,14 +1045,14 @@ export function ItemsList() {
                             />
                           </div>
 
-                          {/* Import Submenu to the LEFT (Screenshot 2) */}
+                          {/* Import Submenu to the LEFT */}
                           {activeSubmenu === 'import' && (
                             <div
                               style={{
                                 position: 'absolute',
                                 top: 0,
                                 right: '100%',
-                                marginRight: 6,
+                                marginRight: 4,
                                 background: '#fff',
                                 borderRadius: 8,
                                 border: '1px solid #e2e8f0',
@@ -997,7 +1066,7 @@ export function ItemsList() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigate(`/organizations/${orgId}/items/import`);
+                                  setIsImportModalOpen(true);
                                   setIsMoreMenuOpen(false);
                                   setActiveSubmenu(null);
                                 }}
@@ -1012,7 +1081,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Import Items
@@ -1020,7 +1089,7 @@ export function ItemsList() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigate(`/organizations/${orgId}/items/opening-stock`);
+                                  setIsImportModalOpen(true);
                                   setIsMoreMenuOpen(false);
                                   setActiveSubmenu(null);
                                 }}
@@ -1035,7 +1104,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Import Opening Stock
@@ -1043,6 +1112,7 @@ export function ItemsList() {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  setIsImportModalOpen(true);
                                   setIsMoreMenuOpen(false);
                                   setActiveSubmenu(null);
                                 }}
@@ -1057,7 +1127,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Import Items Images
@@ -1101,14 +1171,14 @@ export function ItemsList() {
                             />
                           </div>
 
-                          {/* Export Submenu to the LEFT (Screenshot 3) */}
+                          {/* Export Submenu to the LEFT */}
                           {activeSubmenu === 'export' && (
                             <div
                               style={{
                                 position: 'absolute',
                                 top: 0,
                                 right: '100%',
-                                marginRight: 6,
+                                marginRight: 4,
                                 background: '#fff',
                                 borderRadius: 8,
                                 border: '1px solid #e2e8f0',
@@ -1133,7 +1203,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Items
@@ -1152,7 +1222,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Current View
@@ -1171,17 +1241,14 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Opening Stock
                               </button>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setIsMoreMenuOpen(false);
-                                  setActiveSubmenu(null);
-                                }}
+                                onClick={() => handleExportCsv('items')}
                                 style={{
                                   display: 'block',
                                   width: '100%',
@@ -1193,7 +1260,7 @@ export function ItemsList() {
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                               >
                                 Export Item Images
@@ -1204,7 +1271,6 @@ export function ItemsList() {
 
                         {/* 4. Preferences */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             navigate(`/organizations/${orgId}/settings/modules/item`);
                             setIsMoreMenuOpen(false);
@@ -1220,7 +1286,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f8fafc';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <Settings size={15} color="#0284c7" />
@@ -1229,9 +1298,10 @@ export function ItemsList() {
 
                         {/* 5. Refresh List */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+                            setShowRefreshToast(true);
+                            setTimeout(() => setShowRefreshToast(false), 2500);
                             setIsMoreMenuOpen(false);
                             setActiveSubmenu(null);
                           }}
@@ -1245,7 +1315,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f8fafc';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <RefreshCw size={15} color="#0284c7" />
@@ -1254,7 +1327,6 @@ export function ItemsList() {
 
                         {/* 6. Reset Column Width */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             saveColumns.mutate(
                               DEFAULT_ZOHO_ITEM_COLUMNS.map((c) => c.key),
@@ -1279,7 +1351,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f8fafc';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <RotateCcw size={15} color="#0284c7" />
@@ -1288,8 +1363,8 @@ export function ItemsList() {
 
                         {/* 7. Validate HSN/SAC */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
+                            setIsHsnValidationModalOpen(true);
                             setIsMoreMenuOpen(false);
                             setActiveSubmenu(null);
                           }}
@@ -1303,7 +1378,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f8fafc';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <CheckCircle2 size={15} color="#0284c7" />
@@ -1312,8 +1390,8 @@ export function ItemsList() {
 
                         {/* 8. HSN/SAC Update History */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
+                            setIsHsnHistoryModalOpen(true);
                             setIsMoreMenuOpen(false);
                             setActiveSubmenu(null);
                           }}
@@ -1327,7 +1405,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f8fafc';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <History size={15} color="#0284c7" />
@@ -1340,6 +1421,261 @@ export function ItemsList() {
               </div>
             </header>
           )}
+
+          {/* Executive KPI summary ribbon */}
+          <div
+            style={{
+              padding: '14px 24px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 14,
+              background: '#f8fafc',
+              borderBottom: '1px solid #eef2f6',
+            }}
+          >
+            {/* 1. Total Catalog Items */}
+            <div
+              onClick={() => {
+                setFilter('all');
+                setPage(1);
+              }}
+              style={{
+                background: isTotalActive ? '#f0f9ff' : '#fff',
+                borderRadius: 10,
+                padding: '12px 18px',
+                border: isTotalActive ? '1.5px solid #0284c7' : '1px solid #eef2f6',
+                boxShadow: isTotalActive
+                  ? '0 2px 10px rgba(2, 132, 199, 0.15)'
+                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isTotalActive) e.currentTarget.style.borderColor = '#cbd5e1';
+              }}
+              onMouseLeave={(e) => {
+                if (!isTotalActive) e.currentTarget.style.borderColor = '#eef2f6';
+              }}
+              title="Click to view All Catalog Items"
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: isTotalActive ? '#0284c7' : '#64748b',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Total Catalog Items
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
+                  {totalCatalogCount}
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background: isTotalActive ? '#e0f2fe' : '#f0f9ff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Package size={17} color="#0284c7" />
+              </div>
+            </div>
+
+            {/* 2. Active Goods */}
+            <div
+              onClick={() => {
+                setFilter(isGoodsActive ? 'all' : 'goods');
+                setPage(1);
+              }}
+              style={{
+                background: isGoodsActive ? '#f0fdf4' : '#fff',
+                borderRadius: 10,
+                padding: '12px 18px',
+                border: isGoodsActive ? '1.5px solid #16a34a' : '1px solid #eef2f6',
+                boxShadow: isGoodsActive
+                  ? '0 2px 10px rgba(22, 163, 74, 0.15)'
+                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isGoodsActive) e.currentTarget.style.borderColor = '#cbd5e1';
+              }}
+              onMouseLeave={(e) => {
+                if (!isGoodsActive) e.currentTarget.style.borderColor = '#eef2f6';
+              }}
+              title="Click to filter Goods only"
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: isGoodsActive ? '#16a34a' : '#64748b',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Active Goods
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
+                  {goodsCount}
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background: isGoodsActive ? '#dcfce7' : '#f0fdf4',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Layers size={17} color="#16a34a" />
+              </div>
+            </div>
+
+            {/* 3. Services */}
+            <div
+              onClick={() => {
+                setFilter(isServicesActive ? 'all' : 'services');
+                setPage(1);
+              }}
+              style={{
+                background: isServicesActive ? '#f0f9ff' : '#fff',
+                borderRadius: 10,
+                padding: '12px 18px',
+                border: isServicesActive ? '1.5px solid #0284c7' : '1px solid #eef2f6',
+                boxShadow: isServicesActive
+                  ? '0 2px 10px rgba(2, 132, 199, 0.15)'
+                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isServicesActive) e.currentTarget.style.borderColor = '#cbd5e1';
+              }}
+              onMouseLeave={(e) => {
+                if (!isServicesActive) e.currentTarget.style.borderColor = '#eef2f6';
+              }}
+              title="Click to filter Services only"
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: isServicesActive ? '#0284c7' : '#64748b',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Services
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
+                  {serviceCount}
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background: isServicesActive ? '#e0f2fe' : '#f0f9ff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Tag size={17} color="#0284c7" />
+              </div>
+            </div>
+
+            {/* 4. Low / Out of Stock */}
+            <div
+              onClick={() => {
+                setFilter(isLowStockActive ? 'all' : 'low_stock');
+                setPage(1);
+              }}
+              style={{
+                background: isLowStockActive ? '#fffbeb' : '#fff',
+                borderRadius: 10,
+                padding: '12px 18px',
+                border: isLowStockActive ? '1.5px solid #d97706' : '1px solid #eef2f6',
+                boxShadow: isLowStockActive
+                  ? '0 2px 10px rgba(217, 119, 6, 0.15)'
+                  : '0 2px 8px -2px rgba(15,23,42,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isLowStockActive) e.currentTarget.style.borderColor = '#cbd5e1';
+              }}
+              onMouseLeave={(e) => {
+                if (!isLowStockActive) e.currentTarget.style.borderColor = '#eef2f6';
+              }}
+              title="Click to filter Low / Out of stock items"
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: isLowStockActive ? '#d97706' : '#64748b',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Low / Out of Stock
+                </div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: lowStockCount > 0 ? '#b45309' : '#0f172a',
+                    marginTop: 2,
+                  }}
+                >
+                  {lowStockCount}
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background: isLowStockActive
+                    ? '#fef3c7'
+                    : lowStockCount > 0
+                      ? '#fef3c7'
+                      : '#f8fafc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <AlertCircle size={17} color={lowStockCount > 0 ? '#d97706' : '#94a3b8'} />
+              </div>
+            </div>
+          </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
@@ -1541,7 +1877,11 @@ export function ItemsList() {
                     {sortedItems.map((item) => (
                       <div
                         key={item.id}
-                        onClick={() => setSearchParams({ id: item.id })}
+                        onClick={() =>
+                          navigate(`/organizations/${orgId}/items/${item.id}`, {
+                            state: { returnUrl: location.pathname + location.search },
+                          })
+                        }
                         style={{
                           background: '#fff',
                           border: '1px solid #e2e8f0',
@@ -1671,7 +2011,15 @@ export function ItemsList() {
                     ))}
                   </div>
                 ) : (
-                  <div className="responsive-table-wrapper">
+                  <div
+                    className="responsive-table-wrapper"
+                    style={{
+                      overflowX: 'auto',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                      width: '100%',
+                    }}
+                  >
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr
@@ -1684,9 +2032,9 @@ export function ItemsList() {
                           {/* Column 1: Customize button & Select All (Screenshot 2 & 3) */}
                           <th
                             style={{
-                              width: 64,
+                              width: 38,
                               ...headerStyle,
-                              paddingLeft: 14,
+                              paddingLeft: 10,
                               paddingRight: 6,
                               textAlign: 'left',
                             }}
@@ -1852,10 +2200,10 @@ export function ItemsList() {
                           {/* Search Icon at Far Right (Screenshot 2) */}
                           <th
                             style={{
-                              width: 44,
+                              width: 32,
                               ...headerStyle,
                               textAlign: 'center',
-                              padding: '11px 12px',
+                              padding: '10px 8px',
                             }}
                           >
                             <button
@@ -1889,7 +2237,11 @@ export function ItemsList() {
                           return (
                             <tr
                               key={item.id}
-                              onClick={() => setSearchParams({ id: item.id })}
+                              onClick={() =>
+                                navigate(`/organizations/${orgId}/items/${item.id}`, {
+                                  state: { returnUrl: location.pathname + location.search },
+                                })
+                              }
                               style={{
                                 borderBottom: '1px solid #f1f5f9',
                                 transition: 'background 0.12s ease',
@@ -1906,9 +2258,9 @@ export function ItemsList() {
                               {/* Checkbox column */}
                               <td
                                 style={{
-                                  width: 64,
+                                  width: 38,
                                   padding: cellPadding,
-                                  paddingLeft: 36,
+                                  paddingLeft: 10,
                                   paddingRight: 6,
                                 }}
                                 onClick={(e) => e.stopPropagation()}
@@ -1933,7 +2285,7 @@ export function ItemsList() {
                                     verticalAlign: 'middle',
                                     ...(isTextClipped && col.key !== 'name'
                                       ? {
-                                          maxWidth: '220px',
+                                          maxWidth: '130px',
                                           overflow: 'hidden',
                                           textOverflow: 'ellipsis',
                                           whiteSpace: 'nowrap',
@@ -1952,7 +2304,7 @@ export function ItemsList() {
                               ))}
 
                               {/* Spacer cell for search icon alignment */}
-                              <td style={{ width: 44, padding: 0 }} />
+                              <td style={{ width: 32, padding: 0 }} />
                             </tr>
                           );
                         })}
@@ -1964,27 +2316,18 @@ export function ItemsList() {
             )}
           </div>
 
-          {/* Pagination — hidden while an item is selected (narrow master pane) */}
-          {!selectedItemId && (
-            <Pagination
-              pageContext={pageContext}
-              page={page}
-              onPageChange={setPage}
-              perPage={perPage}
-              onPerPageChange={setPerPage}
-              total={total}
-              isCounting={isCounting}
-              onRequestCount={() => void requestCount()}
-            />
-          )}
+          {/* Pagination */}
+          <Pagination
+            pageContext={pageContext}
+            page={page}
+            onPageChange={setPage}
+            perPage={perPage}
+            onPerPageChange={setPerPage}
+            total={total}
+            isCounting={isCounting}
+            onRequestCount={() => void requestCount()}
+          />
         </div>
-
-        {/* Right Panel - Detail */}
-        {selectedItemId && (
-          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
-          </div>
-        )}
       </div>
 
       <CustomizeColumnsModal
@@ -2027,6 +2370,54 @@ export function ItemsList() {
         }}
         onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
+
+      {/* Modals for More options */}
+      <ImportItemsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        orgId={orgId!}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+        }}
+      />
+
+      <HsnSacValidationModal
+        isOpen={isHsnValidationModalOpen}
+        onClose={() => setIsHsnValidationModalOpen(false)}
+        items={items}
+        orgId={orgId!}
+      />
+
+      <HsnSacHistoryModal
+        isOpen={isHsnHistoryModalOpen}
+        onClose={() => setIsHsnHistoryModalOpen(false)}
+        items={items}
+      />
+
+      {/* Refresh Feedback Toast */}
+      {showRefreshToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 999,
+            background: '#0f172a',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: 8,
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          <RefreshCw size={15} color="#38bdf8" />
+          Items list refreshed
+        </div>
+      )}
     </div>
   );
 }

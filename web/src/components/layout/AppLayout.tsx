@@ -1080,12 +1080,13 @@ function ModuleNavGroup({
           boxShadow: isActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
         })}
         onMouseEnter={(e) => {
-          if (e.currentTarget.style.background !== '#186337') {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+          if (!e.currentTarget.style.background.includes('gradient')) {
+            e.currentTarget.style.background = '#f0f9ff';
+            e.currentTarget.style.color = '#0284c7';
           }
         }}
         onMouseLeave={(e) => {
-          if (e.currentTarget.style.background !== '#186337') {
+          if (!e.currentTarget.style.background.includes('gradient')) {
             e.currentTarget.style.background = 'transparent';
             e.currentTarget.style.color = '#475569';
           }
@@ -1159,8 +1160,12 @@ function ModuleNavGroup({
             gap: '4px',
             borderRadius: 'var(--radius-md)',
             textDecoration: 'none',
-            color: reallyActive || isHovered ? 'white' : 'rgba(255,255,255,0.7)',
-            background: reallyActive ? '#186337' : isHovered ? '#f0f7fd' : 'transparent',
+            color: reallyActive ? '#ffffff' : isHovered ? '#0284c7' : '#475569',
+            background: reallyActive
+              ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+              : isHovered
+                ? '#f0f9ff'
+                : 'transparent',
             boxShadow: reallyActive ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
             transition: 'all 0.15s ease',
           };
