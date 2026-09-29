@@ -43,6 +43,7 @@ import { inventoryValuationRouter } from '../modules/reports/inventory-valuation
 import fifoCostLotTrackingRouter from '../modules/reports/fifo-cost-lot-tracking/fifoCostLotTracking.routes.ts';
 import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummary.routes.ts';
 import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
+import { jobOrderLossRouter } from '../modules/reports/job-order-loss/jobOrderLoss.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { env } from '../config/env.ts';
 
@@ -120,6 +121,7 @@ apiRouter.use('/organizations/:orgId/reports/inventory-valuation', inventoryValu
 apiRouter.use('/organizations/:orgId/reports/fifo-cost-lot-tracking', fifoCostLotTrackingRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-summary', stockSummaryRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRouter);
+apiRouter.use('/organizations/:orgId/reports/job-order-loss', jobOrderLossRouter);
 // The Reports Center list + per-user visit/favourite — after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);

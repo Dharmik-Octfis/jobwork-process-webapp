@@ -17,6 +17,7 @@ import {
   shortCloseJobOrder,
 } from './jobOrders.service.ts';
 import { getChainWarnings } from './jobOrders.status.ts';
+import { getJobOrderLossReport } from '../../reports/job-order-loss/jobOrderLoss.service.ts';
 
 /**
  * 🔴 Completing a step writes off what is still at the processor
@@ -425,6 +426,30 @@ describe('a completed step is closed (R9)', { timeout: 120_000 }, () => {
 
     await manuallyCompleteStep(orgId, jobOrderId, dyeing, undefined, 'Dyer lost the lot');
     expect((await warnings()).get(finishing)).toBeUndefined();
+  });
+
+  it('lists every write-off in the Job Order Loss report, with its reason', async () => {
+    const run = await dyeingRun();
+    await manuallyCompleteStep(orgId, run.jobOrderId, run.stepId, undefined, 'Dyer lost the lot');
+    const { jobOrderNumber } = await runAsTenant(orgId, (tx) =>
+      tx.jobOrder.findFirstOrThrow({
+        where: { id: run.jobOrderId, organizationId: orgId },
+        select: { jobOrderNumber: true },
+      }),
+    );
+
+    const report = await getJobOrderLossReport(orgId, { jobOrderNumber, page: 1, perPage: 25 });
+
+    expect(report.total).toBe(1);
+    expect(report.grandTotalValue).toBe(10_000);
+    expect(report.results[0]).toMatchObject({
+      jobOrderId: run.jobOrderId,
+      jobIssueId: run.challan.id,
+      closedAs: 'completed',
+      qty: 1000,
+      value: 10_000,
+      reason: 'Dyer lost the lot',
+    });
   });
 
   it('refuses completion while a draft is parked on the step', async () => {
