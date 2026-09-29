@@ -30,7 +30,7 @@ import { toApiErrorMessage } from '../../../api/client';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
+import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer, Eye } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
@@ -47,17 +47,87 @@ function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: PO
 
   const finalUrl = isDirectUrl ? attachment.data || attachment.url : signedUrl;
 
+  const handleView = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!finalUrl) return;
+
+    const name = (attachment.name || '').toLowerCase();
+    const isPdf = name.endsWith('.pdf');
+    const isImage = name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i);
+
+    if (!isPdf && !isImage) {
+      window.open(finalUrl, '_blank');
+      return;
+    }
+
+    try {
+      const res = await fetch(finalUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const newWin = window.open('', '_blank');
+      if (newWin) {
+        newWin.document.title = attachment.name || 'View File';
+        newWin.document.body.style.margin = '0';
+        newWin.document.body.style.background = '#0e0e0e';
+        newWin.document.body.style.display = 'flex';
+        newWin.document.body.style.justifyContent = 'center';
+        newWin.document.body.style.alignItems = 'center';
+        newWin.document.body.style.height = '100vh';
+        if (isImage) {
+          const img = newWin.document.createElement('img');
+          img.src = objectUrl;
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '100%';
+          img.style.objectFit = 'contain';
+          newWin.document.body.appendChild(img);
+        } else if (isPdf) {
+          const iframe = newWin.document.createElement('iframe');
+          iframe.src = objectUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          newWin.document.body.appendChild(iframe);
+        }
+      } else {
+        window.open(finalUrl, '_blank');
+      }
+    } catch (_err) {
+      window.open(finalUrl, '_blank');
+    }
+  };
+
   if (finalUrl) {
     return (
-      <a
-        href={finalUrl}
-        download={attachment.name || 'attachment'}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
+      <div 
+        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
       >
-        {attachment.name || 'Attachment'}
-      </a>
+        <a
+          href={finalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
+          title="Download file"
+        >
+          {attachment.name || 'Attachment'}
+        </a>
+        <button
+          type="button"
+          onClick={handleView}
+          title="View file"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '2px',
+          }}
+        >
+          <Eye size={16} />
+        </button>
+      </div>
     );
   }
 

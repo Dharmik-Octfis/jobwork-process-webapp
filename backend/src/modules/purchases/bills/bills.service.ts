@@ -1085,7 +1085,12 @@ export async function getBillsList(organizationId: string, opts: ListQuery) {
       },
     });
 
-    return pageSlice(rows, page, perPage);
+    const mappedRows = rows.map((row) => {
+      const { documents, ...rest } = row;
+      return { ...rest, attachments: documents };
+    });
+
+    return pageSlice(mappedRows, page, perPage);
   });
 }
 
@@ -1239,8 +1244,10 @@ export async function getBillById(orgId: string, id: string) {
       };
     });
 
+    const { documents, ...restBill } = bill;
     return {
-      ...bill,
+      ...restBill,
+      attachments: documents,
       lineItems: lineItemsWithBatches,
     };
   });
@@ -1430,7 +1437,11 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
       });
     }
 
-    return createdBill;
+    const { documents, ...restBill } = createdBill;
+    return {
+      ...restBill,
+      attachments: documents,
+    };
   });
 }
 

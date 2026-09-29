@@ -17,6 +17,7 @@ import {
   ChevronDown,
   FileText,
   X,
+  Eye,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
@@ -34,6 +35,7 @@ import {
   fetchLocations,
   uploadBillAttachments,
   fetchOpenJobReceipts,
+  getBillSignedUrl,
   type BillAttachment,
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
@@ -158,6 +160,129 @@ function ItemImage({
         (e.currentTarget as HTMLImageElement).style.display = 'none';
       }}
     />
+  );
+}
+
+function AttachmentLink({
+  orgId,
+  attachment,
+}: {
+  orgId: string;
+  attachment: BillAttachment;
+}) {
+  const isDirectUrl = Boolean(attachment.data || attachment.url);
+  const { data: signedUrl } = useQuery({
+    queryKey: ['billAttachmentSignedUrl', orgId, attachment.key],
+    queryFn: () => getBillSignedUrl(orgId, attachment.key!),
+    enabled: Boolean(orgId && attachment.key && !isDirectUrl),
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const finalUrl = isDirectUrl ? attachment.data || attachment.url : signedUrl;
+
+  const handleView = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!finalUrl) return;
+
+    const name = (attachment.name || '').toLowerCase();
+    const isPdf = name.endsWith('.pdf');
+    const isImage = name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i);
+
+    if (!isPdf && !isImage) {
+      window.open(finalUrl, '_blank');
+      return;
+    }
+
+    try {
+      const res = await fetch(finalUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const newWin = window.open('', '_blank');
+      if (newWin) {
+        newWin.document.title = attachment.name || 'View File';
+        newWin.document.body.style.margin = '0';
+        newWin.document.body.style.background = '#0e0e0e';
+        newWin.document.body.style.display = 'flex';
+        newWin.document.body.style.justifyContent = 'center';
+        newWin.document.body.style.alignItems = 'center';
+        newWin.document.body.style.height = '100vh';
+        if (isImage) {
+          const img = newWin.document.createElement('img');
+          img.src = objectUrl;
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '100%';
+          img.style.objectFit = 'contain';
+          newWin.document.body.appendChild(img);
+        } else if (isPdf) {
+          const iframe = newWin.document.createElement('iframe');
+          iframe.src = objectUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          newWin.document.body.appendChild(iframe);
+        }
+      } else {
+        window.open(finalUrl, '_blank');
+      }
+    } catch (_err) {
+      window.open(finalUrl, '_blank');
+    }
+  };
+
+  if (finalUrl) {
+    return (
+      <div 
+        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+      >
+        <a
+          href={finalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontWeight: 500,
+            color: '#0062ff',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textDecoration: 'none',
+          }}
+          title="Download file"
+        >
+          {attachment.name || 'Attachment'}
+        </a>
+        <button
+          type="button"
+          onClick={handleView}
+          title="View file"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '2px',
+          }}
+        >
+          <Eye size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <span
+      style={{
+        fontWeight: 500,
+        color: '#1e293b',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {attachment.name || 'Attachment'}
+    </span>
   );
 }
 
@@ -1788,17 +1913,7 @@ export function CreateBill() {
                           }}
                         >
                           <FileText size={14} color="#2563eb" />
-                          <span
-                            style={{
-                              fontWeight: 500,
-                              color: '#1e293b',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {fileObj.name}
-                          </span>
+                          <AttachmentLink orgId={orgId!} attachment={fileObj} />
                           <span style={{ color: '#94a3b8', fontSize: '11px', flexShrink: 0 }}>
                             ({((fileObj.size || 0) / (1024 * 1024)).toFixed(2)} MB)
                           </span>
