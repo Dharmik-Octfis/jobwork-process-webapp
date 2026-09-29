@@ -42,6 +42,11 @@ export interface CompositeComponent {
     sellingPrice?: number | null;
     costPrice?: number | null;
     stockOnHand?: number;
+    images?: { url: string; [key: string]: unknown }[];
+    stockSummary?: {
+      totalStockOnHand?: number;
+      [key: string]: unknown;
+    };
   };
 }
 

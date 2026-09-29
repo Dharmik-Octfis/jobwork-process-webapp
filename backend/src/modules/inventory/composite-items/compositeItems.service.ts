@@ -542,11 +542,13 @@ export class CompositeItemsService {
       let balances: ComponentBalance[] = [];
       if (componentIds.length > 0) {
         balances = await tx.$queryRaw<ComponentBalance[]>`
-          SELECT item_id as "itemId", SUM(qty_in - qty_out) as qty
-          FROM stock_ledger
-          WHERE item_id IN (${Prisma.join(componentIds)})
-            AND organization_id = ${organizationId}::uuid
-          GROUP BY item_id
+          SELECT sl.item_id as "itemId", SUM(sl.qty_in - sl.qty_out) as qty
+          FROM stock_ledger sl
+          JOIN locations l ON l.id = sl.location_id
+          WHERE sl.item_id IN (${Prisma.join(componentIds)})
+            AND sl.organization_id = ${organizationId}::uuid
+            AND (l.type IS NULL OR l.type NOT IN ('processor', 'in_transit', 'customer_site'))
+          GROUP BY sl.item_id
         `;
       }
 
