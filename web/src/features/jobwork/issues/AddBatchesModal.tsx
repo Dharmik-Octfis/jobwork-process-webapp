@@ -370,7 +370,7 @@ export function AddBatchesModal({
       return next.length > 0 ? next : [blankRow()];
     });
 
-  const canSave = overDrawn.size === 0;
+  const canSave = overDrawn.size === 0 && (matches || overwrite);
 
   const handleSave = () => {
     if (!canSave) return;
@@ -465,11 +465,15 @@ export function AddBatchesModal({
             >
               Cancel
             </button>
-            {overDrawn.size > 0 && (
+            {overDrawn.size > 0 ? (
               <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
                 A quantity is more than the batch holds.
               </span>
-            )}
+            ) : !matches && !overwrite ? (
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
+                Quantities do not match the line total. Tick the box above to overwrite it, or adjust the batches.
+              </span>
+            ) : null}
           </>
         }
       >
