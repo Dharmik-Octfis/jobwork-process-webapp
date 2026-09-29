@@ -666,7 +666,7 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      placeholder="10"
+                      placeholder="0"
                       title={`Rate per ${unit?.label ?? 'unit'}`}
                       style={fieldError('rate') ? cellInputError : cellInput}
                     />
