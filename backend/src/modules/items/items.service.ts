@@ -25,6 +25,7 @@ import {
   type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
+import { SOURCE_DOC_TYPES } from '../jobwork/jobwork.types.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
   if (!item) return item;
@@ -175,6 +176,36 @@ interface OpeningPosition {
   /** The `opening` rows that built this position — the cost layers a reduction
    * takes back first (FIFO). Empty on a position this save is creating. */
   inEntryIds: string[];
+}
+
+const ZERO = new Prisma.Decimal(0);
+
+/**
+ * A transaction row's takas and the part of its quantity in none of them — the
+ * same `units` + `untaggedQty` pair the Batch Details tab renders. Takas are
+ * merged by id so a taka sent in two lines still reads as one.
+ */
+function summarizeBatchUnits(
+  batchQty: Prisma.Decimal,
+  units: readonly { batchUnitId: string; label: string; qty: Prisma.Decimal }[],
+) {
+  const merged = new Map<string, { batchUnitId: string; label: string; qty: Prisma.Decimal }>();
+  for (const unit of units) {
+    const existing = merged.get(unit.batchUnitId);
+    merged.set(
+      unit.batchUnitId,
+      existing ? { ...existing, qty: existing.qty.plus(unit.qty) } : unit,
+    );
+  }
+  const tagged = [...merged.values()].reduce((sum, unit) => sum.plus(unit.qty), ZERO);
+  return {
+    units: [...merged.values()].map((unit) => ({
+      batchUnitId: unit.batchUnitId,
+      label: unit.label,
+      qty: Number(unit.qty),
+    })),
+    untaggedQty: merged.size > 0 ? Math.max(Number(batchQty.minus(tagged)), 0) : 0,
+  };
 }
 
 /** The identity of a position, as a map key. */
@@ -754,37 +785,86 @@ export class ItemsService {
         throw ApiError.notFound('Item not found');
       }
 
-      const rows = await tx.jobIssueLine.findMany({
+      // Paged by CHALLAN, not by line: each taka is its own line, so paging lines
+      // could split one batch's takas across two pages.
+      const issues = await tx.jobIssue.findMany({
         where: {
-          itemId: itemId,
+          organizationId,
           isDeleted: false,
-          jobIssue: {
-            organizationId: organizationId,
-            isDeleted: false,
-            ...searchWhere<Prisma.JobIssueWhereInput>(opts.search, ['challanNumber', 'status']),
-          },
+          lines: { some: { itemId, isDeleted: false } },
+          ...searchWhere<Prisma.JobIssueWhereInput>(opts.search, ['challanNumber', 'status']),
         },
-        orderBy: { jobIssue: { issueDate: 'desc' } },
+        orderBy: [{ issueDate: 'desc' }, { challanNumber: 'desc' }],
         skip: (page - 1) * perPage,
         take: takeForPage(perPage),
-        include: {
-          jobIssue: true,
+        select: {
+          id: true,
+          issueDate: true,
+          challanNumber: true,
+          processorNameSnapshot: true,
+          status: true,
         },
       });
 
-      const paginated = pageSlice(rows, page, perPage);
+      const paginated = pageSlice(issues, page, perPage);
+
+      const lines = await tx.jobIssueLine.findMany({
+        where: {
+          organizationId,
+          itemId,
+          isDeleted: false,
+          jobIssueId: { in: paginated.results.map((issue) => issue.id) },
+        },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          jobIssueId: true,
+          batchId: true,
+          qty: true,
+          batch: { select: { supplierBatchRef: true } },
+          batchUnit: { select: { id: true, label: true } },
+        },
+      });
+
+      // One row per (challan, batch) — a batch sent as three takas is three lines.
+      const byIssue = new Map<string, Map<string, typeof lines>>();
+      for (const line of lines) {
+        const byBatch = byIssue.get(line.jobIssueId) ?? new Map<string, typeof lines>();
+        byBatch.set(line.batchId, [...(byBatch.get(line.batchId) ?? []), line]);
+        byIssue.set(line.jobIssueId, byBatch);
+      }
 
       return {
         ...paginated,
-        results: paginated.results.map((row) => ({
-          id: row.id,
-          issueId: row.jobIssue?.id,
-          issueDate: row.jobIssue?.issueDate,
-          issueNumber: row.jobIssue?.challanNumber,
-          vendorName: row.jobIssue?.processorNameSnapshot,
-          quantity: Number(row.qty),
-          status: row.jobIssue?.status,
-        })),
+        results: paginated.results.flatMap((issue) =>
+          [...(byIssue.get(issue.id)?.values() ?? [])].map((group) => {
+            const quantity = group.reduce((sum, line) => sum.plus(line.qty), new Prisma.Decimal(0));
+            const summary = summarizeBatchUnits(
+              quantity,
+              group.flatMap((line) =>
+                line.batchUnit
+                  ? [{ batchUnitId: line.batchUnit.id, label: line.batchUnit.label, qty: line.qty }]
+                  : [],
+              ),
+            );
+            return {
+              id: `${issue.id}:${group[0]!.batchId}`,
+              issueId: issue.id,
+              issueDate: issue.issueDate,
+              issueNumber: issue.challanNumber,
+              vendorName: issue.processorNameSnapshot,
+              quantity: Number(quantity),
+              status: issue.status,
+              batches: [
+                {
+                  batchId: group[0]!.batchId,
+                  batchRef: group[0]!.batch.supplierBatchRef,
+                  qty: Number(quantity),
+                  ...summary,
+                },
+              ],
+            };
+          }),
+        ),
       };
     });
   }
@@ -814,10 +894,62 @@ export class ItemsService {
         take: takeForPage(perPage),
         include: {
           jobReceipt: true,
+          batches: {
+            where: { isDeleted: false },
+            orderBy: { seq: 'asc' },
+            select: {
+              batchId: true,
+              kind: true,
+              qty: true,
+              batch: { select: { supplierBatchRef: true } },
+            },
+          },
         },
       });
 
       const paginated = pageSlice(rows, page, perPage);
+
+      /**
+       * The takas each receipt put into each batch, from its `produce` rows — not
+       * from `batch_units.source_doc_id`, which misses a taka that came back again
+       * (resolved, not created, so it keeps the document that first made it).
+       */
+      const unitMovements = await tx.stockLedgerEntry.groupBy({
+        by: ['sourceDocId', 'batchId', 'batchUnitId'],
+        where: {
+          organizationId,
+          itemId,
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: { in: paginated.results.map((row) => row.jobReceiptId) },
+          movementType: 'produce',
+          batchUnitId: { not: null },
+        },
+        _sum: { qtyIn: true },
+      });
+      const unitLabels = new Map(
+        (
+          await tx.batchUnit.findMany({
+            where: {
+              organizationId,
+              id: { in: unitMovements.map((row) => row.batchUnitId!) },
+            },
+            select: { id: true, label: true, seq: true },
+          })
+        ).map((unit) => [unit.id, unit]),
+      );
+      const unitsByReceiptBatch = new Map<
+        string,
+        { batchUnitId: string; label: string; seq: number; qty: Prisma.Decimal }[]
+      >();
+      for (const row of unitMovements) {
+        const unit = unitLabels.get(row.batchUnitId!);
+        if (!unit) continue;
+        const key = `${row.sourceDocId}:${row.batchId}`;
+        unitsByReceiptBatch.set(key, [
+          ...(unitsByReceiptBatch.get(key) ?? []),
+          { batchUnitId: unit.id, label: unit.label, seq: unit.seq, qty: row._sum.qtyIn ?? ZERO },
+        ]);
+      }
 
       return {
         ...paginated,
@@ -829,6 +961,18 @@ export class ItemsService {
           vendorName: row.jobReceipt?.processorNameSnapshot,
           quantity: Number(row.receivedQty),
           status: row.jobReceipt?.status,
+          batches: row.batches.map((allocation) => ({
+            batchId: allocation.batchId,
+            batchRef: allocation.batch.supplierBatchRef,
+            kind: allocation.kind,
+            qty: Number(allocation.qty),
+            ...summarizeBatchUnits(
+              allocation.qty,
+              (unitsByReceiptBatch.get(`${row.jobReceiptId}:${allocation.batchId}`) ?? []).sort(
+                (a, b) => a.seq - b.seq,
+              ),
+            ),
+          })),
         })),
       };
     });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Printer, X } from 'lucide-react';
@@ -14,6 +14,10 @@ import { printChallan } from './printChallan';
 import type { JobIssue } from './jobIssues.schemas';
 import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import {
+  BatchUnitsCard,
+  BatchUnitsToggle,
+} from '../../../components/inventory/BatchUnitsBreakdown';
 
 interface Props {
   issueId: string;
@@ -66,6 +70,14 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const [cancelReasonMissing, setCancelReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openUnits, setOpenUnits] = useState<Set<string>>(() => new Set());
+  const toggleUnits = (key: string) =>
+    setOpenUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const { data: issue, isLoading } = useQuery({
     queryKey: ['job-issue', orgId, issueId],
@@ -173,6 +185,37 @@ export function IssueDetail({ issueId, onClose }: Props) {
       totals.set(key, existing);
     }
     return [...totals.values()];
+  })();
+
+  /** One table row per item + batch: each taka is its own line, so a batch sent
+   * as two takas would otherwise read as two rows. The takas open from the row. */
+  const batchRows = (() => {
+    const rows = new Map<
+      string,
+      {
+        key: string;
+        line: JobIssue['lines'][number];
+        qty: number;
+        units: { batchUnitId: string; label: string; qty: number }[];
+      }
+    >();
+    for (const line of issue.lines) {
+      const key = `${line.itemId}:${line.batchId}`;
+      const row = rows.get(key) ?? { key, line, qty: 0, units: [] };
+      row.qty += toNumber(line.qty);
+      if (line.batchUnit) {
+        const unit = row.units.find((u) => u.batchUnitId === line.batchUnit!.id);
+        if (unit) unit.qty += toNumber(line.qty);
+        else
+          row.units.push({
+            batchUnitId: line.batchUnit.id,
+            label: line.batchUnit.label,
+            qty: toNumber(line.qty),
+          });
+      }
+      rows.set(key, row);
+    }
+    return [...rows.values()];
   })();
 
   return (
@@ -459,17 +502,52 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {issue.lines.map((line) => (
-                  <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                      {line.item?.name ?? '-'}
-                    </td>
-                    <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
-                    <td style={td}>
-                      {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
-                    </td>
-                  </tr>
-                ))}
+                {batchRows.map(({ key, line, qty, units }) => {
+                  const hasUnits = unitLabel.enabled && units.length > 0;
+                  const open = hasUnits && openUnits.has(key);
+                  return (
+                    <Fragment key={key}>
+                      <tr
+                        style={{
+                          borderBottom: open ? 'none' : '1px solid #eef0f3',
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                          {line.item?.name ?? '-'}
+                        </td>
+                        <td style={td}>
+                          {line.batch?.supplierBatchRef ?? '-'}
+                          {hasUnits && (
+                            <BatchUnitsToggle
+                              count={units.length}
+                              open={open}
+                              onToggle={() => toggleUnits(key)}
+                              singular={unitLabel.singular}
+                              plural={unitLabel.plural}
+                            />
+                          )}
+                        </td>
+                        <td style={td}>
+                          {formatQty(qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                          <td />
+                          <td colSpan={2} style={{ padding: '0 12px 10px' }}>
+                            <BatchUnitsCard
+                              units={units}
+                              untaggedQty={qty - units.reduce((sum, u) => sum + u.qty, 0)}
+                              singular={unitLabel.singular}
+                              formatQty={(value) => formatQty(value)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

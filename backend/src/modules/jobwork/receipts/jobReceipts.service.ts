@@ -193,25 +193,38 @@ export async function getJobReceiptById(organizationId: string, id: string) {
      * shared with the list endpoint, and a fourth relation level would cost the
      * list a round trip per page for something only the detail screen renders.
      *
-     * Keyed on `sourceDocId`, so a top-up shows the rolls THIS delivery brought
-     * rather than everything the batch has ever held. One query for the whole
-     * receipt, indexed into a Map — never one per batch row.
+     * Read from this receipt's `produce` rows, so a top-up shows the rolls THIS
+     * delivery brought rather than everything the batch has ever held, each with
+     * the quantity it brought — and a roll coming back again (resolved, not
+     * created, so its `sourceDocId` is another document) is included. Not filtered
+     * on `isDeleted`: cancelling frees a created roll's label that way, but the
+     * ledger still names it and a cancelled receipt should say what it received.
      */
-    const units = await tx.batchUnit.findMany({
+    const movements = await tx.stockLedgerEntry.groupBy({
+      by: ['batchId', 'batchUnitId'],
       where: {
         organizationId,
         sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
         sourceDocId: id,
-        isDeleted: false,
+        movementType: 'produce',
+        batchUnitId: { not: null },
       },
-      orderBy: { seq: 'asc' },
+      _sum: { qtyIn: true },
+    });
+    if (movements.length === 0) return receipt;
+
+    const labels = await tx.batchUnit.findMany({
+      where: { organizationId, id: { in: movements.map((row) => row.batchUnitId!) } },
       select: { id: true, batchId: true, seq: true, label: true },
     });
-    if (units.length === 0) return receipt;
+    const qtyByUnit = new Map(movements.map((row) => [row.batchUnitId!, row._sum.qtyIn ?? ZERO]));
 
-    const byBatch = new Map<string, typeof units>();
-    for (const unit of units) {
-      byBatch.set(unit.batchId, [...(byBatch.get(unit.batchId) ?? []), unit]);
+    const byBatch = new Map<string, ((typeof labels)[number] & { qty: Prisma.Decimal })[]>();
+    for (const unit of labels.sort((a, b) => a.seq - b.seq)) {
+      byBatch.set(unit.batchId, [
+        ...(byBatch.get(unit.batchId) ?? []),
+        { ...unit, qty: qtyByUnit.get(unit.id) ?? ZERO },
+      ]);
     }
 
     return {
