@@ -148,6 +148,9 @@ export const endpoints = {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
     customerPreferences: (orgId: string) =>
       `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
+    salesOrders: (orgId: string) => `/organizations/${orgId}/sales/sales-orders`,
+    salesOrderPreferences: (orgId: string) =>
+      `/organizations/${orgId}/sales/sales-orders/preferences/number-sequence`,
   },
   configuration: {
     locations: (orgId: string) => `/organizations/${orgId}/configuration/locations`,

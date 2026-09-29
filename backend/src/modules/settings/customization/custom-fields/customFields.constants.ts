@@ -20,6 +20,7 @@
 export const ENTITY_TYPES = [
   'vendor',
   'customer',
+  'sales_order',
   'item',
   'purchase_order',
   'bill',

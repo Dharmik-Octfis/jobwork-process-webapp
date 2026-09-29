@@ -12,6 +12,7 @@ import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
+import { AssociatedItemsView } from '../inventory/composite-items/AssociatedItemsView';
 import { ItemTransactions } from './components/ItemTransactions';
 import {
   fetchLocations,
@@ -556,6 +557,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {item.itemStructure === 'composite' && (
+                <AssociatedItemsView orgId={orgId!} itemId={itemId} />
               )}
             </div>
 

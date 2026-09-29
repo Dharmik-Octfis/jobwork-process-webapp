@@ -101,3 +101,5 @@ export const getAppModules = async (req: Request, res: Response) => {
 
   res.type('application/json').send(body);
 };
+
+// triggered restart
