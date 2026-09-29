@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import { itemsApi } from './items.api';
+import { toApiErrorMessage } from '../../api/client';
 import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../components/inventory/BatchUnitsModal';
 import {
@@ -211,6 +212,8 @@ export function OpeningStockPage() {
       invalidateStockQueries(queryClient, orgId);
       navigate(`/organizations/${orgId}/items?id=${itemId}`);
     },
+    // The server refuses edits to stock that has already moved — say why, by name.
+    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const isSaving = saveOpeningStockMutation.isPending;
@@ -1569,4 +1572,3 @@ export function OpeningStockPage() {
     </div>
   );
 }
-

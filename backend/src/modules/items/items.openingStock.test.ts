@@ -398,6 +398,98 @@ describe('opening stock — re-declaring is a delta, not a rewrite', () => {
 });
 
 /**
+ * 🔴 A CHANGED PER UNIT VALUE MUST REACH THE LEDGER — or be refused by name.
+ *
+ * Until 2026-09-29 only the quantity was reconciled, so 500 @ 5000 re-saved as
+ * 500 @ 6500 posted nothing: the form read 6500 while the ledger, the cost layer
+ * and the valuation report stayed at 5000. Same rule as a bill's rate (FIFO D3).
+ */
+describe('opening stock — changing the per unit value', () => {
+  const layersOf = (itemId: string) =>
+    runAsTenant(orgId, (tx) =>
+      tx.stockCostLayer.findMany({
+        where: { organizationId: orgId, itemId, locationId: godownId, remainingQty: { gt: 0 } },
+      }),
+    );
+  const bulk = (qty: number, value: number) => ({
+    locationRows: [
+      { locationId: godownId, openingStock: qty, openingStockValue: value, batches: [] },
+    ],
+  });
+
+  it('restates an unused position at the new value, ledger and cost layer both', async () => {
+    const itemId = await freshItem('none');
+    await itemsService.saveOpeningStock(itemId, orgId, bulk(500, 5000));
+    await itemsService.saveOpeningStock(itemId, orgId, bulk(500, 6500));
+
+    const batches = await runAsTenant(orgId, (tx) =>
+      tx.batch.findMany({ where: { organizationId: orgId, itemId, isDeleted: false } }),
+    );
+    expect(batches).toHaveLength(1);
+    const balance = await balanceOf(batches[0]!.id, godownId);
+    expect(Number(balance.qty)).toBe(500);
+    expect(Number(balance.value)).toBe(3_250_000);
+
+    const layers = await layersOf(itemId);
+    expect(layers.reduce((sum, l) => sum + Number(l.remainingValue), 0)).toBe(3_250_000);
+  });
+
+  it('applies a new value and a new quantity in one save', async () => {
+    const itemId = await freshItem('batch');
+    const saved = await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 100,
+          openingStockValue: 10,
+          batches: [{ batchReference: 'ROLL-V', quantityIn: 100 }],
+        },
+      ],
+    });
+    const batchId = saved[0]!.batches[0]!.id!;
+    await itemsService.saveOpeningStock(itemId, orgId, {
+      locationRows: [
+        {
+          locationId: godownId,
+          openingStock: 120,
+          openingStockValue: 12,
+          batches: [{ id: batchId, batchReference: 'ROLL-V', quantityIn: 120 }],
+        },
+      ],
+    });
+
+    const balance = await balanceOf(batchId, godownId);
+    expect(Number(balance.qty)).toBe(120);
+    expect(Number(balance.value)).toBe(1440);
+  });
+
+  it('🔴 refuses a new value once any of it has been used, naming the document', async () => {
+    const itemId = await freshItem('none');
+    await itemsService.saveOpeningStock(itemId, orgId, bulk(500, 5000));
+    const [batch] = await runAsTenant(orgId, (tx) =>
+      tx.batch.findMany({ where: { organizationId: orgId, itemId } }),
+    );
+    await issueToProcessor(batch!.id, 10);
+
+    await expect(
+      itemsService.saveOpeningStock(itemId, orgId, bulk(500, 6500)),
+    ).rejects.toMatchObject({ status: 409, message: expect.stringContaining('already been used') });
+
+    // Nothing moved — not the ledger, and not the declared figure on the form.
+    const balance = await balanceOf(batch!.id, godownId);
+    expect(Number(balance.qty)).toBe(490);
+    expect(Number(balance.value)).toBe(2_450_000);
+    const declared = await itemsService.getOpeningStock(itemId, orgId);
+    expect(Number(declared[0]!.openingStockValue)).toBe(5000);
+
+    // The unchanged value still saves: a re-save is not an edit.
+    await expect(
+      itemsService.saveOpeningStock(itemId, orgId, bulk(500, 5000)),
+    ).resolves.toBeTruthy();
+  });
+});
+
+/**
  * 🔴 OPENING STOCK IS STATED AS AT THE MIGRATION DATE.
  *
  * Until 2026-09-10 there was no date here to state it as at: all seven posting

@@ -121,6 +121,10 @@ export const jobReceiptSchema = z.object({
                * the second half of a split delivery, not a new lot. */
               isNewBatch: z.boolean(),
               batch: z.object({ id: z.string(), supplierBatchRef: z.string().nullable() }),
+              /** The takas this receipt put into the batch — detail endpoint only. */
+              units: z
+                .array(z.object({ id: z.string(), label: z.string(), qty: decimalString }))
+                .default([]),
             }),
           )
           .default([]),

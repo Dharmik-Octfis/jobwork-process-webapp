@@ -24,7 +24,9 @@ import {
   UNALLOCATED_BATCH_STATE,
   type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
+import { consumersOfEntries } from '../inventory/stock-ledger/costLayers.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
+import { SOURCE_DOC_TYPES } from '../jobwork/jobwork.types.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
   if (!item) return item;
@@ -175,6 +177,39 @@ interface OpeningPosition {
   /** The `opening` rows that built this position — the cost layers a reduction
    * takes back first (FIFO). Empty on a position this save is creating. */
   inEntryIds: string[];
+}
+
+const ZERO = new Prisma.Decimal(0);
+
+/** Below this, a position's stated and posted value are the same rate — rounding, not an edit. */
+const VALUE_TOLERANCE = new Prisma.Decimal('0.01');
+
+/**
+ * A transaction row's takas and the part of its quantity in none of them — the
+ * same `units` + `untaggedQty` pair the Batch Details tab renders. Takas are
+ * merged by id so a taka sent in two lines still reads as one.
+ */
+function summarizeBatchUnits(
+  batchQty: Prisma.Decimal,
+  units: readonly { batchUnitId: string; label: string; qty: Prisma.Decimal }[],
+) {
+  const merged = new Map<string, { batchUnitId: string; label: string; qty: Prisma.Decimal }>();
+  for (const unit of units) {
+    const existing = merged.get(unit.batchUnitId);
+    merged.set(
+      unit.batchUnitId,
+      existing ? { ...existing, qty: existing.qty.plus(unit.qty) } : unit,
+    );
+  }
+  const tagged = [...merged.values()].reduce((sum, unit) => sum.plus(unit.qty), ZERO);
+  return {
+    units: [...merged.values()].map((unit) => ({
+      batchUnitId: unit.batchUnitId,
+      label: unit.label,
+      qty: Number(unit.qty),
+    })),
+    untaggedQty: merged.size > 0 ? Math.max(Number(batchQty.minus(tagged)), 0) : 0,
+  };
 }
 
 /** The identity of a position, as a map key. */
@@ -347,9 +382,6 @@ export class ItemsService {
      */
     balances?: Map<string, Prisma.Decimal>,
   ) {
-    const delta = desiredQty.minus(position.qty);
-    if (delta.isZero()) return;
-
     const { organizationId, itemId, valuePerUnit, postedAt, userId } = context;
     const balanceKey = positionKey(position.batchId, position.batchUnitId, position.locationId);
     // The value already riding on this position, per unit — used when the form
@@ -358,7 +390,93 @@ export class ItemsService {
       ? position.value.dividedBy(position.qty)
       : new Prisma.Decimal(0);
 
-    if (delta.greaterThan(0)) {
+    /**
+     * 🔴 A CHANGED PER UNIT VALUE RESTATES THE WHOLE POSITION — the same rule as a
+     * bill's changed rate (FIFO_COSTING_PLAN.md D3). Until 2026-09-29 only the
+     * quantity was compared, so a value-only edit returned below having posted
+     * nothing: the form said 6500 while the ledger, its cost layer and every
+     * report still said 5000. It is taken back whole and received again at the new
+     * value, which is only sound while nothing of it has been used; once it has,
+     * it is refused by name — posted documents are never re-costed (D2).
+     */
+    const revalue =
+      valuePerUnit !== null &&
+      position.qty.greaterThan(0) &&
+      desiredQty.greaterThan(0) &&
+      position.qty.times(valuePerUnit).minus(position.value).abs().greaterThan(VALUE_TOLERANCE);
+    const delta = desiredQty.minus(position.qty);
+    if (delta.isZero() && !revalue) return;
+
+    // The reference, not the internal number — the user has to find this row on
+    // their own screen, where the number does not appear. A package says so by
+    // name, because "batch JV2" is not enough to find a row three levels down.
+    const label = position.unitLabel
+      ? `${position.unitLabel} (in batch ${position.batch.supplierBatchRef ?? 'unnamed'})`
+      : (position.batch.supplierBatchRef ?? 'This batch');
+
+    if (revalue) {
+      const users = await consumersOfEntries(tx, organizationId, position.inEntryIds, {
+        sourceDocType: OPENING_STOCK_SOURCE_DOC_TYPE,
+        sourceDocId: itemId,
+      });
+      if (users.length > 0) {
+        const location = await tx.location.findFirst({
+          where: { id: position.locationId, organizationId },
+          select: { name: true },
+        });
+        throw new ApiError(
+          409,
+          `The per unit value at ${location?.name ?? 'this location'} cannot change: this ` +
+            `opening stock is on the books at ${existingUnitValue.toDecimalPlaces(2).toString()} ` +
+            `per unit and has already been used by ${users.join(', ')}. Cancel that first, ` +
+            'change the value, then create it again.',
+          { openingStockValue: 'Value cannot change once stock is used.' },
+        );
+      }
+    }
+
+    const remove = revalue ? position.qty : delta.lessThan(0) ? delta.negated() : ZERO;
+    if (remove.greaterThan(0)) {
+      const availableQty =
+        balances?.get(balanceKey) ??
+        (
+          await getBalance(tx, {
+            organizationId,
+            batchId: position.batchId,
+            // 🔴 Scoped to THIS position, which for the untagged one means the
+            // untagged rows alone. Asking about the whole batch would let a
+            // reduction of the loose remainder be waived through on the strength
+            // of stock that is spoken for by a package — and `postMovement`'s own
+            // invariant would then refuse the post, further down, with a message
+            // about a rule the user never saw.
+            batchUnitId: position.batchUnitId,
+            locationId: position.locationId,
+          })
+        ).qty;
+      if (remove.greaterThan(availableQty)) {
+        if (revalue) {
+          throw new ApiError(
+            409,
+            `${label} has already moved — only ${availableQty.toString()} of it is still ` +
+              'here, so its per unit value cannot change. Cancel the documents that moved it ' +
+              'first, or leave the value as it is.',
+            { openingStockValue: `${label} has already moved.` },
+          );
+        }
+        const floor = position.qty.minus(availableQty);
+        throw ApiError.badRequest(
+          `${label} has already moved — only ${availableQty.toString()} of it is ` +
+            `still here, so its opening stock cannot go below ${floor.toString()}. ` +
+            'Cancel the documents that moved it first, or leave this row as it is.',
+          { batches: `${label} cannot go below ${floor.toString()}.` },
+        );
+      }
+      await this.withdrawOpening(tx, position, remove, context, batches);
+      balances?.set(balanceKey, availableQty.minus(remove));
+    }
+
+    const add = revalue ? desiredQty : delta.greaterThan(0) ? delta : ZERO;
+    if (add.greaterThan(0)) {
       const unit = valuePerUnit ?? existingUnitValue;
       const posted = await postMovement(
         tx,
@@ -368,8 +486,8 @@ export class ItemsService {
           batchUnitId: position.batchUnitId,
           locationId: position.locationId,
           movementType: 'opening',
-          qtyIn: delta,
-          valueIn: delta.times(unit),
+          qtyIn: add,
+          valueIn: add.times(unit),
           sourceDocType: 'item_opening_stock',
           sourceDocId: itemId,
           postedAt,
@@ -381,43 +499,18 @@ export class ItemsService {
       // seed the figure would add the query this argument exists to remove.
       const known = balances?.get(balanceKey);
       if (known) balances?.set(balanceKey, known.plus(posted.qtyIn));
-      return;
     }
+  }
 
-    const remove = delta.negated();
-    const availableQty =
-      balances?.get(balanceKey) ??
-      (
-        await getBalance(tx, {
-          organizationId,
-          batchId: position.batchId,
-          // 🔴 Scoped to THIS position, which for the untagged one means the
-          // untagged rows alone. Asking about the whole batch would let a
-          // reduction of the loose remainder be waived through on the strength
-          // of stock that is spoken for by a package — and `postMovement`'s own
-          // invariant would then refuse the post, further down, with a message
-          // about a rule the user never saw.
-          batchUnitId: position.batchUnitId,
-          locationId: position.locationId,
-        })
-      ).qty;
-    if (remove.greaterThan(availableQty)) {
-      const floor = position.qty.minus(availableQty);
-      // The reference, not the internal number — the user has to find this row on
-      // their own screen, where the number does not appear. A package says so by
-      // name, because "batch JV2" is not enough to find a row three levels down.
-      const label = position.unitLabel
-        ? `${position.unitLabel} (in batch ${position.batch.supplierBatchRef ?? 'unnamed'})`
-        : (position.batch.supplierBatchRef ?? 'This batch');
-      throw ApiError.badRequest(
-        `${label} has already moved — only ${availableQty.toString()} of it is ` +
-          `still here, so its opening stock cannot go below ${floor.toString()}. ` +
-          'Cancel the documents that moved it first, or leave this row as it is.',
-        { batches: `${label} cannot go below ${floor.toString()}.` },
-      );
-    }
-
-    const posted = await postMovement(
+  private async withdrawOpening(
+    tx: TenantClient,
+    position: OpeningPosition,
+    remove: Prisma.Decimal,
+    context: { organizationId: string; itemId: string; postedAt: Date; userId?: string },
+    batches?: ResolvedBatches,
+  ) {
+    const { organizationId, itemId, postedAt, userId } = context;
+    await postMovement(
       tx,
       {
         organizationId,
@@ -444,7 +537,6 @@ export class ItemsService {
       },
       batches,
     );
-    balances?.set(balanceKey, availableQty.minus(posted.qtyOut));
   }
 
   /**
@@ -754,37 +846,86 @@ export class ItemsService {
         throw ApiError.notFound('Item not found');
       }
 
-      const rows = await tx.jobIssueLine.findMany({
+      // Paged by CHALLAN, not by line: each taka is its own line, so paging lines
+      // could split one batch's takas across two pages.
+      const issues = await tx.jobIssue.findMany({
         where: {
-          itemId: itemId,
+          organizationId,
           isDeleted: false,
-          jobIssue: {
-            organizationId: organizationId,
-            isDeleted: false,
-            ...searchWhere<Prisma.JobIssueWhereInput>(opts.search, ['challanNumber', 'status']),
-          },
+          lines: { some: { itemId, isDeleted: false } },
+          ...searchWhere<Prisma.JobIssueWhereInput>(opts.search, ['challanNumber', 'status']),
         },
-        orderBy: { jobIssue: { issueDate: 'desc' } },
+        orderBy: [{ issueDate: 'desc' }, { challanNumber: 'desc' }],
         skip: (page - 1) * perPage,
         take: takeForPage(perPage),
-        include: {
-          jobIssue: true,
+        select: {
+          id: true,
+          issueDate: true,
+          challanNumber: true,
+          processorNameSnapshot: true,
+          status: true,
         },
       });
 
-      const paginated = pageSlice(rows, page, perPage);
+      const paginated = pageSlice(issues, page, perPage);
+
+      const lines = await tx.jobIssueLine.findMany({
+        where: {
+          organizationId,
+          itemId,
+          isDeleted: false,
+          jobIssueId: { in: paginated.results.map((issue) => issue.id) },
+        },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          jobIssueId: true,
+          batchId: true,
+          qty: true,
+          batch: { select: { supplierBatchRef: true } },
+          batchUnit: { select: { id: true, label: true } },
+        },
+      });
+
+      // One row per (challan, batch) — a batch sent as three takas is three lines.
+      const byIssue = new Map<string, Map<string, typeof lines>>();
+      for (const line of lines) {
+        const byBatch = byIssue.get(line.jobIssueId) ?? new Map<string, typeof lines>();
+        byBatch.set(line.batchId, [...(byBatch.get(line.batchId) ?? []), line]);
+        byIssue.set(line.jobIssueId, byBatch);
+      }
 
       return {
         ...paginated,
-        results: paginated.results.map((row) => ({
-          id: row.id,
-          issueId: row.jobIssue?.id,
-          issueDate: row.jobIssue?.issueDate,
-          issueNumber: row.jobIssue?.challanNumber,
-          vendorName: row.jobIssue?.processorNameSnapshot,
-          quantity: Number(row.qty),
-          status: row.jobIssue?.status,
-        })),
+        results: paginated.results.flatMap((issue) =>
+          [...(byIssue.get(issue.id)?.values() ?? [])].map((group) => {
+            const quantity = group.reduce((sum, line) => sum.plus(line.qty), new Prisma.Decimal(0));
+            const summary = summarizeBatchUnits(
+              quantity,
+              group.flatMap((line) =>
+                line.batchUnit
+                  ? [{ batchUnitId: line.batchUnit.id, label: line.batchUnit.label, qty: line.qty }]
+                  : [],
+              ),
+            );
+            return {
+              id: `${issue.id}:${group[0]!.batchId}`,
+              issueId: issue.id,
+              issueDate: issue.issueDate,
+              issueNumber: issue.challanNumber,
+              vendorName: issue.processorNameSnapshot,
+              quantity: Number(quantity),
+              status: issue.status,
+              batches: [
+                {
+                  batchId: group[0]!.batchId,
+                  batchRef: group[0]!.batch.supplierBatchRef,
+                  qty: Number(quantity),
+                  ...summary,
+                },
+              ],
+            };
+          }),
+        ),
       };
     });
   }
@@ -814,10 +955,62 @@ export class ItemsService {
         take: takeForPage(perPage),
         include: {
           jobReceipt: true,
+          batches: {
+            where: { isDeleted: false },
+            orderBy: { seq: 'asc' },
+            select: {
+              batchId: true,
+              kind: true,
+              qty: true,
+              batch: { select: { supplierBatchRef: true } },
+            },
+          },
         },
       });
 
       const paginated = pageSlice(rows, page, perPage);
+
+      /**
+       * The takas each receipt put into each batch, from its `produce` rows — not
+       * from `batch_units.source_doc_id`, which misses a taka that came back again
+       * (resolved, not created, so it keeps the document that first made it).
+       */
+      const unitMovements = await tx.stockLedgerEntry.groupBy({
+        by: ['sourceDocId', 'batchId', 'batchUnitId'],
+        where: {
+          organizationId,
+          itemId,
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: { in: paginated.results.map((row) => row.jobReceiptId) },
+          movementType: 'produce',
+          batchUnitId: { not: null },
+        },
+        _sum: { qtyIn: true },
+      });
+      const unitLabels = new Map(
+        (
+          await tx.batchUnit.findMany({
+            where: {
+              organizationId,
+              id: { in: unitMovements.map((row) => row.batchUnitId!) },
+            },
+            select: { id: true, label: true, seq: true },
+          })
+        ).map((unit) => [unit.id, unit]),
+      );
+      const unitsByReceiptBatch = new Map<
+        string,
+        { batchUnitId: string; label: string; seq: number; qty: Prisma.Decimal }[]
+      >();
+      for (const row of unitMovements) {
+        const unit = unitLabels.get(row.batchUnitId!);
+        if (!unit) continue;
+        const key = `${row.sourceDocId}:${row.batchId}`;
+        unitsByReceiptBatch.set(key, [
+          ...(unitsByReceiptBatch.get(key) ?? []),
+          { batchUnitId: unit.id, label: unit.label, seq: unit.seq, qty: row._sum.qtyIn ?? ZERO },
+        ]);
+      }
 
       return {
         ...paginated,
@@ -829,6 +1022,18 @@ export class ItemsService {
           vendorName: row.jobReceipt?.processorNameSnapshot,
           quantity: Number(row.receivedQty),
           status: row.jobReceipt?.status,
+          batches: row.batches.map((allocation) => ({
+            batchId: allocation.batchId,
+            batchRef: allocation.batch.supplierBatchRef,
+            kind: allocation.kind,
+            qty: Number(allocation.qty),
+            ...summarizeBatchUnits(
+              allocation.qty,
+              (unitsByReceiptBatch.get(`${row.jobReceiptId}:${allocation.batchId}`) ?? []).sort(
+                (a, b) => a.seq - b.seq,
+              ),
+            ),
+          })),
         })),
       };
     });
@@ -2071,18 +2276,14 @@ export class ItemsService {
 
           const current = here.reduce((sum, p) => sum.plus(p.qty), new Prisma.Decimal(0));
           let remaining = declaredQty.minus(current);
+          // Every position is settled, not only the one whose quantity moves — a
+          // changed per unit value restates each of them (see `settleOpening`).
+          const desired = new Map(here.map((p) => [p, p.qty] as const));
 
           if (remaining.greaterThan(0)) {
             const top = here[0];
             if (top) {
-              await this.settleOpening(
-                tx,
-                top,
-                top.qty.plus(remaining),
-                settleContext,
-                settleBatches,
-                settleBalances,
-              );
+              desired.set(top, top.qty.plus(remaining));
             } else if (declaredQty.greaterThan(0)) {
               const batch = await createBatch(tx, {
                 organizationId,
@@ -2112,16 +2313,20 @@ export class ItemsService {
             for (const position of here) {
               if (remaining.greaterThanOrEqualTo(0)) break;
               const take = Prisma.Decimal.min(remaining.negated(), position.qty);
-              await this.settleOpening(
-                tx,
-                position,
-                position.qty.minus(take),
-                settleContext,
-                settleBatches,
-                settleBalances,
-              );
+              desired.set(position, position.qty.minus(take));
               remaining = remaining.plus(take);
             }
+          }
+
+          for (const position of here) {
+            await this.settleOpening(
+              tx,
+              position,
+              desired.get(position)!,
+              settleContext,
+              settleBatches,
+              settleBalances,
+            );
           }
         }
       }

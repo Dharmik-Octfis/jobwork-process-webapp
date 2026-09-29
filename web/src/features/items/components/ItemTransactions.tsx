@@ -1,9 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, useRef, useEffect } from 'react';
+import { Fragment, useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { itemsApi } from '../items.api';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import {
+  BatchUnitsCard,
+  BatchUnitsToggle,
+} from '../../../components/inventory/BatchUnitsBreakdown';
 
 interface ItemTransactionsProps {
   orgId: string;
@@ -28,6 +33,18 @@ interface TransactionRow {
   rate?: number;
   amount?: number;
   status?: string;
+  /** Issues and Receives only — a challan's takas of one batch are folded into one row. */
+  batches?: TransactionBatch[];
+}
+
+interface TransactionBatch {
+  batchId: string;
+  batchRef: string | null;
+  /** Receives only: accepted | rework. */
+  kind?: string;
+  qty: number;
+  units: { batchUnitId: string; label: string; qty: number }[];
+  untaggedQty: number;
 }
 
 export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
@@ -36,6 +53,18 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
   const [filterBy, setFilterBy] = useState<TransactionFilter>('Bills');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+  const trackingLabel = useTrackingLabel();
+  const unitLabel = useBatchUnitLabel();
+  const [expandedUnits, setExpandedUnits] = useState<Set<string>>(() => new Set());
+  const toggleUnits = (key: string) =>
+    setExpandedUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const showBatchColumn = filterBy !== 'Bills';
+  const hasUnits = (batch: TransactionBatch) => unitLabel.enabled && batch.units.length > 0;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -66,7 +95,12 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
   });
 
   const data = filterBy === 'Bills' ? billsData : filterBy === 'Issues' ? issuesData : receiptsData;
-  const isLoading = filterBy === 'Bills' ? isLoadingBills : filterBy === 'Issues' ? isLoadingIssues : isLoadingReceipts;
+  const isLoading =
+    filterBy === 'Bills'
+      ? isLoadingBills
+      : filterBy === 'Issues'
+        ? isLoadingIssues
+        : isLoadingReceipts;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
@@ -107,7 +141,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
               }}
             />
           </button>
-          
+
           {isFilterOpen && (
             <div
               style={{
@@ -224,6 +258,21 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
               >
                 VENDOR NAME
               </th>
+              {showBatchColumn && (
+                <th
+                  style={{
+                    padding: '12px 24px',
+                    textAlign: 'left',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    whiteSpace: 'nowrap',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {trackingLabel.singular}
+                </th>
+              )}
               <th
                 style={{
                   padding: '12px 24px',
@@ -237,8 +286,8 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                 {filterBy === 'Bills'
                   ? 'QUANTITY PURCHASED'
                   : filterBy === 'Issues'
-                  ? 'QUANTITY ISSUED'
-                  : 'QUANTITY RECEIVED'}
+                    ? 'QUANTITY ISSUED'
+                    : 'QUANTITY RECEIVED'}
               </th>
               {filterBy === 'Bills' && (
                 <>
@@ -296,120 +345,206 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                 </td>
               </tr>
             ) : (
-              data?.results.map((row: TransactionRow) => (
-                <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '12px 24px', fontSize: '13px', color: '#1e293b' }}>
-                    {filterBy === 'Bills'
-                      ? row.billDate
-                        ? format(new Date(row.billDate), 'dd/MM/yyyy')
-                        : '-'
-                      : filterBy === 'Issues'
-                      ? row.issueDate
-                        ? format(new Date(row.issueDate), 'dd/MM/yyyy')
-                        : '-'
-                      : row.receiptDate
-                      ? format(new Date(row.receiptDate), 'dd/MM/yyyy')
-                      : '-'}
-                  </td>
-                  <td style={{ padding: '12px 24px', fontSize: '13px', color: '#2563eb' }}>
-                    {filterBy === 'Bills' ? (
-                      row.billId ? (
-                        <Link
-                          to={`/organizations/${orgId}/purchases/bills?id=${row.billId}`}
-                          style={{ color: '#2563eb', textDecoration: 'none' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                        >
-                          {row.billNumber}
-                        </Link>
-                      ) : (
-                        row.billNumber
-                      )
-                    ) : filterBy === 'Issues' ? (
-                      row.issueId ? (
-                        <Link
-                          to={`/organizations/${orgId}/jobwork/issues?id=${row.issueId}`}
-                          style={{ color: '#2563eb', textDecoration: 'none' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                          onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                        >
-                          {row.issueNumber}
-                        </Link>
-                      ) : (
-                        row.issueNumber
-                      )
-                    ) : row.receiptId ? (
-                      <Link
-                        to={`/organizations/${orgId}/jobwork/receipts?id=${row.receiptId}`}
-                        style={{ color: '#2563eb', textDecoration: 'none' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                      >
-                        {row.receiptNumber}
-                      </Link>
-                    ) : (
-                      row.receiptNumber
-                    )}
-                  </td>
-                  <td style={{ padding: '12px 24px', fontSize: '13px', color: '#1e293b' }}>
-                    {row.vendorName || '-'}
-                  </td>
-                  <td
-                    style={{
-                      padding: '12px 24px',
-                      fontSize: '13px',
-                      color: '#1e293b',
-                      textAlign: 'right',
-                    }}
-                  >
-                    {row.quantity}
-                  </td>
-                  {filterBy === 'Bills' && (
-                    <>
-                      <td
-                        style={{
-                          padding: '12px 24px',
-                          fontSize: '13px',
-                          color: '#1e293b',
-                          textAlign: 'right',
-                        }}
-                      >
-                        ₹{row.rate?.toFixed(2) || '0.00'}
-                      </td>
-                      <td
-                        style={{
-                          padding: '12px 24px',
-                          fontSize: '13px',
-                          color: '#1e293b',
-                          textAlign: 'right',
-                        }}
-                      >
-                        ₹{row.amount?.toFixed(2) || '0.00'}
-                      </td>
-                    </>
-                  )}
-                  <td style={{ padding: '12px 24px', fontSize: '13px' }}>
-                    <span
+              data?.results.map((row: TransactionRow) => {
+                const openBatches = showBatchColumn
+                  ? (row.batches ?? []).filter(
+                      (batch) => hasUnits(batch) && expandedUnits.has(`${row.id}:${batch.batchId}`),
+                    )
+                  : [];
+                return (
+                  <Fragment key={row.id}>
+                    <tr
                       style={{
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        background: row.status === 'Draft' ? '#f1f5f9' : '#dcfce7',
-                        color: row.status === 'Draft' ? '#475569' : '#166534',
-                        whiteSpace: 'nowrap',
+                        borderBottom: openBatches.length ? 'none' : '1px solid #e2e8f0',
+                        verticalAlign: 'top',
                       }}
                     >
-                      {row.status}
-                    </span>
-                  </td>
-                </tr>
-              ))
+                      <td style={{ padding: '12px 24px', fontSize: '13px', color: '#1e293b' }}>
+                        {filterBy === 'Bills'
+                          ? row.billDate
+                            ? format(new Date(row.billDate), 'dd/MM/yyyy')
+                            : '-'
+                          : filterBy === 'Issues'
+                            ? row.issueDate
+                              ? format(new Date(row.issueDate), 'dd/MM/yyyy')
+                              : '-'
+                            : row.receiptDate
+                              ? format(new Date(row.receiptDate), 'dd/MM/yyyy')
+                              : '-'}
+                      </td>
+                      <td style={{ padding: '12px 24px', fontSize: '13px', color: '#2563eb' }}>
+                        {filterBy === 'Bills' ? (
+                          row.billId ? (
+                            <Link
+                              to={`/organizations/${orgId}/purchases/bills?id=${row.billId}`}
+                              style={{ color: '#2563eb', textDecoration: 'none' }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.textDecoration = 'underline')
+                              }
+                              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                            >
+                              {row.billNumber}
+                            </Link>
+                          ) : (
+                            row.billNumber
+                          )
+                        ) : filterBy === 'Issues' ? (
+                          row.issueId ? (
+                            <Link
+                              to={`/organizations/${orgId}/jobwork/issues?id=${row.issueId}`}
+                              style={{ color: '#2563eb', textDecoration: 'none' }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.textDecoration = 'underline')
+                              }
+                              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                            >
+                              {row.issueNumber}
+                            </Link>
+                          ) : (
+                            row.issueNumber
+                          )
+                        ) : row.receiptId ? (
+                          <Link
+                            to={`/organizations/${orgId}/jobwork/receipts?id=${row.receiptId}`}
+                            style={{ color: '#2563eb', textDecoration: 'none' }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.textDecoration = 'underline')
+                            }
+                            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                          >
+                            {row.receiptNumber}
+                          </Link>
+                        ) : (
+                          row.receiptNumber
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 24px', fontSize: '13px', color: '#1e293b' }}>
+                        {row.vendorName || '-'}
+                      </td>
+                      {showBatchColumn && (
+                        <td
+                          style={{
+                            padding: '12px 24px',
+                            fontSize: '13px',
+                            color: '#1e293b',
+                          }}
+                        >
+                          {!row.batches?.length
+                            ? '-'
+                            : row.batches.map((batch) => {
+                                const key = `${row.id}:${batch.batchId}`;
+                                const open = expandedUnits.has(key);
+                                return (
+                                  <div key={batch.batchId}>
+                                    <div style={{ whiteSpace: 'nowrap' }}>
+                                      {batch.kind === 'rework' && (
+                                        <span
+                                          title="Rework"
+                                          style={{ color: '#b45309', marginRight: 4 }}
+                                        >
+                                          ↻
+                                        </span>
+                                      )}
+                                      {batch.batchRef ?? '-'}
+                                      {/* Several batches share one row's quantity, so say the split. */}
+                                      {row.batches!.length > 1 && (
+                                        <span style={{ color: '#94a3b8' }}> · {batch.qty}</span>
+                                      )}
+                                    </div>
+                                    {hasUnits(batch) && (
+                                      <BatchUnitsToggle
+                                        count={batch.units.length}
+                                        open={open}
+                                        onToggle={() => toggleUnits(key)}
+                                        singular={unitLabel.singular}
+                                        plural={unitLabel.plural}
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                        </td>
+                      )}
+                      <td
+                        style={{
+                          padding: '12px 24px',
+                          fontSize: '13px',
+                          color: '#1e293b',
+                          textAlign: 'right',
+                        }}
+                      >
+                        {row.quantity}
+                      </td>
+                      {filterBy === 'Bills' && (
+                        <>
+                          <td
+                            style={{
+                              padding: '12px 24px',
+                              fontSize: '13px',
+                              color: '#1e293b',
+                              textAlign: 'right',
+                            }}
+                          >
+                            ₹{row.rate?.toFixed(2) || '0.00'}
+                          </td>
+                          <td
+                            style={{
+                              padding: '12px 24px',
+                              fontSize: '13px',
+                              color: '#1e293b',
+                              textAlign: 'right',
+                            }}
+                          >
+                            ₹{row.amount?.toFixed(2) || '0.00'}
+                          </td>
+                        </>
+                      )}
+                      <td style={{ padding: '12px 24px', fontSize: '13px' }}>
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            background: row.status === 'Draft' ? '#f1f5f9' : '#dcfce7',
+                            color: row.status === 'Draft' ? '#475569' : '#166534',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                    </tr>
+                    {/* Its own row, starting under the batch column, so opening the
+                    takas never changes a column's width. */}
+                    {openBatches.length > 0 && (
+                      <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td colSpan={3} />
+                        <td colSpan={3} style={{ padding: '0 24px 12px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {openBatches.map((batch) => (
+                              <BatchUnitsCard
+                                key={batch.batchId}
+                                units={batch.units}
+                                untaggedQty={batch.untaggedQty}
+                                singular={unitLabel.singular}
+                                heading={
+                                  row.batches!.length > 1
+                                    ? (batch.batchRef ?? undefined)
+                                    : undefined
+                                }
+                              />
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
-
-
     </div>
   );
 }
