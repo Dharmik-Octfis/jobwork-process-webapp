@@ -5,6 +5,7 @@ import { requirePermission } from '../../../middlewares/authorize.ts';
 import { validateBody } from '../../../middlewares/validate.ts';
 import {
   appendJobOrderStepsSchema,
+  completeStepSchema,
   createJobOrderSchema,
   shortCloseSchema,
   updateJobOrderSchema,
@@ -93,6 +94,7 @@ router.post(
 router.post(
   '/:id/steps/:stepId/complete',
   requirePermission('job_order:update'),
+  validateBody(completeStepSchema),
   completeStep,
 );
 

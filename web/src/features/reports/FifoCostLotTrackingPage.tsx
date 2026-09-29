@@ -7,6 +7,7 @@ import { ItemSearchableSelect } from '../../components/ui/ItemSearchableSelect';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
+import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { reportsApi } from './reports.api';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { useQuery } from '@tanstack/react-query';
@@ -66,6 +67,7 @@ const tdStyle = {
 export function FifoCostLotTrackingPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  const organizationName = useOrganizationName();
   useRecordReportVisit(orgId, 'fifo_cost_lot_tracking');
 
   const initialState = useMemo(() => {
@@ -576,7 +578,7 @@ export function FifoCostLotTrackingPage() {
                 fontWeight: 500,
               }}
             >
-              OCTFIS TECHNO llp
+              {organizationName}
             </div>
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
