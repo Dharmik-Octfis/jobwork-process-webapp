@@ -597,16 +597,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         itemId: output.itemId,
         itemName: output.itemName,
         unit: output.uomSymbol ?? '',
-        receivedQty: row
-          ? toNumber(row.receivedQty)
-          : output.expectedQty
-            ? toNumber(output.expectedQty)
-            : 0,
-        acceptedQty: row
-          ? toNumber(row.acceptedQty)
-          : output.expectedQty
-            ? toNumber(output.expectedQty)
-            : 0,
+        receivedQty: row ? toNumber(row.receivedQty) : 0,
+        acceptedQty: row ? toNumber(row.acceptedQty) : 0,
         reworkQty: row ? toNumber(row.reworkQty) : 0,
         // Always zero. This form never sends anything else — goods refused at the
         // gate never entered stock — so there is nothing to restore.
@@ -1809,7 +1801,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           search={batchSearch}
           onSearchChange={setBatchSearch}
           isLoading={isLoadingBatches}
-          onSave={(rows, overwriteQty) => saveAllocation(allocating.key, allocating.kind, rows, overwriteQty)}
+          onSave={(rows, overwriteQty) =>
+            saveAllocation(allocating.key, allocating.kind, rows, overwriteQty)
+          }
         />
       )}
       <div
