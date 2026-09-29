@@ -148,6 +148,9 @@ export const endpoints = {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
     customerPreferences: (orgId: string) =>
       `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
+    salesOrders: (orgId: string) => `/organizations/${orgId}/sales/sales-orders`,
+    salesOrderPreferences: (orgId: string) =>
+      `/organizations/${orgId}/sales/sales-orders/preferences/number-sequence`,
   },
   configuration: {
     locations: (orgId: string) => `/organizations/${orgId}/configuration/locations`,
@@ -172,6 +175,7 @@ export const endpoints = {
     inventoryValuation: (orgId: string) => `/organizations/${orgId}/reports/inventory-valuation`,
     fifoCostLotTracking: (orgId: string) =>
       `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
+    jobOrderLoss: (orgId: string) => `/organizations/${orgId}/reports/job-order-loss`,
   },
   automation: {
     approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,

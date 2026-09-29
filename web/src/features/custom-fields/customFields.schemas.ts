@@ -96,6 +96,11 @@ export const CUSTOM_FIELD_MODULES: Array<{
     label: 'Customer',
     description: 'Add fields to the customer create & edit form.',
   },
+  {
+    entityType: 'sales_order',
+    label: 'Sales Order',
+    description: 'Add fields to the sales order create & edit form.',
+  },
   { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
   {
     entityType: 'bill',

@@ -250,7 +250,7 @@ describe('a locked step — only the processor may change', { timeout: 120_000 }
 
   it('keeps a completed step’s processor as it was', async () => {
     const run = await lockedRun();
-    await manuallyCompleteStep(orgId, run.order.id, run.step.id, undefined);
+    await manuallyCompleteStep(orgId, run.order.id, run.step.id, undefined, 'Dyer lost the lot');
     const after = await updateJobOrderById(orgId, run.order.id, {
       steps: [{ id: run.step.id, processId: dyeingId, processorId: dyerB }],
     });

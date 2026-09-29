@@ -191,8 +191,49 @@ export interface PaginatedStockMovementResponse {
   grandTotalQuantity: number;
 }
 
+export interface JobOrderLossQuery {
+  fromDate?: string;
+  toDate?: string;
+  itemName?: string;
+  processorName?: string;
+  jobOrderNumber?: string;
+  page?: number;
+  perPage?: number;
+}
+
+/** One challan line's write-off — what a completed or short-closed step left at the processor. */
+export interface JobOrderLossRow {
+  id: string;
+  writtenOffAt: string;
+  jobOrderId: string;
+  jobOrderNumber: string;
+  stepSeq: number;
+  processName: string;
+  closedAs: string;
+  jobIssueId: string | null;
+  challanNumber: string | null;
+  processorName: string | null;
+  itemId: string;
+  itemName: string;
+  uomName: string | null;
+  batchNumber: string | null;
+  qty: number;
+  value: number;
+  reason: string | null;
+}
+
+export interface PaginatedJobOrderLossResponse {
+  results: JobOrderLossRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue: number;
+}
+
 /** Stable report ids from the backend catalog (`reports.catalog.ts`) — never the label or path. */
-export type ReportKey = 'stock_summary' | 'inventory_valuation_summary' | 'fifo_cost_lot_tracking';
+export type ReportKey =
+  'stock_summary' | 'inventory_valuation_summary' | 'fifo_cost_lot_tracking' | 'job_order_loss';
 
 export interface ReportListEntry {
   key: ReportKey;
@@ -252,6 +293,13 @@ export const reportsApi = {
   ): Promise<PaginatedFifoCostLotTrackingResponse> => {
     const response = await apiClient.get(endpoints.reports.fifoCostLotTracking(orgId), { params });
     return response.data as PaginatedFifoCostLotTrackingResponse;
+  },
+  getJobOrderLoss: async (
+    orgId: string,
+    params: JobOrderLossQuery = {},
+  ): Promise<PaginatedJobOrderLossResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobOrderLoss(orgId), { params });
+    return response.data as PaginatedJobOrderLossResponse;
   },
   getStockSummary: async (
     orgId: string,

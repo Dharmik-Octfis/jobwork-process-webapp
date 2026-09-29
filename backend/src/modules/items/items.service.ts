@@ -608,6 +608,21 @@ export class ItemsService {
               ? Number(item.openingStockValuePerUnit)
               : null;
 
+          const committedStockRes = await tx.salesOrderItem.aggregate({
+            _sum: { quantity: true },
+            where: {
+              itemId,
+              isDeleted: false,
+              salesOrder: {
+                organizationId,
+                locationId: primaryLoc.id,
+                status: 'Approved',
+                isDeleted: false,
+              },
+            },
+          });
+          const committedStock = Number(committedStockRes._sum.quantity || 0);
+
           return [
             {
               id: primaryLoc.id,
@@ -616,8 +631,8 @@ export class ItemsService {
               openingStockValue: itemOpeningVal,
               stockOnHand: itemOpeningQty,
               unallocatedQty: 0,
-              committedStock: 0,
-              availableForSale: itemOpeningQty,
+              committedStock,
+              availableForSale: itemOpeningQty - committedStock,
               batches: [],
             },
           ];
@@ -641,6 +656,21 @@ export class ItemsService {
         .filter(isHeld)
         .reduce((sum, entry) => sum.plus(entry.qty), new Prisma.Decimal(0));
 
+      const committedStockRes = await tx.salesOrderItem.aggregate({
+        _sum: { quantity: true },
+        where: {
+          itemId,
+          isDeleted: false,
+          salesOrder: {
+            organizationId,
+            locationId,
+            status: 'Approved',
+            isDeleted: false,
+          },
+        },
+      });
+      const committedStock = Number(committedStockRes._sum.quantity || 0);
+
       out.push({
         id: row?.id ?? locationId,
         locationId,
@@ -656,8 +686,8 @@ export class ItemsService {
         stockOnHand: Number(balance.qty),
         /** Opening stock here not yet assigned to a batch: counted, not issuable. */
         unallocatedQty: Number(unallocatedQty),
-        committedStock: 0,
-        availableForSale: Number(balance.qty.minus(unallocatedQty)),
+        committedStock,
+        availableForSale: Number(balance.qty.minus(unallocatedQty)) - committedStock,
         batches: toBatchRows(mine),
       });
     }

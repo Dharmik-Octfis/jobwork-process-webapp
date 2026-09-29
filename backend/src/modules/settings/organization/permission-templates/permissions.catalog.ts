@@ -107,7 +107,7 @@ const MODULE_GROUPS: readonly {
   {
     key: 'sales',
     label: 'Sales',
-    resources: [{ resource: 'customer', label: 'Customers' }],
+    resources: [{ resource: 'customer', label: 'Customers' }, { resource: 'sales_order', label: 'Sales Orders' }],
   },
   {
     /**

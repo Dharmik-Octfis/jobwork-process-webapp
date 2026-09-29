@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import {
   CheckCircle2,
   ChevronDown,
@@ -421,6 +422,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
   const [completeStepTarget, setCompleteStepTarget] = useState<OverviewStep | null>(null);
+  const [completeReason, setCompleteReason] = useState('');
+  const [completeReasonMissing, setCompleteReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -481,23 +484,38 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     completeStepTarget && completeStepTarget.inputs.length === 1
       ? completeStepTarget.inputs[0]?.uom
       : null;
-  const completeWriteOff =
-    completeOutstanding <= 0
-      ? 'Nothing is still with the processor, so nothing will be written off.'
-      : `${
-          completeStepTarget && completeStepTarget.inputs.length <= 1
-            ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
-            : 'Some material is still with the processor'
-        } and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
+  const completeStillOut =
+    completeStepTarget && completeStepTarget.inputs.length <= 1
+      ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
+      : 'Some material is still with the processor';
+  // Mirrors the server: either case needs a reason (`manuallyCompleteStep`).
+  const completeNothingIssued = completeStepTarget?.totals.issueCount === 0;
+  const completeNothingReceived =
+    !completeNothingIssued && completeStepTarget?.totals.receiptCount === 0;
+  const completeNeedsReason = completeNothingIssued || completeNothingReceived;
+  const completeWriteOff = completeNothingIssued
+    ? 'Nothing has been issued on this step, so it will be marked complete without the work being done.'
+    : completeNothingReceived
+      ? `Nothing has been received on this step. ${completeStillOut} — all of it will be written off as job order loss. If the goods never left or came back untouched, cancel the challan instead.`
+      : completeOutstanding <= 0
+        ? 'Nothing is still with the processor, so nothing will be written off.'
+        : `${completeStillOut} and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
+
+  const closeCompleteStep = () => {
+    setCompleteStepTarget(null);
+    setCompleteReason('');
+    setCompleteReasonMissing(false);
+  };
 
   const completeStep = useMutation({
-    mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
+    mutationFn: (stepId: string) =>
+      completeJobOrderStep(orgId!, id!, stepId, completeReason.trim() || undefined),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
       patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, {
         status: updated.jobOrder.status,
       });
-      setCompleteStepTarget(null);
+      closeCompleteStep();
     },
   });
 
@@ -969,13 +987,57 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 issued back yet and can no longer be reworked on this step.
               </p>
             )}
+            {completeNeedsReason && (
+              <>
+                <label
+                  htmlFor="complete-step-reason"
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: '#64748b',
+                    margin: '12px 0 4px 0',
+                  }}
+                >
+                  Reason
+                </label>
+                <input
+                  id="complete-step-reason"
+                  type="text"
+                  value={completeReason}
+                  onChange={(e) => {
+                    setCompleteReason(e.target.value);
+                    setCompleteReasonMissing(false);
+                  }}
+                  aria-invalid={completeReasonMissing}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    fontSize: 13,
+                    border: `1px solid ${completeReasonMissing ? '#dc2626' : '#d1d5db'}`,
+                    borderRadius: 4,
+                    minHeight: 32,
+                  }}
+                  placeholder={
+                    completeNothingIssued
+                      ? 'Not needed — party wants it undyed'
+                      : 'Processor lost the lot — debit note raised'
+                  }
+                />
+              </>
+            )}
           </div>
         }
         confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}
         onConfirm={() => {
-          if (completeStepTarget) completeStep.mutate(completeStepTarget.id);
+          if (!completeStepTarget) return;
+          if (completeNeedsReason && !completeReason.trim()) {
+            setCompleteReasonMissing(true);
+            toast.error('Say why this step is being completed.');
+            return;
+          }
+          completeStep.mutate(completeStepTarget.id);
         }}
-        onCancel={() => setCompleteStepTarget(null)}
+        onCancel={closeCompleteStep}
       />
 
       <ConfirmDialog

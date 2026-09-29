@@ -256,3 +256,14 @@ export const shortCloseSchema = openApiRegistry.register(
 );
 
 export type ShortCloseInput = z.infer<typeof shortCloseSchema>;
+
+/** Optional here; the service requires it when the step issued or received nothing. */
+export const completeStepSchema = openApiRegistry.register(
+  'CompleteJobOrderStepRequest',
+  z
+    .object({ reason: z.string().trim().max(2000).optional() })
+    // An older client posts no body at all.
+    .default({}),
+);
+
+export type CompleteStepInput = z.infer<typeof completeStepSchema>;

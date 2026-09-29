@@ -150,6 +150,10 @@ const FifoCostLotTrackingPage = lazyPage(
   () => import('../features/reports/FifoCostLotTrackingPage'),
   'FifoCostLotTrackingPage',
 );
+const JobOrderLossReportPage = lazyPage(
+  () => import('../features/reports/JobOrderLossReportPage'),
+  'JobOrderLossReportPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -211,7 +215,9 @@ const EditCustomer = lazyPage(
   () => import('../features/sales/customers/EditCustomer'),
   'EditCustomer',
 );
-const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
+const SalesOrdersList = lazyPage(() => import('../features/sales/sales-orders/SalesOrdersList'), 'SalesOrdersList');
+const CreateSalesOrder = lazyPage(() => import('../features/sales/sales-orders/CreateSalesOrder'), 'CreateSalesOrder');
+  const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
   () => import('../features/jobwork/processes/ProcessesList'),
   'ProcessesList',
@@ -407,11 +413,30 @@ export const router = createBrowserRouter([
                 children: [
                   { path: '/organizations/:orgId', element: <DashboardPage /> },
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
-                  { path: '/organizations/:orgId/reports/stock-summary', element: <StockSummaryReportPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
-                  { path: '/organizations/:orgId/reports/stock-movement', element: <StockMovementReportPage /> },
-                  { path: '/organizations/:orgId/reports/fifo-cost-lot-tracking', element: <FifoCostLotTrackingPage /> },
+                  {
+                    path: '/organizations/:orgId/reports/stock-summary',
+                    element: <StockSummaryReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation-summary',
+                    element: <InventoryValuationSummaryPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation/:itemId',
+                    element: <InventoryValuationDetailPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/stock-movement',
+                    element: <StockMovementReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/fifo-cost-lot-tracking',
+                    element: <FifoCostLotTrackingPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/job-order-loss',
+                    element: <JobOrderLossReportPage />,
+                  },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {
@@ -435,6 +460,15 @@ export const router = createBrowserRouter([
                     element: <CreatePurchaseOrder />,
                   },
                   { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
+                  { path: '/organizations/:orgId/sales/sales-orders', element: <SalesOrdersList /> },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders/new',
+                    element: <CreateSalesOrder />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders/:id/edit',
+                    element: <CreateSalesOrder />,
+                  },
                   {
                     path: '/organizations/:orgId/sales/customers/new',
                     element: <CreateCustomer />,

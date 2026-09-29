@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom'
 import { Menu, Filter, X } from 'lucide-react';
 import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
+import { useOrganizationName } from '../../hooks/useOrganizationName';
 import {
   reportsApi,
   type PaginatedStockMovementResponse,
@@ -13,6 +14,7 @@ export function StockMovementReportPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { orgId } = useParams<{ orgId: string }>();
+  const organizationName = useOrganizationName();
 
   const initialItemId = searchParams.get('itemId') || '';
   const initialLocationId = searchParams.get('locationId') || '';
@@ -219,7 +221,13 @@ export function StockMovementReportPage() {
           <button
             type="button"
             onClick={() =>
-              setAppliedFilters({ fromDate, toDate, movementType, itemId: initialItemId, locationId: initialLocationId })
+              setAppliedFilters({
+                fromDate,
+                toDate,
+                movementType,
+                itemId: initialItemId,
+                locationId: initialLocationId,
+              })
             }
             style={{
               padding: '6px 12px',
@@ -265,7 +273,7 @@ export function StockMovementReportPage() {
                 fontWeight: 500,
               }}
             >
-              OCTFIS TECHNO llp
+              {organizationName}
             </div>
             <h2
               style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
@@ -281,104 +289,104 @@ export function StockMovementReportPage() {
           <div style={{ overflowX: 'auto', width: '100%' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
-              <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
-                <th style={thStyle}>TRANSACTION DATE</th>
-                <th style={thStyle}>TRANSACTION NUMBER</th>
-                <th style={thStyle}>ITEM NAME</th>
-                <th style={thStyle}>TRANSACTION</th>
-                <th style={thStyle}>MOVEMENT TYPE</th>
-                <th style={thStyle}>SOURCE</th>
-                <th style={thStyle}>DESTINATION</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
-                    Loading...
-                  </td>
+                <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
+                  <th style={thStyle}>TRANSACTION DATE</th>
+                  <th style={thStyle}>TRANSACTION NUMBER</th>
+                  <th style={thStyle}>ITEM NAME</th>
+                  <th style={thStyle}>TRANSACTION</th>
+                  <th style={thStyle}>MOVEMENT TYPE</th>
+                  <th style={thStyle}>SOURCE</th>
+                  <th style={thStyle}>DESTINATION</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
                 </tr>
-              ) : (data?.results?.length || 0) === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
-                    No data found
-                  </td>
-                </tr>
-              ) : (
-                data?.results.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="table-row-hover"
-                    style={{ borderBottom: '1px solid #f9fafb' }}
-                  >
-                    <td style={tdStyle}>{format(new Date(row.transactionDate), 'dd-MM-yyyy')}</td>
-                    <td style={tdStyle}>
-                      {getDocLink(row) ? (
-                        <Link
-                          to={getDocLink(row)!}
-                          className="hover-underline"
-                          style={{ color: '#0062ff', textDecoration: 'none' }}
-                        >
-                          {row.transactionNumber}
-                        </Link>
-                      ) : (
-                        row.transactionNumber
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      <span
-                        className="hover-underline"
-                        style={{ color: '#0062ff', cursor: 'pointer' }}
-                        onClick={() => navigate(`/organizations/${orgId}/items?id=${row.itemId}`)}
-                      >
-                        {row.itemName}
-                      </span>
-                    </td>
-                    <td style={tdStyle} className="capitalize">
-                      {row.transactionType}
-                    </td>
-                    <td style={tdStyle}>{row.movementType}</td>
-                    <td style={tdStyle} className="capitalize">
-                      {row.source}
-                    </td>
-                    <td style={tdStyle}>{row.destination}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
-                      {row.quantity.toFixed(2)}
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
+                      Loading...
                     </td>
                   </tr>
-                ))
+                ) : (data?.results?.length || 0) === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
+                      No data found
+                    </td>
+                  </tr>
+                ) : (
+                  data?.results.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="table-row-hover"
+                      style={{ borderBottom: '1px solid #f9fafb' }}
+                    >
+                      <td style={tdStyle}>{format(new Date(row.transactionDate), 'dd-MM-yyyy')}</td>
+                      <td style={tdStyle}>
+                        {getDocLink(row) ? (
+                          <Link
+                            to={getDocLink(row)!}
+                            className="hover-underline"
+                            style={{ color: '#0062ff', textDecoration: 'none' }}
+                          >
+                            {row.transactionNumber}
+                          </Link>
+                        ) : (
+                          row.transactionNumber
+                        )}
+                      </td>
+                      <td style={tdStyle}>
+                        <span
+                          className="hover-underline"
+                          style={{ color: '#0062ff', cursor: 'pointer' }}
+                          onClick={() => navigate(`/organizations/${orgId}/items?id=${row.itemId}`)}
+                        >
+                          {row.itemName}
+                        </span>
+                      </td>
+                      <td style={tdStyle} className="capitalize">
+                        {row.transactionType}
+                      </td>
+                      <td style={tdStyle}>{row.movementType}</td>
+                      <td style={tdStyle} className="capitalize">
+                        {row.source}
+                      </td>
+                      <td style={tdStyle}>{row.destination}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                        {row.quantity.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {!loading && data && data.results.length > 0 && (
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                    <td
+                      colSpan={7}
+                      style={{
+                        padding: '12px 16px',
+                        fontWeight: 600,
+                        color: '#111827',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Total
+                    </td>
+                    <td
+                      style={{
+                        padding: '12px 16px',
+                        fontWeight: 600,
+                        color: '#111827',
+                        fontSize: '13px',
+                        textAlign: 'right',
+                      }}
+                    >
+                      {data.grandTotalQuantity.toFixed(2)}
+                    </td>
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-            {!loading && data && data.results.length > 0 && (
-              <tfoot>
-                <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb' }}>
-                  <td
-                    colSpan={7}
-                    style={{
-                      padding: '12px 16px',
-                      fontWeight: 600,
-                      color: '#111827',
-                      fontSize: '13px',
-                    }}
-                  >
-                    Total
-                  </td>
-                  <td
-                    style={{
-                      padding: '12px 16px',
-                      fontWeight: 600,
-                      color: '#111827',
-                      fontSize: '13px',
-                      textAlign: 'right',
-                    }}
-                  >
-                    {data.grandTotalQuantity.toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+            </table>
           </div>
         </div>
       </div>

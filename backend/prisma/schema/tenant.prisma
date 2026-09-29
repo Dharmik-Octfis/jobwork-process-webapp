@@ -191,6 +191,15 @@ model User {
   updatedItemAssemblyActivities       ItemAssemblyActivity[]        @relation("ItemAssemblyActivityUpdatedBy")
   createdItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowCreatedBy")
   updatedItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowUpdatedBy")
+  
+  createdSalesOrders                  SalesOrder[]                  @relation("SoCreatedBy")
+  updatedSalesOrders                  SalesOrder[]                  @relation("SoUpdatedBy")
+  createdSalesOrderItems              SalesOrderItem[]              @relation("SoItemCreatedBy")
+  updatedSalesOrderItems              SalesOrderItem[]              @relation("SoItemUpdatedBy")
+  createdSalesOrderActivities         SalesOrderActivity[]          @relation("SoActivityCreatedBy")
+  updatedSalesOrderActivities         SalesOrderActivity[]          @relation("SoActivityUpdatedBy")
+  createdSalesOrderComments           SalesOrderComment[]           @relation("SoCommentCreatedBy")
+  updatedSalesOrderComments           SalesOrderComment[]           @relation("SoCommentUpdatedBy")
 
   // Approval Processes relations
   createdApprovalProcesses        ApprovalProcess[]        @relation("ApprovalProcessCreatedBy")
@@ -362,6 +371,7 @@ model Organization {
   paymentTerms           PaymentTerm[]
   permissionTemplates    PermissionTemplate[]
   purchaseOrders         PurchaseOrder[]
+  salesOrders            SalesOrder[]
   bills                  Bill[]
   roles                  Role[]
   unitsOfMeasurement     UnitOfMeasurement[]
@@ -770,6 +780,7 @@ model Location {
   vendor                   Vendor?                  @relation("LocationVendor", fields: [vendorId], references: [id])
   deliveryPurchaseOrders   PurchaseOrder[]
   sourcePurchaseOrders     PurchaseOrder[]          @relation("PoSourceLocation")
+  salesOrders              SalesOrder[]             @relation("SoSourceLocation")
   bills                    Bill[]                   @relation("BillLocation")
   ledgerEntries            StockLedgerEntry[]       @relation("StockLedgerLocation")
   routeStepWorkCentres     RouteStep[]              @relation("RouteStepWorkCentre")
