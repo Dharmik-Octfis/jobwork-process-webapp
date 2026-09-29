@@ -3,11 +3,13 @@ import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { Menu, X, Filter } from 'lucide-react';
 import { format, endOfDay, startOfDay, startOfMonth } from 'date-fns';
 import { ReportDateFilter } from './components/ReportDateFilter';
+import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { reportsApi, type ItemLedgerResponse, type ItemLedgerRow } from './reports.api';
 
 export function InventoryValuationDetailPage() {
   const navigate = useNavigate();
   const { orgId, itemId } = useParams<{ orgId: string; itemId: string }>();
+  const organizationName = useOrganizationName();
   const location = useLocation();
   const locationId = new URLSearchParams(location.search).get('locationId') || undefined;
 
@@ -223,7 +225,7 @@ export function InventoryValuationDetailPage() {
                 fontWeight: 500,
               }}
             >
-              OCTFIS TECHNO llp
+              {organizationName}
             </div>
             <h2
               style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
