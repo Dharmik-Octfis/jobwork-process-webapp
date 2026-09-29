@@ -18,6 +18,7 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { formatDate } from '../../../lib/formatDate';
 import type { PurchaseOrder } from './purchase-orders.schemas';
 
 function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
@@ -39,7 +40,7 @@ function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[
   const value = (po as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
   if (key === 'date' || key === 'deliveryDate' || key === 'createdAt' || key === 'updatedAt') {
-    return new Date(String(value)).toLocaleDateString();
+    return formatDate(String(value));
   }
   return String(value);
 }

@@ -17,6 +17,7 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { formatDate } from '../../../lib/formatDate';
 import type { Bill } from './bills.schemas';
 
 function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []): string {
@@ -36,8 +37,8 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
   }
   const value = (po as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'date' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
-    return new Date(String(value)).toLocaleDateString();
+  if (key === 'billDate' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
+    return formatDate(String(value));
   }
   return String(value);
 }

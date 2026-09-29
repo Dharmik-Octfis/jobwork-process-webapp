@@ -44,6 +44,8 @@ export const PurchaseOrderSchema = z.object({
   status: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
   lineItems: z.array(PurchaseOrderItemSchema).nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+  updatedAt: z.string().nullable().optional(),
   // Included relations
   vendor: z.any().optional(),
   deliveryLocation: z.any().optional(),

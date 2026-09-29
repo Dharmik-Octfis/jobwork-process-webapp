@@ -23,6 +23,7 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { formatDate } from '../../../lib/formatDate';
 import type { Customer } from './customers.schemas';
 
 /**
@@ -38,8 +39,7 @@ function renderCustomerCell(customer: Customer, key: string): string {
   }
   const value = (customer as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'createdAt' || key === 'updatedAt')
-    return new Date(String(value)).toLocaleDateString();
+  if (key === 'createdAt' || key === 'updatedAt') return formatDate(String(value));
   return String(value);
 }
 

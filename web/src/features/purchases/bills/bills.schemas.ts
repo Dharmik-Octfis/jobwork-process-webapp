@@ -73,6 +73,8 @@ export const billSchema = z.object({
   status: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
   lineItems: z.array(billItemSchema).nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+  updatedAt: z.string().nullable().optional(),
   // Frontend virtual fields for display
   deliveryType: z.enum(['Location', 'Customer']).nullable().optional(),
   deliveryLocationId: z.string().nullable().optional(),

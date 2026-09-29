@@ -18,6 +18,7 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { formatDate } from '../../../lib/formatDate';
 import type { Vendor } from './vendors.schemas';
 
 /**
@@ -44,8 +45,7 @@ function renderVendorCell(vendor: Vendor, key: string): string {
 
   const value = (vendor as unknown as Record<string, unknown>)[actualKey];
   if (value === null || value === undefined || value === '') return '-';
-  if (actualKey === 'createdAt' || actualKey === 'updatedAt')
-    return new Date(String(value)).toLocaleDateString();
+  if (actualKey === 'createdAt' || actualKey === 'updatedAt') return formatDate(String(value));
   return String(value);
 }
 
