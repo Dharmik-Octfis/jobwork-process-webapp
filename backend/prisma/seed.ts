@@ -104,6 +104,18 @@ async function main() {
   });
 
   await prisma.appModule.upsert({
+    where: { code: 'SALES_ORDERS' },
+    update: {},
+    create: {
+      code: 'SALES_ORDERS',
+      name: 'Sales Orders',
+      parentId: sales.id,
+      sortIndex: 2,
+      icon: 'FileText',
+    },
+  });
+
+  await prisma.appModule.upsert({
     where: { code: 'PO' },
     update: {},
     create: {

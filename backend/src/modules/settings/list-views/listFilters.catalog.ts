@@ -149,6 +149,13 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'closed', label: 'Closed', where: { status: 'Closed' } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'Cancelled' } },
   ],
+  sales_order: [
+    { key: 'all', label: 'All Sales Orders', where: {} },
+    { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
+    { key: 'issued', label: 'Issued', where: { status: 'Issued' } },
+    { key: 'closed', label: 'Closed', where: { status: 'Closed' } },
+    { key: 'cancelled', label: 'Cancelled', where: { status: 'Cancelled' } },
+  ],
 };
 
 /** Key + label only — what the picker renders. */

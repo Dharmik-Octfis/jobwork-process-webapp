@@ -211,7 +211,9 @@ const EditCustomer = lazyPage(
   () => import('../features/sales/customers/EditCustomer'),
   'EditCustomer',
 );
-const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
+const SalesOrdersList = lazyPage(() => import('../features/sales/sales-orders/SalesOrdersList'), 'SalesOrdersList');
+const CreateSalesOrder = lazyPage(() => import('../features/sales/sales-orders/CreateSalesOrder'), 'CreateSalesOrder');
+  const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
   () => import('../features/jobwork/processes/ProcessesList'),
   'ProcessesList',
@@ -419,6 +421,15 @@ export const router = createBrowserRouter([
                     element: <CreatePurchaseOrder />,
                   },
                   { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
+                  { path: '/organizations/:orgId/sales/sales-orders', element: <SalesOrdersList /> },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders/new',
+                    element: <CreateSalesOrder />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders/:id/edit',
+                    element: <CreateSalesOrder />,
+                  },
                   {
                     path: '/organizations/:orgId/sales/customers/new',
                     element: <CreateCustomer />,
