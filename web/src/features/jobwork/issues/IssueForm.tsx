@@ -270,7 +270,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
   const ownerPartyId =
     jobOrder.ownership === 'customer' ? (jobOrder.ownerPartyId ?? undefined) : undefined;
 
-  const { data: locations = [] } = useQuery({
+  const { data: locations = [], isLoading: locationsLoading } = useQuery({
     queryKey: ['stock-locations', orgId, inputItemIds, jobOrder.ownership, ownerPartyId],
     queryFn: () =>
       fetchStockLocations(orgId!, {
@@ -391,7 +391,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
   const sourceOptions = sourceKind === 'vendor' ? processorSourceOptions : ownSourceOptions;
 
-  const effectiveSourceId = sourceLocationId || (sourceOptions[0]?.value ?? '');
+  // Wait for the ledger list: the allLocations fallback is usually cached, so without
+  // this the plan seed runs once against the wrong godown and never retries.
+  const effectiveSourceId =
+    sourceLocationId || (locationsLoading ? '' : (sourceOptions[0]?.value ?? ''));
   const sourceLocationName =
     allLocations.find((l) => l.id === effectiveSourceId)?.name ??
     locations.find((l) => l.id === effectiveSourceId)?.name ??
