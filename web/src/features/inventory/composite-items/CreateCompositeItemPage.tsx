@@ -1727,64 +1727,7 @@ export function CreateCompositeItemPage({
                 </div>
               </div>
 
-              {formData.inventoryTracking === 'none' && (
-                <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <label
-                      style={{
-                        fontSize: 13,
-                        color: '#4b5563',
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Opening Stock
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="openingStock"
-                      value={formData.openingStock ?? ''}
-                      onChange={handleChange}
-                      style={{
-                        width: '140px',
-                        height: '36px',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #d1d5db',
-                        fontSize: 13,
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <label
-                      style={{
-                        fontSize: 13,
-                        color: '#4b5563',
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Value of Opening Stock (per quantity)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="openingStockValuePerUnit"
-                      value={formData.openingStockValuePerUnit ?? ''}
-                      onChange={handleChange}
-                      style={{
-                        width: '140px',
-                        height: '36px',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #d1d5db',
-                        fontSize: 13,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
+
             </div>
           </div>
 

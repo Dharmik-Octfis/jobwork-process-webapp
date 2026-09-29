@@ -59,6 +59,7 @@ export function CustomerForm({
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false);
   const [masterData, setMasterData] = useState<MasterData | null>(null);
+  const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
 
   const queryClient = useQueryClient();
 
@@ -263,6 +264,31 @@ export function CustomerForm({
 
       <div className={isModal ? '' : 'page-body'}>
       <form id="customer-form" style={{ maxWidth: '900px' }} onSubmit={handleSubmit((data) => {
+        let hasErrors = false;
+        const newLocalCustomFieldErrors: Record<string, string> = {};
+
+        customFields.forEach((field) => {
+          if (field.isRequired) {
+            const value = data.customFields?.[field.key];
+            if (
+              value === undefined ||
+              value === null ||
+              value === '' ||
+              (Array.isArray(value) && value.length === 0)
+            ) {
+              newLocalCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+              hasErrors = true;
+            }
+          }
+        });
+
+        setLocalCustomFieldErrors(newLocalCustomFieldErrors);
+
+        if (hasErrors) {
+          setActiveTab('custom');
+          return;
+        }
+
         const cleanedData = {
           ...data,
           contactPersons: data.contactPersons?.filter(cp => 
@@ -940,7 +966,7 @@ export function CustomerForm({
               entityType="customer"
               values={(watch('customFields') as Record<string, unknown>) ?? {}}
               onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
-              errors={customFieldErrors}
+              errors={{ ...customFieldErrors, ...localCustomFieldErrors }}
               applyDefaults={!isEdit}
             />
           )}

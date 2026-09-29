@@ -20,6 +20,8 @@ import { CustomerActivityTimeline } from './CustomerActivityTimeline';
 import { CustomerComments } from './CustomerComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
 interface CustomerDetailProps {
   customerId: string;
@@ -41,6 +43,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const [isOtherDetailsOpen, setIsOtherDetailsOpen] = useState(true);
   const [isAddressOpen, setIsAddressOpen] = useState(true);
   const [isContactPersonOpen, setIsContactPersonOpen] = useState(true);
+  const [isCustomFieldsOpen, setIsCustomFieldsOpen] = useState(true);
   const [isContactSettingsOpen, setIsContactSettingsOpen] = useState(false);
   const [hoveredContactSetting, setHoveredContactSetting] = useState<'Edit' | 'Delete'>('Edit');
   const [isPrimaryContactModalOpen, setIsPrimaryContactModalOpen] = useState(false);
@@ -82,6 +85,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     queryFn: () => fetchCustomerActivities(orgId!, customerId),
     enabled: Boolean(orgId && customerId),
   });
+
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'customer');
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteCustomer(orgId!, customerId),
@@ -1184,6 +1189,53 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                   </div>
                 )}
               </div>
+
+              {customFieldDefs.length > 0 && (
+                <div>
+                  <div
+                    onClick={() => setIsCustomFieldsOpen(!isCustomFieldsOpen)}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      paddingTop: '10px',
+                      paddingBottom: '8px',
+                      marginBottom: isCustomFieldsOpen ? '12px' : 0,
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div
+                      style={{
+                        ...sectionHeaderStyle,
+                        borderBottom: 'none',
+                        marginBottom: 0,
+                        paddingBottom: 0,
+                      }}
+                    >
+                      Custom Fields
+                    </div>
+                    {isCustomFieldsOpen ? (
+                      <ChevronUp size={16} color="#0062ff" />
+                    ) : (
+                      <ChevronDown size={16} color="#0062ff" />
+                    )}
+                  </div>
+
+                  {isCustomFieldsOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {customFieldDefs.map((def) => (
+                        <div key={def.id}>
+                          <div style={labelStyle}>{def.label}</div>
+                          <div style={valueStyle}>
+                            {formatCustomFieldValue(customer.customFields?.[def.key], def) || '-'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <div

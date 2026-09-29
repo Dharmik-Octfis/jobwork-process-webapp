@@ -1016,6 +1016,7 @@ export function CreateAssemblyPage() {
                           <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
                             <ItemComboBox
                               orgId={orgId!}
+                              portal={true}
                               filter="goods"
                               value={item.itemId}
                               onChange={(opt) => {
@@ -1335,6 +1336,7 @@ export function CreateAssemblyPage() {
                             <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
                               <ItemComboBox
                                 orgId={orgId!}
+                                portal={true}
                                 filter="services"
                                 value={svc.itemId}
                                 onChange={(item) => {

@@ -1252,12 +1252,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       flexDirection: 'column',
                       gap: 14,
                       paddingTop: 8,
-                      borderTop: '1px solid #e2e8f0',
+                      marginLeft: 22,
                     }}
                   >
                     <div
-                      className="form-field-grid"
-                      style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 24 }}
                     >
                       <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Inventory Tracking
@@ -1302,62 +1301,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       </div>
                     </div>
 
-                    {formData.inventoryTracking === 'none' && (
-                      <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <label
-                            style={{
-                              fontSize: 13,
-                              color: '#4b5563',
-                              fontWeight: 500,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Opening Stock
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            name="openingStock"
-                            value={formData.openingStock ?? ''}
-                            onChange={handleChange}
-                            style={{
-                              width: '140px',
-                              padding: '8px 12px',
-                              borderRadius: '4px',
-                              border: '1px solid #d1d5db',
-                              fontSize: 13,
-                            }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <label
-                            style={{
-                              fontSize: 13,
-                              color: '#4b5563',
-                              fontWeight: 500,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Value of Opening Stock (per quantity)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            name="openingStockValuePerUnit"
-                            value={formData.openingStockValuePerUnit ?? ''}
-                            onChange={handleChange}
-                            style={{
-                              width: '140px',
-                              padding: '8px 12px',
-                              borderRadius: '4px',
-                              border: '1px solid #d1d5db',
-                              fontSize: 13,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
+
                   </div>
                 )}
               </div>
