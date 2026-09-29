@@ -887,7 +887,7 @@ export function CreateBill() {
               <div>
                 <input type="hidden" {...register('vendorId', { required: true })} />
                 <SearchableSelect
-                  options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
+                  options={vendors.filter((v) => v.status !== 'inactive' || v.id === watch('vendorId')).map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
                   onChange={(val) => {
                     setValue('vendorId', val, { shouldValidate: true });
@@ -985,7 +985,7 @@ export function CreateBill() {
 
               <label style={labelStyle}>Location</label>
               <SearchableSelect
-                options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
+                options={locations.filter((l: Location) => l.isActive !== false || l.id === watch('locationId')).map((l: Location) => ({ label: l.name, value: l.id }))}
                 value={watch('locationId') || undefined}
                 onChange={(val) => setValue('locationId', val)}
                 placeholder="Select Location"

@@ -706,7 +706,7 @@ export function CreatePurchaseOrder() {
               <div>
                 <input type="hidden" {...register('vendorId', { required: true })} />
                 <SearchableSelect
-                  options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
+                  options={vendors.filter(v => v.status !== 'inactive' || v.id === watch('vendorId')).map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
                   onChange={(val) => setValue('vendorId', val, { shouldValidate: true })}
                   placeholder="Select a Vendor"
@@ -786,7 +786,7 @@ export function CreatePurchaseOrder() {
 
               <label style={labelStyle}>Location</label>
               <SearchableSelect
-                options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
+                options={locations.filter((l: Location) => l.isActive !== false || l.id === watch('locationId')).map((l: Location) => ({ label: l.name, value: l.id }))}
                 value={watch('locationId') || undefined}
                 onChange={(val) => setValue('locationId', val)}
                 placeholder="Select Location"
@@ -868,7 +868,7 @@ export function CreatePurchaseOrder() {
                 {watchDeliveryType === 'Location' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <SearchableSelect
-                      options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
+                      options={locations.filter((l: Location) => l.isActive !== false || l.id === watch('deliveryLocationId')).map((l: Location) => ({ label: l.name, value: l.id }))}
                       value={watch('deliveryLocationId') || undefined}
                       onChange={(val) => setValue('deliveryLocationId', val)}
                       placeholder="Select Location"
@@ -981,7 +981,7 @@ export function CreatePurchaseOrder() {
                 {watchDeliveryType === 'Customer' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <SearchableSelect
-                      options={customers.map((c: Customer) => ({
+                      options={customers.filter((c: Customer) => c.status !== 'inactive' || c.id === watchDeliveryCustomerId).map((c: Customer) => ({
                         label: c.contactName,
                         value: c.id,
                       }))}

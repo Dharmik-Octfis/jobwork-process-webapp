@@ -39,7 +39,7 @@ export function ItemSearchableSelect({
   className,
   dropdownWidth,
   portal = false,
-  filter,
+  filter = 'active',
   renderValue,
   keepOpenOnSelect = false,
   showIndicator = false,

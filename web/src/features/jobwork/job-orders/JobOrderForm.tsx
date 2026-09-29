@@ -569,7 +569,7 @@ export function JobOrderForm({
                       onChange={(value) => setOwnerPartyId(value || null)}
                       options={[
                         { value: '', label: 'Select a customer…' },
-                        ...customers.map((c) => ({
+                        ...customers.filter(c => c.status !== 'inactive' || c.id === watchCustomerId).map((c) => ({
                           value: c.id,
                           label: c.companyName || c.contactName,
                         })),

@@ -127,7 +127,7 @@ export function InventoryValuationSummaryPage() {
   const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
 
   const locationOptions = useMemo(
-    () => locations.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })),
+    () => locations.filter(loc => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })),
     [locations],
   );
 

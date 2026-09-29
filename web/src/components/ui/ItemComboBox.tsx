@@ -59,7 +59,7 @@ export function ItemComboBox({
   selectedImage,
   onOpenMultiSelect,
   footerAction,
-  filter,
+  filter = 'active',
   portal = false,
 }: ItemComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);

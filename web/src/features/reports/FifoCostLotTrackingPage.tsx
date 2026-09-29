@@ -179,7 +179,7 @@ export function FifoCostLotTrackingPage() {
   }
 
   const locationOptions =
-    locations?.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })) || [];
+    locations?.filter((loc) => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })) || [];
 
   const locationName = locations?.find((loc) => loc.id === locationId)?.name;
 
