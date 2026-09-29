@@ -24,6 +24,7 @@ import {
   UNALLOCATED_BATCH_STATE,
   type ResolvedBatches,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
+import { consumersOfEntries } from '../inventory/stock-ledger/costLayers.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
 import { SOURCE_DOC_TYPES } from '../jobwork/jobwork.types.ts';
 
@@ -179,6 +180,9 @@ interface OpeningPosition {
 }
 
 const ZERO = new Prisma.Decimal(0);
+
+/** Below this, a position's stated and posted value are the same rate — rounding, not an edit. */
+const VALUE_TOLERANCE = new Prisma.Decimal('0.01');
 
 /**
  * A transaction row's takas and the part of its quantity in none of them — the
@@ -378,9 +382,6 @@ export class ItemsService {
      */
     balances?: Map<string, Prisma.Decimal>,
   ) {
-    const delta = desiredQty.minus(position.qty);
-    if (delta.isZero()) return;
-
     const { organizationId, itemId, valuePerUnit, postedAt, userId } = context;
     const balanceKey = positionKey(position.batchId, position.batchUnitId, position.locationId);
     // The value already riding on this position, per unit — used when the form
@@ -389,7 +390,93 @@ export class ItemsService {
       ? position.value.dividedBy(position.qty)
       : new Prisma.Decimal(0);
 
-    if (delta.greaterThan(0)) {
+    /**
+     * 🔴 A CHANGED PER UNIT VALUE RESTATES THE WHOLE POSITION — the same rule as a
+     * bill's changed rate (FIFO_COSTING_PLAN.md D3). Until 2026-09-29 only the
+     * quantity was compared, so a value-only edit returned below having posted
+     * nothing: the form said 6500 while the ledger, its cost layer and every
+     * report still said 5000. It is taken back whole and received again at the new
+     * value, which is only sound while nothing of it has been used; once it has,
+     * it is refused by name — posted documents are never re-costed (D2).
+     */
+    const revalue =
+      valuePerUnit !== null &&
+      position.qty.greaterThan(0) &&
+      desiredQty.greaterThan(0) &&
+      position.qty.times(valuePerUnit).minus(position.value).abs().greaterThan(VALUE_TOLERANCE);
+    const delta = desiredQty.minus(position.qty);
+    if (delta.isZero() && !revalue) return;
+
+    // The reference, not the internal number — the user has to find this row on
+    // their own screen, where the number does not appear. A package says so by
+    // name, because "batch JV2" is not enough to find a row three levels down.
+    const label = position.unitLabel
+      ? `${position.unitLabel} (in batch ${position.batch.supplierBatchRef ?? 'unnamed'})`
+      : (position.batch.supplierBatchRef ?? 'This batch');
+
+    if (revalue) {
+      const users = await consumersOfEntries(tx, organizationId, position.inEntryIds, {
+        sourceDocType: OPENING_STOCK_SOURCE_DOC_TYPE,
+        sourceDocId: itemId,
+      });
+      if (users.length > 0) {
+        const location = await tx.location.findFirst({
+          where: { id: position.locationId, organizationId },
+          select: { name: true },
+        });
+        throw new ApiError(
+          409,
+          `The per unit value at ${location?.name ?? 'this location'} cannot change: this ` +
+            `opening stock is on the books at ${existingUnitValue.toDecimalPlaces(2).toString()} ` +
+            `per unit and has already been used by ${users.join(', ')}. Cancel that first, ` +
+            'change the value, then create it again.',
+          { openingStockValue: 'Value cannot change once stock is used.' },
+        );
+      }
+    }
+
+    const remove = revalue ? position.qty : delta.lessThan(0) ? delta.negated() : ZERO;
+    if (remove.greaterThan(0)) {
+      const availableQty =
+        balances?.get(balanceKey) ??
+        (
+          await getBalance(tx, {
+            organizationId,
+            batchId: position.batchId,
+            // 🔴 Scoped to THIS position, which for the untagged one means the
+            // untagged rows alone. Asking about the whole batch would let a
+            // reduction of the loose remainder be waived through on the strength
+            // of stock that is spoken for by a package — and `postMovement`'s own
+            // invariant would then refuse the post, further down, with a message
+            // about a rule the user never saw.
+            batchUnitId: position.batchUnitId,
+            locationId: position.locationId,
+          })
+        ).qty;
+      if (remove.greaterThan(availableQty)) {
+        if (revalue) {
+          throw new ApiError(
+            409,
+            `${label} has already moved — only ${availableQty.toString()} of it is still ` +
+              'here, so its per unit value cannot change. Cancel the documents that moved it ' +
+              'first, or leave the value as it is.',
+            { openingStockValue: `${label} has already moved.` },
+          );
+        }
+        const floor = position.qty.minus(availableQty);
+        throw ApiError.badRequest(
+          `${label} has already moved — only ${availableQty.toString()} of it is ` +
+            `still here, so its opening stock cannot go below ${floor.toString()}. ` +
+            'Cancel the documents that moved it first, or leave this row as it is.',
+          { batches: `${label} cannot go below ${floor.toString()}.` },
+        );
+      }
+      await this.withdrawOpening(tx, position, remove, context, batches);
+      balances?.set(balanceKey, availableQty.minus(remove));
+    }
+
+    const add = revalue ? desiredQty : delta.greaterThan(0) ? delta : ZERO;
+    if (add.greaterThan(0)) {
       const unit = valuePerUnit ?? existingUnitValue;
       const posted = await postMovement(
         tx,
@@ -399,8 +486,8 @@ export class ItemsService {
           batchUnitId: position.batchUnitId,
           locationId: position.locationId,
           movementType: 'opening',
-          qtyIn: delta,
-          valueIn: delta.times(unit),
+          qtyIn: add,
+          valueIn: add.times(unit),
           sourceDocType: 'item_opening_stock',
           sourceDocId: itemId,
           postedAt,
@@ -412,43 +499,18 @@ export class ItemsService {
       // seed the figure would add the query this argument exists to remove.
       const known = balances?.get(balanceKey);
       if (known) balances?.set(balanceKey, known.plus(posted.qtyIn));
-      return;
     }
+  }
 
-    const remove = delta.negated();
-    const availableQty =
-      balances?.get(balanceKey) ??
-      (
-        await getBalance(tx, {
-          organizationId,
-          batchId: position.batchId,
-          // 🔴 Scoped to THIS position, which for the untagged one means the
-          // untagged rows alone. Asking about the whole batch would let a
-          // reduction of the loose remainder be waived through on the strength
-          // of stock that is spoken for by a package — and `postMovement`'s own
-          // invariant would then refuse the post, further down, with a message
-          // about a rule the user never saw.
-          batchUnitId: position.batchUnitId,
-          locationId: position.locationId,
-        })
-      ).qty;
-    if (remove.greaterThan(availableQty)) {
-      const floor = position.qty.minus(availableQty);
-      // The reference, not the internal number — the user has to find this row on
-      // their own screen, where the number does not appear. A package says so by
-      // name, because "batch JV2" is not enough to find a row three levels down.
-      const label = position.unitLabel
-        ? `${position.unitLabel} (in batch ${position.batch.supplierBatchRef ?? 'unnamed'})`
-        : (position.batch.supplierBatchRef ?? 'This batch');
-      throw ApiError.badRequest(
-        `${label} has already moved — only ${availableQty.toString()} of it is ` +
-          `still here, so its opening stock cannot go below ${floor.toString()}. ` +
-          'Cancel the documents that moved it first, or leave this row as it is.',
-        { batches: `${label} cannot go below ${floor.toString()}.` },
-      );
-    }
-
-    const posted = await postMovement(
+  private async withdrawOpening(
+    tx: TenantClient,
+    position: OpeningPosition,
+    remove: Prisma.Decimal,
+    context: { organizationId: string; itemId: string; postedAt: Date; userId?: string },
+    batches?: ResolvedBatches,
+  ) {
+    const { organizationId, itemId, postedAt, userId } = context;
+    await postMovement(
       tx,
       {
         organizationId,
@@ -475,7 +537,6 @@ export class ItemsService {
       },
       batches,
     );
-    balances?.set(balanceKey, availableQty.minus(posted.qtyOut));
   }
 
   /**
@@ -2209,18 +2270,14 @@ export class ItemsService {
 
           const current = here.reduce((sum, p) => sum.plus(p.qty), new Prisma.Decimal(0));
           let remaining = declaredQty.minus(current);
+          // Every position is settled, not only the one whose quantity moves — a
+          // changed per unit value restates each of them (see `settleOpening`).
+          const desired = new Map(here.map((p) => [p, p.qty] as const));
 
           if (remaining.greaterThan(0)) {
             const top = here[0];
             if (top) {
-              await this.settleOpening(
-                tx,
-                top,
-                top.qty.plus(remaining),
-                settleContext,
-                settleBatches,
-                settleBalances,
-              );
+              desired.set(top, top.qty.plus(remaining));
             } else if (declaredQty.greaterThan(0)) {
               const batch = await createBatch(tx, {
                 organizationId,
@@ -2250,16 +2307,20 @@ export class ItemsService {
             for (const position of here) {
               if (remaining.greaterThanOrEqualTo(0)) break;
               const take = Prisma.Decimal.min(remaining.negated(), position.qty);
-              await this.settleOpening(
-                tx,
-                position,
-                position.qty.minus(take),
-                settleContext,
-                settleBatches,
-                settleBalances,
-              );
+              desired.set(position, position.qty.minus(take));
               remaining = remaining.plus(take);
             }
+          }
+
+          for (const position of here) {
+            await this.settleOpening(
+              tx,
+              position,
+              desired.get(position)!,
+              settleContext,
+              settleBatches,
+              settleBalances,
+            );
           }
         }
       }

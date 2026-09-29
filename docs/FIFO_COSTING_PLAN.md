@@ -247,7 +247,10 @@ Listed so they are decided on their own, not folded in:
    carry into a layer. Adding them — and spreading them across the bill's lines by value or quantity —
    is a feature of its own (Odoo's landed costs). _(The line discount half of this was taken into the
    plan, §5.1.)_
-2. **Opening stock value-only corrections post nothing** (the quantity delta is zero).
+2. ~~**Opening stock value-only corrections post nothing** (the quantity delta is zero).~~ **Fixed
+   2026-09-29** — a changed per unit value now follows the bill rule (§8 table): an unused position is
+   taken back whole and re-posted at the new value; a used one is refused, naming the document.
+   `settleOpening`; tests in `items.openingStock.test.ts` "changing the per unit value".
 3. **Receipt prefill prices at each challan's destination, the post at one processor location** — they
    disagree when a step's challans went to different places. FIFO removes the prefill's pricing (§5.2),
    so this closes as a side effect; listed only so nobody reintroduces it.
@@ -372,7 +375,9 @@ challans still open at deploy and re-issue the ones whose figures matter.
 
 ### Still open
 
-- **A used bill's rate/discount change** — see the table above; parked for its own session.
+- **A used bill's rate/discount change** — see the table above; parked for its own session. Opening
+  stock's per unit value is refused on the same terms (2026-09-29), so whatever is decided applies to
+  both.
 
 - **D2's screen message** — "a back-dated inward lands before already-costed outwards" — is not built.
 - **QC (`jobwork_dev`)**: `migrate deploy`, then `fifo-cutover.ts` (dry run, then `--apply`) must run
