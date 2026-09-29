@@ -7,6 +7,7 @@ interface PurchaseOrderNumberConfigModalProps {
   onSave: (prefix: string, nextNumber: string) => void;
   initialPrefix?: string;
   initialNextNumber?: string;
+  locationName?: string;
 }
 
 export function PurchaseOrderNumberConfigModal({
@@ -15,6 +16,7 @@ export function PurchaseOrderNumberConfigModal({
   onSave,
   initialPrefix = 'PO-',
   initialNextNumber = '00001',
+  locationName = 'Head Office',
 }: PurchaseOrderNumberConfigModalProps) {
   const [mode, setMode] = useState<'auto' | 'manual'>('auto');
   const [prefix, setPrefix] = useState(initialPrefix);
@@ -102,6 +104,24 @@ export function PurchaseOrderNumberConfigModal({
 
         {/* Body */}
         <div style={{ padding: '24px', color: '#334155' }}>
+          {/* Location info */}
+          <div
+            style={{
+              marginBottom: '20px',
+              paddingBottom: '14px',
+              borderBottom: '1px solid #f1f5f9',
+            }}
+          >
+            <div
+              style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}
+            >
+              Location
+            </div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
+              {locationName}
+            </div>
+          </div>
+
           <p
             style={{
               margin: '0 0 20px 0',
@@ -286,18 +306,21 @@ export function PurchaseOrderNumberConfigModal({
             onClick={handleSave}
             style={{
               padding: '7px 20px',
-              backgroundColor: '#10b981',
+              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
               color: '#ffffff',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '13px',
               fontWeight: 500,
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-              transition: 'background 0.15s ease',
+              boxShadow: '0 1px 2px rgba(2, 132, 199, 0.2)',
+              transition: 'all 0.15s ease',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#0369a1')}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background =
+                'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)')
+            }
           >
             Save
           </button>

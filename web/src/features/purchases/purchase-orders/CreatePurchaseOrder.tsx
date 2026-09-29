@@ -4,7 +4,6 @@ import { useNavigate, useLocation, useParams, useSearchParams } from 'react-rout
 import { AxiosError } from 'axios';
 import {
   Plus,
-  Trash2,
   Pencil,
   Settings,
   Mail,
@@ -14,11 +13,15 @@ import {
   Image,
   Upload,
   ChevronDown,
+  ChevronUp,
+  Calculator,
+  CheckCircle2,
   FileText,
   X,
   Search,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { organizationsApi } from '../../organizations/organizations.api';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
 import { DateInput } from '../../../components/ui/DateInput';
@@ -121,6 +124,12 @@ export function CreatePurchaseOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+
+  const { data: orgs } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => organizationsApi.list(),
+  });
+  const currentOrg = orgs?.find((o) => o.organizationId === orgId);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['purchaseOrder', orgId, poIdToFetch],
@@ -266,6 +275,9 @@ export function CreatePurchaseOrder() {
         if (cf.transactionDiscountType === 'fixed' || cf.transactionDiscountType === 'percentage') {
           setTransactionDiscountType(cf.transactionDiscountType);
         }
+        if (cf.reverseCharge !== undefined) {
+          setIsReverseCharge(Boolean(cf.reverseCharge));
+        }
       }
     }
   }, [existingPo, isClone, reset]);
@@ -303,6 +315,7 @@ export function CreatePurchaseOrder() {
 
   const [poPrefix, setPoPrefix] = useState('PO-');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
+  const [isGearTooltipOpen, setIsGearTooltipOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
   const [isEditingDeliveryName, setIsEditingDeliveryName] = useState(false);
@@ -329,9 +342,17 @@ export function CreatePurchaseOrder() {
   const taxMenuRef = useRef<HTMLDivElement>(null);
   const discountMenuRef = useRef<HTMLDivElement>(null);
 
-  const [submitStatus, setSubmitStatus] = useState<'Draft' | 'Issued' | 'Pending Approval'>(
-    'Draft',
-  );
+  const [submitStatus, setSubmitStatus] = useState<
+    'Draft' | 'Issued' | 'Approved' | 'Pending Approval'
+  >('Draft');
+
+  const [isSaveMenuOpen, setIsSaveMenuOpen] = useState(false);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
+
+  const [isReverseCharge, setIsReverseCharge] = useState(false);
+  const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
+  const [hideAdditionalInfo, setHideAdditionalInfo] = useState(false);
+  const bulkActionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -340,6 +361,12 @@ export function CreatePurchaseOrder() {
       }
       if (discountMenuRef.current && !discountMenuRef.current.contains(event.target as Node)) {
         setIsDiscountMenuOpen(false);
+      }
+      if (saveMenuRef.current && !saveMenuRef.current.contains(event.target as Node)) {
+        setIsSaveMenuOpen(false);
+      }
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
+        setIsBulkActionsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -419,12 +446,14 @@ export function CreatePurchaseOrder() {
 
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
+  let computedTotalQuantity = 0;
 
   (watchItems || []).forEach((item: PurchaseOrderItem) => {
     const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
     const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
     const basePrice = qty * rate;
     computedSubTotal += basePrice;
+    computedTotalQuantity += qty;
 
     if (discountLevel === 'line_item') {
       const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
@@ -550,6 +579,7 @@ export function CreatePurchaseOrder() {
         discountLevel,
         transactionDiscountValue: transactionDiscountValue ? Number(transactionDiscountValue) : 0,
         transactionDiscountType,
+        reverseCharge: isReverseCharge,
       },
     };
     console.log('Submitting PO data:', finalData);
@@ -813,22 +843,32 @@ export function CreatePurchaseOrder() {
                 </div>
 
                 {watchDeliveryType === 'Location' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <SearchableSelect
+                      options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
+                      value={watchDeliveryLocationId || undefined}
+                      onChange={(val) =>
+                        setValue('deliveryLocationId', val, { shouldValidate: true })
+                      }
+                      placeholder="Select Location"
+                      style={searchableSelectStyle}
+                    />
+
                     {selectedLocation ? (
                       <div
                         style={{
                           padding: '4px 0',
-                          color: '#555',
+                          color: '#475569',
                           fontSize: '13px',
                           lineHeight: '1.6',
                         }}
                       >
                         <div
                           style={{
-                            fontWeight: 500,
+                            fontWeight: 600,
                             fontSize: '14px',
-                            marginBottom: '8px',
-                            color: '#111',
+                            marginBottom: '6px',
+                            color: '#0f172a',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
@@ -886,22 +926,36 @@ export function CreatePurchaseOrder() {
                             </>
                           )}
                         </div>
+                        {selectedLocation.street1 && (
+                          <div>
+                            {selectedLocation.street1} {selectedLocation.street2 || ''}
+                          </div>
+                        )}
                         <div>
-                          {selectedLocation.street1} {selectedLocation.street2}
+                          {[selectedLocation.city, selectedLocation.state]
+                            .filter(Boolean)
+                            .join(', ')}
                         </div>
                         <div>
-                          {selectedLocation.city}, {selectedLocation.state}
+                          {[selectedLocation.country, selectedLocation.zip]
+                            .filter(Boolean)
+                            .join(' , ')}
                         </div>
-                        <div>
-                          {selectedLocation.country}, {selectedLocation.zip}
-                        </div>
+                        {(selectedLocation.phone ||
+                          (currentOrg as unknown as { phone?: string })?.phone) && (
+                          <div>
+                            {selectedLocation.phone ||
+                              (currentOrg as unknown as { phone?: string })?.phone}
+                          </div>
+                        )}
                         <div
                           style={{
-                            marginTop: '12px',
+                            marginTop: '10px',
                             color: '#0284c7',
                             cursor: 'pointer',
                             display: 'inline-block',
                             fontWeight: 500,
+                            fontSize: '13px',
                           }}
                           onClick={() => setIsDeliveryAddressModalOpen(true)}
                         >
@@ -1046,27 +1100,78 @@ export function CreatePurchaseOrder() {
               <label style={{ ...labelStyle, color: '#ef4444' }}>Purchase Order#*</label>
               <div>
                 <div
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}
+                  style={{
+                    position: 'relative',
+                    maxWidth: '440px',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
                 >
                   <input
                     type="text"
                     {...register('poNumber', { required: true })}
-                    style={{ ...inputStyle, flex: 1 }}
+                    style={{
+                      ...inputStyle,
+                      maxWidth: '100%',
+                      paddingRight: '38px',
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => setIsNumberConfigOpen(true)}
+                    onMouseEnter={() => setIsGearTooltipOpen(true)}
+                    onMouseLeave={() => setIsGearTooltipOpen(false)}
                     style={{
+                      position: 'absolute',
+                      right: '8px',
                       background: 'none',
                       border: 'none',
-                      color: '#888',
+                      color: '#0284c7',
                       cursor: 'pointer',
                       padding: '4px',
                       display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '4px',
+                      transition: 'all 0.15s ease',
                     }}
                   >
-                    <Settings size={18} />
+                    <Settings size={17} />
                   </button>
+
+                  {isGearTooltipOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 'calc(100% + 8px)',
+                        right: 0,
+                        background: '#0f172a',
+                        color: '#ffffff',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        zIndex: 60,
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.15)',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      Click here to enable or disable auto-generation of Purchase Order number
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: '12px',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '5px solid transparent',
+                          borderRight: '5px solid transparent',
+                          borderTop: '5px solid #0f172a',
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 {errors.poNumber && (
                   <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
@@ -1153,6 +1258,36 @@ export function CreatePurchaseOrder() {
             </div>
           </div>
 
+          {/* Reverse Charge Checkbox */}
+          <div
+            style={{
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <input
+              type="checkbox"
+              id="reverse-charge-checkbox"
+              checked={isReverseCharge}
+              onChange={(e) => setIsReverseCharge(e.target.checked)}
+              style={{
+                width: '16px',
+                height: '16px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                accentColor: '#0284c7',
+              }}
+            />
+            <label
+              htmlFor="reverse-charge-checkbox"
+              style={{ fontSize: '13px', color: '#334155', cursor: 'pointer', fontWeight: 500 }}
+            >
+              This transaction is applicable for reverse charge
+            </label>
+          </div>
+
           {/* Items Table Section */}
           <div
             style={{
@@ -1164,24 +1299,41 @@ export function CreatePurchaseOrder() {
               overflow: 'visible',
             }}
           >
+            {/* Top Toolbar */}
             <div
               style={{
-                padding: '12px 20px',
+                padding: '10px 16px',
                 borderBottom: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                fontWeight: 600,
-                fontSize: '14px',
-                color: '#1e293b',
+                background: '#ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 borderTopLeftRadius: '8px',
                 borderTopRightRadius: '8px',
+                gap: '12px',
+                flexWrap: 'wrap',
               }}
             >
-              <span>Item Details</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                {/* Warehouse Location */}
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12.5px',
+                    color: '#475569',
+                  }}
+                >
+                  <span>Warehouse Location</span>
+                  <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                    {selectedLocation?.name || 'Head Office'}
+                  </span>
+                  <ChevronDown size={14} color="#64748b" />
+                </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ height: '14px', width: '1px', background: '#e2e8f0' }} />
+
                 {/* Tax Preference Dropdown */}
                 <div ref={taxMenuRef} style={{ position: 'relative' }}>
                   <button
@@ -1217,7 +1369,7 @@ export function CreatePurchaseOrder() {
                       style={{
                         position: 'absolute',
                         top: 'calc(100% + 4px)',
-                        right: 0,
+                        left: 0,
                         width: '200px',
                         background: '#ffffff',
                         border: '1px solid #e2e8f0',
@@ -1336,7 +1488,7 @@ export function CreatePurchaseOrder() {
                       style={{
                         position: 'absolute',
                         top: 'calc(100% + 4px)',
-                        right: 0,
+                        left: 0,
                         width: '210px',
                         background: '#ffffff',
                         border: '1px solid #e2e8f0',
@@ -1417,12 +1569,146 @@ export function CreatePurchaseOrder() {
                     </div>
                   )}
                 </div>
+
+                {/* Select Price List */}
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 12px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    color: '#475569',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FileText size={13} color="#64748b" />
+                  <span>Select Price List</span>
+                  <ChevronDown size={14} color="#64748b" />
+                </div>
+              </div>
+
+              {/* Bulk Actions Button */}
+              <div ref={bulkActionsRef} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkActionsOpen((prev) => !prev)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 12px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#0284c7',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                  }}
+                >
+                  <CheckCircle2 size={14} color="#0284c7" />
+                  <span>Bulk Actions</span>
+                  <ChevronDown size={14} color="#0284c7" />
+                </button>
+
+                {isBulkActionsOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      right: 0,
+                      width: '220px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      zIndex: 60,
+                      padding: '4px',
+                    }}
+                  >
+                    <div
+                      onClick={() => {
+                        setIsBulkActionsOpen(false);
+                        setMultiSelectTargetIndex(
+                          itemFields.length > 0 ? itemFields.length - 1 : 0,
+                        );
+                        setIsMultiSelectItemModalOpen(true);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '12px',
+                        color: '#1e293b',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#0284c7';
+                        e.currentTarget.style.color = '#ffffff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#1e293b';
+                      }}
+                    >
+                      Bulk Update Line Items
+                    </div>
+                    <div
+                      onClick={() => {
+                        setHideAdditionalInfo((prev) => !prev);
+                        setIsBulkActionsOpen(false);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '12px',
+                        color: '#1e293b',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#0284c7';
+                        e.currentTarget.style.color = '#ffffff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#1e293b';
+                      }}
+                    >
+                      {hideAdditionalInfo
+                        ? 'Show All Additional Information'
+                        : 'Hide All Additional Information'}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="responsive-table-wrapper">
+
+            {/* Subheader: Item Table */}
+            <div
+              style={{
+                padding: '10px 16px',
+                borderBottom: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                fontWeight: 600,
+                fontSize: '13.5px',
+                color: '#1e293b',
+              }}
+            >
+              Item Table
+            </div>
+
+            <div className="responsive-table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
               <table
                 style={{
                   width: '100%',
+                  minWidth: '1250px',
                   tableLayout: 'fixed',
                   borderCollapse: 'collapse',
                   fontSize: '13px',
@@ -1435,14 +1721,14 @@ export function CreatePurchaseOrder() {
                       color: '#475569',
                       fontSize: '11px',
                       fontWeight: 600,
-                      letterSpacing: '0.05em',
+                      letterSpacing: '0.04em',
                       textAlign: 'left',
                     }}
                   >
                     <th
                       style={{
-                        padding: '10px 16px',
-                        width: discountLevel === 'line_item' ? '34%' : '38%',
+                        padding: '10px 14px',
+                        width: '26%',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
                       }}
@@ -1451,8 +1737,60 @@ export function CreatePurchaseOrder() {
                     </th>
                     <th
                       style={{
-                        padding: '10px 16px',
-                        width: discountLevel === 'line_item' ? '13%' : '16%',
+                        padding: '10px 12px',
+                        width: '12%',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                      }}
+                    >
+                      ACCOUNT
+                    </th>
+                    <th
+                      style={{
+                        padding: '10px 10px',
+                        width: '9%',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                      }}
+                    >
+                      PO STATUS
+                    </th>
+                    <th
+                      style={{
+                        padding: '10px 12px',
+                        width: '11%',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                      }}
+                    >
+                      PO
+                    </th>
+                    <th
+                      style={{
+                        padding: '10px 10px',
+                        width: '8%',
+                        textAlign: 'right',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                      }}
+                    >
+                      TOTAL WEIGHT
+                    </th>
+                    <th
+                      style={{
+                        padding: '10px 10px',
+                        width: '9%',
+                        textAlign: 'right',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                      }}
+                    >
+                      COST PRICE
+                    </th>
+                    <th
+                      style={{
+                        padding: '10px 12px',
+                        width: '9%',
                         textAlign: 'right',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
@@ -1462,20 +1800,30 @@ export function CreatePurchaseOrder() {
                     </th>
                     <th
                       style={{
-                        padding: '10px 16px',
-                        width: discountLevel === 'line_item' ? '16%' : '20%',
+                        padding: '10px 12px',
+                        width: '11%',
                         textAlign: 'right',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
                       }}
                     >
-                      RATE
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          justifyContent: 'flex-end',
+                        }}
+                      >
+                        <span>RATE</span>
+                        <Calculator size={13} color="#64748b" />
+                      </div>
                     </th>
-                    {discountLevel === 'line_item' && (
+                    {discountLevel === 'line_item' ? (
                       <th
                         style={{
-                          padding: '10px 16px',
-                          width: '16%',
+                          padding: '10px 12px',
+                          width: '11%',
                           textAlign: 'right',
                           borderBottom: '1px solid #e2e8f0',
                           borderRight: '1px solid #e2e8f0',
@@ -1483,11 +1831,23 @@ export function CreatePurchaseOrder() {
                       >
                         DISCOUNT
                       </th>
+                    ) : (
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          width: '10%',
+                          textAlign: 'left',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                        }}
+                      >
+                        TAX
+                      </th>
                     )}
                     <th
                       style={{
-                        padding: '10px 16px',
-                        width: discountLevel === 'line_item' ? '16%' : '20%',
+                        padding: '10px 14px',
+                        width: '10%',
                         textAlign: 'right',
                         borderBottom: '1px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
@@ -1497,8 +1857,8 @@ export function CreatePurchaseOrder() {
                     </th>
                     <th
                       style={{
-                        padding: '10px 12px',
-                        width: '5%',
+                        padding: '10px 8px',
+                        width: '4%',
                         textAlign: 'center',
                         borderBottom: '1px solid #e2e8f0',
                       }}
@@ -1536,15 +1896,16 @@ export function CreatePurchaseOrder() {
                           zIndex: itemFields.length - index + 2,
                         }}
                       >
+                        {/* ITEM DETAILS */}
                         <td
                           style={{
-                            padding: '14px 16px',
+                            padding: '12px 14px',
                             verticalAlign: 'top',
                             borderBottom: '1px solid #e2e8f0',
                             borderRight: '1px solid #e2e8f0',
                           }}
                         >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <ItemComboBox
                                 orgId={orgId!}
@@ -1571,25 +1932,28 @@ export function CreatePurchaseOrder() {
                                     shouldValidate: true,
                                   });
                                   setValue(`lineItems.${index}.item`, val);
-                                  const selected = val;
-                                  if (selected) {
+                                  if (val) {
                                     setValue(
                                       `lineItems.${index}.rate`,
-                                      (selected.costPrice ||
-                                        selected.sellingPrice ||
+                                      (val.costPrice ||
+                                        val.sellingPrice ||
                                         '') as unknown as number,
+                                    );
+                                    setValue(
+                                      `lineItems.${index}.costPrice`,
+                                      (val.costPrice || '') as unknown as number,
                                     );
                                     setValue(`lineItems.${index}.quantity`, 1 as unknown as number);
                                     setValue(
                                       `lineItems.${index}.description`,
-                                      selected.purchaseDescription ||
-                                        selected.purchaseDescription ||
-                                        selected.salesDescription ||
-                                        selected.salesDescription ||
-                                        '',
+                                      val.purchaseDescription || val.salesDescription || '',
                                     );
                                   } else {
                                     setValue(`lineItems.${index}.rate`, '' as unknown as number);
+                                    setValue(
+                                      `lineItems.${index}.costPrice`,
+                                      '' as unknown as number,
+                                    );
                                     setValue(
                                       `lineItems.${index}.quantity`,
                                       '' as unknown as number,
@@ -1610,72 +1974,300 @@ export function CreatePurchaseOrder() {
                               />
                             </div>
 
-                            {/* Description Field - only shown when an item is selected */}
                             {selectedItem && (
-                              <textarea
-                                {...register(`lineItems.${index}.description`)}
-                                placeholder="Add a description to your item"
-                                rows={2}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 12px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #e2e8f0',
-                                  background: '#f8fafc',
-                                  fontSize: '12px',
-                                  color: '#334155',
-                                  resize: 'vertical',
-                                  outline: 'none',
-                                  fontFamily: 'inherit',
-                                  boxSizing: 'border-box',
-                                }}
-                              />
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                SKU: {selectedItem.sku || selectedItem.id?.slice(0, 6) || '-'}
+                              </div>
                             )}
 
-                            {/* Badges: GOODS / SERVICES + HSN Code */}
-                            {selectedItem && (
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  fontSize: '11px',
-                                  marginTop: '2px',
-                                }}
-                              >
-                                <span
+                            {/* Additional Info: Description, Badges, Footer links */}
+                            {selectedItem && !hideAdditionalInfo && (
+                              <>
+                                <textarea
+                                  {...register(`lineItems.${index}.description`)}
+                                  placeholder="Add a description to your item"
+                                  rows={2}
                                   style={{
-                                    background: '#0284c7',
-                                    color: '#ffffff',
-                                    padding: '3px 8px',
-                                    borderRadius: '3px',
-                                    fontWeight: 700,
-                                    fontSize: '10px',
-                                    letterSpacing: '0.04em',
-                                    textTransform: 'uppercase',
+                                    width: '100%',
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #e2e8f0',
+                                    background: '#f8fafc',
+                                    fontSize: '12px',
+                                    color: '#334155',
+                                    resize: 'vertical',
+                                    outline: 'none',
+                                    fontFamily: 'inherit',
+                                    boxSizing: 'border-box',
+                                  }}
+                                />
+
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    fontSize: '11px',
                                   }}
                                 >
-                                  {selectedItem.type || 'GOODS'}
-                                </span>
-                                {selectedItem.hsnCode && (
+                                  <span
+                                    style={{
+                                      background:
+                                        selectedItem.type === 'service' ? '#16a34a' : '#0284c7',
+                                      color: '#ffffff',
+                                      padding: '2px 6px',
+                                      borderRadius: '3px',
+                                      fontWeight: 700,
+                                      fontSize: '10px',
+                                      letterSpacing: '0.04em',
+                                      textTransform: 'uppercase',
+                                    }}
+                                  >
+                                    {selectedItem.type === 'service' ? 'SERVICE' : 'GOODS'}
+                                  </span>
                                   <span style={{ color: '#475569', fontWeight: 500 }}>
-                                    HSN Code:{' '}
-                                    <span style={{ color: '#0284c7', fontWeight: 600 }}>
-                                      {selectedItem.hsnCode}
+                                    {selectedItem.type === 'service' ? 'SAC' : 'HSN'}:{' '}
+                                    <span
+                                      style={{
+                                        color: '#0284c7',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      {selectedItem.hsnCode || selectedItem.sacCode || 'Update'}
                                     </span>
                                   </span>
-                                )}
-                              </div>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '11px',
+                                    color: '#64748b',
+                                    marginTop: '2px',
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    💼 Select a project ▾
+                                  </span>
+                                  <span
+                                    style={{
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    🏷️ Reporting Tags ▾
+                                  </span>
+                                  <span
+                                    style={{
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    ⚙️ Custom Fields ▾
+                                  </span>
+                                </div>
+                              </>
                             )}
                           </div>
                         </td>
+
+                        {/* ACCOUNT */}
                         <td
                           style={{
-                            padding: '14px 16px',
+                            padding: '12px 10px',
                             verticalAlign: 'top',
                             borderBottom: '1px solid #e2e8f0',
                             borderRight: '1px solid #e2e8f0',
-                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <select
+                            {...register(`lineItems.${index}.account`)}
+                            defaultValue="Packaging"
+                            style={{
+                              width: '100%',
+                              padding: '7px 8px',
+                              fontSize: '12px',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '6px',
+                              background: '#ffffff',
+                              color: '#1e293b',
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="Packaging">Packaging</option>
+                            <option value="Cost of Goods Sold">Cost of Goods Sold</option>
+                            <option value="Purchase Account">Purchase Account</option>
+                            <option value="Raw Materials">Raw Materials</option>
+                            <option value="Operating Expenses">Operating Expenses</option>
+                            <option value="Office Supplies">Office Supplies</option>
+                            <option value="Jobwork Expenses">Jobwork Expenses</option>
+                          </select>
+                        </td>
+
+                        {/* PO STATUS */}
+                        <td
+                          style={{
+                            padding: '12px 8px',
+                            verticalAlign: 'top',
+                            borderBottom: '1px solid #e2e8f0',
+                            borderRight: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <select
+                            {...register(`lineItems.${index}.itemPoStatus`)}
+                            style={{
+                              width: '100%',
+                              padding: '7px 6px',
+                              fontSize: '12px',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '6px',
+                              background: '#ffffff',
+                              color: '#1e293b',
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">-</option>
+                            <option value="Open">Open</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Issued">Issued</option>
+                            <option value="Closed">Closed</option>
+                            <option value="Billed">Billed</option>
+                            <option value="Received">Received</option>
+                          </select>
+                        </td>
+
+                        {/* PO (Linked Sales Order) */}
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            verticalAlign: 'top',
+                            borderBottom: '1px solid #e2e8f0',
+                            borderRight: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <input
+                            type="text"
+                            {...register(`lineItems.${index}.linkedSalesOrderId`)}
+                            placeholder="Click to select Sales Order"
+                            style={{
+                              width: '100%',
+                              padding: '7px 8px',
+                              fontSize: '11.5px',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px',
+                              background: '#f8fafc',
+                              color: '#334155',
+                              outline: 'none',
+                            }}
+                          />
+                        </td>
+
+                        {/* TOTAL WEIGHT */}
+                        <td
+                          style={{
+                            padding: '12px 8px',
+                            verticalAlign: 'top',
+                            borderBottom: '1px solid #e2e8f0',
+                            borderRight: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            {...register(`lineItems.${index}.totalWeight`, {
+                              valueAsNumber: true,
+                            })}
+                            style={{
+                              width: '100%',
+                              padding: '7px 8px',
+                              fontSize: '12px',
+                              textAlign: 'right',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '6px',
+                              background: '#ffffff',
+                              color: '#1e293b',
+                              outline: 'none',
+                            }}
+                          />
+                        </td>
+
+                        {/* COST PRICE */}
+                        <td
+                          style={{
+                            padding: '12px 8px',
+                            verticalAlign: 'top',
+                            borderBottom: '1px solid #e2e8f0',
+                            borderRight: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '6px',
+                              overflow: 'hidden',
+                              background: '#fff',
+                            }}
+                          >
+                            <span
+                              style={{
+                                padding: '6px 5px',
+                                background: '#f8fafc',
+                                borderRight: '1px solid #e2e8f0',
+                                fontSize: '10.5px',
+                                color: '#64748b',
+                                fontWeight: 600,
+                              }}
+                            >
+                              INR
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...register(`lineItems.${index}.costPrice`, {
+                                valueAsNumber: true,
+                              })}
+                              style={{
+                                width: '100%',
+                                padding: '7px 6px',
+                                fontSize: '12px',
+                                textAlign: 'right',
+                                border: 'none',
+                                background: '#ffffff',
+                                color: '#1e293b',
+                                outline: 'none',
+                              }}
+                            />
+                          </div>
+                        </td>
+
+                        {/* QUANTITY */}
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            verticalAlign: 'top',
+                            borderBottom: '1px solid #e2e8f0',
+                            borderRight: '1px solid #e2e8f0',
                           }}
                         >
                           <input
@@ -1688,22 +2280,52 @@ export function CreatePurchaseOrder() {
                               min: 0.01,
                             })}
                             style={{
-                              ...inputStyle,
                               width: '100%',
-                              maxWidth: '100%',
-                              boxSizing: 'border-box',
+                              padding: '7px 8px',
+                              fontSize: '12px',
                               textAlign: 'right',
+                              border: '1px solid #d1d5db',
                               borderRadius: '6px',
+                              background: '#ffffff',
+                              color: '#1e293b',
+                              outline: 'none',
                             }}
                           />
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: '#64748b',
+                              textAlign: 'right',
+                              marginTop: '3px',
+                            }}
+                          >
+                            {selectedItem?.unit || 'kg'}
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
+                              gap: '4px',
+                              fontSize: '11px',
+                              color: '#0284c7',
+                              marginTop: '4px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span>🏢</span>
+                            <span>{selectedLocation?.name || 'Head Office'}</span>
+                            <span>▾</span>
+                          </div>
                         </td>
+
+                        {/* RATE */}
                         <td
                           style={{
-                            padding: '14px 16px',
+                            padding: '12px 10px',
                             verticalAlign: 'top',
                             borderBottom: '1px solid #e2e8f0',
                             borderRight: '1px solid #e2e8f0',
-                            boxSizing: 'border-box',
                           }}
                         >
                           <input
@@ -1716,23 +2338,59 @@ export function CreatePurchaseOrder() {
                               min: 0,
                             })}
                             style={{
-                              ...inputStyle,
                               width: '100%',
-                              maxWidth: '100%',
-                              boxSizing: 'border-box',
+                              padding: '7px 8px',
+                              fontSize: '12px',
                               textAlign: 'right',
+                              border: '1px solid #d1d5db',
                               borderRadius: '6px',
+                              background: '#ffffff',
+                              color: '#1e293b',
+                              outline: 'none',
                             }}
                           />
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: '#64748b',
+                              textAlign: 'right',
+                              marginTop: '3px',
+                            }}
+                          >
+                            per {selectedItem?.unit || 'kg'}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: '#64748b',
+                              textAlign: 'right',
+                              marginTop: '4px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Apply Price List ▾
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: '#0284c7',
+                              textAlign: 'right',
+                              marginTop: '2px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Recent Transactions
+                          </div>
                         </td>
-                        {discountLevel === 'line_item' && (
+
+                        {/* TAX / DISCOUNT */}
+                        {discountLevel === 'line_item' ? (
                           <td
                             style={{
-                              padding: '14px 16px',
+                              padding: '12px 10px',
                               verticalAlign: 'top',
                               borderBottom: '1px solid #e2e8f0',
                               borderRight: '1px solid #e2e8f0',
-                              boxSizing: 'border-box',
                             }}
                           >
                             <div
@@ -1740,7 +2398,6 @@ export function CreatePurchaseOrder() {
                                 display: 'flex',
                                 alignItems: 'center',
                                 width: '100%',
-                                boxSizing: 'border-box',
                                 border: '1px solid #d1d5db',
                                 borderRadius: '6px',
                                 background: '#ffffff',
@@ -1756,15 +2413,13 @@ export function CreatePurchaseOrder() {
                                 style={{
                                   border: 'none',
                                   outline: 'none',
-                                  padding: '8px 10px',
+                                  padding: '7px 6px',
                                   width: '100%',
                                   minWidth: 0,
                                   textAlign: 'right',
-                                  fontSize: '13px',
+                                  fontSize: '12px',
                                   background: 'transparent',
-                                  font: 'inherit',
                                   color: '#0f172a',
-                                  boxSizing: 'border-box',
                                 }}
                                 placeholder="0.00"
                               />
@@ -1780,28 +2435,60 @@ export function CreatePurchaseOrder() {
                                   { value: 'percentage', label: '%' },
                                   { value: 'fixed', label: '₹' },
                                 ]}
-                                minWidth={50}
+                                minWidth={45}
                                 fullWidth={false}
                                 containerStyle={{ flexShrink: 0, height: '100%' }}
                                 buttonStyle={{
                                   border: 'none',
                                   borderLeft: '1px solid #eef0f3',
                                   background: '#f8fafc',
-                                  padding: '8px 8px',
-                                  fontSize: '12px',
+                                  padding: '6px 6px',
+                                  fontSize: '11px',
                                   fontWeight: 600,
                                   color: '#475569',
                                   borderRadius: '0 6px 6px 0',
                                   height: '100%',
-                                  gap: '4px',
                                 }}
                               />
                             </div>
                           </td>
+                        ) : (
+                          <td
+                            style={{
+                              padding: '12px 10px',
+                              verticalAlign: 'top',
+                              borderBottom: '1px solid #e2e8f0',
+                              borderRight: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <select
+                              {...register(`lineItems.${index}.tax`)}
+                              defaultValue="GST18"
+                              style={{
+                                width: '100%',
+                                padding: '7px 8px',
+                                fontSize: '12px',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '6px',
+                                background: '#ffffff',
+                                color: '#1e293b',
+                                outline: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <option value="GST18">GST18 [18%]</option>
+                              <option value="GST12">GST12 [12%]</option>
+                              <option value="GST5">GST5 [5%]</option>
+                              <option value="GST0">GST0 [0%]</option>
+                              <option value="None">None</option>
+                            </select>
+                          </td>
                         )}
+
+                        {/* AMOUNT */}
                         <td
                           style={{
-                            padding: '14px 16px',
+                            padding: '12px 14px',
                             textAlign: 'right',
                             fontWeight: 600,
                             color: '#0f172a',
@@ -1813,14 +2500,15 @@ export function CreatePurchaseOrder() {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            boxSizing: 'border-box',
                           }}
                         >
                           ₹{calculatedRowAmount.toFixed(2)}
                         </td>
+
+                        {/* DELETE ACTION */}
                         <td
                           style={{
-                            padding: '14px 12px',
+                            padding: '12px 6px',
                             textAlign: 'center',
                             verticalAlign: 'top',
                             borderBottom: '1px solid #e2e8f0',
@@ -1833,16 +2521,16 @@ export function CreatePurchaseOrder() {
                             style={{
                               background: 'transparent',
                               border: 'none',
-                              color: '#94a3b8',
+                              color: '#ef4444',
                               cursor: 'pointer',
-                              padding: '6px',
-                              borderRadius: '6px',
+                              padding: '4px',
+                              borderRadius: '4px',
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            <Trash2 size={16} />
+                            <X size={15} />
                           </button>
                         </td>
                       </tr>
@@ -1852,6 +2540,7 @@ export function CreatePurchaseOrder() {
               </table>
             </div>
 
+            {/* Table Footer Buttons */}
             <div
               style={{
                 padding: '12px 16px',
@@ -1859,8 +2548,9 @@ export function CreatePurchaseOrder() {
                 background: '#ffffff',
                 borderBottomLeftRadius: '8px',
                 borderBottomRightRadius: '8px',
-                position: 'relative',
-                zIndex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
               }}
             >
               <button
@@ -1882,18 +2572,42 @@ export function CreatePurchaseOrder() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '8px 16px',
-                  background: '#f0f7fd',
+                  padding: '7px 14px',
+                  background: '#f0f9ff',
                   color: '#0284c7',
-                  border: '1px solid rgba(2, 132, 199, 0.25)',
+                  border: '1px solid rgba(2, 132, 199, 0.3)',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   fontWeight: 600,
-                  fontSize: '13px',
+                  fontSize: '12.5px',
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Plus size={15} /> Add another line
+                <Plus size={14} /> Add New Row ▾
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiSelectTargetIndex(itemFields.length > 0 ? itemFields.length - 1 : 0);
+                  setIsMultiSelectItemModalOpen(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  background: '#ffffff',
+                  color: '#0284c7',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '12.5px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Plus size={14} /> Add Items in Bulk
               </button>
             </div>
           </div>
@@ -1937,7 +2651,7 @@ export function CreatePurchaseOrder() {
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  marginBottom: '10px',
+                  marginBottom: '6px',
                   color: '#475569',
                 }}
               >
@@ -1947,6 +2661,19 @@ export function CreatePurchaseOrder() {
                 >
                   ₹{computedSubTotal.toFixed(2)}
                 </span>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '12px',
+                  fontSize: '12.5px',
+                  color: '#64748b',
+                  fontWeight: 500,
+                }}
+              >
+                <span>Total Quantity : {computedTotalQuantity}</span>
               </div>
 
               {discountLevel === 'transaction' && (
@@ -2217,50 +2944,184 @@ export function CreatePurchaseOrder() {
       {/* Fixed Bottom Action Bar */}
       <div
         className="form-actions-footer page-footer"
-        style={{ display: 'flex', alignItems: 'center', gap: '10px' }}
+        style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}
       >
+        {/* Save Button */}
         <button
           form="create-po-form"
           type="submit"
           onClick={() => setSubmitStatus('Draft')}
           disabled={mutation.isPending}
           style={{
-            padding: '7px 20px',
-            background: '#ffffff',
-            color: '#1e293b',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-            cursor: mutation.isPending ? 'not-allowed' : 'pointer',
-            fontWeight: 600,
-            fontSize: '13px',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          {mutation.isPending && submitStatus === 'Draft' ? 'Saving...' : 'Save as Draft'}
-        </button>
-
-        <button
-          form="create-po-form"
-          type="submit"
-          onClick={() => setSubmitStatus('Issued')}
-          disabled={mutation.isPending}
-          style={{
             padding: '7px 22px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            color: 'white',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+            color: '#ffffff',
             border: 'none',
             borderRadius: '6px',
             cursor: mutation.isPending ? 'not-allowed' : 'pointer',
             fontWeight: 600,
             fontSize: '13px',
-            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
             transition: 'all 0.15s ease',
           }}
+          onMouseEnter={(e) => {
+            if (!mutation.isPending) e.currentTarget.style.backgroundColor = '#0369a1';
+          }}
         >
-          {mutation.isPending && submitStatus === 'Issued' ? 'Saving...' : 'Save and Submit'}
+          {mutation.isPending && submitStatus === 'Draft' ? 'Saving...' : 'Save'}
         </button>
 
+        {/* Split Button: Save and Send + Caret */}
+        <div ref={saveMenuRef} style={{ position: 'relative', display: 'inline-flex' }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              overflow: 'hidden',
+              backgroundColor: '#ffffff',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
+          >
+            <button
+              form="create-po-form"
+              type="submit"
+              onClick={() => {
+                setSubmitStatus('Issued');
+                setIsSaveMenuOpen(false);
+              }}
+              disabled={mutation.isPending}
+              style={{
+                padding: '7px 18px',
+                background: '#ffffff',
+                color: '#1e293b',
+                border: 'none',
+                cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                fontSize: '13px',
+                borderRight: '1px solid #e2e8f0',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f8fafc';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#ffffff';
+              }}
+            >
+              {mutation.isPending && submitStatus === 'Issued' ? 'Saving...' : 'Save and Send'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSaveMenuOpen((prev) => !prev)}
+              disabled={mutation.isPending}
+              style={{
+                padding: '7px 10px',
+                background: '#f8fafc',
+                color: '#475569',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f1f5f9';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#f8fafc';
+              }}
+            >
+              {isSaveMenuOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </button>
+          </div>
+
+          {/* Caret Popup Menu */}
+          {isSaveMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 8px)',
+                left: 0,
+                width: '180px',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                boxShadow:
+                  '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                zIndex: 60,
+                overflow: 'hidden',
+                padding: '4px',
+              }}
+            >
+              <button
+                form="create-po-form"
+                type="submit"
+                onClick={() => {
+                  setSubmitStatus('Approved');
+                  setIsSaveMenuOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#1e293b',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#0284c7';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#1e293b';
+                }}
+              >
+                Save and Approve
+              </button>
+              <button
+                form="create-po-form"
+                type="submit"
+                onClick={() => {
+                  setSubmitStatus('Issued');
+                  setIsSaveMenuOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#1e293b',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#0284c7';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = '#1e293b';
+                }}
+              >
+                Save and Submit
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Cancel Button */}
         <button
           type="button"
           onClick={() => {
@@ -2273,14 +3134,21 @@ export function CreatePurchaseOrder() {
           }}
           style={{
             padding: '7px 20px',
-            background: '#f8fafc',
-            color: '#475569',
-            border: '1px solid #e2e8f0',
+            background: '#ffffff',
+            color: '#334155',
+            border: '1px solid #cbd5e1',
             borderRadius: '6px',
             cursor: 'pointer',
             fontWeight: 500,
             fontSize: '13px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
             transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f8fafc';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#ffffff';
           }}
         >
           Cancel
@@ -2291,6 +3159,11 @@ export function CreatePurchaseOrder() {
         isOpen={isNumberConfigOpen}
         onClose={() => setIsNumberConfigOpen(false)}
         initialPrefix={preference?.prefix || poPrefix}
+        locationName={
+          locations.find((l: Location) => l.id === watchLocationId)?.name ||
+          selectedLocation?.name ||
+          'Head Office'
+        }
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')

@@ -25,7 +25,21 @@ import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
+import {
+  X,
+  Edit,
+  ChevronDown,
+  FileText,
+  Paperclip,
+  Trash2,
+  Printer,
+  Mail,
+  Share2,
+  MessageSquare,
+  Sparkles,
+  Info,
+  Check,
+} from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
@@ -68,12 +82,30 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const [activeTab, setActiveTab] = useState('Overview');
   const [activeSubTab, setActiveSubTab] = useState<'Bills' | 'Receives'>('Bills');
   const [isPdfView, setIsPdfView] = useState(false);
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    showToast('Link copied to clipboard!');
+  };
+
+  const handleSendEmail = () => {
+    const email = po?.vendor?.email || '';
+    const subject = encodeURIComponent(`Purchase Order ${po?.poNumber || ''}`);
+    const body = encodeURIComponent(
+      `Hi ${po?.vendor?.contactName || ''},\n\nPlease find attached Purchase Order ${po?.poNumber || ''}.\n\nThank you.`,
+    );
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+  };
 
   const handleDownloadPdf = async () => {
     setIsPdfMenuOpen(false);
@@ -114,9 +146,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
-        setIsMoreOpen(false);
-      }
       if (pdfMenuRef.current && !pdfMenuRef.current.contains(event.target as Node)) {
         setIsPdfMenuOpen(false);
       }
@@ -212,21 +241,184 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         borderLeft: '1px solid #eef0f3',
       }}
     >
-      {/* Header */}
-      <div className="detail-page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2
-            className="detail-title"
-            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
-          >
-            {po.poNumber}
-          </h2>
-          <PurchaseOrderStatusBadge status={po.status} size="md" />
+      {/* Zoho Books Style Header */}
+      <div
+        style={{
+          padding: '16px 24px 12px 24px',
+          borderBottom: '1px solid #eef0f3',
+          background: '#fff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        {/* Row 1: Location & Header Icons (Attach, Comments, Close) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginBottom: 2 }}>
+              Location: {po.deliveryLocation?.name || po.location?.name || 'Head Office'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h1
+                style={{
+                  fontSize: '22px',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  margin: 0,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {po.poNumber}
+              </h1>
+              <PurchaseOrderStatusBadge status={po.status} size="sm" />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Upload files / Attachments button */}
+            <button
+              onClick={() => {
+                setActiveTab('Overview');
+                const el = document.getElementById('po-attachments-section');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              title="Upload files"
+              aria-label="Upload files"
+              style={{
+                position: 'relative',
+                padding: '6px 8px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: '#64748b',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f1f5f9';
+                e.currentTarget.style.color = '#1e293b';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#64748b';
+              }}
+            >
+              <Paperclip size={18} />
+              {po.documents && Array.isArray(po.documents) && po.documents.length > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    right: 2,
+                    background: '#0284c7',
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {po.documents.length}
+                </span>
+              )}
+            </button>
+
+            {/* Comments button */}
+            <button
+              onClick={() => setActiveTab('Comments')}
+              title="Comments"
+              aria-label="Comments"
+              style={{
+                position: 'relative',
+                padding: '6px 8px',
+                border: 'none',
+                background: activeTab === 'Comments' ? '#f0f7fd' : 'transparent',
+                cursor: 'pointer',
+                color: activeTab === 'Comments' ? '#0284c7' : '#64748b',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (activeTab !== 'Comments') {
+                  e.currentTarget.style.background = '#f1f5f9';
+                  e.currentTarget.style.color = '#1e293b';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (activeTab !== 'Comments') {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#64748b';
+                }
+              }}
+            >
+              <MessageSquare size={18} />
+              {po.comments && po.comments.length > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    right: 2,
+                    background: '#0284c7',
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {po.comments.length}
+                </span>
+              )}
+            </button>
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              title="Close"
+              aria-label="Close"
+              style={{
+                padding: '6px 8px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: '#ef4444',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#fef2f2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <X size={19} />
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Row 2: Action Toolbar (Edit, Send Email, Share, PDF/Print, Convert to Bill, More) */}
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}
+        >
           <button
-            className="action-btn"
             onClick={() =>
               navigate(`/organizations/${orgId}/purchases/purchase-orders/${poId}/edit`, {
                 state: { returnUrl: location.pathname + location.search },
@@ -235,8 +427,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             style={{
               padding: '6px 12px',
               border: '1px solid #e2e8f0',
-              background: '#f8fafc',
-              color: '#1e293b',
+              background: '#fff',
+              color: '#334155',
               borderRadius: '6px',
               fontSize: '13px',
               fontWeight: 500,
@@ -252,182 +444,83 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#f8fafc';
-              e.currentTarget.style.color = '#1e293b';
+              e.currentTarget.style.backgroundColor = '#fff';
+              e.currentTarget.style.color = '#334155';
               e.currentTarget.style.borderColor = '#e2e8f0';
             }}
           >
-            <Edit size={14} /> <span className="action-btn-text">Edit</span>
+            <Edit size={14} /> Edit
           </button>
 
-          <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button
-              className="action-btn"
-              onClick={() => setIsMoreOpen(!isMoreOpen)}
-              style={{
-                padding: '6px 12px',
-                border: isMoreOpen ? '1px solid #0284c7' : '1px solid #e2e8f0',
-                background: isMoreOpen ? '#f0f7fd' : '#f8fafc',
-                color: isMoreOpen ? '#0284c7' : '#1e293b',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (!isMoreOpen) {
-                  e.currentTarget.style.backgroundColor = '#f1f5f9';
-                  e.currentTarget.style.borderColor = '#cbd5e1';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isMoreOpen) {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
-                  e.currentTarget.style.borderColor = '#e2e8f0';
-                }
-              }}
-            >
-              <span className="action-btn-text">More</span>{' '}
-              <ChevronDown
-                size={14}
-                color={isMoreOpen ? '#0284c7' : '#64748b'}
-                style={{
-                  transform: isMoreOpen ? 'rotate(180deg)' : 'none',
-                  transition: 'transform 0.2s',
-                }}
-              />
-            </button>
-
-            {isMoreOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '6px',
-                  background: 'white',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  boxShadow:
-                    '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
-                  width: '150px',
-                  zIndex: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  padding: '4px',
-                }}
-              >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
-                    );
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    color: '#1e293b',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f8fafc';
-                    e.currentTarget.style.color = '#0284c7';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = '#1e293b';
-                  }}
-                >
-                  <Copy size={14} /> Clone
-                </div>
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    setIsConfirmDeleteOpen(true);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    color: '#ef4444',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fef2f2')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  <Trash2 size={14} /> Delete
-                </div>
-              </div>
-            )}
-          </div>
           <button
-            onClick={onClose}
+            onClick={handleSendEmail}
             style={{
-              padding: '6px',
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              color: '#64748b',
+              padding: '6px 12px',
+              border: '1px solid #e2e8f0',
+              background: '#fff',
+              color: '#334155',
               borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: '6px',
               transition: 'all 0.15s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f1f5f9';
-              e.currentTarget.style.color = '#1e293b';
+              e.currentTarget.style.backgroundColor = '#f0f7fd';
+              e.currentTarget.style.color = '#0284c7';
+              e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = '#64748b';
+              e.currentTarget.style.backgroundColor = '#fff';
+              e.currentTarget.style.color = '#334155';
+              e.currentTarget.style.borderColor = '#e2e8f0';
             }}
           >
-            <X size={18} />
+            <Mail size={14} /> Send Email
           </button>
-        </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="detail-page-tabs">
-        {tabs.map((tab) => (
-          <div
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          <button
+            onClick={handleShare}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #e2e8f0',
+              background: '#fff',
+              color: '#334155',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f0f7fd';
+              e.currentTarget.style.color = '#0284c7';
+              e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#fff';
+              e.currentTarget.style.color = '#334155';
+              e.currentTarget.style.borderColor = '#e2e8f0';
+            }}
           >
-            {tab}
-          </div>
-        ))}
+            <Share2 size={14} /> Share
+          </button>
 
-        {/* Vertical Divider */}
-        <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
-
-        {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div ref={pdfMenuRef}>
+          {/* PDF / Print */}
+          <div style={{ position: 'relative' }} ref={pdfMenuRef}>
             <button
-              className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
               style={{
                 padding: '6px 12px',
                 border: isPdfMenuOpen ? '1px solid #0284c7' : '1px solid #e2e8f0',
-                background: isPdfMenuOpen ? '#f0f7fd' : '#f8fafc',
-                color: isPdfMenuOpen ? '#0284c7' : '#475569',
+                background: isPdfMenuOpen ? '#f0f7fd' : '#fff',
+                color: isPdfMenuOpen ? '#0284c7' : '#334155',
                 borderRadius: '6px',
                 fontSize: '13px',
                 fontWeight: 500,
@@ -446,13 +539,13 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               }}
               onMouseLeave={(e) => {
                 if (!isPdfMenuOpen) {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
-                  e.currentTarget.style.color = '#475569';
+                  e.currentTarget.style.backgroundColor = '#fff';
+                  e.currentTarget.style.color = '#334155';
                   e.currentTarget.style.borderColor = '#e2e8f0';
                 }
               }}
             >
-              <FileText size={15} /> PDF/<span className="action-btn-text">Print</span>{' '}
+              <FileText size={14} /> PDF/Print{' '}
               <ChevronDown
                 size={13}
                 style={{
@@ -461,28 +554,274 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 }}
               />
             </button>
+
+            {isPdfMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  left: 0,
+                  background: 'white',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  boxShadow: '0 10px 20px rgba(0, 0, 0, 0.08)',
+                  width: '150px',
+                  zIndex: 30,
+                  padding: '4px',
+                }}
+              >
+                <div
+                  onClick={handleDownloadPdf}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: '#1e293b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.color = '#0284c7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#1e293b';
+                  }}
+                >
+                  <FileText size={14} /> Download PDF
+                </div>
+                <div
+                  onClick={handlePrint}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: '#1e293b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.color = '#0284c7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#1e293b';
+                  }}
+                >
+                  <Printer size={14} /> Print
+                </div>
+              </div>
+            )}
           </div>
 
-          {(!po.bills || po.bills.length === 0) && (
-            <>
-              <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
+          {/* Convert to Bill button in header */}
+          {(!po.bills || po.bills.length === 0) && po.status !== 'Cancelled' && (
+            <button
+              onClick={() => navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #e2e8f0',
+                background: '#fff',
+                color: '#334155',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f0f7fd';
+                e.currentTarget.style.color = '#0284c7';
+                e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#fff';
+                e.currentTarget.style.color = '#334155';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+              }}
+            >
+              <FileText size={14} /> Convert to Bill
+            </button>
+          )}
+        </div>
 
+        {/* Row 3: Subtitle Metadata (Submitted by, Approved by, View Approval History) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            fontSize: '12px',
+            color: '#64748b',
+            paddingTop: 4,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>Submitted by:</span>
+            <div
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: '#e0f2fe',
+                color: '#0284c7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 700,
+              }}
+            >
+              {(po.createdByUser?.name || 'U').charAt(0).toUpperCase()}
+            </div>
+            <span style={{ fontWeight: 500, color: '#1e293b' }}>
+              {po.createdByUser?.name || po.createdByUser?.email || 'User'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>Approved by:</span>
+            <div
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: '#dcfce7',
+                color: '#16a34a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 700,
+              }}
+            >
+              {(po.updatedByUser?.name || 'A').charAt(0).toUpperCase()}
+            </div>
+            <span style={{ fontWeight: 500, color: '#1e293b' }}>
+              {po.updatedByUser?.name || po.updatedByUser?.email || 'Approver'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs Row */}
+      <div
+        className="detail-page-tabs"
+        style={{ background: '#fff', borderBottom: '1px solid #eef0f3' }}
+      >
+        {tabs.map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+            style={{
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: activeTab === tab ? 600 : 500,
+              color: activeTab === tab ? '#0284c7' : '#64748b',
+              borderBottom: activeTab === tab ? '2px solid #0284c7' : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {tab}
+          </div>
+        ))}
+      </div>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            background: '#0f172a',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 500,
+            boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <Check size={16} color="#38bdf8" />
+          {toastMessage}
+        </div>
+      )}
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        <div
+          style={{
+            display: activeTab === 'Overview' ? 'flex' : 'none',
+            flexDirection: 'column',
+            padding: '16px 24px',
+          }}
+        >
+          {/* WHAT'S NEXT? Banner */}
+          {(!po.bills || po.bills.length === 0) && po.status !== 'Cancelled' && (
+            <div
+              style={{
+                background: '#f8faff',
+                border: '1px solid #e0e7ff',
+                borderRadius: '8px',
+                padding: '12px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '16px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                }}
+              >
+                <Sparkles size={16} color="#8b5cf6" />
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color: '#4f46e5',
+                    letterSpacing: '0.02em',
+                    fontSize: '11.5px',
+                  }}
+                >
+                  WHAT&apos;S NEXT?
+                </span>
+                <span>Convert this to a bill to complete your purchase.</span>
+              </div>
               <button
                 onClick={() =>
                   navigate(`/organizations/${orgId}/purchases/bills/new?fromPo=${poId}`)
                 }
                 style={{
-                  padding: '7px 16px',
                   background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                   color: 'white',
                   border: 'none',
+                  padding: '7px 16px',
                   borderRadius: '6px',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
                   boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
                   transition: 'all 0.15s ease',
                 }}
@@ -495,92 +834,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   e.currentTarget.style.transform = 'none';
                 }}
               >
-                <FileText size={15} /> Convert to Bill
+                Convert to Bill
               </button>
-            </>
-          )}
-
-          {isPdfMenuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: '6px',
-                background: 'white',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
-                width: '150px',
-                zIndex: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                padding: '4px',
-              }}
-            >
-              <div
-                onClick={handleDownloadPdf}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  color: '#1e293b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
-                  e.currentTarget.style.color = '#0284c7';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = '#1e293b';
-                }}
-              >
-                <FileText size={14} /> Download PDF
-              </div>
-              <div
-                onClick={handlePrint}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  color: '#1e293b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
-                  e.currentTarget.style.color = '#0284c7';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = '#1e293b';
-                }}
-              >
-                <Printer size={14} /> Print
-              </div>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
-        <div
-          style={{
-            display: activeTab === 'Overview' ? 'flex' : 'none',
-            flexDirection: 'column',
-            padding: '16px 24px',
-          }}
-        >
-          {/* Bills / Receives Top Bar */}
+          {/* Bills / Receives Sub-Bar */}
           <div
             style={{
               padding: '0 16px',
@@ -595,7 +854,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 type="button"
                 onClick={() => setActiveSubTab('Bills')}
                 style={{
-                  padding: '12px 0',
+                  padding: '10px 0',
                   background: 'none',
                   border: 'none',
                   borderBottom:
@@ -632,7 +891,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 type="button"
                 onClick={() => setActiveSubTab('Receives')}
                 style={{
-                  padding: '12px 0',
+                  padding: '10px 0',
                   background: 'none',
                   border: 'none',
                   borderBottom:
@@ -668,60 +927,54 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             </div>
           </div>
 
-          {/* Status Bar & PDF View Toggle */}
+          {/* Status Summary & PDF View Toggle */}
           <div
             style={{
-              padding: '12px 16px',
+              padding: '10px 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: '20px',
+              marginBottom: '10px',
               fontSize: '13px',
               background: '#fff',
               borderRadius: '8px',
               border: '1px solid #e2e8f0',
-              marginTop: '16px',
+              marginTop: '12px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: '12.5px' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#64748b', fontWeight: 500 }}>Receive Status:</span>
+                <span style={{ color: '#475569', fontWeight: 500 }}>Receive Status :</span>
                 <span
                   style={{
-                    background: '#f1f5f9',
-                    color: '#475569',
-                    border: '1px solid #e2e8f0',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '11px',
-                    fontWeight: 600,
+                    color: po.status === 'Closed' ? '#16a34a' : '#64748b',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
                   }}
                 >
-                  YET TO BE RECEIVED
+                  {po.status === 'Closed' ? 'RECEIVED' : 'YET TO BE RECEIVED'}
                 </span>
               </span>
-              <span style={{ color: '#e2e8f0' }}>|</span>
+
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#64748b', fontWeight: 500 }}>Bill Status:</span>
+                <span style={{ color: '#475569', fontWeight: 500 }}>Bill Status :</span>
                 <span
                   style={{
-                    background: po.bills?.length ? '#ecfdf5' : '#f1f5f9',
-                    color: po.bills?.length ? '#059669' : '#475569',
-                    border: po.bills?.length ? '1px solid #a7f3d0' : '1px solid #e2e8f0',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '11px',
-                    fontWeight: 600,
+                    color: po.bills?.length ? '#16a34a' : '#d97706',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
                   }}
                 >
-                  {po.bills?.length ? 'BILLED' : 'UNBILLED'}
+                  {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
                 </span>
               </span>
             </div>
 
             {/* Toggle Switch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
+              <span
+                style={{ fontSize: '13px', color: '#64748b', fontWeight: 500, fontStyle: 'italic' }}
+              >
                 Show PDF View
               </span>
               <label
@@ -754,7 +1007,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 <span
                   style={{
                     position: 'absolute',
-                    content: '""',
                     height: '14px',
                     width: '14px',
                     left: isPdfView ? '20px' : '3px',
@@ -767,6 +1019,22 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 />
               </label>
             </div>
+          </div>
+
+          {/* Info Notice */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#0284c7',
+              fontSize: '12px',
+              marginBottom: '16px',
+              paddingLeft: '4px',
+            }}
+          >
+            <Info size={14} />
+            <span>This preview does not display the custom template.</span>
           </div>
 
           {/* Bills List View */}
@@ -922,21 +1190,146 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           {!isPdfView && (
             <div
               style={{
+                position: 'relative',
+                overflow: 'hidden',
                 background: '#fff',
                 border: '1px solid #e2e8f0',
                 borderRadius: '8px',
-                padding: '24px 32px',
+                padding: '32px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
               }}
             >
-              {/* Header Title & Addresses */}
-              <div className="detail-top-section">
-                <div>
+              {/* Top-Left Diagonal Status Ribbon */}
+              {(() => {
+                const ribbonColor =
+                  po.status === 'ISSUED' || po.status === 'SENT'
+                    ? '#0284c7'
+                    : po.status === 'APPROVED'
+                      ? '#059669'
+                      : po.status === 'CLOSED'
+                        ? '#059669'
+                        : po.status === 'CANCELLED'
+                          ? '#ef4444'
+                          : '#64748b'; // Draft or default
+                return (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '120px',
+                      height: '120px',
+                      overflow: 'hidden',
+                      pointerEvents: 'none',
+                      zIndex: 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '20px',
+                        left: '-35px',
+                        width: '135px',
+                        transform: 'rotate(-45deg)',
+                        backgroundColor: ribbonColor,
+                        color: '#ffffff',
+                        textAlign: 'center',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        padding: '4px 0',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                      }}
+                    >
+                      {po.status || 'DRAFT'}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Organization & Purchase Order Top Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: '24px',
+                  paddingLeft: '48px', // Space for diagonal ribbon
+                  gap: '24px',
+                }}
+              >
+                {/* Organization Details */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '14px',
+                    maxWidth: '360px',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '46px',
+                      height: '46px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 700,
+                      fontSize: '18px',
+                      flexShrink: 0,
+                      boxShadow: '0 2px 6px rgba(2,132,199,0.25)',
+                    }}
+                  >
+                    {currentOrg?.name?.charAt(0)?.toUpperCase() || 'O'}
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '16px',
+                        fontWeight: 700,
+                        color: '#0f172a',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {currentOrg?.name || 'Company Name'}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#64748b',
+                        marginTop: '4px',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {currentOrg?.address?.streetAddress1 && (
+                        <div>{currentOrg.address.streetAddress1}</div>
+                      )}
+                      <div>
+                        {[
+                          currentOrg?.address?.city,
+                          currentOrg?.address?.stateCode,
+                          currentOrg?.address?.zip,
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || 'Surat, Gujarat 395600'}
+                      </div>
+                      <div>{currentOrg?.address?.country || 'India'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Purchase Order Title */}
+                <div style={{ textAlign: 'right' }}>
                   <h1
                     style={{
                       fontSize: '24px',
-                      fontWeight: 700,
+                      fontWeight: 800,
                       color: '#0f172a',
+                      letterSpacing: '0.02em',
                       margin: '0 0 4px 0',
                     }}
                   >
@@ -946,70 +1339,80 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     Purchase Order# <strong style={{ color: '#0f172a' }}>{po.poNumber}</strong>
                   </div>
                 </div>
+              </div>
 
-                <div className="detail-top-right">
-                  <div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      VENDOR ADDRESS
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '13px',
-                        color: '#0284c7',
-                        fontWeight: 600,
-                        marginBottom: '2px',
-                      }}
-                    >
-                      {po.vendor?.contactName || po.vendor?.companyName || '-'}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
-                      {po.vendor?.email && <div>{po.vendor.email}</div>}
-                      {po.vendor?.phone && <div>{po.vendor.phone}</div>}
-                    </div>
+              {/* Vendor & Delivery Addresses Row */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '48px',
+                  marginBottom: '28px',
+                  borderTop: '1px solid #f1f5f9',
+                  paddingTop: '16px',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    VENDOR ADDRESS
                   </div>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: '#0284c7',
+                      fontWeight: 600,
+                      marginBottom: '2px',
+                    }}
+                  >
+                    {po.vendor?.contactName || po.vendor?.companyName || '-'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                    {po.vendor?.email && <div>{po.vendor.email}</div>}
+                    {po.vendor?.phone && <div>{po.vendor.phone}</div>}
+                  </div>
+                </div>
 
-                  <div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      DELIVERY ADDRESS
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '13px',
-                        color: '#0f172a',
-                        fontWeight: 600,
-                        marginBottom: '2px',
-                      }}
-                    >
-                      {po.deliveryType === 'Location'
-                        ? po.deliveryLocation?.name || 'Head Office'
-                        : po.deliveryCustomer?.contactName || '-'}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '12px',
-                        color: '#475569',
-                        lineHeight: 1.5,
-                        maxWidth: '220px',
-                      }}
-                    >
-                      {po.deliveryType === 'Location' && po.deliveryLocation?.address}
-                    </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    DELIVERY ADDRESS
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      fontWeight: 600,
+                      marginBottom: '2px',
+                    }}
+                  >
+                    {po.deliveryType === 'Location'
+                      ? po.deliveryLocation?.name || 'Head Office'
+                      : po.deliveryCustomer?.contactName || '-'}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      color: '#475569',
+                      lineHeight: 1.5,
+                      maxWidth: '220px',
+                    }}
+                  >
+                    {po.deliveryType === 'Location' && po.deliveryLocation?.address}
                   </div>
                 </div>
               </div>

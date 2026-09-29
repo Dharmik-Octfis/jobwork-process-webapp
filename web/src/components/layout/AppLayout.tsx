@@ -45,6 +45,7 @@ import type { AppModule } from '../../features/modules/modules.schemas';
 import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 
 import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
+import { fetchPurchaseOrders } from '../../features/purchases/purchase-orders/purchase-orders.api';
 import { fetchCustomers } from '../../features/sales/customers/customers.api';
 import { itemsApi } from '../../features/items/items.api';
 import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
@@ -165,6 +166,17 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
         subtitle: v.companyName || v.email || undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/purchases/vendors?id=${id}`,
+  },
+  {
+    match: '/purchases/purchase-orders',
+    label: 'Purchase Orders',
+    fetch: async (orgId, term) =>
+      (await fetchPurchaseOrders(orgId, { search: term, perPage: 6 })).results.map((po) => ({
+        id: po.id,
+        title: po.poNumber,
+        subtitle: po.vendor?.contactName || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/purchases/purchase-orders?id=${id}`,
   },
   {
     match: '/sales/customers',

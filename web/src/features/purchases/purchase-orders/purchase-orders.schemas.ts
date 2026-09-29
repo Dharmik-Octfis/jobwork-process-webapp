@@ -22,6 +22,8 @@ export const PurchaseOrderItemSchema = z.object({
   item: z.any().optional(),
   discountType: z.enum(['percentage', 'fixed']).optional(),
   discountValue: z.number().or(z.string()).nullable().optional(),
+  account: z.string().nullable().optional(),
+  tax: z.string().nullable().optional(),
 });
 
 export const PurchaseOrderSchema = z.object({

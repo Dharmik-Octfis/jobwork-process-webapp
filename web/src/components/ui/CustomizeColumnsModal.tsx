@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { GripVertical, Lock, Search, X } from 'lucide-react';
+import { GripVertical, Lock, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { ColumnDef } from '../../features/list-views/listViews.api';
 
 interface Row extends ColumnDef {
@@ -125,9 +125,12 @@ export function CustomizeColumnsModal({
             borderBottom: '1px solid #eef0f3',
           }}
         >
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#0f172a' }}>
-            Customize Columns
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <SlidersHorizontal size={17} color="#0f172a" />
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#0f172a' }}>
+              Customize Columns
+            </h2>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span style={{ fontSize: 13, color: '#64748b' }}>
               {selectedCount} of {rows.length} Selected
