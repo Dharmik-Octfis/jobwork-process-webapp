@@ -49,15 +49,17 @@ export function SettingsLayout() {
   const onInventoryRoute = location.pathname.includes('/settings/inventory');
   const onConfigRoute = location.pathname.includes('/settings/configuration');
   const onJobworkRoute = location.pathname.includes('/settings/jobwork');
+  const onAutomationRoute = location.pathname.includes('/settings/automation');
 
   const [openSection, setOpenSection] = useState<
-    'org' | 'inventory' | 'config' | 'jobwork' | 'customization' | null
+    'org' | 'inventory' | 'config' | 'jobwork' | 'customization' | 'automation' | null
   >(() => {
     if (onOrgRoute) return 'org';
     if (onInventoryRoute) return 'inventory';
     if (onConfigRoute) return 'config';
     if (onJobworkRoute) return 'jobwork';
     if (onModulesRoute) return 'customization';
+    if (onAutomationRoute) return 'automation';
     return null;
   });
 
@@ -68,6 +70,7 @@ export function SettingsLayout() {
   const configOpen = openSection === 'config';
   const jobworkOpen = openSection === 'jobwork';
   const customizationOpen = openSection === 'customization';
+  const automationOpen = openSection === 'automation';
   const isRootSettings = location.pathname === `/organizations/${orgId}/settings` || location.pathname === `/organizations/${orgId}/settings/`;
   const hasSelection = !isRootSettings || location.search.includes('view=company');
 
@@ -702,6 +705,81 @@ export function SettingsLayout() {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Automation Section */}
+          <button
+            type="button"
+            onClick={() => setOpenSection(automationOpen ? null : 'automation')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'none',
+              border: 'none',
+              width: '100%',
+              padding: '0 12px',
+              marginTop: 16,
+              marginBottom: 4,
+              cursor: 'pointer',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              Automation
+            </span>
+            <span
+              style={{
+                display: 'flex',
+                transform: automationOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <ChevronRight size={14} />
+            </span>
+          </button>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: automationOpen ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.2s ease',
+            }}
+          >
+            <div
+              style={{
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+              }}
+            >
+              <NavLink
+                to={`/organizations/${orgId}/settings/automation/approval-processes`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <Workflow size={18} />
+                <span style={{ fontSize: 14 }}>Approval Processes</span>
+              </NavLink>
             </div>
           </div>
         </nav>

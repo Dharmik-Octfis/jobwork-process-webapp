@@ -15,6 +15,9 @@ import {
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 
 import { JobOrderFlow } from './JobOrderFlow';
 import { ActivityTabs } from './JobOrderStepDetail';
@@ -413,7 +416,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const id = jobOrderId ?? routeId;
 
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
-  const [view, setView] = useState<'step' | 'history'>('step');
+  const [view, setView] = useState<'step' | 'history' | 'approvals'>('step');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
@@ -426,6 +429,14 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     queryFn: () => fetchJobOrderOverview(orgId!, id!),
     enabled: Boolean(orgId && id),
   });
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'job_orders', id);
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    data?.jobOrder?.status === 'REJECTED' ||
+    (data?.jobOrder as any)?.approvalStatus === 'REJECTED',
+  );
+  const isActionBlocked = isUnderApproval || isRejected;
 
   const steps = useMemo(() => data?.steps ?? [], [data]);
   const activity = useMemo(() => data?.activity ?? [], [data]);
@@ -675,12 +686,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             <ActionsMenu
               label={`More actions for ${jobOrder.jobOrderNumber}`}
               actions={[
-                {
-                  key: 'clone',
-                  label: 'Clone',
-                  onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
-                },
-                ...(isClosed
+                ...(isActionBlocked
+                  ? []
+                  : [
+                      {
+                        key: 'clone',
+                        label: 'Clone',
+                        onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
+                      },
+                    ]),
+                ...(isClosed || isActionBlocked
                   ? []
                   : [
                       {
@@ -724,6 +739,18 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           </div>
         </div>
       </header>
+
+      {/* Zoho-style Top Record Approval Banner */}
+      {orgId && id && (
+        <div style={{ padding: '12px 24px 0 24px' }}>
+          <RecordApprovalBanner
+            organizationId={orgId}
+            moduleId="job_orders"
+            recordId={id}
+            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })}
+          />
+        </div>
+      )}
 
       {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
             the four numbers on the right are what somebody checks once they have
@@ -809,22 +836,22 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
              so a step at a processor is no reason to withhold it. A closed order
              is: the server refuses those, and a button that only ever 409s is
              worse than no button. */
-          onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
+          onAppend={isClosed || isActionBlocked ? undefined : () => setAddStepsOpen(true)}
         />
 
-        {steps.length > 0 && (
-          <>
-            <div
-              style={{
-                display: 'inline-flex',
-                gap: 2,
-                margin: '20px 0 10px 0',
-                padding: 3,
-                background: '#eef1f5',
-                borderRadius: 999,
-                maxWidth: '100%',
-              }}
-            >
+        <div
+          style={{
+            display: 'inline-flex',
+            gap: 2,
+            margin: '20px 0 10px 0',
+            padding: 3,
+            background: '#eef1f5',
+            borderRadius: 999,
+            maxWidth: '100%',
+          }}
+        >
+          {steps.length > 0 && (
+            <>
               <ViewTab
                 isActive={view === 'step'}
                 onClick={() => setView('step')}
@@ -839,44 +866,67 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 onClick={() => setView('history')}
                 label={`Full history (${activity.length})`}
               />
-            </div>
+            </>
+          )}
+          <ViewTab
+            isActive={view === 'approvals'}
+            onClick={() => setView('approvals')}
+            label="Approvals"
+          />
+        </div>
 
-            {view === 'step' && selectedStep && (
-              <JobOrderStepDetail
-                step={selectedStep}
-                activity={stepActivity}
-                onIssue={(step) =>
-                  navigate(
-                    `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
-                  )
-                }
-                onReceive={(step) =>
-                  navigate(
-                    `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
-                  )
-                }
-                onComplete={setCompleteStepTarget}
-                onOpenDocument={openDocument}
-              />
-            )}
+        {view === 'step' && selectedStep && (
+          <JobOrderStepDetail
+            step={selectedStep}
+            activity={stepActivity}
+            isUnderApproval={isActionBlocked}
+            onIssue={(step) =>
+              navigate(
+                `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
+              )
+            }
+            onReceive={(step) =>
+              navigate(
+                `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
+              )
+            }
+            onComplete={setCompleteStepTarget}
+            onOpenDocument={openDocument}
+          />
+        )}
 
-            {view === 'history' && (
-              <div
-                style={{
-                  border: '1px solid #eef0f3',
-                  borderRadius: 10,
-                  background: '#fff',
-                  padding: '14px 16px',
-                }}
-              >
-                {/* 🔴 Every step, in one column, oldest first. The per-step view
-                    above answers "what is happening here"; this answers "what has
-                    this order been through" — and the two orders of the same
-                    documents are genuinely different readings. */}
-                <ActivityTabs events={activity} onOpen={openDocument} />
-              </div>
-            )}
-          </>
+        {view === 'history' && (
+          <div
+            style={{
+              border: '1px solid #eef0f3',
+              borderRadius: 10,
+              background: '#fff',
+              padding: '14px 16px',
+            }}
+          >
+            {/* 🔴 Every step, in one column, oldest first. The per-step view
+                above answers "what is happening here"; this answers "what has
+                this order been through" — and the two orders of the same
+                documents are genuinely different readings. */}
+            <ActivityTabs events={activity} onOpen={openDocument} />
+          </div>
+        )}
+
+        {view === 'approvals' && orgId && id && (
+          <div
+            style={{
+              border: '1px solid #eef0f3',
+              borderRadius: 10,
+              background: '#fff',
+              padding: '18px 20px',
+            }}
+          >
+            <RecordApprovalHistoryTimeline
+              organizationId={orgId}
+              moduleId="job_orders"
+              recordId={id}
+            />
+          </div>
         )}
       </div>
 

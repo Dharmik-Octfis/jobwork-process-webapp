@@ -41,6 +41,8 @@ import { diagnosticsRouter } from '../modules/diagnostics/diagnostics.routes.ts'
 import { databaseStatus } from '../db/readiness.ts';
 import { inventoryValuationRouter } from '../modules/reports/inventory-valuation/inventoryValuation.routes.ts';
 import fifoCostLotTrackingRouter from '../modules/reports/fifo-cost-lot-tracking/fifoCostLotTracking.routes.ts';
+import { approvalProcessRouter } from '../modules/automation/approval-processes/approvalProcess.routes.ts';
+import { approvalsInboxRouter } from '../modules/automation/approval-processes/approvalsInbox.routes.ts';
 import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummary.routes.ts';
 import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
@@ -118,6 +120,8 @@ apiRouter.use('/organizations/:orgId/assemblies', assembliesRouter);
 apiRouter.use('/organizations/:orgId/list-views', listViewsRouter);
 apiRouter.use('/organizations/:orgId/reports/inventory-valuation', inventoryValuationRouter);
 apiRouter.use('/organizations/:orgId/reports/fifo-cost-lot-tracking', fifoCostLotTrackingRouter);
+apiRouter.use('/organizations/:orgId/automation/approval-processes', approvalProcessRouter);
+apiRouter.use('/organizations/:orgId/approvals', approvalsInboxRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-summary', stockSummaryRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRouter);
 // The Reports Center list + per-user visit/favourite — after the specific reports above.

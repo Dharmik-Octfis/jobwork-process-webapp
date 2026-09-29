@@ -15,6 +15,9 @@ import { VendorActivityTimeline } from './VendorActivityTimeline';
 import { VendorComments } from './VendorComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 
 interface VendorDetailProps {
   vendorId: string;
@@ -26,6 +29,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'vendors', vendorId);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -70,6 +74,12 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     queryFn: () => fetchVendorById(orgId!, vendorId),
     enabled: Boolean(orgId && vendorId),
   });
+
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    (vendor as any)?.approvalStatus === 'REJECTED' ||
+    (vendor as any)?.status?.toLowerCase() === 'rejected',
+  );
 
   const { data: activities, isLoading: isActivitiesLoading } = useQuery({
     queryKey: ['vendor-activities', orgId, vendorId],
@@ -421,7 +431,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Transactions'];
+  const tabs = ['Overview', 'Comments', 'Transactions', 'Approvals'];
 
   const sectionHeaderStyle = {
     fontSize: '13px',
@@ -476,20 +486,33 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           </h2>
           <span
             onClick={() => {
+              if (isUnderApproval || isRejected || (vendor as any)?.isPendingApproval) return;
               statusMutation.mutate(vendor.status === 'inactive' ? 'active' : 'inactive');
             }}
             style={{
-              background: vendor.status === 'inactive' ? '#94a3b8' : '#3b82f6',
+              background: isUnderApproval || (vendor as any)?.isPendingApproval
+                ? '#f59e0b'
+                : isRejected
+                ? '#ef4444'
+                : vendor.status === 'inactive'
+                ? '#94a3b8'
+                : '#3b82f6',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
               fontWeight: 500,
-              cursor: 'pointer',
+              cursor: isUnderApproval || isRejected || (vendor as any)?.isPendingApproval ? 'default' : 'pointer',
               transition: 'background 0.2s',
             }}
           >
-            {vendor.status === 'inactive' ? 'Inactive' : 'Active'}
+            {isUnderApproval || (vendor as any)?.isPendingApproval
+              ? 'Pending Approval'
+              : isRejected
+              ? 'Rejected'
+              : vendor.status === 'inactive'
+              ? 'Inactive'
+              : 'Active'}
           </span>
         </div>
 
@@ -554,19 +577,21 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={handleClone}
-                >
-                  Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={handleClone}
+                  >
+                    Clone
+                  </div>
+                )}
                 <div
                   style={{
                     padding: '8px 12px',
@@ -583,22 +608,24 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 >
                   Delete
                 </div>
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    statusMutation.mutate(vendor.status === 'inactive' ? 'active' : 'inactive');
-                  }}
-                >
-                  {vendor.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      statusMutation.mutate(vendor.status === 'inactive' ? 'active' : 'inactive');
+                    }}
+                  >
+                    {vendor.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -632,6 +659,17 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && vendorId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="vendors"
+              recordId={vendorId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1469,6 +1507,10 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           }}
         >
           No transactions found.
+        </div>
+
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="vendors" recordId={vendorId} />
         </div>
       </div>
 

@@ -190,9 +190,9 @@ export function Modal({
         bottom: mainNode ? -mainNode.scrollTop : 0,
         background: isFullScreen ? '#fff' : 'rgba(15, 23, 42, 0.45)',
         display: 'flex',
-        alignItems: position === 'right' ? 'center' : 'flex-start',
+        alignItems: position === 'right' || position === 'center' ? 'center' : 'flex-start',
         justifyContent: position === 'right' ? 'flex-end' : 'center',
-        padding: position === 'right' ? '16px' : '0px',
+        padding: position === 'right' ? '16px' : position === 'center' ? '24px 16px' : '0px',
         zIndex: 1100,
       }}
       // Clicking the backdrop closes; clicking inside must not bubble up to it.
@@ -214,7 +214,12 @@ export function Modal({
           boxShadow: position === 'fullScreen' ? 'none' : '0 12px 40px rgba(15, 23, 42, 0.25)',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: position === 'right' ? 'calc(100vh - 32px)' : '100vh',
+          maxHeight:
+            position === 'right'
+              ? 'calc(100vh - 32px)'
+              : position === 'center'
+                ? 'calc(100vh - 48px)'
+                : '100vh',
           height:
             position === 'right'
               ? 'calc(100vh - 32px)'

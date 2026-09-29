@@ -166,6 +166,14 @@ const MODULE_GROUPS: readonly {
     ],
   },
   {
+    key: 'automation',
+    label: 'Automation',
+    resources: [
+      { resource: 'approval_process', label: 'Approval Processes' },
+      { resource: 'approval_request', label: 'Approval Requests' },
+    ],
+  },
+  {
     key: 'reports',
     label: 'Reports',
     resources: [
