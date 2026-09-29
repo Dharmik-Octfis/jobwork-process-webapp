@@ -57,9 +57,9 @@ export function EditItemPage() {
   const [initializedId, setInitializedId] = useState<string | null>(null);
 
 
-  const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
-  const [rearImageFile, setRearImageFile] = useState<File | null>(null);
-  const [otherImageFiles, setOtherImageFiles] = useState<File[]>([]);
+  const [frontImageFile] = useState<File | null>(null);
+  const [rearImageFile] = useState<File | null>(null);
+  const [otherImageFiles] = useState<File[]>([]);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', orgId, id],
@@ -197,6 +197,8 @@ export function EditItemPage() {
     }
   };
 
+  /* 
+  // Image Upload handlers temporarily commented out for Edit mode
   const _handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       if (e.target.files[0].size > 2 * 1024 * 1024) {
@@ -232,6 +234,7 @@ export function EditItemPage() {
       }
     }
   };
+  */
 
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -557,7 +560,7 @@ export function EditItemPage() {
                   <input
                     type="file"
                     ref={frontImageRef}
-                    onChange={handleFrontImageChange}
+                    onChange={_handleFrontImageChange}
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
@@ -612,7 +615,7 @@ export function EditItemPage() {
                   <input
                     type="file"
                     ref={rearImageRef}
-                    onChange={handleRearImageChange}
+                    onChange={_handleRearImageChange}
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
@@ -668,7 +671,7 @@ export function EditItemPage() {
                 <input
                   type="file"
                   ref={otherImagesRef}
-                  onChange={handleOtherImagesChange}
+                  onChange={_handleOtherImagesChange}
                   style={{ display: 'none' }}
                   accept="image/*"
                   multiple

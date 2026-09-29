@@ -1,4 +1,5 @@
-﻿import { format } from 'date-fns';
+import { format } from 'date-fns';
+import html2pdf from 'html2pdf.js';
 interface Html2PdfOptions {
   margin?: number | [number, number] | [number, number, number, number];
   filename?: string;
@@ -15,6 +16,7 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { flushSync } from 'react-dom';
 import {
   fetchPurchaseOrderById,
   getPOSignedUrl,
@@ -77,41 +79,41 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = () => {
     setIsPdfMenuOpen(false);
-    setIsPdfView(true);
-    setTimeout(async () => {
-      if (pdfTemplateRef.current) {
-        try {
-          const html2pdfModule =
-            (await import('html2pdf.js')).default ||
-            (window as unknown as { html2pdf?: unknown }).html2pdf;
-          const opt: Html2PdfOptions = {
-            margin: [8, 8, 8, 8],
-            filename: `${po?.poNumber || 'PO'}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          };
-          if (typeof html2pdfModule === 'function') {
-            html2pdfModule().set(opt).from(pdfTemplateRef.current).save();
-          } else {
-            window.print();
-          }
-        } catch (err) {
-          console.error('PDF generation error:', err);
-          window.print();
-        }
+    flushSync(() => {
+      setActiveTab('Overview');
+      setIsPdfView(true);
+    });
+
+    if (pdfTemplateRef.current) {
+      try {
+        const opt: Html2PdfOptions = {
+          margin: [8, 8, 8, 8],
+          filename: `${po?.poNumber || 'PO'}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+        html2pdf().set(opt).from(pdfTemplateRef.current).save();
+      } catch (err) {
+        console.error('PDF generation error:', err);
+        window.print();
       }
-    }, 150);
+    }
   };
 
   const handlePrint = () => {
     setIsPdfMenuOpen(false);
-    setIsPdfView(true);
+    flushSync(() => {
+      setActiveTab('Overview');
+      setIsPdfView(true);
+    });
+    
+    // Some browsers need a tiny delay even after flushSync to apply print CSS correctly
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 10);
   };
 
   useEffect(() => {
@@ -384,8 +386,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div ref={pdfMenuRef}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div ref={pdfMenuRef} style={{ position: 'relative' }}>
             <button
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
@@ -407,6 +409,59 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
               <ChevronDown size={14} />
             </button>
+
+            {isPdfMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #eef0f3',
+                  borderRadius: '4px',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  width: '130px',
+                  zIndex: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={handleDownloadPdf}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <FileText size={14} /> Download PDF
+                </div>
+                <div
+                  onClick={handlePrint}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Printer size={14} /> Print
+                </div>
+              </div>
+            )}
           </div>
 
           {(!po.bills || po.bills.length === 0) && (
@@ -434,59 +489,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 <FileText size={16} /> Convert to Bill
               </button>
             </>
-          )}
-
-          {isPdfMenuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: '4px',
-                background: 'white',
-                border: '1px solid #eef0f3',
-                borderRadius: '4px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                width: '130px',
-                zIndex: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                onClick={handleDownloadPdf}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  color: '#334155',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <FileText size={14} /> Download PDF
-              </div>
-              <div
-                onClick={handlePrint}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  color: '#334155',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <Printer size={14} /> Print
-              </div>
-            </div>
           )}
         </div>
       </div>
@@ -588,16 +590,20 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
-              <span>
-                Receive Status : <strong style={{ color: '#64748b' }}>YET TO BE RECEIVED</strong>
-              </span>
-              <span style={{ color: '#cbd5e1' }}>|</span>
-              <span>
-                Bill Status :{' '}
-                <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
-                  {po.bills?.length ? 'BILLED' : 'UNBILLED'}
-                </strong>
-              </span>
+              {isPdfView && (
+                <>
+                  <span>
+                    Receive Status : <strong style={{ color: '#64748b' }}>YET TO BE RECEIVED</strong>
+                  </span>
+                  <span style={{ color: '#cbd5e1' }}>|</span>
+                  <span>
+                    Bill Status :{' '}
+                    <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+                      {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
+                    </strong>
+                  </span>
+                </>
+              )}
             </div>
 
             {/* Toggle Switch */}
