@@ -16,6 +16,7 @@ import {
   manuallyCompleteStep,
   shortCloseJobOrder,
 } from './jobOrders.service.ts';
+import { getChainWarnings } from './jobOrders.status.ts';
 
 /**
  * 🔴 Completing a step writes off what is still at the processor
@@ -352,6 +353,78 @@ describe('a completed step is closed (R9)', { timeout: 120_000 }, () => {
     await expect(
       manuallyCompleteStep(orgId, run.jobOrderId, run.stepId, undefined),
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('takes a reason when nothing has been received, and writes the whole challan off', async () => {
+    const run = await dyeingRun();
+
+    await expect(
+      manuallyCompleteStep(orgId, run.jobOrderId, run.stepId, undefined),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      manuallyCompleteStep(orgId, run.jobOrderId, run.stepId, undefined, '   '),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(await writeOffRows(run.stepId)).toHaveLength(0);
+
+    const overview = await manuallyCompleteStep(
+      orgId,
+      run.jobOrderId,
+      run.stepId,
+      undefined,
+      'Dyer lost the lot',
+    );
+    expect(overview.steps[0]!.status).toBe('completed');
+
+    const rows = await writeOffRows(run.stepId);
+    expect(rows.map((row) => row.qtyOut.toString())).toEqual(['1000']);
+    const stored = await runAsTenant(orgId, (tx) =>
+      tx.jobOrderStep.findFirstOrThrow({
+        where: { id: run.stepId, organizationId: orgId },
+        select: { remarks: true },
+      }),
+    );
+    expect(stored.remarks).toBe('Completed: Dyer lost the lot');
+  });
+
+  it('takes a reason for a step that issued nothing', async () => {
+    const cotton = await makeItem('Cotton');
+    const dyed = await makeItem('Dyed');
+    const { jobOrderId, stepIds } = await order([
+      { inputs: [{ itemId: cotton, plannedQty: 100 }], outputs: [{ itemId: dyed }] },
+    ]);
+
+    await expect(
+      manuallyCompleteStep(orgId, jobOrderId, stepIds[0]!, undefined),
+    ).rejects.toMatchObject({ status: 400 });
+
+    const overview = await manuallyCompleteStep(
+      orgId,
+      jobOrderId,
+      stepIds[0]!,
+      undefined,
+      'Party wants it undyed',
+    );
+    expect(overview.steps[0]!.status).toBe('completed');
+    expect(await writeOffRows(stepIds[0]!)).toHaveLength(0);
+  });
+
+  it('stops warning later steps once the producer is completed', async () => {
+    const cotton = await makeItem('Cotton');
+    const dyed = await makeItem('Dyed');
+    const finished = await makeItem('Finished');
+    const batch = await seedStock(cotton, 100, 10);
+    const { jobOrderId, stepIds } = await order([
+      { inputs: [{ itemId: cotton, plannedQty: 100 }], outputs: [{ itemId: dyed }] },
+      { inputs: [{ itemId: dyed, plannedQty: 100 }], outputs: [{ itemId: finished }] },
+    ]);
+    const [dyeing, finishing] = stepIds as [string, string];
+    await issue(dyeing, cotton, batch.id, 100);
+
+    const warnings = () => runAsTenant(orgId, (tx) => getChainWarnings(tx, orgId, jobOrderId));
+    expect((await warnings()).get(finishing)).toHaveLength(1);
+
+    await manuallyCompleteStep(orgId, jobOrderId, dyeing, undefined, 'Dyer lost the lot');
+    expect((await warnings()).get(finishing)).toBeUndefined();
   });
 
   it('refuses completion while a draft is parked on the step', async () => {

@@ -30,6 +30,7 @@ import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import {
   getAllStepTotals,
   getChainWarnings,
+  getStepTotals,
   recomputeJobOrder,
   recomputeStep,
 } from './jobOrders.status.ts';
@@ -702,12 +703,18 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
  * (R8), and the step is then closed to every document (R9) — so a draft still
  * parked against it would be a document that can never post. Those are refused
  * by name rather than silently stranded. There is no reopen.
+ *
+ * A step that issued nothing, or received nothing against what it issued, takes a
+ * reason: the first skips an operation, the second writes off every challan whole —
+ * both decisions someone has to own, like closing short. Not a refusal: an untouched
+ * step inside the locked prefix cannot be removed, so completing is its only way out.
  */
 export async function manuallyCompleteStep(
   organizationId: string,
   jobOrderId: string,
   stepId: string,
   userId: string | undefined,
+  reason?: string,
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
     // A fifty-line challan writes fifty scrap rows (jobwork.types.ts).
@@ -715,7 +722,7 @@ export async function manuallyCompleteStep(
       await lockStep(tx, organizationId, stepId);
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
-        select: { id: true, seq: true, status: true },
+        select: { id: true, seq: true, status: true, remarks: true },
       });
       if (!step) throw ApiError.notFound('Step not found.');
       if (step.status === 'completed' || step.status === 'short_closed') {
@@ -743,15 +750,29 @@ export async function manuallyCompleteStep(
         );
       }
 
+      const totals = await getStepTotals(tx, organizationId, step.id);
+      const why = reason?.trim() || null;
+      if (!why && (totals.issueCount === 0 || totals.receiptCount === 0)) {
+        const message =
+          totals.issueCount === 0
+            ? `Nothing has been issued on step ${step.seq}. Say why it is being completed without being done.`
+            : `Nothing has been received on step ${step.seq}, so everything issued will be written off. Say why.`;
+        throw new ApiError(400, message, { reason: message });
+      }
+
       await writeOffStep(tx, organizationId, step.id, {
-        reason: 'Step completed — still at the processor, written off as job order loss.',
+        reason: why
+          ? `Step completed: ${why} — still at the processor, written off as job order loss.`
+          : 'Step completed — still at the processor, written off as job order loss.',
         userId,
       });
 
+      const note = why ? `Completed: ${why}` : null;
       await tx.jobOrderStep.update({
         where: { id: step.id },
         data: {
           isCompleted: true,
+          ...(note ? { remarks: step.remarks ? `${step.remarks}\n${note}` : note } : {}),
           updatedBy: userId,
         },
       });
