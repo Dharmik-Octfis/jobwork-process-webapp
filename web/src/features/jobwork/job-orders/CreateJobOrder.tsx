@@ -157,6 +157,10 @@ export function CreateJobOrder() {
             <button
               form="joborder-form"
               type="submit"
+              onClick={() => {
+                const form = document.getElementById('joborder-form') as HTMLFormElement | null;
+                if (form) form.requestSubmit();
+              }}
               disabled={mutation.isPending}
               style={{
                 padding: '7px 20px',
@@ -283,19 +287,17 @@ export function CreateJobOrder() {
           <Spinner size={28} label="Loading template order to copy..." />
         </div>
       ) : (
-        <div style={{ padding: '24px 28px' }}>
-          <JobOrderForm
-            initialData={source}
-            isClone={Boolean(cloneFrom)}
-            onSubmit={(data) => {
-              setFieldErrors({});
-              mutation.mutate(data);
-            }}
-            isPending={mutation.isPending}
-            onCancel={handleBack}
-            fieldErrors={fieldErrors}
-          />
-        </div>
+        <JobOrderForm
+          initialData={source}
+          isClone={Boolean(cloneFrom)}
+          onSubmit={(data) => {
+            setFieldErrors({});
+            mutation.mutate(data);
+          }}
+          isPending={mutation.isPending}
+          onCancel={handleBack}
+          fieldErrors={fieldErrors}
+        />
       )}
     </div>
   );

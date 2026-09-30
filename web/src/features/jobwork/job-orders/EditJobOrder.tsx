@@ -2,14 +2,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { ArrowLeft, Pencil, Save, Package, Calendar, GitBranch, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Pencil, Save, AlertCircle } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchJobOrderById, updateJobOrder } from './jobOrders.api';
 import type { UpdateJobOrderData } from './jobOrders.schemas';
 import { JobOrderForm } from './JobOrderForm';
 import { JobOrderStatusBadge } from './JobOrderStatusBadge';
-import { formatDate } from '../../../lib/formatDate';
-import { formatQty } from '../jobwork.schemas';
 
 /**
  * A running order is editable past its work front.
@@ -116,12 +114,18 @@ export function EditJobOrder() {
     );
   }
 
-  const uomSymbol = jobOrder.inputUom
-    ? (jobOrder.inputUom.symbol ?? jobOrder.inputUom.unitName)
-    : '';
-
   return (
-    <div className="page-container" style={{ background: '#f8fafc', minHeight: '100%' }}>
+    <div
+      className="page-container"
+      style={{
+        background: '#f8fafc',
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+      }}
+    >
       {/* Executive Header Banner */}
       <header
         style={{
@@ -129,7 +133,8 @@ export function EditJobOrder() {
           borderBottom: '1px solid #e2e8f0',
           position: 'sticky',
           top: 0,
-          zIndex: 20,
+          flexShrink: 0,
+          zIndex: 10,
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
         }}
       >
@@ -183,7 +188,7 @@ export function EditJobOrder() {
               }}
             >
               <span
-                style={{ cursor: 'pointer', hover: { color: '#0f172a' } } as React.CSSProperties}
+                style={{ cursor: 'pointer' }}
                 onClick={() => navigate(`/organizations/${orgId}/jobwork/job-orders`)}
               >
                 Job Orders
@@ -227,6 +232,10 @@ export function EditJobOrder() {
             <button
               form="joborder-form"
               type="submit"
+              onClick={() => {
+                const form = document.getElementById('joborder-form') as HTMLFormElement | null;
+                if (form) form.requestSubmit();
+              }}
               disabled={mutation.isPending}
               style={{
                 padding: '7px 20px',
@@ -274,7 +283,7 @@ export function EditJobOrder() {
         {/* Title & Status Strip */}
         <div
           style={{
-            padding: '16px 24px',
+            padding: '14px 24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -306,60 +315,20 @@ export function EditJobOrder() {
             </h1>
             <JobOrderStatusBadge status={jobOrder.status} size="md" />
           </div>
-
-          {/* Quick Details Ribbon */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              fontSize: 12,
-              color: '#475569',
-              background: '#f8fafc',
-              padding: '6px 14px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Package size={14} color="#0284c7" />
-              <span style={{ fontWeight: 600, color: '#1e293b' }}>
-                {jobOrder.inputItem?.name ?? 'No input material'}
-              </span>
-              {jobOrder.inputQty !== null && (
-                <span style={{ color: '#64748b' }}>
-                  ({formatQty(jobOrder.inputQty)} {uomSymbol})
-                </span>
-              )}
-            </div>
-            <div style={{ width: 1, height: 14, background: '#cbd5e1' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <GitBranch size={14} color="#64748b" />
-              <span>{jobOrder.routeNameSnapshot || jobOrder.route?.name || 'Custom Route'}</span>
-            </div>
-            <div style={{ width: 1, height: 14, background: '#cbd5e1' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Calendar size={14} color="#64748b" />
-              <span>Ordered {formatDate(jobOrder.orderDate)}</span>
-            </div>
-          </div>
         </div>
       </header>
 
-      {/* Main Form Content */}
-      <div style={{ padding: '24px 28px' }}>
-        <JobOrderForm
-          initialData={jobOrder}
-          onSubmit={(data) => {
-            setFieldErrors({});
-            mutation.mutate(data);
-          }}
-          isPending={mutation.isPending}
-          onCancel={() => navigate(backPath)}
-          fieldErrors={fieldErrors}
-        />
-      </div>
+      {/* Main Form Content directly in flex container so .page-body scrolls */}
+      <JobOrderForm
+        initialData={jobOrder}
+        onSubmit={(data) => {
+          setFieldErrors({});
+          mutation.mutate(data);
+        }}
+        isPending={mutation.isPending}
+        onCancel={() => navigate(backPath)}
+        fieldErrors={fieldErrors}
+      />
     </div>
   );
 }

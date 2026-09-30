@@ -390,13 +390,8 @@ export function JobOrderForm({
 
   return (
     <>
-      <div className="page-body">
-        <form
-          id="joborder-form"
-          onSubmit={submit}
-          noValidate
-          style={{ padding: '12px 16px', paddingBottom: 24 }}
-        >
+      <div className="page-body" style={{ flex: '1 0 auto', minHeight: 0, padding: '24px' }}>
+        <form id="joborder-form" onSubmit={submit} noValidate style={{ paddingBottom: 24 }}>
           {localError && (
             <p
               style={{
@@ -537,7 +532,7 @@ export function JobOrderForm({
                     value={routeId}
                     onChange={(value) => void applyRoute(value)}
                     options={[
-                      { value: '', label: 'No route — build steps by hand' },
+                      { value: '', label: 'No route (build steps manually)' },
                       ...routes.map((r) => ({ value: r.id, label: r.name })),
                     ]}
                     ariaLabel="Route"

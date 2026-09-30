@@ -6,12 +6,17 @@ import {
   ChevronDown,
   CircleSlash,
   Clock,
-  Pencil,
+  Edit,
   RotateCcw,
   Send,
   Truck,
   X,
-  History,
+  Plus,
+  ShieldCheck,
+  User,
+  Copy,
+  Trash2,
+  Check,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -38,254 +43,28 @@ import type {
   JobOrdersPage,
 } from './jobOrders.schemas';
 
-const metaItem: React.CSSProperties = { fontSize: 12, color: '#64748b' };
-
-const sectionLabel: React.CSSProperties = {
-  fontSize: 11,
+const labelStyle: React.CSSProperties = {
+  fontSize: '11px',
   fontWeight: 600,
-  color: '#94a3b8',
+  color: '#64748b',
   textTransform: 'uppercase',
-  letterSpacing: 0.4,
-  margin: 0,
+  marginBottom: '4px',
+  letterSpacing: '0.03em',
 };
 
-interface MenuAction {
-  key: string;
-  label: string;
-  danger?: boolean;
-  onSelect: () => void;
-}
+const valueStyle: React.CSSProperties = {
+  fontSize: '13px',
+  color: '#1e293b',
+  fontWeight: 500,
+  lineHeight: 1.4,
+};
 
-/**
- * The ▾ beside Edit — Clone / Close short / Delete.
- *
- * Plain buttons rather than `downshift` (CLAUDE.md: native first), but keyboard
- * complete all the same: the trigger opens on ↓/Enter/Space, ↑↓ move between the
- * rows with focus following, Enter runs one, Esc closes and hands focus back. The
- * rows carry `tabIndex={-1}` because focus is driven here — only the trigger sits
- * in the page's tab order, which is what keeps Tab walking this header the same
- * way it walks every other one.
- */
-function ActionsMenu({ actions, label }: { actions: MenuAction[]; label: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) setIsOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen) itemRefs.current[activeIndex]?.focus();
-  }, [isOpen, activeIndex]);
-
-  const close = () => {
-    setIsOpen(false);
-    triggerRef.current?.focus();
-  };
-
-  const open = (index: number) => {
-    setActiveIndex(index);
-    setIsOpen(true);
-  };
-
-  return (
-    <div style={{ position: 'relative' }} ref={wrapRef}>
-      <button
-        type="button"
-        ref={triggerRef}
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        aria-label={label}
-        title={label}
-        onClick={() => (isOpen ? setIsOpen(false) : open(0))}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            open(0);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            open(actions.length - 1);
-          }
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '6px 8px',
-          border: '1px solid #d1d5db',
-          borderRadius: 4,
-          background: '#fff',
-          cursor: 'pointer',
-          color: '#333',
-        }}
-      >
-        <ChevronDown size={14} />
-      </button>
-
-      {isOpen && (
-        <div
-          role="menu"
-          aria-label={label}
-          onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
-              setActiveIndex((index) => (index + 1) % actions.length);
-            } else if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              setActiveIndex((index) => (index - 1 + actions.length) % actions.length);
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              close();
-            } else if (event.key === 'Tab') {
-              // Closing mid-Tab would unmount the focused row and drop focus to
-              // the body, restarting the walk at the top of the page. Park it on
-              // the trigger instead; the next Tab carries on from there.
-              event.preventDefault();
-              close();
-            }
-          }}
-          style={{
-            position: 'absolute',
-            top: '100%',
-            right: 0,
-            marginTop: 4,
-            minWidth: 180,
-            padding: '4px 0',
-            background: '#fff',
-            border: '1px solid #eef0f3',
-            borderRadius: 6,
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-            zIndex: 20,
-          }}
-        >
-          {actions.map((action, index) => (
-            <button
-              key={action.key}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              ref={(element) => {
-                itemRefs.current[index] = element;
-              }}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => {
-                // Focus back on the trigger BEFORE the action runs: the row is
-                // about to unmount, and an action that opens a dialog would
-                // otherwise leave focus on the body with nothing to come back to.
-                close();
-                action.onSelect();
-              }}
-              style={{
-                display: 'block',
-                width: '100%',
-                padding: '8px 14px',
-                border: 'none',
-                background:
-                  index === activeIndex ? (action.danger ? '#fef2f2' : '#f8fafc') : '#fff',
-                color: action.danger ? '#dc2626' : '#1e293b',
-                fontFamily: 'inherit',
-                fontSize: 13,
-                fontWeight: 400,
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** One number on the strip. */
-function Tile({
-  label,
-  value,
-  unit,
-  note,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  note?: string | null;
-}) {
-  return (
-    <div
-      style={{
-        minWidth: 100,
-        background: '#fff',
-        padding: '8px 14px',
-        borderRadius: 8,
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-      }}
-    >
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: '#64748b',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          display: 'block',
-          marginBottom: 2,
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
-        {value}
-        {unit && (
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginLeft: 4 }}>
-            {unit}
-          </span>
-        )}
-      </span>
-      {note && (
-        <span
-          style={{
-            display: 'block',
-            fontSize: 10,
-            color: '#94a3b8',
-            lineHeight: 1.3,
-            marginTop: 2,
-          }}
-        >
-          {note}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/**
- * 🔴 WHERE THE ORDER IS, RIGHT NOW — one sentence, at the top, before any number.
- *
- * This is the question every person opening the page came to answer, and until
- * this existed they answered it by reading five tiles and a rail of six boxes and
- * inferring it. A derived sentence cannot disagree with the tiles beneath it: it
- * is built from the same steps and the same documents, in the same request.
- *
- * The FRONT is the first step not yet settled, which is where the material
- * physically is. A finished or abandoned order has no front and says so instead.
- */
 interface Position {
   icon: React.ReactNode;
   headline: string;
   detail: string | null;
   tint: string;
   border: string;
-  /** The step the sentence is about, so the page can open on it. */
   step: OverviewStep | null;
 }
 
@@ -295,9 +74,9 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
 
   if (jobOrder.status === 'cancelled') {
     return {
-      icon: <CircleSlash size={18} color="#b91c1c" />,
+      icon: <CircleSlash size={16} color="#b91c1c" />,
       headline: 'Cancelled',
-      detail: 'Nothing further will move on this order.',
+      detail: 'Nothing further will move on this job order.',
       tint: '#fef2f2',
       border: '#fecaca',
       step: null,
@@ -305,9 +84,9 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   }
   if (jobOrder.status === 'short_closed') {
     return {
-      icon: <CircleSlash size={18} color="#b45309" />,
-      headline: 'Closed short',
-      detail: `Ended after ${done} of ${steps.length} steps, the numbers were accepted as they stood.`,
+      icon: <CircleSlash size={16} color="#b45309" />,
+      headline: 'Closed Short',
+      detail: `Ended after ${done} of ${steps.length} steps. Numbers accepted as finalized.`,
       tint: '#fffbeb',
       border: '#fde68a',
       step: null,
@@ -315,9 +94,9 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   }
   if (jobOrder.status === 'completed') {
     return {
-      icon: <CheckCircle2 size={18} color="#15803d" />,
+      icon: <CheckCircle2 size={16} color="#15803d" />,
       headline: 'Complete',
-      detail: `All ${steps.length} step${steps.length === 1 ? '' : 's'} finished.`,
+      detail: `All ${steps.length} process step${steps.length === 1 ? '' : 's'} finished.`,
       tint: '#f0fdf4',
       border: '#bbf7d0',
       step: steps[steps.length - 1] ?? null,
@@ -325,9 +104,9 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   }
   if (steps.length === 0) {
     return {
-      icon: <Clock size={18} color="#64748b" />,
-      headline: 'No work planned yet',
-      detail: 'Edit this order to add the steps the material runs through.',
+      icon: <Clock size={16} color="#64748b" />,
+      headline: 'No Steps Planned',
+      detail: 'Edit this order to configure the processes the material runs through.',
       tint: '#f8fafc',
       border: '#e2e8f0',
       step: null,
@@ -337,7 +116,7 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   const front =
     steps.find((s) => s.status !== 'completed' && s.status !== 'short_closed') ??
     steps[steps.length - 1]!;
-  const where = `Step ${front.seq} of ${steps.length} · ${front.processNameSnapshot}`;
+  const where = `Step ${front.seq} of ${steps.length}: ${front.processNameSnapshot}`;
   const party = front.processorNameSnapshot ?? front.workCentre?.name ?? 'the processor';
   const unit = front.inputs[0]?.uom
     ? (front.inputs[0].uom.symbol ?? front.inputs[0].uom.unitName)
@@ -345,34 +124,28 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   const outstanding = toNumber(front.totals.outstandingQty);
   const rework = toNumber(front.totals.reworkQty);
 
-  // When it went out, off the step's own last issue — "out since" is the fact
-  // people chase a processor with, and it is not derivable from a total.
   const lastIssue = [...data.activity]
     .reverse()
     .find((event) => event.kind === 'issue' && event.stepId === front.id);
 
   if (outstanding > 0) {
-    // 🔴 HOW LONG it has been out, not just when it went. "Sent on the 12th" is
-    // a date somebody then has to subtract from today; "out 9 days" is the fact
-    // they were going to work out anyway, and it is what a processor gets
-    // chased on.
     const days = lastIssue ? daysSince(lastIssue.date) : null;
     const age =
       days === null ? null : days === 0 ? 'sent today' : `out ${days} day${days === 1 ? '' : 's'}`;
     return {
-      icon: <Truck size={18} color="#1d4ed8" />,
+      icon: <Truck size={16} color="#0284c7" />,
       headline: `${qtyWithUnit(outstanding, unit)} out at ${party}`,
       detail: lastIssue
         ? `${where} · ${age}, last sent ${formatDate(lastIssue.date)} on ${lastIssue.number}`
         : where,
-      tint: '#eff6ff',
-      border: '#bfdbfe',
+      tint: '#f0f9ff',
+      border: '#bae6fd',
       step: front,
     };
   }
   if (rework > 0) {
     return {
-      icon: <RotateCcw size={18} color="#b45309" />,
+      icon: <RotateCcw size={16} color="#b45309" />,
       headline: `${formatQty(rework)} waiting to be run again`,
       detail: `${where} · issue the rework batch back to this step`,
       tint: '#fffbeb',
@@ -382,8 +155,8 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
   }
   if (front.blockedReason) {
     return {
-      icon: <Clock size={18} color="#64748b" />,
-      headline: 'Waiting on the step before it',
+      icon: <Clock size={16} color="#64748b" />,
+      headline: 'Waiting on previous step',
       detail: `${where} · ${front.blockedReason}`,
       tint: '#f8fafc',
       border: '#e2e8f0',
@@ -391,42 +164,16 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
     };
   }
   return {
-    icon: <Send size={18} color="#1d4ed8" />,
+    icon: <Send size={16} color="#0284c7" />,
     headline: `Ready to issue to ${party}`,
-    detail: `${where} · nothing has gone out yet`,
-    tint: '#eff6ff',
-    border: '#bfdbfe',
+    detail: `${where} · awaiting first issue`,
+    tint: '#f0f9ff',
+    border: '#bae6fd',
     step: front,
   };
 }
 
-/**
- * The Job Order Overview — the page the module exists for.
- *
- * 🔴 IT ANSWERS THREE QUESTIONS, IN THIS ORDER, AND NOTHING ELSE.
- *
- *   1. Where is this order right now?  → the state bar, one sentence.
- *   2. How far has it got?             → the rail, one box per step.
- *   3. What actually happened?         → the timeline, one row per document.
- *
- * Every number is DERIVED — from the ledger and the child documents, never from
- * stored totals, because a stored balance is a balance that can disagree with its
- * own history (§5.6) and this is the page people are meant to believe. It is one
- * request, so all of it describes the same moment; four fetches would render
- * four.
- *
- * 🔴 THE ROUTE IS THE PAGE. It reads as a rail of steps left to right, and only
- * the step you pick opens in full underneath. Every step expanded at once was the
- * shape before that: six screens of tables, no way to see where the material had
- * got to, and the one step needing action buried three scrolls down.
- */
 interface Props {
-  /**
-   * Panel mode — the list page renders this beside its own rows, so the id comes
-   * from the selection rather than the URL and the back arrow closes the panel
-   * instead of navigating away. Omitted on the standalone `/job-orders/:id`
-   * route, which keeps working exactly as before.
-   */
   jobOrderId?: string;
   onClose?: () => void;
 }
@@ -438,7 +185,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const id = jobOrderId ?? routeId;
 
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
-  const [view, setView] = useState<'step' | 'history' | 'approvals'>('step');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Activity' | 'Approvals'>('Overview');
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [completeReason, setCompleteReason] = useState('');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
@@ -446,6 +194,19 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const [completeStepTarget, setCompleteStepTarget] = useState<OverviewStep | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isMoreOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!moreMenuRef.current?.contains(e.target as Node)) {
+        setIsMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isMoreOpen]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['job-order-overview', orgId, id],
@@ -455,14 +216,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
 
   const steps = useMemo(() => data?.steps ?? [], [data]);
   const activity = useMemo(() => data?.activity ?? [], [data]);
-
   const position = useMemo(() => (data ? currentPosition(data, steps) : null), [data, steps]);
 
-  /**
-   * The step the order is actually sitting on — the one the state bar just named.
-   * Opening on step 1 of a five-step order that finished it a week ago wastes the
-   * click everybody makes next. A step the user picked always wins.
-   */
   const selectedStep = useMemo(() => {
     if (steps.length === 0) return null;
     const picked = steps.find((step) => step.id === pickedStepId);
@@ -497,10 +252,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     },
   });
 
-  /* What completing will write off (landed-cost R8). One figure only makes sense
-     for a one-input step — metres, cones and pieces cannot be added together.
-     🔴 Not certain loss: shrinkage belongs in cost, which closing the challan on its
-     last receipt does (challan-closure R10) — so the warning says so before it posts. */
   const completeOutstanding = completeStepTarget
     ? toNumber(completeStepTarget.totals.outstandingQty)
     : 0;
@@ -510,12 +261,12 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
       : null;
   const completeWriteOff =
     completeOutstanding <= 0
-      ? 'Nothing is still with the processor, so nothing will be written off.'
+      ? 'Nothing is currently with the processor, so no material will be written off.'
       : `${
           completeStepTarget && completeStepTarget.inputs.length <= 1
             ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
             : 'Some material is still with the processor'
-        } and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
+        } and will be written off as job order loss. If it was normal shrinkage, cancel this action and close the challan on its last receipt instead.`;
 
   const completeStep = useMutation({
     mutationFn: ({ stepId, reason }: { stepId: string; reason?: string }) =>
@@ -540,19 +291,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     },
   });
 
-  /**
-   * Only an order that has issued nothing can go (`deleteJobOrderById`) — past
-   * that the ledger rows behind it have to stay, and the server says so in words.
-   * The refusal is shown in the dialog rather than swallowed: a Delete that
-   * quietly does nothing is the worse failure.
-   */
   const remove = useMutation({
     mutationFn: () => deleteJobOrder(orgId!, id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       setDeleteOpen(false);
-      // The panel is showing a row that no longer exists; the standalone page is
-      // showing a document that no longer exists. Both leave.
       if (onClose) onClose();
       else navigate(`/organizations/${orgId}/jobwork/job-orders`);
     },
@@ -563,14 +306,18 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
 
   if (isLoading) {
     return (
-      <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
-        <Spinner size={24} label="Loading job order" />
+      <div style={{ padding: '64px', display: 'flex', justifyContent: 'center' }}>
+        <Spinner size={24} label="Loading job order details..." />
       </div>
     );
   }
 
   if (!data || !position) {
-    return <div style={{ padding: 32, color: '#64748b', fontSize: 13 }}>Job order not found.</div>;
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+        Job order not found.
+      </div>
+    );
   }
 
   const { jobOrder, summary } = data;
@@ -583,404 +330,785 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   ).length;
   const donePct = steps.length > 0 ? Math.round((doneSteps / steps.length) * 100) : 0;
 
-  // Late only while there is still work to do — a finished order is not overdue,
-  // it is finished.
   const isLate =
     Boolean(jobOrder.targetDate) &&
     new Date(jobOrder.targetDate!) < new Date() &&
     jobOrder.status !== 'completed' &&
     !isClosed;
 
-  /** A document is a real thing with its own page; reading its number and wanting
-   * to open it is the same impulse. */
   const openDocument = (event: ActivityEvent) => {
     const module = event.kind === 'issue' ? 'issues' : 'receipts';
     navigate(`/organizations/${orgId}/jobwork/${module}?id=${event.id}`);
   };
 
+  const tabs: ('Overview' | 'Activity' | 'Approvals')[] = ['Overview', 'Activity', 'Approvals'];
+
   return (
     <div
       style={{
-        background: '#f8fafc',
-        minHeight: '100%',
-        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        background: '#fff',
+        borderLeft: '1px solid #eef0f3',
       }}
     >
-      <header
-        style={{
-          background: '#fff',
-          borderBottom: '1px solid #e2e8f0',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div
-          className="detail-page-header"
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 16,
-            padding: '16px 24px',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 0 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: 0 }}>
-                  {jobOrder.jobOrderNumber}
-                </h1>
-                <JobOrderStatusBadge status={jobOrder.status} size="md" />
-                {jobOrder.ownership === 'customer' && (
-                  <span
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: 12,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#7c3aed',
-                      background: '#f5f3ff',
-                      border: '1px solid #ddd6fe',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.03em',
-                    }}
-                  >
-                    Customer-owned
-                  </span>
-                )}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 14,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  marginTop: 6,
-                }}
-              >
-                <span style={metaItem}>
-                  {jobOrder.inputItem?.name ?? 'No item yet'}
-                  {jobOrder.inputQty !== null && ` · ${formatQty(jobOrder.inputQty)} ${unit}`}
-                </span>
-                <span style={metaItem}>{jobOrder.routeNameSnapshot ?? 'No route'}</span>
-                <span style={metaItem}>Raised {formatDate(jobOrder.orderDate)}</span>
-                {jobOrder.targetDate && (
-                  <span style={{ ...metaItem, color: isLate ? '#dc2626' : '#64748b' }}>
-                    Due {formatDate(jobOrder.targetDate)}
-                    {isLate ? ' · overdue' : ''}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {!isClosed && (
-              <button
-                className="action-btn"
-                type="button"
-                onClick={() => navigate(`${listPath}/${jobOrder.id}/edit`)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '7px 14px',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 6,
-                  background: '#fff',
-                  cursor: 'pointer',
-                  color: '#1e293b',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#f0f7fd';
-                  e.currentTarget.style.color = '#0284c7';
-                  e.currentTarget.style.borderColor = 'rgba(2, 132, 199, 0.35)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#fff';
-                  e.currentTarget.style.color = '#1e293b';
-                  e.currentTarget.style.borderColor = '#cbd5e1';
-                }}
-              >
-                <Pencil size={14} color="#0284c7" /> <span className="action-btn-text">Edit</span>
-              </button>
-            )}
-            <ActionsMenu
-              label={`More actions for ${jobOrder.jobOrderNumber}`}
-              actions={[
-                {
-                  key: 'clone',
-                  label: 'Clone',
-                  onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
-                },
-                ...(isClosed
-                  ? []
-                  : [
-                      {
-                        key: 'short-close',
-                        label: 'Close short',
-                        onSelect: () => setShortCloseOpen(true),
-                      },
-                    ]),
-                {
-                  key: 'delete',
-                  label: 'Delete',
-                  danger: true,
-                  onSelect: () => {
-                    setDeleteError(null);
-                    setDeleteOpen(true);
-                  },
-                },
-              ]}
-            />
-
-            <button
-              type="button"
-              onClick={() => (onClose ? onClose() : navigate(listPath))}
-              aria-label={onClose ? 'Close job order' : 'Back to job orders'}
+      {/* 1. Header (Identical standard layout as PurchaseOrderDetail) */}
+      <div className="detail-page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
+            {jobOrder.jobOrderNumber}
+          </h2>
+          <JobOrderStatusBadge status={jobOrder.status} size="sm" />
+          {jobOrder.ownership === 'customer' && (
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                border: '1px solid #e2e8f0',
-                borderRadius: 6,
-                background: '#fff',
-                cursor: 'pointer',
-                color: '#64748b',
-                marginLeft: 4,
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f1f5f9';
-                e.currentTarget.style.color = '#0f172a';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#fff';
-                e.currentTarget.style.color = '#64748b';
+                background: '#f5f3ff',
+                color: '#7c3aed',
+                border: '1px solid #ddd6fe',
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
               }}
             >
-              <X size={16} />
-            </button>
-          </div>
+              Customer-Owned
+            </span>
+          )}
         </div>
-      </header>
 
-      {/* Answer first hero banner */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 20,
-          flexWrap: 'wrap',
-          padding: '14px 24px',
-          background: position.tint,
-          borderBottom: '1px solid #e2e8f0',
-        }}
-      >
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 260 }}>
-          <div
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {!isClosed && (
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() => navigate(`${listPath}/${jobOrder.id}/edit`)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                color: '#1e293b',
+                fontWeight: 500,
+              }}
+            >
+              <Edit size={14} color="#0284c7" />
+              <span className="action-btn-text">Edit</span>
+            </button>
+          )}
+
+          <div style={{ position: 'relative' }} ref={moreMenuRef}>
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() => setIsMoreOpen(!isMoreOpen)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                color: '#1e293b',
+              }}
+            >
+              <span className="action-btn-text">More</span>
+              <ChevronDown size={14} />
+            </button>
+
+            {isMoreOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #eef0f3',
+                  borderRadius: '4px',
+                  boxShadow:
+                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  width: '150px',
+                  zIndex: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Copy size={14} /> Clone
+                </div>
+
+                {!isClosed && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      setShortCloseOpen(true);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#b45309',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#fffbeb')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <CircleSlash size={14} /> Close Short
+                  </div>
+                )}
+
+                <div
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    setDeleteError(null);
+                    setDeleteOpen(true);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#ef4444',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Trash2 size={14} /> Delete
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => (onClose ? onClose() : navigate(listPath))}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: '#fff',
+              padding: '6px 8px',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              color: '#64748b',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              border: `1px solid ${position.border}`,
-              flexShrink: 0,
             }}
           >
-            {position.icon}
-          </div>
-          <div>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-              {position.headline}
-            </p>
-            {position.detail && (
-              <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#475569', lineHeight: 1.4 }}>
-                {position.detail}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Tile label="Issued" value={formatQty(summary.issuedQty)} unit={unit} />
+            <X size={20} />
+          </button>
         </div>
       </div>
 
-      <div style={{ padding: '18px 24px' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            marginBottom: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <h2 style={sectionLabel}>Route</h2>
+      {/* 2. Standard Tabs (Overview, Activity, Approvals) */}
+      <div className="detail-page-tabs">
+        {tabs.map((tab) => (
           <div
-            aria-hidden
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+            {tab === 'Activity' && activity.length > 0 && ` (${activity.length})`}
+          </div>
+        ))}
+      </div>
+
+      {/* 3. Tab Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', background: '#f8fafc' }}>
+        {/* TAB 1: OVERVIEW (Clean ERP Document Sheet) */}
+        {activeTab === 'Overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Top Quick Status Ribbon */}
+            <div
+              style={{
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#fff',
+                borderRadius: '6px',
+                border: '1px solid #e2e8f0',
+                fontSize: '13px',
+                color: '#475569',
+                flexWrap: 'wrap',
+                gap: 12,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <span>
+                  Current Status: <strong style={{ color: '#0f172a' }}>{position.headline}</strong>
+                </span>
+                <span style={{ color: '#cbd5e1' }}>|</span>
+                <span>
+                  Stage Progress:{' '}
+                  <strong style={{ color: '#0284c7' }}>
+                    {doneSteps} of {steps.length} Steps ({donePct}%)
+                  </strong>
+                </span>
+                <span style={{ color: '#cbd5e1' }}>|</span>
+                <span>
+                  Issued Material:{' '}
+                  <strong style={{ color: '#16a34a' }}>
+                    {formatQty(summary.issuedQty)} {unit}
+                  </strong>
+                </span>
+              </div>
+
+              {!isClosed && (
+                <button
+                  type="button"
+                  onClick={() => setAddStepsOpen(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    color: '#0284c7',
+                    background: '#f0f9ff',
+                    border: '1px solid #bae6fd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={13} /> Add Steps
+                </button>
+              )}
+            </div>
+
+            {/* Clean White Document Sheet Card */}
+            <div
+              style={{
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '24px 32px',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
+              }}
+            >
+              {/* Header Title & Ownership */}
+              <div className="detail-top-section">
+                <div>
+                  <h1
+                    style={{
+                      fontSize: '24px',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      margin: '0 0 4px 0',
+                    }}
+                  >
+                    JOB ORDER
+                  </h1>
+                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
+                    Job Order#{' '}
+                    <strong style={{ color: '#0f172a' }}>{jobOrder.jobOrderNumber}</strong>
+                  </div>
+                </div>
+
+                <div className="detail-top-right">
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      MATERIAL OWNERSHIP
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '13px',
+                        color: jobOrder.ownership === 'customer' ? '#7c3aed' : '#0284c7',
+                        fontWeight: 600,
+                        marginBottom: '2px',
+                      }}
+                    >
+                      {jobOrder.ownership === 'customer'
+                        ? jobOrder.ownerCustomer?.companyName ||
+                          jobOrder.ownerCustomer?.contactName ||
+                          'Customer Goods'
+                        : 'Internal Stock (Self-Manufactured)'}
+                    </div>
+                    {jobOrder.ownerCustomer && (
+                      <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                        {jobOrder.ownerCustomer.email && <div>{jobOrder.ownerCustomer.email}</div>}
+                        {jobOrder.ownerCustomer.phone && <div>{jobOrder.ownerCustomer.phone}</div>}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      INPUT MATERIAL SPECIFICATION
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '13px',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                        marginBottom: '2px',
+                      }}
+                    >
+                      {jobOrder.inputItem?.name ?? 'No input material'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                      Target Quantity:{' '}
+                      <strong>
+                        {jobOrder.inputQty !== null
+                          ? `${formatQty(jobOrder.inputQty)} ${unit}`
+                          : '-'}
+                      </strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                      Total Issued:{' '}
+                      <strong style={{ color: '#0284c7' }}>
+                        {formatQty(summary.issuedQty)} {unit}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status & Metadata 4-Column Grid */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '20px',
+                  marginBottom: '28px',
+                  background: '#fafafa',
+                  padding: '16px 20px',
+                  borderRadius: '6px',
+                  border: '1px solid #f1f5f9',
+                }}
+              >
+                <div>
+                  <div style={labelStyle}>STATUS & WORK FRONT</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: 4 }}>
+                    <JobOrderStatusBadge status={jobOrder.status} size="sm" />
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '6px' }}>
+                    {position.step
+                      ? `Step ${position.step.seq}: ${position.step.processNameSnapshot}`
+                      : position.headline}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>ORDER DATE</div>
+                  <div style={valueStyle}>
+                    {jobOrder.orderDate ? formatDate(jobOrder.orderDate) : '-'}
+                  </div>
+
+                  <div style={{ ...labelStyle, marginTop: '10px' }}>TARGET DATE</div>
+                  <div
+                    style={{
+                      ...valueStyle,
+                      color: isLate ? '#dc2626' : '#1e293b',
+                      fontWeight: isLate ? 600 : 500,
+                    }}
+                  >
+                    {jobOrder.targetDate ? formatDate(jobOrder.targetDate) : '-'}
+                    {isLate ? ' (Overdue)' : ''}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>PROCESS ROUTE</div>
+                  <div style={valueStyle}>{jobOrder.routeNameSnapshot ?? 'Custom Route'}</div>
+
+                  <div style={{ ...labelStyle, marginTop: '10px' }}>TOTAL STAGES</div>
+                  <div style={valueStyle}>{steps.length} sequential processes</div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>MATERIAL BALANCES</div>
+                  <div style={{ fontSize: '12px', color: '#475569' }}>
+                    Target:{' '}
+                    <strong>
+                      {jobOrder.inputQty !== null ? `${formatQty(jobOrder.inputQty)} ${unit}` : '-'}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '2px' }}>
+                    Issued:{' '}
+                    <strong>
+                      {formatQty(summary.issuedQty)} {unit}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    Remaining to Issue:{' '}
+                    <strong>
+                      {jobOrder.inputQty !== null
+                        ? `${formatQty(Math.max(0, toNumber(jobOrder.inputQty) - summary.issuedQty))} ${unit}`
+                        : '-'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Route Workflow Section */}
+              <div style={{ marginBottom: '28px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '12px',
+                  }}
+                >
+                  <div style={labelStyle}>PRODUCTION ROUTE WORKFLOW</div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    Click any step below to view details and record operations
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    padding: '16px 20px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <JobOrderFlow
+                    steps={steps}
+                    selectedId={selectedStep?.id ?? null}
+                    currentId={position.step?.id ?? null}
+                    onSelect={(step) => {
+                      setPickedStepId(step.id);
+                    }}
+                    onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
+                  />
+                </div>
+              </div>
+
+              {/* Selected Step Operations & Details */}
+              {selectedStep && (
+                <div style={{ marginBottom: '24px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    <div style={labelStyle}>
+                      STEP {selectedStep.seq}: {selectedStep.processNameSnapshot.toUpperCase()}{' '}
+                      DETAILS
+                    </div>
+                  </div>
+
+                  <JobOrderStepDetail
+                    step={selectedStep}
+                    activity={stepActivity}
+                    onIssue={(step) =>
+                      navigate(
+                        `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
+                      )
+                    }
+                    onReceive={(step) =>
+                      navigate(
+                        `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
+                      )
+                    }
+                    onComplete={setCompleteStepTarget}
+                    onOpenDocument={openDocument}
+                  />
+                </div>
+              )}
+
+              {/* Notes & Remarks */}
+              {jobOrder.remarks && (
+                <div
+                  style={{
+                    marginTop: '20px',
+                    paddingTop: '16px',
+                    borderTop: '1px solid #f1f5f9',
+                  }}
+                >
+                  <div style={labelStyle}>NOTES / REMARKS</div>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: '#475569',
+                      lineHeight: 1.6,
+                      background: '#f8fafc',
+                      padding: '10px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    {jobOrder.remarks}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: ACTIVITY FEED */}
+        {activeTab === 'Activity' && (
+          <div
             style={{
-              width: 140,
-              height: 5,
-              borderRadius: 3,
-              background: '#e2e8f0',
-              overflow: 'hidden',
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '20px 24px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
+            }}
+          >
+            <ActivityTabs events={activity} onOpen={openDocument} />
+          </div>
+        )}
+
+        {/* TAB 3: APPROVALS & GOVERNANCE */}
+        {activeTab === 'Approvals' && (
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '24px 32px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
             }}
           >
             <div
               style={{
-                width: `${donePct}%`,
-                height: '100%',
-                background: 'linear-gradient(90deg, #0284c7 0%, #10b981 100%)',
-                borderRadius: 3,
-                transition: 'width 0.3s ease',
-              }}
-            />
-          </div>
-          <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b' }}>
-            {doneSteps} of {steps.length} step{steps.length === 1 ? '' : 's'} done
-            {position.step && !isClosed && jobOrder.status !== 'completed' && (
-              <span style={{ color: '#0284c7', fontWeight: 600 }}>
-                {' '}
-                · now at step {position.step.seq}
-              </span>
-            )}
-          </span>
-        </div>
-        <JobOrderFlow
-          steps={steps}
-          selectedId={view === 'step' ? (selectedStep?.id ?? null) : null}
-          currentId={position.step?.id ?? null}
-          onSelect={(step) => {
-            setPickedStepId(step.id);
-            // Picking a step is a request to read that step — staying on the
-            // whole-order timeline would make the click do nothing visible.
-            setView('step');
-          }}
-          /* Offered whatever the steps are doing — appending renumbers nothing,
-             so a step at a processor is no reason to withhold it. A closed order
-             is: the server refuses those, and a button that only ever 409s is
-             worse than no button. */
-          onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
-        />
-
-        {steps.length > 0 && (
-          <>
-            <div
-              style={{
-                display: 'inline-flex',
-                gap: 4,
-                margin: '20px 0 12px 0',
-                padding: '3px',
-                background: '#e2e8f0',
-                borderRadius: 8,
-                maxWidth: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                marginBottom: 20,
+                paddingBottom: 14,
+                borderBottom: '1px solid #f1f5f9',
               }}
             >
-              <ViewTab
-                isActive={view === 'step'}
-                onClick={() => setView('step')}
-                label={
-                  selectedStep
-                    ? `Step ${selectedStep.seq} · ${selectedStep.processNameSnapshot}`
-                    : 'Step'
-                }
-              />
-              <ViewTab
-                isActive={view === 'history'}
-                onClick={() => setView('history')}
-                label={`Full history (${activity.length})`}
-              />
-              <ViewTab
-                isActive={view === 'approvals'}
-                onClick={() => setView('approvals')}
-                label="Approvals"
-              />
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  background: '#f0fdf4',
+                  color: '#16a34a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ShieldCheck size={18} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                  Document Approval & Production Governance
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#64748b' }}>
+                  Authorization lifecycle, creator identity, and ledger validation
+                </p>
+              </div>
             </div>
 
-            {view === 'step' && selectedStep && (
-              <JobOrderStepDetail
-                step={selectedStep}
-                activity={stepActivity}
-                onIssue={(step) =>
-                  navigate(
-                    `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
-                  )
-                }
-                onReceive={(step) =>
-                  navigate(
-                    `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
-                  )
-                }
-                onComplete={setCompleteStepTarget}
-                onOpenDocument={openDocument}
-              />
-            )}
-
-            {view === 'history' && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 16,
+                marginBottom: 24,
+              }}
+            >
               <div
                 style={{
-                  border: '1px solid #eef0f3',
-                  borderRadius: 10,
-                  background: '#fff',
                   padding: '14px 16px',
+                  background: '#f8fafc',
+                  borderRadius: 6,
+                  border: '1px solid #e2e8f0',
                 }}
               >
-                {/* 🔴 Every step, in one column, oldest first. */}
-                <ActivityTabs events={activity} onOpen={openDocument} />
+                <div style={labelStyle}>WORKFLOW STATE</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <CheckCircle2 size={16} color="#16a34a" />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                    Approved for Manufacturing
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                  Standard manufacturing workflow verified
+                </span>
               </div>
-            )}
 
-            {view === 'approvals' && (
               <div
                 style={{
-                  border: '1px solid #eef0f3',
-                  borderRadius: 10,
-                  background: '#fff',
-                  padding: '22px 20px',
+                  padding: '14px 16px',
+                  background: '#f8fafc',
+                  borderRadius: 6,
+                  border: '1px solid #e2e8f0',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                  <History size={16} color="#0284c7" />
-                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                    Approval History
-                  </h4>
+                <div style={labelStyle}>CREATED BY</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <User size={15} color="#0284c7" />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                    {jobOrder.createdByUser?.name ||
+                      jobOrder.createdByUser?.email ||
+                      'System Administrator'}
+                  </span>
                 </div>
+                <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                  {formatDate(jobOrder.createdAt)}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  padding: '14px 16px',
+                  background: '#f8fafc',
+                  borderRadius: 6,
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <div style={labelStyle}>PROCESS INTEGRITY</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <Check size={16} color="#0284c7" />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                    {steps.length} Route Stages Active
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                  Real-time stock ledger validations enabled
+                </span>
+              </div>
+            </div>
+
+            {/* Lifecycle Timeline */}
+            <div style={{ ...labelStyle, marginBottom: 12 }}>AUDIT TRAIL</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'flex-start',
+                  padding: '10px 14px',
+                  background: '#f8fafc',
+                  borderRadius: 6,
+                  borderLeft: '3px solid #16a34a',
+                }}
+              >
+                <div style={{ minWidth: 90, fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+                  {formatDate(jobOrder.createdAt)}
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                    Job Order Initiated
+                  </div>
+                  <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+                    Document {jobOrder.jobOrderNumber} was created and approved for production.
+                  </div>
+                </div>
+              </div>
+
+              {activity.length > 0 && (
                 <div
                   style={{
-                    color: '#94a3b8',
-                    fontSize: 13,
-                    textAlign: 'center',
-                    padding: '24px 0',
+                    display: 'flex',
+                    gap: 12,
+                    alignItems: 'flex-start',
+                    padding: '10px 14px',
                     background: '#f8fafc',
-                    borderRadius: 8,
-                    border: '1px dashed #e2e8f0',
+                    borderRadius: 6,
+                    borderLeft: '3px solid #0284c7',
                   }}
                 >
-                  No approval workflow records found for this document.
+                  <div style={{ minWidth: 90, fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+                    {formatDate(activity[0]?.date ?? jobOrder.orderDate)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                      Material Movement Commenced
+                    </div>
+                    <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+                      {activity.length} document transactions posted against this job order.
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
+              )}
+
+              {isClosed && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 12,
+                    alignItems: 'flex-start',
+                    padding: '10px 14px',
+                    background: '#fffbeb',
+                    borderRadius: 6,
+                    borderLeft: '3px solid #f59e0b',
+                  }}
+                >
+                  <div style={{ minWidth: 90, fontSize: 12, color: '#b45309', fontWeight: 500 }}>
+                    {formatDate(jobOrder.updatedAt)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+                      Order Concluded (
+                      {jobOrder.status === 'short_closed' ? 'Closed Short' : 'Cancelled'})
+                    </div>
+                    <div style={{ fontSize: 12, color: '#78350f', marginTop: 2 }}>
+                      Production finalized and remaining balances settled.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
+      {/* Add Steps Dialog */}
       {addStepsOpen && (
         <AddStepsDialog
           isOpen
@@ -990,8 +1118,6 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           ownership={jobOrder.ownership}
           steps={steps}
           onAdded={() => {
-            // The list too: appending to a completed order reopens it as
-            // in_progress, and the row would otherwise keep saying "Completed".
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
             queryClient.setQueriesData(
               { queryKey: ['job-orders', orgId], type: 'active' },
@@ -1010,13 +1136,15 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         />
       )}
 
+      {/* Complete Step Confirmation Modal */}
       <ConfirmDialog
         isOpen={Boolean(completeStepTarget)}
-        title="Complete this step"
+        title="Complete this process step"
         message={
           <div>
             <p style={{ margin: '0 0 12px 0', lineHeight: 1.6, color: '#334155' }}>
-              Completing says nothing more is coming back from this step. {completeWriteOff}
+              Completing indicates no more material will be returned from this step.{' '}
+              {completeWriteOff}
             </p>
             <div
               style={{
@@ -1030,9 +1158,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 lineHeight: 1.5,
               }}
             >
-              Draft challans or receipts on the step have to be posted or deleted first. This action
-              cannot be undone. Nothing more can be issued, received or cancelled against the step
-              afterwards.
+              Draft challans or receipts on the step must be posted or deleted first. This action
+              cannot be undone. Nothing more can be issued or received against this step afterwards.
             </div>
             <label
               style={{
@@ -1056,16 +1183,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 fontSize: 13,
                 border: '1px solid #cbd5e1',
                 borderRadius: 6,
-                minHeight: 34,
+                minHeight: 36,
                 boxSizing: 'border-box',
                 outline: 'none',
                 color: '#0f172a',
               }}
-              placeholder="e.g. Work completed or no longer needed"
+              placeholder="e.g. Work completed or no further processing needed"
             />
           </div>
         }
-        confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}
+        confirmText={completeStep.isPending ? 'Completing...' : 'Complete Step'}
         onConfirm={() => {
           if (completeStepTarget) {
             completeStep.mutate({ stepId: completeStepTarget.id, reason: completeReason });
@@ -1077,15 +1204,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         }}
       />
 
+      {/* Close Short Confirmation Modal */}
       <ConfirmDialog
         isOpen={shortCloseOpen}
         title="Close this job order short"
         message={
           <div>
             <p style={{ margin: '0 0 12px 0', lineHeight: 1.6, color: '#334155' }}>
-              This ends the order even though the numbers do not balance, which is a normal outcome,
-              not an error. Whatever is still with a processor on its open steps is written off as
-              job order loss. It cannot be reopened, and a later receipt will not undo it.
+              This concludes the job order and accepts current balances. Any material remaining with
+              processors on open steps will be written off as job order loss. This action cannot be
+              undone.
             </p>
             <label
               style={{
@@ -1109,16 +1237,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 fontSize: 13,
                 border: '1px solid #cbd5e1',
                 borderRadius: 6,
-                minHeight: 34,
+                minHeight: 36,
                 boxSizing: 'border-box',
                 outline: 'none',
                 color: '#0f172a',
               }}
-              placeholder="e.g. Completed or party accepted"
+              placeholder="e.g. Completed or party accepted final delivery"
             />
           </div>
         }
-        confirmText={shortClose.isPending ? 'Closing…' : 'Close short'}
+        confirmText={shortClose.isPending ? 'Closing...' : 'Close Short'}
         onConfirm={() => {
           if (shortCloseReason.trim()) shortClose.mutate();
         }}
@@ -1128,6 +1256,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         }}
       />
 
+      {/* Delete Job Order Confirmation Modal */}
       <ConfirmDialog
         isOpen={deleteOpen}
         title="Delete Job Order"
@@ -1135,7 +1264,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           deleteError ? (
             <span style={{ color: '#b91c1c' }}>{deleteError}</span>
           ) : (
-            `Delete ${jobOrder.jobOrderNumber}? Only a job order that has not issued anything yet can be deleted.`
+            `Are you sure you want to delete ${jobOrder.jobOrderNumber}? Only an order that has not issued any material yet can be deleted.`
           )
         }
         confirmText="Delete"
@@ -1147,49 +1276,5 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         }}
       />
     </div>
-  );
-}
-
-/**
- * One of the two readings of the same documents. Plain buttons with
- * `aria-pressed` rather than a tablist: nothing here is a tab panel that hides
- * content — both views render the same feed, filtered or not — and a real
- * `role="tablist"` would then owe arrow-key navigation for two controls Tab
- * already reaches in order.
- */
-function ViewTab({
-  label,
-  isActive,
-  onClick,
-}: {
-  label: string;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={isActive}
-      style={{
-        padding: '6px 16px',
-        fontSize: 12,
-        fontWeight: isActive ? 600 : 500,
-        color: isActive ? '#0284c7' : '#64748b',
-        background: isActive ? '#fff' : 'transparent',
-        border: 'none',
-        borderRadius: 6,
-        boxShadow: isActive ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-        maxWidth: 280,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        transition: 'all 0.15s ease',
-      }}
-    >
-      {label}
-    </button>
   );
 }

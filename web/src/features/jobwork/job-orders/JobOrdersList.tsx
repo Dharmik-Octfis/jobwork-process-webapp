@@ -611,19 +611,28 @@ export function JobOrdersList() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: selectedId ? '12px 16px' : '14px 24px',
+                padding: selectedId ? '12px 14px' : '14px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #e2e8f0',
-                gap: 12,
-                flexWrap: 'wrap',
+                gap: 8,
+                flexWrap: 'nowrap',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                  overflow: 'hidden',
+                }}
+              >
                 <ListFilterDropdown
                   filters={filters}
                   value={filter}
                   onChange={setFilter}
-                  fallbackLabel="Open Job Orders"
+                  fallbackLabel="All Job Orders"
                 />
 
                 {/* Inline Search Bar */}
@@ -698,43 +707,45 @@ export function JobOrdersList() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {/* Refresh Trigger */}
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                  title="Refresh job orders"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 32,
-                    height: 32,
-                    borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    color: '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f0f7fd';
-                    e.currentTarget.style.color = '#0284c7';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#fff';
-                    e.currentTarget.style.color = '#64748b';
-                  }}
-                >
-                  <RotateCw
-                    size={15}
+                {/* Refresh Trigger - Full list view only */}
+                {!selectedId && (
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    title="Refresh job orders"
                     style={{
-                      animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                      transition: 'all 0.15s ease',
                     }}
-                  />
-                </button>
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.color = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff';
+                      e.currentTarget.style.color = '#64748b';
+                    }}
+                  >
+                    <RotateCw
+                      size={15}
+                      style={{
+                        animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                      }}
+                    />
+                  </button>
+                )}
 
-                {/* Column Customizer */}
+                {/* Column Customizer - Full list view only */}
                 {!selectedId && (
                   <button
                     type="button"
@@ -777,14 +788,14 @@ export function JobOrdersList() {
                     background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                     color: 'white',
                     border: 'none',
-                    padding: '7px 16px',
+                    padding: selectedId ? '6px 12px' : '7px 16px',
                     borderRadius: 6,
                     fontWeight: 600,
                     fontSize: 13,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 5,
                     whiteSpace: 'nowrap',
                     boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
                     transition: 'all 0.15s ease',
@@ -798,7 +809,7 @@ export function JobOrdersList() {
                     e.currentTarget.style.transform = 'none';
                   }}
                 >
-                  <Plus size={16} /> New Job Order
+                  <Plus size={16} /> {selectedId ? 'New' : 'New Job Order'}
                 </button>
               </div>
             </header>
