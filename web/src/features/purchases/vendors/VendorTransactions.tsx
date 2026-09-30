@@ -258,7 +258,7 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((item: { id: string; date?: string; billDate?: string; issueDate?: string; receiptDate?: string; purchaseOrderNumber?: string; poNumber?: string; billNumber?: string; challanNumber?: string; receiptNumber?: string; totalAmount?: number | string; total?: number | string; totalQty?: number | string; totalReceivedQty?: number | string; status?: string; [key: string]: unknown }) => {
+                        {items.map((item: { id: string; date?: string; billDate?: string; issueDate?: string; receiptDate?: string; purchaseOrderNumber?: string; poNumber?: string; billNumber?: string; challanNumber?: string; receiptNumber?: string; totalAmount?: number | string | null; total?: number | string | null; totalQty?: number | string | null; totalReceivedQty?: number | string | null; status?: string | null; [key: string]: unknown }) => {
                           const date = section === 'Purchase Orders' ? item.date : 
                                        section === 'Bills' ? item.billDate :
                                        section === 'Job Issues' ? item.issueDate :
