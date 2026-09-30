@@ -112,7 +112,6 @@ export function JobOrderStepDetail({
 
   // A settled step takes no more issues (R9), so "issue it back" would be a dead end.
   const reworkPending = !settled && toNumber(step.totals.pendingReworkQty) > 0;
- 
 
   const canExecuteIssue = step.canIssue && !isUnderApproval;
 
@@ -155,46 +154,29 @@ export function JobOrderStepDetail({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Hidden, not disabled, once settled: the server refuses every issue
               against a completed step (R9), and the status badge says why. */}
-          {!settled && !step.canIssue && (
           {isUnderApproval ? (
             <span style={{ fontSize: 11, color: '#b45309', maxWidth: 320, fontWeight: 500 }}>
               Job Order is pending approval. Actions are locked.
             </span>
-          ) : !step.canIssue ? (
+          ) : !settled && !step.canIssue ? (
             <span style={{ fontSize: 11, color: '#94a3b8', maxWidth: 320 }}>
               {/* 🔴 The REASON, not just a disabled button. */}
               This step has nothing listed to issue.
             </span>
           ) : null}
-          <button
-            className="action-btn"
-            type="button"
-            onClick={() => onIssue(step)}
-            disabled={!canExecuteIssue}
-            title={isUnderApproval ? 'Cannot issue while pending approval' : undefined}
-            style={{
-              ...actionButton,
-              background: canExecuteIssue ? '#0062ff' : '#f1f5f9',
-              color: canExecuteIssue ? '#fff' : '#94a3b8',
-              border: 'none',
-              cursor: canExecuteIssue ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <Send size={14} /> <span className="action-btn-text">Issue</span>
-          </button>
-          )}
           {!settled && (
             <button
               className="action-btn"
               type="button"
               onClick={() => onIssue(step)}
-              disabled={!step.canIssue}
+              disabled={!canExecuteIssue}
+              title={isUnderApproval ? 'Cannot issue while pending approval' : undefined}
               style={{
                 ...actionButton,
-                background: step.canIssue ? '#0062ff' : '#f1f5f9',
-                color: step.canIssue ? '#fff' : '#94a3b8',
+                background: canExecuteIssue ? '#0062ff' : '#f1f5f9',
+                color: canExecuteIssue ? '#fff' : '#94a3b8',
                 border: 'none',
-                cursor: step.canIssue ? 'pointer' : 'not-allowed',
+                cursor: canExecuteIssue ? 'pointer' : 'not-allowed',
               }}
             >
               <Send size={14} /> <span className="action-btn-text">Issue</span>
