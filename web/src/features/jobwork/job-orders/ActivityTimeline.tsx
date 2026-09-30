@@ -349,7 +349,15 @@ function ReceiptLines({ event }: { event: ActivityReceipt }) {
             .filter((ref): ref is string => Boolean(ref));
 
           return (
-            <span key={output.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px' }}>
+            <span
+              key={output.id}
+              style={{
+                display: 'inline-flex',
+                flexWrap: 'wrap',
+                alignItems: 'baseline',
+                gap: '4px 12px',
+              }}
+            >
               <MovementRow
                 name={output.itemName}
                 detail={batchRefs.length > 0 ? `→ ${[...new Set(batchRefs)].join(', ')}` : null}
@@ -365,7 +373,9 @@ function ReceiptLines({ event }: { event: ActivityReceipt }) {
                   }}
                 >
                   <Disposition color="#15803d" text={`${formatQty(accepted)} accepted`} />
-                  {rework > 0 && <Disposition color="#b45309" text={`${formatQty(rework)} rework`} />}
+                  {rework > 0 && (
+                    <Disposition color="#b45309" text={`${formatQty(rework)} rework`} />
+                  )}
                   {scrap > 0 && <Disposition color="#b91c1c" text={`${formatQty(scrap)} scrap`} />}
                   {output.reason && <span style={{ color: '#94a3b8' }}>· {output.reason}</span>}
                 </span>
@@ -422,7 +432,7 @@ function ReceiptLines({ event }: { event: ActivityReceipt }) {
         <div style={{ fontSize: 11, color: '#64748b' }}>
           {/* It never entered our stock, so it has no batch and no ledger row —
               which is exactly why it has to be said in words. */}
-          {formatQty(event.returnedQty)} sent straight back — never taken into stock
+          {formatQty(event.returnedQty)} sent straight back (never taken into stock)
         </div>
       )}
     </div>

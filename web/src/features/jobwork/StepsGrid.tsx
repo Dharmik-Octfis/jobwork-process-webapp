@@ -702,9 +702,9 @@ function ItemList({
                   ) : (
                     <div
                       style={{ flex: '0 0 76px', ...cellReadOnly, justifyContent: 'center' }}
-                      title="Comes back unused — takes no share"
+                      title="Comes back unused, takes no share"
                     >
-                      –
+                      -
                     </div>
                   ))}
 
@@ -1117,8 +1117,8 @@ export function StepsGrid<T extends StepGridRow>({
                   {locked && (
                     <span style={{ ...chipStyle, background: '#f1f5f9', color: '#475569' }}>
                       {processorEditable
-                        ? 'Already sent out — only the processor can change'
-                        : 'Already sent out — locked'}
+                        ? 'Already sent out: only the processor can change'
+                        : 'Already sent out (locked)'}
                     </span>
                   )}
                 </span>
@@ -1131,7 +1131,7 @@ export function StepsGrid<T extends StepGridRow>({
                     onClick={() => move(index, -1)}
                     disabled={disabled || index === 0 || index <= lockedCount}
                     title={
-                      index <= lockedCount && index > 0 ? 'Locked — already sent out' : 'Move up'
+                      index <= lockedCount && index > 0 ? 'Locked: already sent out' : 'Move up'
                     }
                     aria-label={`Move step ${stepNo} up`}
                     style={{

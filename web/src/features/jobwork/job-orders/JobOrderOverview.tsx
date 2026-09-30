@@ -307,7 +307,7 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
     return {
       icon: <CircleSlash size={18} color="#b45309" />,
       headline: 'Closed short',
-      detail: `Ended after ${done} of ${steps.length} steps — the numbers were accepted as they stood.`,
+      detail: `Ended after ${done} of ${steps.length} steps, the numbers were accepted as they stood.`,
       tint: '#fffbeb',
       border: '#fde68a',
       step: null,
