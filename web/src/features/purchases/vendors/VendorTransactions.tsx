@@ -6,7 +6,7 @@ import { fetchBills } from '../bills/bills.api';
 import { fetchJobIssues } from '../../jobwork/issues/jobIssues.api';
 import { fetchJobReceipts } from '../../jobwork/receipts/jobReceipts.api';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface VendorTransactionsProps {
   orgId: string;
@@ -14,6 +14,8 @@ interface VendorTransactionsProps {
 }
 
 export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [expandedSection, setExpandedSection] = useState<string | null>('Vendor Payments');
 
   const toggleSection = (section: string) => {
@@ -107,6 +109,17 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
                 </div>
                 <div onClick={(e) => e.stopPropagation()}>
                   <button
+                    onClick={() => {
+                      const newRoute = 
+                        section === 'Purchase Orders' ? `/organizations/${orgId}/purchases/purchase-orders/new` :
+                        section === 'Bills' ? `/organizations/${orgId}/purchases/bills/new` :
+                        section === 'Job Issues' ? `/organizations/${orgId}/jobwork/issues/new` :
+                        `/organizations/${orgId}/jobwork/receipts/new`;
+                      
+                      navigate(newRoute, {
+                        state: { returnUrl: location.pathname + location.search }
+                      });
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -188,12 +201,12 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((item: { id: string; date?: string; billDate?: string; issueDate?: string; receiptDate?: string; purchaseOrderNumber?: string; billNumber?: string; challanNumber?: string; receiptNumber?: string; totalAmount?: number | string; total?: number | string; totalQty?: number | string; totalReceivedQty?: number | string; status?: string; [key: string]: unknown }) => {
+                        {items.map((item: { id: string; date?: string; billDate?: string; issueDate?: string; receiptDate?: string; purchaseOrderNumber?: string; poNumber?: string; billNumber?: string; challanNumber?: string; receiptNumber?: string; totalAmount?: number | string; total?: number | string; totalQty?: number | string; totalReceivedQty?: number | string; status?: string; [key: string]: unknown }) => {
                           const date = section === 'Purchase Orders' ? item.date : 
                                        section === 'Bills' ? item.billDate :
                                        section === 'Job Issues' ? item.issueDate :
                                        item.receiptDate;
-                          const number = section === 'Purchase Orders' ? item.purchaseOrderNumber : 
+                          const number = section === 'Purchase Orders' ? (item.poNumber || item.purchaseOrderNumber) : 
                                          section === 'Bills' ? item.billNumber :
                                          section === 'Job Issues' ? item.challanNumber :
                                          item.receiptNumber;
