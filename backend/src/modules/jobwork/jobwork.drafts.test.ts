@@ -3,6 +3,7 @@ import { prisma, runAsTenant } from '../../db/prisma.ts';
 import { deleteTestOrganization, uniqueOrgCode } from '../../db/testTenant.ts';
 import {
   createBatch,
+  DRAFT_BATCH_STATE,
   getBalance,
   postMovement,
 } from '../inventory/stock-ledger/stockLedger.service.ts';
@@ -18,6 +19,8 @@ import {
 import {
   createNewJobReceipt,
   deleteJobReceiptDraft,
+  getJobReceiptById,
+  getOutputBatchOptions,
   getReceivePrefill,
   postJobReceiptDraft,
 } from './receipts/jobReceipts.service.ts';
@@ -432,9 +435,11 @@ describe('a draft receipt affects nothing', { timeout: 120_000 }, () => {
       lines: [{ itemId: greyId, batchId: batch.id, qty: 1000 }],
     });
 
-    const batchesBefore = await runAsTenant(orgId, (tx) =>
-      tx.batch.count({ where: { organizationId: orgId } }),
-    );
+    const liveBatches = () =>
+      runAsTenant(orgId, (tx) =>
+        tx.batch.count({ where: { organizationId: orgId, state: { not: DRAFT_BATCH_STATE } } }),
+      );
+    const batchesBefore = await liveBatches();
 
     const draft = await createNewJobReceipt(
       orgId,
@@ -463,13 +468,11 @@ describe('a draft receipt affects nothing', { timeout: 120_000 }, () => {
     // for. They are only harmless because every sum filters on the status.
     expect(Number(draft.totalReceivedQty)).toBe(980);
 
-    // 🔴 No ledger row, and — the receipt side's own hazard — NO NEW BATCH. A
-    // parked form must not give birth to inventory.
+    // 🔴 No ledger row, and — the receipt side's own hazard — NO LIVE BATCH. A
+    // parked form must not give birth to inventory; the batch it names is kept
+    // only as a draft batch, which nothing can post against.
     expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBe(0);
-    const batchesAfter = await runAsTenant(orgId, (tx) =>
-      tx.batch.count({ where: { organizationId: orgId } }),
-    );
-    expect(batchesAfter).toBe(batchesBefore);
+    expect(await liveBatches()).toBe(batchesBefore);
 
     // The challan it names is untouched — still out, still receivable.
     const challan = await runAsTenant(orgId, (tx) =>
@@ -613,6 +616,295 @@ describe('a draft receipt affects nothing', { timeout: 120_000 }, () => {
     );
     expect(posted.status).toBe('posted');
     expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBeGreaterThan(0);
+  });
+
+  /**
+   * 🔴 A DRAFT KEEPS THE BATCH AND TAKAS IT NAMES (2026-09-29).
+   *
+   * Before this a draft dropped every new batch, so "Receive goods" on a draft
+   * refused with "does not say which batch…" even though the user had typed the
+   * batch and its takas. The draft now holds them as a `draft` batch, its
+   * packages, and one `job_receipt_output_batches` row per taka carrying the qty.
+   */
+  it('keeps a new batch and its takas, and posts them without retyping', async () => {
+    const { batch, step1 } = await makeOrder();
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: step1.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: batch.id, qty: 100 }],
+    });
+    const reference = `DYE-${unique()}`;
+    const payload = {
+      jobOrderStepId: step1.id,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: [{ itemId: greyId, jobIssueId: issue.id, issuedQty: 100, receivedQty: 0 }],
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 100,
+          acceptedQty: 100,
+          batches: [
+            {
+              batchReference: reference,
+              qty: 100,
+              units: [
+                { label: 'T1', qty: 60 },
+                { label: 'T2', qty: 40 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const draft = await createNewJobReceipt(orgId, payload, undefined, 'draft');
+    // Saved twice, as an edit does: the first save's draft batch is replaced, not kept.
+    await createNewJobReceipt(orgId, payload, undefined, 'draft', draft.id);
+
+    const draftBatches = await runAsTenant(orgId, (tx) =>
+      tx.batch.findMany({
+        where: { organizationId: orgId, sourceDocId: draft.id },
+        select: { id: true, state: true, supplierBatchRef: true },
+      }),
+    );
+    expect(draftBatches).toHaveLength(1);
+    expect(draftBatches[0]).toMatchObject({
+      state: DRAFT_BATCH_STATE,
+      supplierBatchRef: reference,
+    });
+    expect(await ledgerRowsFor(SOURCE_DOC_TYPES.jobReceipt, draft.id)).toBe(0);
+
+    // One row per taka, each carrying its own qty.
+    const rows = await runAsTenant(orgId, (tx) =>
+      tx.jobReceiptOutputBatch.findMany({
+        where: { organizationId: orgId, jobReceiptId: draft.id },
+        select: { batchUnitId: true, qty: true },
+      }),
+    );
+    expect(rows.map((row) => Number(row.qty)).sort((a, b) => a - b)).toEqual([40, 60]);
+    expect(rows.every((row) => row.batchUnitId !== null)).toBe(true);
+
+    // The detail read — what the Edit form restores from — gives one batch with its takas.
+    const detail = await getJobReceiptById(orgId, draft.id);
+    const [allocation] = detail!.outputs[0]!.batches;
+    expect(detail!.outputs[0]!.batches).toHaveLength(1);
+    expect(Number(allocation!.qty)).toBe(100);
+    expect(
+      (allocation as unknown as { units: { label: string; qty: unknown }[] }).units.map((unit) => [
+        unit.label,
+        Number(unit.qty),
+      ]),
+    ).toEqual([
+      ['T1', 60],
+      ['T2', 40],
+    ]);
+
+    // Nothing else may move stock through the draft batch.
+    await expect(
+      runAsDocument(orgId, (tx) =>
+        postMovement(tx, {
+          organizationId: orgId,
+          batchId: draftBatches[0]!.id,
+          locationId: godownId,
+          movementType: 'receipt',
+          qtyIn: 5,
+          sourceDocType: SOURCE_DOC_TYPES.jobOrderMaterialIn,
+        }),
+      ),
+    ).rejects.toThrow(/draft that has not been received/);
+
+    // "Receive goods" on the draft — no retyping.
+    const posted = await postJobReceiptDraft(orgId, draft.id);
+    expect(posted.status).toBe('posted');
+
+    const after = await runAsTenant(orgId, (tx) =>
+      tx.batch.findMany({
+        where: { organizationId: orgId, sourceDocId: draft.id },
+        select: { id: true, state: true, supplierBatchRef: true },
+      }),
+    );
+    // The draft batch is gone; one real batch carries the same reference.
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ state: 'open', supplierBatchRef: reference });
+    expect(after[0]!.id).not.toBe(draftBatches[0]!.id);
+
+    const balance = await runAsTenant(orgId, (tx) =>
+      getBalance(tx, { organizationId: orgId, batchId: after[0]!.id, locationId: godownId }),
+    );
+    expect(Number(balance.qty)).toBe(100);
+    const units = await runAsTenant(orgId, (tx) =>
+      tx.batchUnit.findMany({
+        where: { organizationId: orgId, batchId: after[0]!.id },
+        select: { label: true },
+        orderBy: { seq: 'asc' },
+      }),
+    );
+    expect(units.map((unit) => unit.label)).toEqual(['T1', 'T2']);
+  });
+
+  /**
+   * 🔴 A TOP-UP KEEPS ITS TAKAS TOO — parity with a draft issue, which restores
+   * every row it saved. The second half of a split delivery adds to a batch the
+   * first half created: one taka that already held stock, and one new one.
+   */
+  it('keeps the takas of a top-up, and hides a draft taka from the picker', async () => {
+    const { batch, step1 } = await makeOrder();
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: step1.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: batch.id, qty: 200 }],
+    });
+    const lines = (qty: number) => [
+      { itemId: greyId, jobIssueId: issue.id, issuedQty: qty, receivedQty: 0 },
+    ];
+
+    // First half, posted: a batch holding T1.
+    const first = await createNewJobReceipt(orgId, {
+      jobOrderStepId: step1.id,
+      issueIds: [issue.id],
+      locationId: godownId,
+      lines: lines(100),
+      outputs: [
+        {
+          itemId: dyedId,
+          isPrimary: true,
+          receivedQty: 100,
+          acceptedQty: 100,
+          batches: [
+            { batchReference: `DYE-${unique()}`, qty: 100, units: [{ label: 'T1', qty: 100 }] },
+          ],
+        },
+      ],
+    });
+    const lot = await runAsTenant(orgId, (tx) =>
+      tx.batch.findFirstOrThrow({
+        where: { organizationId: orgId, sourceDocId: first.id },
+        select: { id: true, batchUnits: { select: { id: true } } },
+      }),
+    );
+    const t1 = lot.batchUnits[0]!.id;
+
+    // Second half, as a draft: 20 more into T1, and a new T2 of 40.
+    const draft = await createNewJobReceipt(
+      orgId,
+      {
+        jobOrderStepId: step1.id,
+        issueIds: [issue.id],
+        locationId: godownId,
+        lines: lines(60),
+        outputs: [
+          {
+            itemId: dyedId,
+            isPrimary: true,
+            receivedQty: 60,
+            acceptedQty: 60,
+            batches: [
+              {
+                batchId: lot.id,
+                qty: 60,
+                units: [
+                  { batchUnitId: t1, qty: 20 },
+                  { label: 'T2', qty: 40 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      undefined,
+      'draft',
+    );
+
+    // The detail read gives the form both takas, and which one the draft named.
+    const detail = await getJobReceiptById(orgId, draft.id);
+    const units = (
+      detail!.outputs[0]!.batches[0] as unknown as {
+        units: { label: string; qty: unknown; isNew: boolean }[];
+      }
+    ).units.map((unit) => [unit.label, Number(unit.qty), unit.isNew]);
+    expect(units).toEqual([
+      ['T1', 20, false],
+      ['T2', 40, true],
+    ]);
+
+    // The picker offers the batch by id, but not T2 — it has held no stock.
+    const options = await getOutputBatchOptions(orgId, {
+      jobOrderStepId: step1.id,
+      itemId: dyedId,
+      batchIds: [lot.id],
+      withUnits: true,
+    });
+    const offered = [...options.jobOrderBatches, ...options.otherBatches];
+    expect(offered.map((row) => row.batchId)).toEqual([lot.id]);
+    expect(offered[0]!.units.map((unit) => unit.label)).toEqual(['T1']);
+
+    const posted = await postJobReceiptDraft(orgId, draft.id);
+    expect(posted.status).toBe('posted');
+
+    const byUnit = await runAsTenant(orgId, (tx) =>
+      tx.stockLedgerEntry.groupBy({
+        by: ['batchUnitId'],
+        where: { organizationId: orgId, sourceDocId: draft.id, movementType: 'produce' },
+        _sum: { qtyIn: true },
+      }),
+    );
+    const labels = await runAsTenant(orgId, (tx) =>
+      tx.batchUnit.findMany({
+        where: { organizationId: orgId, batchId: lot.id, isDeleted: false },
+        select: { id: true, label: true },
+      }),
+    );
+    const labelOf = new Map(labels.map((unit) => [unit.id, unit.label]));
+    expect(
+      byUnit
+        .map((row) => [labelOf.get(row.batchUnitId!), Number(row._sum.qtyIn)])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    ).toEqual([
+      ['T1', 20],
+      ['T2', 40],
+    ]);
+    // Exactly one T2: the draft's was discarded, the posted one replaced it.
+    expect(labels.map((unit) => unit.label).sort()).toEqual(['T1', 'T2']);
+  });
+
+  it('deletes its draft batches with it', async () => {
+    const { batch, step1 } = await makeOrder();
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: step1.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: greyId, batchId: batch.id, qty: 50 }],
+    });
+    const draft = await createNewJobReceipt(
+      orgId,
+      {
+        jobOrderStepId: step1.id,
+        issueIds: [issue.id],
+        locationId: godownId,
+        lines: [{ itemId: greyId, jobIssueId: issue.id, issuedQty: 50, receivedQty: 0 }],
+        outputs: [
+          {
+            itemId: dyedId,
+            isPrimary: true,
+            receivedQty: 50,
+            acceptedQty: 50,
+            batches: [
+              { batchReference: `DYE-${unique()}`, qty: 50, units: [{ label: 'T1', qty: 50 }] },
+            ],
+          },
+        ],
+      },
+      undefined,
+      'draft',
+    );
+
+    await deleteJobReceiptDraft(orgId, draft.id);
+
+    const left = await runAsTenant(orgId, (tx) =>
+      tx.batch.count({ where: { organizationId: orgId, sourceDocId: draft.id } }),
+    );
+    expect(left).toBe(0);
   });
 
   it('refuses to post a draft receipt that accounts for no challan', async () => {

@@ -1121,7 +1121,18 @@ model JobReceiptOutputBatch {
   kind String @db.VarChar(20)
 
   batchId String  @map("batch_id") @db.Uuid
-  qty     Decimal @db.Decimal(18, 4)
+
+  /// WHICH package of that batch — a taka, roll, bale (2026-09-29). One row per
+  /// (batch, package), plus one null row for the untagged remainder: the grain of
+  /// `bill_item_batches` and `job_issue_lines`, so a batch's quantity is the SUM of
+  /// its rows here. Rows written before this column are all null and read as a
+  /// batch with no packages named on the document.
+  ///
+  /// 🔴 The document's own record of the takas, and the ONLY one a draft has — a
+  /// draft posts no ledger rows, and a `batch_unit` stores no quantity.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
+
+  qty Decimal @db.Decimal(18, 4)
 
   /// Did THIS receipt create the batch, or add to one that already existed?
   ///
@@ -1142,6 +1153,7 @@ model JobReceiptOutputBatch {
   jobReceipt       JobReceipt       @relation(fields: [jobReceiptId], references: [id], onDelete: Cascade)
   jobReceiptOutput JobReceiptOutput @relation(fields: [jobReceiptOutputId], references: [id], onDelete: Cascade)
   batch            Batch            @relation("JobReceiptOutputBatchBatch", fields: [batchId], references: [id])
+  batchUnit        BatchUnit?       @relation("JobReceiptOutputBatchUnit", fields: [batchUnitId], references: [id])
   createdByUser    User?            @relation("JobReceiptOutputBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser    User?            @relation("JobReceiptOutputBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
