@@ -168,10 +168,9 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'type', label: 'Type' },
   ],
   /**
-   * Processes — the jobwork operation master. `itemChanges` is default-visible on
-   * purpose: it decides whether a different item comes back, so someone scanning
-   * this list needs to see it without opening each row. (`rateBasis` went with the
-   * landed-cost redesign; a saved layout naming it drops it on read.)
+   * Processes — the jobwork operation master. (`rateBasis` went with the
+   * landed-cost redesign and `itemChanges` with its column on 2026-09-30; a saved
+   * layout naming either drops it on read.)
    *
    * No `cf:` columns are merged into this one — `process` is list-only now
    * (LIST_ONLY_ENTITY_TYPES above).
@@ -179,7 +178,6 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
   process: [
     { key: 'name', label: 'Process Name', locked: true },
     { key: 'code', label: 'Code', defaultVisible: true },
-    { key: 'itemChanges', label: 'Changes Item', defaultVisible: true },
     { key: 'description', label: 'Description' },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },

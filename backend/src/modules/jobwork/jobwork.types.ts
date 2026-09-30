@@ -109,6 +109,8 @@ export type JobReceiptStatus = (typeof JOB_RECEIPT_STATUSES)[number];
  */
 const NOT_POSTED: string[] = ['draft', 'cancelled'];
 export const POSTED_DOC_STATUS = { notIn: NOT_POSTED };
+/** The same rule for a row already in hand. */
+export const isPostedDocStatus = (status: string) => !NOT_POSTED.includes(status);
 
 /**
  * "Did this document ever happen?" — a different question from the one above, and

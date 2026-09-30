@@ -54,7 +54,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   /**
    * Users. The first entry is the default, so an admin opening Settings → Users
    * lands on **Active Users** — the people who can actually sign in today, which is
-   * what they are looking for almost every time. (The key stays `all` because it 
+   * what they are looking for almost every time. (The key stays `all` because it
    * is the default slot, while the label and `where` narrow it.)
    *
    * 🔴 `unconfirmed` is the one preset whose rows do NOT come from `memberships` —
@@ -85,12 +85,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
    * `filterWhere` resolves an absent `?filter=` to `all`, so an empty list here
    * would 400 every request.
    */
-  process: [
-    { key: 'all', label: 'All Processes', where: {} },
-    /** Where the taka survives the operation, so unit-wise receipt is possible
-     * at all (§5.2.3) — dyeing yes, cutting no. */
-    { key: 'changes_item', label: 'Changes The Item', where: { itemChanges: true } },
-  ],
+  process: [{ key: 'all', label: 'All Processes', where: {} }],
   process_route: [{ key: 'all', label: 'All Routes', where: {} }],
   /**
    * Job orders. The default is **Open** — everything not yet finished — because

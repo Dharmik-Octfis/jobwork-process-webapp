@@ -283,7 +283,7 @@ interface ResolvedStep extends JobOrderStepInput {
  *
  * 🔴 WHAT IS SENT IS WHAT IS SAVED, and there is nothing left to infer it from
  * (2026-08-12). Nothing comes from the step above, nothing from the process's
- * `itemChanges` flag, and — since Migration B dropped them — nothing from the
+ * `itemChanges` flag (column dropped 2026-09-30), and — since Migration B dropped them — nothing from the
  * `issueItemId` / `receiveItemId` scalars that used to stand in for a client
  * without the nested grids.
  *
@@ -996,7 +996,6 @@ async function buildSteps(
     select: {
       id: true,
       name: true,
-      itemChanges: true,
     },
   });
   const byId = new Map(processes.map((p) => [p.id, p]));

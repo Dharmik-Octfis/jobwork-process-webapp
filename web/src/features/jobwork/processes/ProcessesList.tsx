@@ -20,14 +20,9 @@ import type { Process } from './processes.schemas';
  *
  * No `cf:` branch here — `process` is list-only now (LIST_ONLY_ENTITY_TYPES), so
  * the server never merges a custom-field column into this catalog.
- *
- * The booleans render as the CONSEQUENCE, not as "Yes"/"No" — a column headed
- * "Changes Item" full of Yes tells a reader nothing they can act on.
  */
 function renderProcessCell(process: Process, key: string): string {
   switch (key) {
-    case 'itemChanges':
-      return process.itemChanges ? 'New item' : 'Same item';
     case 'createdAt':
     case 'updatedAt':
       return formatDate(process[key]);
@@ -298,14 +293,14 @@ export function ProcessesList() {
                         fontSize: 13,
                         fontWeight: 500,
                         color: '#1e293b',
-                        marginBottom: 4,
+                        marginBottom: process.code ? 4 : 0,
                       }}
                     >
                       {process.name}
                     </span>
-                    <span style={{ fontSize: 12, color: '#64748b' }}>
-                      {process.code || renderProcessCell(process, 'itemChanges')}
-                    </span>
+                    {process.code && (
+                      <span style={{ fontSize: 12, color: '#64748b' }}>{process.code}</span>
+                    )}
                   </button>
                 ))}
               </div>

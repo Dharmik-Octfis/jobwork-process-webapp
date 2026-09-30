@@ -21,6 +21,7 @@ import { assertLocationsBelongToOrg, resolveProcessorName } from '../jobwork.ref
 import { closedQtyByIssueLine, lockStep } from '../jobwork.posting.ts';
 import {
   HAPPENED_DOC_STATUS,
+  isPostedDocStatus,
   POSTED_DOC_STATUS,
   SOURCE_DOC_TYPES,
   runAsDocument,
@@ -124,12 +125,55 @@ export async function countJobIssues(organizationId: string, opts: ListQuery): P
 }
 
 export async function getJobIssueById(organizationId: string, id: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.jobIssue.findFirst({
+  return runAsTenant(organizationId, async (tx) => {
+    const issue = await tx.jobIssue.findFirst({
       where: { id, organizationId, isDeleted: false },
-      include: ISSUE_INCLUDE,
-    }),
+      include: {
+        ...ISSUE_INCLUDE,
+        step: { select: { ...ISSUE_INCLUDE.step.select, status: true } },
+      },
+    });
+    if (!issue) return null;
+    return { ...issue, canReceive: await canReceiveAgainst(tx, organizationId, issue) };
+  });
+}
+
+/**
+ * Whether the Receive screen would accept this challan — the refusals of
+ * `jobReceipts.service` (R9, R14, posted only) plus the prefill's "something is
+ * still out", so the button is never one that only 409s.
+ */
+async function canReceiveAgainst(
+  tx: TenantClient,
+  organizationId: string,
+  issue: {
+    id: string;
+    status: string;
+    step: { status: string } | null;
+    lines: { id: string; qty: Prisma.Decimal }[];
+  },
+): Promise<boolean> {
+  if (!isPostedDocStatus(issue.status)) return false;
+  if (issue.step?.status === 'completed' || issue.step?.status === 'short_closed') return false;
+
+  const closedByReceipt = await tx.jobReceiptLine.findFirst({
+    where: {
+      organizationId,
+      jobIssueId: issue.id,
+      closesChallan: true,
+      isDeleted: false,
+      jobReceipt: { isDeleted: false, status: POSTED_DOC_STATUS },
+    },
+    select: { id: true },
+  });
+  if (closedByReceipt) return false;
+
+  const closedByLine = await closedQtyByIssueLine(
+    tx,
+    organizationId,
+    issue.lines.map((line) => line.id),
   );
+  return issue.lines.some((line) => line.qty.minus(closedByLine.get(line.id) ?? 0).greaterThan(0));
 }
 
 /** Every issue against one step — what the Overview page's "2 issues" links to. */

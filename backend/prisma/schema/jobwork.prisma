@@ -4,15 +4,14 @@
 /// Sprints 2–4 and belong in THIS file (see docs/JOBWORK_IMPLEMENTATION_PLAN.md §8.1).
 ///
 /// A Process is what someone DOES to material: dyeing, printing, cutting,
-/// stitching. It is a small per-org master, but two of its flags are read by the
-/// issue and receipt screens later and decide what those screens are even allowed
-/// to offer — so they exist from the first migration rather than being bolted on:
+/// stitching. It is a small per-org master — a name — and carries no behaviour
+/// flags: what a step consumes and produces is the step's own rows.
 ///
-///   itemChanges          the thing that comes back is a DIFFERENT item (cloth → shirt).
-///                        Domain doc §5.1: a changed unit means a changed item, never
-///                        a conversion factor.
+/// ⚠️ `itemChanges` (cloth → shirt) was dropped 2026-09-30. Nothing on the server
+/// had read it since 2026-08-12; its last effect was seeding a step's output with
+/// its first input, which the step grid's "Same as consumed" does for every input.
 ///
-/// ⚠️ `preservesPackaging` was a third, and went with package-level tracking on
+/// ⚠️ `preservesPackaging` was another, and went with package-level tracking on
 /// 2026-08-12. It existed only to decide unit-wise vs bulk receipt; with quantity
 /// granularity stopping at the batch, every receipt is bulk and the flag could only
 /// ever hold one meaningful value.
@@ -35,9 +34,6 @@ model Process {
   /// derives meaning from it, exactly like `Batch.supplierBatchRef`.
   code           String? @db.VarChar(50)
   description    String?
-
-  /// true when the output is a different item from the input (§5.1).
-  itemChanges Boolean @default(false) @map("item_changes")
 
   /// ⚠️ `rateBasis` and `defaultTolerancePct` were dropped by landed-cost Migration 2
   /// (2026-09-15): the charge is rate × accepted on each output row, and tolerance

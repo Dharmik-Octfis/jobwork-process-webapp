@@ -66,6 +66,8 @@ export const jobIssueSchema = z.object({
     .optional(),
   sourceLocation: namedRefSchema.nullable().optional(),
   destination: namedRefSchema.nullable().optional(),
+  /** Detail read only — whether a receipt would still be accepted against it. */
+  canReceive: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

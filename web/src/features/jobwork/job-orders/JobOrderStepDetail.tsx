@@ -112,7 +112,6 @@ export function JobOrderStepDetail({
 
   // A settled step takes no more issues (R9), so "issue it back" would be a dead end.
   const reworkPending = !settled && toNumber(step.totals.pendingReworkQty) > 0;
- 
 
   const canExecuteIssue = step.canIssue && !isUnderApproval;
 
@@ -155,17 +154,16 @@ export function JobOrderStepDetail({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Hidden, not disabled, once settled: the server refuses every issue
               against a completed step (R9), and the status badge says why. */}
-          {!settled && isUnderApproval && (
+          {isUnderApproval ? (
             <span style={{ fontSize: 11, color: '#b45309', maxWidth: 320, fontWeight: 500 }}>
               Job Order is pending approval. Actions are locked.
             </span>
-          )}
-          {!settled && !isUnderApproval && !step.canIssue && (
+          ) : !settled && !step.canIssue ? (
             <span style={{ fontSize: 11, color: '#94a3b8', maxWidth: 320 }}>
               {/* 🔴 The REASON, not just a disabled button. */}
               This step has nothing listed to issue.
             </span>
-          )}
+          ) : null}
           {!settled && (
             <button
               className="action-btn"

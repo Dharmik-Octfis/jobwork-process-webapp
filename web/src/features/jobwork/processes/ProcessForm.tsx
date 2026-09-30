@@ -47,7 +47,14 @@ const errorStyle: React.CSSProperties = {
  * (CLAUDE.md). DOM order is also tab order here — the fields are one column, so
  * the two cannot silently diverge the way they do in a multi-column grid.
  */
-export function ProcessForm({ initialData, onSubmit, isPending, onCancel, formId, hideFooter }: ProcessFormProps) {
+export function ProcessForm({
+  initialData,
+  onSubmit,
+  isPending,
+  onCancel,
+  formId,
+  hideFooter,
+}: ProcessFormProps) {
   const {
     register,
     handleSubmit,
@@ -57,7 +64,6 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel, formId
       name: initialData?.name ?? '',
       code: initialData?.code ?? '',
       description: initialData?.description ?? '',
-      itemChanges: initialData?.itemChanges ?? false,
     },
   });
 
@@ -82,7 +88,7 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel, formId
       // being clipped by the window's bottom edge or overlapping the fixed action bar.
       style={hideFooter ? { padding: '8px 0' } : { padding: '24px 32px', paddingBottom: 200 }}
     >
-      <section style={{ maxWidth: 640, marginBottom: 32 }}>
+      <section style={{ maxWidth: 640, marginBottom: hideFooter ? 0 : 32 }}>
         <div style={{ marginBottom: 20 }}>
           <label style={{ ...labelStyle, color: '#ef4444' }} htmlFor="process-name">
             Process Name*
@@ -111,7 +117,7 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel, formId
           />
         </div>
 
-        <div style={{ marginBottom: 20 }}>
+        <div>
           <label style={labelStyle} htmlFor="process-description">
             Description
           </label>
@@ -124,37 +130,12 @@ export function ProcessForm({ initialData, onSubmit, isPending, onCancel, formId
         </div>
       </section>
 
-      <section style={{ maxWidth: 640, marginBottom: hideFooter ? 0 : 32 }}>
-        <h2
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: '#111',
-            margin: '0 0 16px 0',
-            textTransform: 'uppercase',
-            letterSpacing: 0.4,
-          }}
-        >
-          Behaviour
-        </h2>
-
-        <label
-          style={{
-            display: 'flex',
-            gap: 10,
-            alignItems: 'flex-start',
-            marginBottom: hideFooter ? 0 : 16,
-            cursor: 'pointer',
-          }}
-        >
-          <input type="checkbox" {...register('itemChanges')} style={{ marginTop: 3 }} />
-          <span>
-            <strong style={{ fontSize: 13, color: '#111' }}>The item changes</strong>
-          </span>
-        </label>
-      </section>
-
       {/*
+        ⚠️ The "Behaviour" section is gone (2026-09-30). Its one checkbox, "The
+        item changes", only seeded a step's output with its first input; the step
+        grid's "Same as consumed" copies every input, so the flag and its column
+        were dropped.
+
         ⚠️ The "Defaults" section is gone. "Default Issue Unit" and "Default
         Receive Unit" went first: a step transacts in its ITEMS' stocking units
         (§5.1), so an org-wide default was a guess about one item. "Rate Basis"
