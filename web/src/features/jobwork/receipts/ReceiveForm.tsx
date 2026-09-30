@@ -54,6 +54,8 @@ interface Props {
    * 2026-09-29) and top-ups of existing ones (see `draftAllocations`).
    */
   draft?: JobReceipt | null;
+  /** Opened from a challan: that one starts ticked, the rest stay tickable. */
+  initialIssueId?: string | null;
 }
 
 /**
@@ -210,7 +212,14 @@ const sectionHeading: React.CSSProperties = {
  *    out from the job order's plan (landed-cost R4) and may be typed over; what
  *    was sent and not used stays with the processor until the step is completed.
  */
-export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Props) {
+export function ReceiveForm({
+  jobOrder,
+  step,
+  onReceived,
+  onCancel,
+  draft,
+  initialIssueId,
+}: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
@@ -219,20 +228,16 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   const unitLabel = useBatchUnitLabel();
 
   /**
-   * `null` means "everything that is open" — every challan pre-ticked, which is
-   * the normal case. Storing the default as null rather than seeding an array in
-   * an effect is what lets the prefill arrive without a second render, and what
-   * stops a re-fetch from silently re-ticking something the user un-ticked.
-   */
-  /**
-   * Seeded from the draft at mount — the page only renders this form once the
-   * draft has loaded, and remounts it by `key`, so the initial value is enough
-   * and no effect is needed to fill it in afterwards.
+   * Seeded from the draft (or the challan this was opened from) at mount — the
+   * page only renders this form once the draft has loaded, and remounts it by
+   * `key`, so the initial value is enough and no effect is needed afterwards.
    */
   const [pickedIssueIds, setPickedIssueIds] = useState<string[]>(() =>
     draft
       ? [...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : [])))]
-      : [],
+      : initialIssueId
+        ? [initialIssueId]
+        : [],
   );
   /** 🔴 Default empty array: picking the first batch of receipts is the
    * user's job, not a guess the system makes by pre-selecting every open
@@ -533,12 +538,19 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   // Checked challans. By default, none are checked (unlike before where all were).
   // A draft may name a challan another receipt has closed since; it cannot be
   // received against, and is not on screen to untick, so it is dropped (R14).
+  // The challan this was opened from may have come back in full since the link was
+  // shown; like a closed one it is off screen, so it is dropped rather than sent.
+  const initialIssueGone = Boolean(
+    initialIssueId && prefill && !prefill.issues.some((issue) => issue.id === initialIssueId),
+  );
   const selectedIssueIds = useMemo(
     () =>
       pickedIssueIds.filter(
-        (id) => !(prefill?.closedIssues ?? []).some((issue) => issue.id === id),
+        (id) =>
+          !(prefill?.closedIssues ?? []).some((issue) => issue.id === id) &&
+          !(initialIssueGone && id === initialIssueId),
       ),
-    [pickedIssueIds, prefill],
+    [pickedIssueIds, prefill, initialIssueGone, initialIssueId],
   );
   // Unticking a challan un-closes it — closing needs the challan on the receipt.
   const closedIssueIds = useMemo(
@@ -965,6 +977,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      // An open challan's Receive button depends on what is still out against it.
+      queryClient.invalidateQueries({ queryKey: ['job-issue', orgId] });
       // The goods just landed in a godown, under batches this receipt may have
       // created — the pickers, the location balances and the Item page all move.
       invalidateStockQueries(queryClient, orgId);
@@ -1286,6 +1300,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                   Nothing is currently out against this step.
                 </span>
               )}
+              {initialIssueGone &&
+                !prefill.closedIssues.some((issue) => issue.id === initialIssueId) && (
+                  <span style={{ fontSize: 13, color: '#b45309', flexBasis: '100%' }}>
+                    The challan you opened this from has nothing left to receive.
+                  </span>
+                )}
               {prefill.issues.map((issue) => {
                 const ticked = selectedIssueIds.includes(issue.id);
                 const closed = closedIssueIds.includes(issue.id);

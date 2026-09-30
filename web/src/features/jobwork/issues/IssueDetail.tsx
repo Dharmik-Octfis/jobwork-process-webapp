@@ -1,12 +1,13 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Printer, X } from 'lucide-react';
+import { PackageCheck, Printer, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { invalidateStockQueries } from '../stockCache';
 import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
@@ -93,6 +94,14 @@ export function IssueDetail({ issueId, onClose }: Props) {
   });
   const orgName =
     organizations.find((org) => org.organizationId === orgId)?.name ?? 'Delivery Challan';
+
+  // Same lock the job order's step buttons honour while it awaits approval.
+  const { isUnderApproval, isRejected } = useRecordApproval(
+    orgId,
+    'job_orders',
+    issue?.canReceive ? issue.jobOrderId : undefined,
+  );
+  const receiveLocked = isUnderApproval || isRejected;
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobIssue(orgId!, issueId, cancelReason),
@@ -251,7 +260,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
             {formatDate(issue.issueDate)} · {issue.processorNameSnapshot ?? 'in-house'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {/**
            * 🔴 A DRAFT GETS A DIFFERENT SET, and Print is deliberately not in it.
            * A challan is the document that TRAVELS WITH THE GOODS; printing one
@@ -347,6 +356,36 @@ export function IssueDetail({ issueId, onClose }: Props) {
               <span className="action-btn-text">
                 <span className="action-btn-text">Print</span> challan
               </span>
+            </button>
+          )}
+          {issue.canReceive && (
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${issue.jobOrderId}` +
+                    `&stepId=${issue.jobOrderStepId}&issueId=${issue.id}`,
+                )
+              }
+              disabled={receiveLocked}
+              title={
+                receiveLocked ? 'Cannot receive while the job order awaits approval' : undefined
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                fontSize: 13,
+                borderRadius: 4,
+                background: receiveLocked ? '#f1f5f9' : '#fff',
+                color: receiveLocked ? '#94a3b8' : '#186337',
+                border: receiveLocked ? '1px solid #cbd5e1' : '1px solid #186337',
+                cursor: receiveLocked ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <PackageCheck size={14} /> <span className="action-btn-text">Receive</span>
             </button>
           )}
           {/* Cancelling posts reversing rows, so it only applies to a challan

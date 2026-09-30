@@ -22,6 +22,11 @@ export function CreateReceivePage() {
   /** Editing a draft reuses this page — see the same note on `CreateIssuePage`.
    * The step comes from the DRAFT, never from the pickers. */
   const draftId = searchParams.get('draftId');
+  /** Opened from a challan's Receive button — pre-ticked, and where we go back to. */
+  const issueIdParam = searchParams.get('issueId');
+  const backToIssue = issueIdParam
+    ? `/organizations/${orgId}/jobwork/issues?id=${issueIdParam}`
+    : null;
 
   const { data: draft, isLoading: isLoadingDraft } = useQuery({
     queryKey: ['job-receipt', orgId, draftId],
@@ -95,7 +100,9 @@ export function CreateReceivePage() {
         <button
           type="button"
           onClick={() => {
-            if (jobOrderIdParam) {
+            if (backToIssue) {
+              navigate(backToIssue);
+            } else if (jobOrderIdParam) {
               navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
             } else if (draftId) {
               navigate(`/organizations/${orgId}/jobwork/receipts?id=${draftId}&filter=draft`);
@@ -192,6 +199,7 @@ export function CreateReceivePage() {
           <ReceiveForm
             key={draft?.id ?? 'new'}
             draft={draft ?? null}
+            initialIssueId={issueIdParam}
             jobOrder={jobOrderData.jobOrder}
             step={selectedStep}
             onReceived={(receiptId, isDraft) => {
@@ -207,6 +215,8 @@ export function CreateReceivePage() {
                */
               if (isDraft && receiptId) {
                 navigate(`/organizations/${orgId}/jobwork/receipts?id=${receiptId}&filter=draft`);
+              } else if (backToIssue) {
+                navigate(backToIssue);
               } else if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
               } else if (receiptId) {
@@ -219,7 +229,9 @@ export function CreateReceivePage() {
               }
             }}
             onCancel={() => {
-              if (jobOrderIdParam) {
+              if (backToIssue) {
+                navigate(backToIssue);
+              } else if (jobOrderIdParam) {
                 navigate(`/organizations/${orgId}/jobwork/job-orders?id=${jobOrderIdParam}`);
               } else if (draftId) {
                 navigate(`/organizations/${orgId}/jobwork/receipts?id=${draftId}&filter=draft`);
