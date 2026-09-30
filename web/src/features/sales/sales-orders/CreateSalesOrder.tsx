@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
 import {
   Plus,
   Trash2,
@@ -24,6 +25,8 @@ import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import type { CreateSalesOrderData, SalesOrderItem } from './sales-orders.schemas';
+import { lineDiscountAmount, lineDiscountError, lineGross } from '../../../lib/lineDiscount';
+import { firstErrorMessage } from '../../../lib/formErrors';
 import {
   createSalesOrder,
   fetchSalesOrderById,
@@ -385,18 +388,10 @@ export function CreateSalesOrder() {
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
   (watchItems || []).forEach((item: SalesOrderItem) => {
-    const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
-    const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-    const basePrice = qty * rate;
-    const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
-    const discType = item?.discountType || 'percentage';
-
-    const discountAmount =
-      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-    computedSubTotal += basePrice;
-    computedTotalDiscount += discountAmount;
+    computedSubTotal += lineGross(item);
+    computedTotalDiscount += lineDiscountAmount(item);
   });
-  const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
+  const computedTotalAmount = computedSubTotal - computedTotalDiscount;
 
   useEffect(() => {
     setValue('subTotal', computedSubTotal);
@@ -448,9 +443,7 @@ export function CreateSalesOrder() {
         queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, id] });
       }
       queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
-      navigate(
-        `/organizations/${orgId}/sales/sales-orders?id=${isEdit && id ? id : data?.id}`,
-      );
+      navigate(`/organizations/${orgId}/sales/sales-orders?id=${isEdit && id ? id : data?.id}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
       alert(
@@ -461,16 +454,17 @@ export function CreateSalesOrder() {
     },
   });
 
+  const onInvalid = (errs: unknown) =>
+    toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.');
+
   const onSubmit = (data: CreateSalesOrderData) => {
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-      const basePrice = qty * rate;
       const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
       const discType = item?.discountType || 'percentage';
-      const discountAmount =
-        discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-      const itemTotal = Math.max(0, basePrice - discountAmount);
+      const discountAmount = lineDiscountAmount(item);
+      const itemTotal = lineGross(item) - discountAmount;
       return {
         ...item,
         quantity: qty,
@@ -566,11 +560,7 @@ export function CreateSalesOrder() {
       </div>
 
       <div className="page-body">
-        <form
-          id="create-po-form"
-          onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
-          noValidate
-        >
+        <form id="create-po-form" onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate>
           {/* Main Details Section */}
           <div
             style={{
@@ -595,7 +585,11 @@ export function CreateSalesOrder() {
                 fontSize: '13px',
               }}
             >
-              <label style={{ ...labelStyle, color: '#ef4444', alignSelf: 'start', marginTop: '10px' }}>Customer Name*</label>
+              <label
+                style={{ ...labelStyle, color: '#ef4444', alignSelf: 'start', marginTop: '10px' }}
+              >
+                Customer Name*
+              </label>
               <div>
                 <input type="hidden" {...register('customerId', { required: true })} />
                 <SearchableSelect
@@ -676,15 +670,44 @@ export function CreateSalesOrder() {
                   </div>
                 )}
                 {selectedCustomer && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '16px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '24px',
+                      marginTop: '16px',
+                    }}
+                  >
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                        BILLING ADDRESS <Pencil size={12} color="#0062ff" style={{ cursor: 'pointer' }} onClick={() => setAddressModalType('billing')} />
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                          textTransform: 'uppercase',
+                          marginBottom: '8px',
+                        }}
+                      >
+                        BILLING ADDRESS{' '}
+                        <Pencil
+                          size={12}
+                          color="#0062ff"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setAddressModalType('billing')}
+                        />
                       </div>
                       {selectedCustomer.billingStreet1 ? (
                         <div style={{ fontSize: '12px', color: '#333', lineHeight: 1.5 }}>
                           {selectedCustomer.billingStreet1}
-                          {selectedCustomer.billingStreet2 && <><br />{selectedCustomer.billingStreet2}</>}
+                          {selectedCustomer.billingStreet2 && (
+                            <>
+                              <br />
+                              {selectedCustomer.billingStreet2}
+                            </>
+                          )}
                           <br />
                           {selectedCustomer.billingCity && <>{selectedCustomer.billingCity}, </>}
                           {selectedCustomer.billingState}
@@ -693,19 +716,55 @@ export function CreateSalesOrder() {
                         </div>
                       ) : (
                         <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                          No Billing Address - <button type="button" onClick={() => setAddressModalType('billing')} style={{ color: '#0062ff', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px' }}>New Address</button>
+                          No Billing Address -{' '}
+                          <button
+                            type="button"
+                            onClick={() => setAddressModalType('billing')}
+                            style={{
+                              color: '#0062ff',
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                          >
+                            New Address
+                          </button>
                         </div>
                       )}
                     </div>
 
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                        SHIPPING ADDRESS <Pencil size={12} color="#0062ff" style={{ cursor: 'pointer' }} onClick={() => setAddressModalType('shipping')} />
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                          textTransform: 'uppercase',
+                          marginBottom: '8px',
+                        }}
+                      >
+                        SHIPPING ADDRESS{' '}
+                        <Pencil
+                          size={12}
+                          color="#0062ff"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setAddressModalType('shipping')}
+                        />
                       </div>
                       {selectedCustomer.shippingStreet1 ? (
                         <div style={{ fontSize: '12px', color: '#333', lineHeight: 1.5 }}>
                           {selectedCustomer.shippingStreet1}
-                          {selectedCustomer.shippingStreet2 && <><br />{selectedCustomer.shippingStreet2}</>}
+                          {selectedCustomer.shippingStreet2 && (
+                            <>
+                              <br />
+                              {selectedCustomer.shippingStreet2}
+                            </>
+                          )}
                           <br />
                           {selectedCustomer.shippingCity && <>{selectedCustomer.shippingCity}, </>}
                           {selectedCustomer.shippingState}
@@ -714,7 +773,21 @@ export function CreateSalesOrder() {
                         </div>
                       ) : (
                         <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                          No Shipping Address - <button type="button" onClick={() => setAddressModalType('shipping')} style={{ color: '#0062ff', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px' }}>New Address</button>
+                          No Shipping Address -{' '}
+                          <button
+                            type="button"
+                            onClick={() => setAddressModalType('shipping')}
+                            style={{
+                              color: '#0062ff',
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                          >
+                            New Address
+                          </button>
                         </div>
                       )}
                     </div>
@@ -758,7 +831,6 @@ export function CreateSalesOrder() {
                 fontSize: '13px',
               }}
             >
-
               <label style={{ ...labelStyle, color: '#ef4444' }}>Sales Order#*</label>
               <div>
                 <div
@@ -988,6 +1060,7 @@ export function CreateSalesOrder() {
                     const discountAmount =
                       discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
                     const calculatedRowAmount = Math.max(0, basePrice - discountAmount);
+                    const discountInvalid = !!errors.lineItems?.[index]?.discountValue;
 
                     return (
                       <tr
@@ -1202,7 +1275,7 @@ export function CreateSalesOrder() {
                               alignItems: 'center',
                               width: '100%',
                               boxSizing: 'border-box',
-                              border: '1px solid #d1d5db',
+                              border: `1px solid ${discountInvalid ? '#ef4444' : '#d1d5db'}`,
                               borderRadius: '6px',
                               background: '#ffffff',
                             }}
@@ -1210,9 +1283,12 @@ export function CreateSalesOrder() {
                             <input
                               type="number"
                               step="0.01"
+                              min={0}
+                              aria-invalid={discountInvalid}
                               {...register(`lineItems.${index}.discountValue`, {
                                 valueAsNumber: true,
-                                min: 0,
+                                validate: (_value, form) =>
+                                  lineDiscountError(form.lineItems?.[index] ?? {}) ?? true,
                               })}
                               style={{
                                 border: 'none',
@@ -1236,6 +1312,8 @@ export function CreateSalesOrder() {
                                   `lineItems.${index}.discountType`,
                                   val as 'percentage' | 'fixed',
                                 );
+                                // 150 is fine as ₹ but not as % — re-check a field already flagged
+                                if (discountInvalid) trigger(`lineItems.${index}.discountValue`);
                               }}
                               options={[
                                 { value: 'percentage', label: '%' },
@@ -1624,7 +1702,7 @@ export function CreateSalesOrder() {
           disabled={mutation.isPending}
           onClick={() => {
             setValue('status', 'Draft');
-            handleSubmit(onSubmit)();
+            handleSubmit(onSubmit, onInvalid)();
           }}
           style={{
             padding: '6px 20px',
@@ -1644,7 +1722,7 @@ export function CreateSalesOrder() {
           disabled={mutation.isPending}
           onClick={() => {
             setValue('status', 'Approved');
-            handleSubmit(onSubmit)();
+            handleSubmit(onSubmit, onInvalid)();
           }}
           style={{
             padding: '6px 20px',

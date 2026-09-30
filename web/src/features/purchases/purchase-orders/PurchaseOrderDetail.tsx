@@ -23,7 +23,7 @@ import {
   deletePurchaseOrder,
   type POAttachment,
 } from './purchase-orders.api';
-import { storedLineDiscount } from '../lineDiscount';
+import { storedLineDiscount } from '../../../lib/lineDiscount';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
 import { toast } from 'react-hot-toast';

@@ -21,9 +21,15 @@ export const salesOrderItemSchema = z.object({
   itemId: z.string().uuid(),
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
-  discountPercentage: z.coerce.number().optional().nullable(),
-  discount: z.coerce.number().optional().nullable(),
-  itemTotal: z.coerce.number(),
+  discountPercentage: z.coerce
+    .number()
+    .min(0, 'Discount cannot be negative.')
+    .max(100, 'Discount cannot exceed 100%.')
+    .optional()
+    .nullable(),
+  discount: z.coerce.number().min(0, 'Discount cannot be negative.').optional().nullable(),
+  // accepted for compatibility, but recomputed by the service — see `priceLines`
+  itemTotal: z.coerce.number().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -34,8 +40,8 @@ const baseSalesOrderSchema = z.object({
   date: z.coerce.date(),
   deliveryDate: emptyToNullDate,
   paymentTerms: z.string().optional().nullable(),
-  subTotal: z.coerce.number(),
-  totalAmount: z.coerce.number(),
+  subTotal: z.coerce.number().optional(),
+  totalAmount: z.coerce.number().optional(),
   notes: z.string().optional().nullable(),
   termsAndConditions: z.string().optional().nullable(),
   documents: z.array(z.any()).optional().nullable(),
@@ -62,12 +68,10 @@ export const createSalesOrderSchema = baseSalesOrderSchema
     path: ['deliveryDate'],
   });
 
-export const updateSalesOrderSchema = baseSalesOrderSchema
-  .partial()
-  .refine(validateDeliveryDate, {
-    message: 'Delivery date must be equal to or after SO date',
-    path: ['deliveryDate'],
-  });
+export const updateSalesOrderSchema = baseSalesOrderSchema.partial().refine(validateDeliveryDate, {
+  message: 'Delivery date must be equal to or after SO date',
+  path: ['deliveryDate'],
+});
 
 export const salesOrderQuerySchema = z.object({
   search: z.string().optional(),

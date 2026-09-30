@@ -22,8 +22,13 @@ export const billItemSchema = z.object({
   jobReceiptId: emptyToUndefinedUuid,
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
-  discountPercentage: z.coerce.number().optional().nullable(),
-  discountAmount: z.coerce.number().optional().nullable(),
+  discountPercentage: z.coerce
+    .number()
+    .min(0, 'Discount cannot be negative.')
+    .max(100, 'Discount cannot exceed 100%.')
+    .optional()
+    .nullable(),
+  discountAmount: z.coerce.number().min(0, 'Discount cannot be negative.').optional().nullable(),
   amount: z.coerce.number(),
   batches: z
     .array(
