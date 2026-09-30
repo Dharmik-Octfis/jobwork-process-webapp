@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { priceLines } from './purchase-orders.service.ts';
-import { purchaseOrderItemSchema } from './purchase-orders.schemas.ts';
-import { ApiError } from '../../../lib/apiError.ts';
+import { priceLines } from './linePricing.ts';
+import { purchaseOrderItemSchema } from '../modules/purchases/purchase-orders/purchase-orders.schemas.ts';
+import { salesOrderItemSchema } from '../modules/sales/sales-orders/sales-orders.schemas.ts';
+import { billItemSchema } from '../modules/purchases/bills/bills.schemas.ts';
+import { ApiError } from './apiError.ts';
 
 const ITEM = '00000000-0000-4000-8000-000000000002';
 const line = (extra: Record<string, unknown>) =>
@@ -31,5 +33,22 @@ describe('priceLines — the server owns PO totals', () => {
   it('refuses a negative discount or a percentage above 100 at the schema', () => {
     expect(() => line({ discount: -5 })).toThrow();
     expect(() => line({ discountPercentage: 101 })).toThrow();
+  });
+});
+
+describe('sales order and bill line schemas carry the same discount bounds', () => {
+  const base = { itemId: ITEM, quantity: 1, rate: 100 };
+
+  it('sales order lines', () => {
+    expect(() => salesOrderItemSchema.parse({ ...base, discount: -5 })).toThrow();
+    expect(() => salesOrderItemSchema.parse({ ...base, discountPercentage: 101 })).toThrow();
+    expect(salesOrderItemSchema.parse({ ...base, discountPercentage: 100 })).toBeTruthy();
+  });
+
+  it('bill lines', () => {
+    const bill = { ...base, amount: 100 };
+    expect(() => billItemSchema.parse({ ...bill, discountAmount: -5 })).toThrow();
+    expect(() => billItemSchema.parse({ ...bill, discountPercentage: 101 })).toThrow();
+    expect(billItemSchema.parse({ ...bill, discountPercentage: 100 })).toBeTruthy();
   });
 });

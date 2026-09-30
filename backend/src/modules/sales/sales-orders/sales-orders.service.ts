@@ -1,13 +1,11 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
-import type {
-  CreateSalesOrderPayload,
-  UpdateSalesOrderPayload,
-} from './sales-orders.schemas.ts';
+import type { CreateSalesOrderPayload, UpdateSalesOrderPayload } from './sales-orders.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
+import { priceLines } from '../../../lib/linePricing.ts';
 
 const DUPLICATE_NUMBER = 'A sales order with this SO number already exists.';
 
@@ -56,10 +54,7 @@ export async function getSalesOrdersList(organizationId: string, opts: ListQuery
   });
 }
 
-export async function countSalesOrders(
-  organizationId: string,
-  opts: ListQuery,
-): Promise<number> {
+export async function countSalesOrders(organizationId: string, opts: ListQuery): Promise<number> {
   return runAsTenant(organizationId, (tx) =>
     tx.salesOrder.count({ where: soListWhere(organizationId, opts) }),
   );
@@ -86,7 +81,8 @@ export async function createSalesOrder(
   userId: string,
   data: CreateSalesOrderPayload,
 ) {
-  const { lineItems: lineItems, ...soData } = data;
+  const { lineItems: rawLineItems, ...soData } = data;
+  const { lines: lineItems, subTotal, totalAmount } = priceLines(rawLineItems);
   return runAsTenant(orgId, async (tx) => {
     await assertOnOrAfterMigration(tx, {
       organizationId: orgId,
@@ -121,6 +117,8 @@ export async function createSalesOrder(
       tx.salesOrder.create({
         data: {
           ...soData,
+          subTotal,
+          totalAmount,
           organizationId: orgId,
           createdBy: userId,
           updatedBy: userId,
@@ -158,7 +156,10 @@ export async function updateSalesOrder(
   userId: string,
   data: UpdateSalesOrderPayload,
 ) {
-  const { lineItems: lineItems, ...soData } = data;
+  // totals move only with the lines they are summed from
+  const { lineItems: rawLineItems, subTotal: _s, totalAmount: _t, ...soData } = data;
+  const priced = rawLineItems ? priceLines(rawLineItems) : undefined;
+  const lineItems = priced?.lines;
   return runAsTenant(orgId, async (tx) => {
     if (soData.date !== undefined) {
       await assertOnOrAfterMigration(tx, {
@@ -182,6 +183,8 @@ export async function updateSalesOrder(
         where: { id, organizationId: orgId, isDeleted: false },
         data: {
           ...soData,
+          subTotal: priced?.subTotal,
+          totalAmount: priced?.totalAmount,
           updatedBy: userId,
           documents:
             soData.documents !== undefined

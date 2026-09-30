@@ -41,7 +41,13 @@ import {
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
 import { fetchJobReceiptById } from '../../jobwork/receipts/jobReceipts.api';
 import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
-import { storedLineDiscount } from '../lineDiscount';
+import {
+  lineDiscountAmount,
+  lineDiscountError,
+  lineGross,
+  storedLineDiscount,
+} from '../../../lib/lineDiscount';
+import { firstErrorMessage } from '../../../lib/formErrors';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
@@ -691,18 +697,10 @@ export function CreateBill() {
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
   (watchItems || []).forEach((item: BillItem) => {
-    const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
-    const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-    const basePrice = qty * rate;
-    const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
-    const discType = item?.discountType || 'percentage';
-
-    const discountAmount =
-      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-    computedSubTotal += basePrice;
-    computedTotalDiscount += discountAmount;
+    computedSubTotal += lineGross(item);
+    computedTotalDiscount += lineDiscountAmount(item);
   });
-  const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
+  const computedTotalAmount = computedSubTotal - computedTotalDiscount;
 
   useEffect(() => {
     setValue('subTotal', computedSubTotal);
@@ -739,12 +737,10 @@ export function CreateBill() {
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-      const basePrice = qty * rate;
       const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
       const discType = item?.discountType || 'percentage';
-      const discountAmount =
-        discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-      const itemTotal = Math.max(0, basePrice - discountAmount);
+      const discountAmount = lineDiscountAmount(item);
+      const itemTotal = lineGross(item) - discountAmount;
       return {
         ...item,
         quantity: qty,
@@ -847,7 +843,9 @@ export function CreateBill() {
       <div className="page-body">
         <form
           id="create-bill-form"
-          onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
+          onSubmit={handleSubmit(onSubmit, (errs) =>
+            toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+          )}
           noValidate
         >
           {/* Main Details Section */}
@@ -1205,6 +1203,7 @@ export function CreateBill() {
                     const discountAmount =
                       discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
                     const calculatedRowAmount = Math.max(0, basePrice - discountAmount);
+                    const discountInvalid = !!errors.lineItems?.[index]?.discountValue;
 
                     return (
                       <tr
@@ -1523,7 +1522,7 @@ export function CreateBill() {
                               alignItems: 'center',
                               width: '100%',
                               boxSizing: 'border-box',
-                              border: '1px solid #d1d5db',
+                              border: `1px solid ${discountInvalid ? '#ef4444' : '#d1d5db'}`,
                               borderRadius: '6px',
                               background: '#ffffff',
                             }}
@@ -1531,9 +1530,12 @@ export function CreateBill() {
                             <input
                               type="number"
                               step="0.01"
+                              min={0}
+                              aria-invalid={discountInvalid}
                               {...register(`lineItems.${index}.discountValue`, {
                                 valueAsNumber: true,
-                                min: 0,
+                                validate: (_value, form) =>
+                                  lineDiscountError(form.lineItems?.[index] ?? {}) ?? true,
                               })}
                               style={{
                                 border: 'none',
@@ -1557,6 +1559,8 @@ export function CreateBill() {
                                   `lineItems.${index}.discountType`,
                                   val as 'percentage' | 'fixed',
                                 );
+                                // 150 is fine as ₹ but not as % — re-check a field already flagged
+                                if (discountInvalid) trigger(`lineItems.${index}.discountValue`);
                               }}
                               options={[
                                 { value: 'percentage', label: '%' },
