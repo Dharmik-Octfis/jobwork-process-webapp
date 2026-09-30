@@ -120,10 +120,30 @@ export const jobReceiptSchema = z.object({
               /** False when this receipt added to a batch that already existed —
                * the second half of a split delivery, not a new lot. */
               isNewBatch: z.boolean(),
-              batch: z.object({ id: z.string(), supplierBatchRef: z.string().nullable() }),
+              batch: z.object({
+                id: z.string(),
+                supplierBatchRef: z.string().nullable(),
+                /** `draft` on a draft receipt's new batch — the Edit form restores it
+                 * as a new batch, attributes and takas included. */
+                state: z.string().optional(),
+                manufacturerBatch: z.string().nullable().optional(),
+                manufacturedDate: z.string().nullable().optional(),
+                expiryDate: z.string().nullable().optional(),
+                sellingPrice: decimalString.nullable().optional(),
+                mrp: decimalString.nullable().optional(),
+              }),
               /** The takas this receipt put into the batch — detail endpoint only. */
               units: z
-                .array(z.object({ id: z.string(), label: z.string(), qty: decimalString }))
+                .array(
+                  z.object({
+                    id: z.string(),
+                    label: z.string(),
+                    qty: decimalString,
+                    /** This receipt named the taka; false when it added to one that
+                     * already held stock. */
+                    isNew: z.boolean().optional(),
+                  }),
+                )
                 .default([]),
             }),
           )

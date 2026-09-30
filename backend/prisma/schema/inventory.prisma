@@ -275,6 +275,9 @@ model BatchUnit {
   /// where no ledger row names it yet.
   billItemBatches BillItemBatch[] @relation("BillItemBatchUnit")
 
+  /// The receipt rows that say they received this package — a draft's included.
+  jobReceiptOutputBatches JobReceiptOutputBatch[] @relation("JobReceiptOutputBatchUnit")
+
   /// Job orders that PLAN to use this package. A note, not a hold — see the model.
   plannedForStepInputs JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchUnit")
 

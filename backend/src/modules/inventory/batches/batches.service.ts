@@ -6,6 +6,7 @@ import {
   getAvailableBatches,
   getAvailableBatchUnits,
   getBalance,
+  DRAFT_BATCH_STATE,
   UNALLOCATED_BATCH_STATE,
   type Ownership,
 } from '../stock-ledger/stockLedger.service.ts';
@@ -46,6 +47,8 @@ function batchListWhere(organizationId: string, opts: ListQuery): Prisma.BatchWh
   return {
     organizationId,
     isDeleted: false,
+    // In AND so a view filter that sets its own `state` cannot replace it.
+    AND: [{ state: { not: DRAFT_BATCH_STATE } }],
     ...filterWhere<Prisma.BatchWhereInput>('batch', opts.filter),
     ...searchWhere<Prisma.BatchWhereInput>(opts.search, [...SEARCH_COLUMNS]),
   };

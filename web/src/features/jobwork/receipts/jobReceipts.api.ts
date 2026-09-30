@@ -65,9 +65,14 @@ export async function fetchReceiptBatchOptions(
     /** Ask for each batch's existing packages, so a row can add to one. Costs an
      * extra grouped query, so only a caller that can render them sets it. */
     withUnits?: boolean;
+    /** Only these batches — how a reopened draft gets its top-up rows back. */
+    batchIds?: string[];
   },
 ): Promise<ReceiptBatchOptions> {
-  const response = await apiClient.get(endpoints.jobwork.receiptBatchOptions(orgId), { params });
+  const { batchIds, ...rest } = params;
+  const response = await apiClient.get(endpoints.jobwork.receiptBatchOptions(orgId), {
+    params: { ...rest, ...(batchIds?.length ? { batchIds: batchIds.join(',') } : {}) },
+  });
   return receiptBatchOptionsSchema.parse(response.data);
 }
 

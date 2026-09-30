@@ -99,6 +99,14 @@ const batchOptionsQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  /** Comma-separated batch ids: only these, as options. How a reopened draft gets
+   * the picker rows for the existing batches it adds to. */
+  batchIds: z
+    .string()
+    .max(4000)
+    .optional()
+    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined))
+    .pipe(z.array(z.string().uuid()).max(100).optional()),
 });
 
 openApiRegistry.registerPath({
