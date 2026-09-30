@@ -154,6 +154,22 @@ const JobOrderLossReportPage = lazyPage(
   () => import('../features/reports/JobOrderLossReportPage'),
   'JobOrderLossReportPage',
 );
+const BatchReportPage = lazyPage(
+  () => import('../features/reports/BatchReportPage'),
+  'BatchReportPage',
+);
+const TakaReportPage = lazyPage(
+  () => import('../features/reports/TakaReportPage'),
+  'TakaReportPage',
+);
+const JobworkChallansRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkChallansRegisterPage'),
+  'JobworkChallansRegisterPage',
+);
+const JobOrdersReportPage = lazyPage(
+  () => import('../features/reports/JobOrdersReportPage'),
+  'JobOrdersReportPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -436,6 +452,22 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/reports/job-order-loss',
                     element: <JobOrderLossReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/batch',
+                    element: <BatchReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/taka',
+                    element: <TakaReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-challans',
+                    element: <JobworkChallansRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/job-orders',
+                    element: <JobOrdersReportPage />,
                   },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },

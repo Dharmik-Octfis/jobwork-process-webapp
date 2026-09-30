@@ -47,6 +47,10 @@ import { approvalsInboxRouter } from '../modules/automation/approval-processes/a
 import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummary.routes.ts';
 import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
 import { jobOrderLossRouter } from '../modules/reports/job-order-loss/jobOrderLoss.routes.ts';
+import { batchReportRouter } from '../modules/reports/batch/batchReport.routes.ts';
+import { takaReportRouter } from '../modules/reports/taka/takaReport.routes.ts';
+import { jobworkChallansRouter } from '../modules/reports/jobwork-challans/jobworkChallans.routes.ts';
+import { jobOrdersReportRouter } from '../modules/reports/job-orders/jobOrdersReport.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { env } from '../config/env.ts';
 
@@ -128,6 +132,10 @@ apiRouter.use('/organizations/:orgId/approvals', approvalsInboxRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-summary', stockSummaryRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRouter);
 apiRouter.use('/organizations/:orgId/reports/job-order-loss', jobOrderLossRouter);
+apiRouter.use('/organizations/:orgId/reports/batch', batchReportRouter);
+apiRouter.use('/organizations/:orgId/reports/taka', takaReportRouter);
+apiRouter.use('/organizations/:orgId/reports/jobwork-challans', jobworkChallansRouter);
+apiRouter.use('/organizations/:orgId/reports/job-orders', jobOrdersReportRouter);
 // The Reports Center list + per-user visit/favourite — after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);

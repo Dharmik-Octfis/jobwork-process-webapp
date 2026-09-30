@@ -176,6 +176,10 @@ export const endpoints = {
     fifoCostLotTracking: (orgId: string) =>
       `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
     jobOrderLoss: (orgId: string) => `/organizations/${orgId}/reports/job-order-loss`,
+    batchReport: (orgId: string) => `/organizations/${orgId}/reports/batch`,
+    takaReport: (orgId: string) => `/organizations/${orgId}/reports/taka`,
+    jobworkChallans: (orgId: string) => `/organizations/${orgId}/reports/jobwork-challans`,
+    jobOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/job-orders`,
   },
   automation: {
     approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,

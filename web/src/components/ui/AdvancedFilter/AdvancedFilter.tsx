@@ -266,6 +266,7 @@ export function AdvancedFilter({
                             }}
                             minWidth={140}
                             fullWidth={true}
+                            portal
                             buttonStyle={{
                               height: 26,
                               padding: '0 8px',
@@ -326,6 +327,7 @@ export function AdvancedFilter({
                             value={(condition?.value as string | number)?.toString() || ''}
                             onChange={(val) => updateFieldCondition({ value: val })}
                             placeholder="- Select -"
+                            portal
                             buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
                           />
                         ) : field.dataType === 'boolean' ? (
@@ -343,6 +345,7 @@ export function AdvancedFilter({
                             }
                             onChange={(val) => updateFieldCondition({ value: val === 'true' })}
                             placeholder="- Select -"
+                            portal
                             buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
                           />
                         ) : field.dataType === 'multi_select' ? (

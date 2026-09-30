@@ -42,6 +42,30 @@ export const REPORTS = [
     category: 'Job Work',
     path: 'job-order-loss',
   },
+  {
+    key: 'batch_report',
+    name: 'Batch Report',
+    category: 'Inventory',
+    path: 'batch',
+  },
+  {
+    key: 'taka_report',
+    name: 'Taka Report',
+    category: 'Inventory',
+    path: 'taka',
+  },
+  {
+    key: 'jobwork_challan_register',
+    name: 'Jobwork Challan Register',
+    category: 'Job Work',
+    path: 'jobwork-challans',
+  },
+  {
+    key: 'job_order_report',
+    name: 'Job Order Report (Ledger View)',
+    category: 'Job Work',
+    path: 'job-orders',
+  },
 ] as const satisfies readonly ReportDef[];
 
 export type ReportKey = (typeof REPORTS)[number]['key'];

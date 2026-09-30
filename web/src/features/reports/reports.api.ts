@@ -233,7 +233,163 @@ export interface PaginatedJobOrderLossResponse {
 
 /** Stable report ids from the backend catalog (`reports.catalog.ts`) — never the label or path. */
 export type ReportKey =
-  'stock_summary' | 'inventory_valuation_summary' | 'fifo_cost_lot_tracking' | 'job_order_loss';
+  | 'stock_summary'
+  | 'inventory_valuation_summary'
+  | 'fifo_cost_lot_tracking'
+  | 'job_order_loss'
+  | 'batch_report'
+  | 'taka_report'
+  | 'jobwork_challan_register'
+  | 'job_order_report';
+
+export interface JobOrdersReportQuery {
+  page?: number;
+  perPage?: number;
+  jobOrderNumber?: string;
+  processorName?: string;
+  processName?: string;
+}
+
+export interface JobOrdersReportRow {
+  id: string;
+  jobOrderNumber: string;
+  orderDate: string;
+  status: string;
+  process: string;
+  processorName: string;
+  totalIssued: number;
+  totalReceived: number;
+}
+
+export interface PaginatedJobOrdersReportResponse {
+  results: JobOrdersReportRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface JobworkChallansQuery {
+  page?: number;
+  perPage?: number;
+  processorName?: string;
+  processName?: string;
+  jobOrderNumber?: string;
+  itemName?: string;
+  fromDate?: string;
+  toDate?: string;
+  openOnly?: boolean;
+  minAgeDays?: number;
+}
+
+export interface JobworkChallanRow {
+  id: string;
+  challanNumber: string;
+  issueDate: string;
+  processorName: string;
+  process: string;
+  jobOrderNumber: string;
+  jobOrderId: string;
+  items: string;
+  issuedQty: number;
+  receivedQty: number;
+  acceptedQty: number;
+  reworkQty: number;
+  scrapQty: number;
+  returnedQty: number;
+  pendingQty: number;
+  daysOutstanding: number | null;
+  status: string;
+  processCharge: number;
+  attempt: string | null;
+  reason: string | null;
+  transporter: string | null;
+}
+
+export interface PaginatedJobworkChallansResponse {
+  results: JobworkChallanRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue?: number;
+}
+
+export interface BatchReportQuery {
+  page?: number;
+  perPage?: number;
+  itemName?: string;
+  locationName?: string;
+  batchText?: string;
+  state?: string;
+  asOnDate?: string;
+  minAgeDays?: number;
+}
+
+export interface BatchReportRow {
+  id: string;
+  batch: string | null;
+  itemName: string;
+  locationName: string;
+  qty: number;
+  takaCount: number | null;
+  untaggedQty: number | null;
+  receivedOn: string | null;
+  ageDays: number | null;
+  sourceDocType: string | null;
+  sourceDocNumber: string | null;
+  sourceDocId: string | null;
+  state: string;
+  batchNumber: string;
+  value: number;
+  avgRate: number;
+  parentBatches: string | null;
+}
+
+export interface PaginatedBatchReportResponse {
+  results: BatchReportRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue: number;
+}
+
+export interface TakaReportQuery {
+  page?: number;
+  perPage?: number;
+  itemName?: string;
+  locationName?: string;
+  batchText?: string;
+  onlyAtJobWorkers?: boolean;
+  asOnDate?: string;
+  minAgeDays?: number;
+}
+
+export interface TakaReportRow {
+  id: string;
+  label: string;
+  itemName: string;
+  batch: string;
+  locationName: string;
+  qty: number;
+  receivedOn: string | null;
+  daysAtLocation: number | null;
+  sourceDocType: string | null;
+  sourceDocNumber: string | null;
+  sourceDocId: string | null;
+  receivedQty: number | null;
+  challanNumber: string | null;
+  value: number;
+}
+
+export interface PaginatedTakaReportResponse {
+  results: TakaReportRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue: number;
+}
 
 export interface ReportListEntry {
   key: ReportKey;
@@ -310,5 +466,33 @@ export const reportsApi = {
       params,
     });
     return response.data as PaginatedStockSummaryResponse;
+  },
+  getBatchReport: async (
+    orgId: string,
+    params: BatchReportQuery = {},
+  ): Promise<PaginatedBatchReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.batchReport(orgId), { params });
+    return response.data as PaginatedBatchReportResponse;
+  },
+  getTakaReport: async (
+    orgId: string,
+    params: TakaReportQuery = {},
+  ): Promise<PaginatedTakaReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.takaReport(orgId), { params });
+    return response.data as PaginatedTakaReportResponse;
+  },
+  getJobworkChallans: async (
+    orgId: string,
+    params: JobworkChallansQuery = {},
+  ): Promise<PaginatedJobworkChallansResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobworkChallans(orgId), { params });
+    return response.data as PaginatedJobworkChallansResponse;
+  },
+  getJobOrdersReport: async (
+    orgId: string,
+    params: JobOrdersReportQuery = {},
+  ): Promise<PaginatedJobOrdersReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobOrdersReport(orgId), { params });
+    return response.data as PaginatedJobOrdersReportResponse;
   },
 };
