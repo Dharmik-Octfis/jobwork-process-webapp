@@ -41,6 +41,7 @@ import {
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
 import { fetchJobReceiptById } from '../../jobwork/receipts/jobReceipts.api';
 import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
+import { storedLineDiscount } from '../lineDiscount';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
@@ -163,13 +164,7 @@ function ItemImage({
   );
 }
 
-function AttachmentLink({
-  orgId,
-  attachment,
-}: {
-  orgId: string;
-  attachment: BillAttachment;
-}) {
+function AttachmentLink({ orgId, attachment }: { orgId: string; attachment: BillAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
   const { data: signedUrl } = useQuery({
     queryKey: ['billAttachmentSignedUrl', orgId, attachment.key],
@@ -232,9 +227,7 @@ function AttachmentLink({
 
   if (finalUrl) {
     return (
-      <div 
-        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <a
           href={finalUrl}
           target="_blank"
@@ -437,17 +430,14 @@ export function CreateBill() {
   useEffect(() => {
     if (existingPo) {
       const formattedLineItems = (existingPo.lineItems || []).map((item) => {
-        const discountVal =
-          item.discountValue !== undefined && item.discountValue !== null
-            ? item.discountValue
-            : item.discountPercentage || 0;
+        const { value: discountVal, type: discountType } = storedLineDiscount(item);
         return {
           itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          discountType,
           amount: item.amount || 0,
           jobReceiptId: item.jobReceiptId,
           description:
@@ -543,17 +533,14 @@ export function CreateBill() {
   useEffect(() => {
     if (sourcePo && isFromPo) {
       const formattedLineItems = (sourcePo.lineItems || []).map((item: PurchaseOrderItem) => {
-        const discountVal =
-          item.discountValue !== undefined && item.discountValue !== null
-            ? item.discountValue
-            : item.discountPercentage || 0;
+        const { value: discountVal, type: discountType } = storedLineDiscount(item);
         return {
           itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          discountType,
           amount: item.itemTotal || 0,
           from_po: true,
         };
@@ -891,7 +878,9 @@ export function CreateBill() {
               <div>
                 <input type="hidden" {...register('vendorId', { required: true })} />
                 <SearchableSelect
-                  options={vendors.filter((v) => v.status !== 'inactive' || v.id === watch('vendorId')).map((v) => ({ label: v.contactName, value: v.id }))}
+                  options={vendors
+                    .filter((v) => v.status !== 'inactive' || v.id === watch('vendorId'))
+                    .map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
                   onChange={(val) => {
                     setValue('vendorId', val, { shouldValidate: true });
