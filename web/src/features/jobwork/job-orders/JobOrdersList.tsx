@@ -14,7 +14,7 @@ import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
+import { JOB_ORDER_STATUS_META, statusMeta } from '../jobwork.schemas';
 import { fetchJobOrderCount, fetchJobOrders } from './jobOrders.api';
 import { JobOrderOverview } from './JobOrderOverview';
 import type { JobOrder } from './jobOrders.schemas';
@@ -64,12 +64,6 @@ function renderCell(
   switch (key) {
     case 'status':
       return <StatusPill status={order.status} />;
-    case 'inputItem':
-      return order.inputItem?.name ?? '-';
-    case 'inputQty':
-      return `${formatQty(order.inputQty)}${
-        order.inputUom ? ` ${order.inputUom.symbol ?? order.inputUom.unitName}` : ''
-      }`;
     case 'stepCount':
       return String(order.steps.length);
     case 'ownership':
@@ -330,17 +324,12 @@ export function JobOrdersList() {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: 8,
-                        marginBottom: 4,
                       }}
                     >
                       <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
                         {order.jobOrderNumber}
                       </span>
                       <StatusPill status={order.status} />
-                    </span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>
-                      {order.inputItem?.name ?? '-'} · {formatQty(order.inputQty)}
-                      {order.inputUom ? ` ${order.inputUom.symbol ?? order.inputUom.unitName}` : ''}
                     </span>
                   </button>
                 ))}
