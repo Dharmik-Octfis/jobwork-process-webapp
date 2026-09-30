@@ -2736,7 +2736,17 @@ async function buildActivity(
       // out, because the screen shows them under one heading either way.
       reason:
         (output.reasonId ? reasonNames.get(output.reasonId) : undefined) ?? output.remarks ?? null,
-      batches: output.batches.map((row) => ({
+      // One entry per batch — the table holds one row per (batch, package).
+      batches: [
+        ...output.batches
+          .reduce((byBatch, row) => {
+            const key = `${row.kind}:${row.batchId}`;
+            const seen = byBatch.get(key);
+            byBatch.set(key, seen ? { ...seen, qty: seen.qty.plus(row.qty) } : row);
+            return byBatch;
+          }, new Map<string, (typeof output.batches)[number]>())
+          .values(),
+      ].map((row) => ({
         kind: row.kind,
         qty: row.qty.toString(),
         isNewBatch: row.isNewBatch,

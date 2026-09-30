@@ -93,6 +93,16 @@ export type Ownership = (typeof OWNERSHIPS)[number];
  * code-only change, the same call as `status = 'draft'` on jobwork documents.
  */
 export const UNALLOCATED_BATCH_STATE = 'unallocated';
+/**
+ * 🔴 A batch a DRAFT document has named but not received. It is a real row, so the
+ * draft keeps its reference, attributes and packages, but it has no ledger rows
+ * and nothing may post against it (`postMovement` refuses it). No picker or list
+ * offers it. Posting the draft discards it and creates the real batch the normal
+ * way, so it is never promoted in place.
+ */
+export const DRAFT_BATCH_STATE = 'draft';
+/** States a picker must never offer: stock nobody may pick, or stock that is not there yet. */
+export const UNPICKABLE_BATCH_STATES = [UNALLOCATED_BATCH_STATE, DRAFT_BATCH_STATE];
 /** The only document allowed to move an unallocated batch. */
 export const OPENING_STOCK_SOURCE_DOC_TYPE = 'item_opening_stock';
 
@@ -345,6 +355,14 @@ async function postCosted(
     throw ApiError.badRequest(
       'This is opening stock that has not been assigned to a batch yet. Assign it to a ' +
         'batch in Add Opening Stock before using it.',
+    );
+  }
+  // No exception, not even for the draft that created it: posting the draft
+  // discards its draft batches and creates the real ones (jobReceipts.service).
+  if (batch.state === DRAFT_BATCH_STATE) {
+    throw ApiError.badRequest(
+      'This batch belongs to a draft that has not been received yet, so no stock can move ' +
+        'through it.',
     );
   }
 
@@ -1107,7 +1125,7 @@ export async function getAvailableBatches(
     isDeleted: false,
     // Unallocated opening stock counts on hand but is never offered — see
     // `UNALLOCATED_BATCH_STATE`. Dropping it here drops its balance row below.
-    state: { not: UNALLOCATED_BATCH_STATE },
+    state: { notIn: UNPICKABLE_BATCH_STATES },
     // The picker's own search. Matches what is on the physical tag and nothing
     // else — `batchNumber` is never rendered, so it is never typed either
     // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
@@ -1630,6 +1648,8 @@ export interface CreateBatchInput {
   /** Mint the holding batch for unassigned opening stock — no reference, and
    * `state = UNALLOCATED_BATCH_STATE`. Opening stock only. */
   unallocated?: boolean;
+  /** Mint the batch as `DRAFT_BATCH_STATE` — a draft document's, never posted against. */
+  draft?: boolean;
 }
 
 /**
@@ -1720,7 +1740,8 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
     customFields: input.customFields ?? {},
   };
 
-  if (manualNumber) {
+  // A recycled row comes back `open`, which a draft must never be.
+  if (manualNumber && !input.draft) {
     const recycled = await recycleDeletedBatch(tx, data, input.userId ?? null);
     if (recycled) return recycled;
   }
@@ -1730,6 +1751,7 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
       data: {
         ...data,
         ...(input.unallocated ? { state: UNALLOCATED_BATCH_STATE } : {}),
+        ...(input.draft ? { state: DRAFT_BATCH_STATE } : {}),
         createdBy: input.userId ?? null,
         updatedBy: input.userId ?? null,
       },
