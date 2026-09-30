@@ -709,6 +709,7 @@ export async function manuallyCompleteStep(
   jobOrderId: string,
   stepId: string,
   userId: string | undefined,
+  reason?: string,
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
     // A fifty-line challan writes fifty scrap rows (jobwork.types.ts).
@@ -739,13 +740,15 @@ export async function manuallyCompleteStep(
         throw new ApiError(
           409,
           `Step ${step.seq} still has drafts parked against it: ${drafts.join(', ')}. Post or ` +
-            'delete them first — once the step is completed they can never be posted.',
+            'delete them first. Once the step is completed they can never be posted.',
           { drafts: drafts.join(', ') },
         );
       }
 
       await writeOffStep(tx, organizationId, step.id, {
-        reason: 'Step completed — still at the processor, written off as job order loss.',
+        reason: reason?.trim()
+          ? `Step completed: ${reason.trim()}`
+          : 'Step completed, written off as job order loss.',
         userId,
       });
 

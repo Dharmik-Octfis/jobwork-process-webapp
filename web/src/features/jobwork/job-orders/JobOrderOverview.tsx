@@ -11,6 +11,7 @@ import {
   Send,
   Truck,
   X,
+  History,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -437,7 +438,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const id = jobOrderId ?? routeId;
 
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
-  const [view, setView] = useState<'step' | 'history'>('step');
+  const [view, setView] = useState<'step' | 'history' | 'approvals'>('step');
+  const [completeReason, setCompleteReason] = useState('');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
@@ -516,7 +518,8 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         } and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
 
   const completeStep = useMutation({
-    mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
+    mutationFn: ({ stepId, reason }: { stepId: string; reason?: string }) =>
+      completeJobOrderStep(orgId!, id!, stepId, reason),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
       queryClient.setQueriesData(
@@ -533,6 +536,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
       );
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
       setCompleteStepTarget(null);
+      setCompleteReason('');
     },
   });
 
@@ -903,6 +907,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 onClick={() => setView('history')}
                 label={`Full history (${activity.length})`}
               />
+              <ViewTab
+                isActive={view === 'approvals'}
+                onClick={() => setView('approvals')}
+                label="Approvals"
+              />
             </div>
 
             {view === 'step' && selectedStep && (
@@ -933,11 +942,39 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   padding: '14px 16px',
                 }}
               >
-                {/* 🔴 Every step, in one column, oldest first. The per-step view
-                    above answers "what is happening here"; this answers "what has
-                    this order been through" — and the two orders of the same
-                    documents are genuinely different readings. */}
+                {/* 🔴 Every step, in one column, oldest first. */}
                 <ActivityTabs events={activity} onOpen={openDocument} />
+              </div>
+            )}
+
+            {view === 'approvals' && (
+              <div
+                style={{
+                  border: '1px solid #eef0f3',
+                  borderRadius: 10,
+                  background: '#fff',
+                  padding: '22px 20px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <History size={16} color="#0284c7" />
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                    Approval History
+                  </h4>
+                </div>
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: 13,
+                    textAlign: 'center',
+                    padding: '24px 0',
+                    background: '#f8fafc',
+                    borderRadius: 8,
+                    border: '1px dashed #e2e8f0',
+                  }}
+                >
+                  No approval workflow records found for this document.
+                </div>
               </div>
             )}
           </>
@@ -978,21 +1015,66 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         title="Complete this step"
         message={
           <div>
-            <p style={{ margin: '0 0 12px 0', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 12px 0', lineHeight: 1.6, color: '#334155' }}>
               Completing says nothing more is coming back from this step. {completeWriteOff}
             </p>
-            <p style={{ margin: 0, lineHeight: 1.6, color: '#64748b' }}>
-              Draft challans or receipts on the step have to be posted or deleted first. This cannot
-              be undone — nothing more can be issued, received or cancelled against the step
+            <div
+              style={{
+                margin: '12px 0 14px 0',
+                padding: '10px 14px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                fontSize: 12,
+                color: '#475569',
+                lineHeight: 1.5,
+              }}
+            >
+              Draft challans or receipts on the step have to be posted or deleted first. This action
+              cannot be undone. Nothing more can be issued, received or cancelled against the step
               afterwards.
-            </p>
+            </div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#334155',
+                marginBottom: 4,
+              }}
+            >
+              Reason
+            </label>
+            <input
+              type="text"
+              value={completeReason}
+              onChange={(e) => setCompleteReason(e.target.value)}
+              aria-label="Reason for completing step"
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                fontSize: 13,
+                border: '1px solid #cbd5e1',
+                borderRadius: 6,
+                minHeight: 34,
+                boxSizing: 'border-box',
+                outline: 'none',
+                color: '#0f172a',
+              }}
+              placeholder="e.g. Work completed or no longer needed"
+            />
           </div>
         }
         confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}
         onConfirm={() => {
-          if (completeStepTarget) completeStep.mutate(completeStepTarget.id);
+          if (completeStepTarget) {
+            completeStep.mutate({ stepId: completeStepTarget.id, reason: completeReason });
+          }
         }}
-        onCancel={() => setCompleteStepTarget(null)}
+        onCancel={() => {
+          setCompleteStepTarget(null);
+          setCompleteReason('');
+        }}
       />
 
       <ConfirmDialog
@@ -1000,12 +1082,20 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         title="Close this job order short"
         message={
           <div>
-            <p style={{ margin: '0 0 12px 0', lineHeight: 1.6 }}>
-              This ends the order even though the numbers do not balance — which is a normal
-              outcome, not an error. Whatever is still with a processor on its open steps is written
-              off as job order loss. It cannot be reopened, and a later receipt will not undo it.
+            <p style={{ margin: '0 0 12px 0', lineHeight: 1.6, color: '#334155' }}>
+              This ends the order even though the numbers do not balance, which is a normal outcome,
+              not an error. Whatever is still with a processor on its open steps is written off as
+              job order loss. It cannot be reopened, and a later receipt will not undo it.
             </p>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#334155',
+                marginBottom: 4,
+              }}
+            >
               Reason
             </label>
             <input
@@ -1015,13 +1105,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               aria-label="Reason for closing short"
               style={{
                 width: '100%',
-                padding: '6px 8px',
+                padding: '8px 10px',
                 fontSize: 13,
-                border: '1px solid #d1d5db',
-                borderRadius: 4,
-                minHeight: 32,
+                border: '1px solid #cbd5e1',
+                borderRadius: 6,
+                minHeight: 34,
+                boxSizing: 'border-box',
+                outline: 'none',
+                color: '#0f172a',
               }}
-              placeholder="Finished 150 m light — party accepted"
+              placeholder="e.g. Completed or party accepted"
             />
           </div>
         }

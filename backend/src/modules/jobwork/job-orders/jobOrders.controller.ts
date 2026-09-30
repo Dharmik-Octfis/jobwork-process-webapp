@@ -97,7 +97,7 @@ openApiRegistry.registerPath({
   tags: ['Job Orders'],
   summary:
     'The Overview page: stepper, per-step totals, live stock balance and the order’s issue/receipt history',
-  request: { 
+  request: {
     params: orgParam.extend({ id: z.string() }),
     query: z.object({ stepId: z.string().optional() }),
   },
@@ -232,11 +232,13 @@ export const updateNumberPreferenceRoute = async (req: Request, res: Response) =
 };
 
 export const completeStep = async (req: Request, res: Response) => {
+  const { reason } = (req.body || {}) as { reason?: string };
   const updated = await manuallyCompleteStep(
     req.tenantId!,
     req.params.id as string,
     req.params.stepId as string,
     req.user?.id,
+    reason,
   );
   sendSuccess(res, updated, 'Step completed.');
 };

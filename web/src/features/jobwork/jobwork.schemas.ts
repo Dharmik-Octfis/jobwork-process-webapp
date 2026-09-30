@@ -464,12 +464,12 @@ export function planWarnings(
     if (roundQty(planned) < need) {
       warnings.set(
         input.itemId,
-        `${formatQty(planned)} planned, but the expected output needs ${formatQty(need)} — fine if it stretches, otherwise check the quantities.`,
+        `${formatQty(planned)} planned, but the expected output needs ${formatQty(need)}. Check the quantities if shrinkage or stretch is expected.`,
       );
     } else if (roundQty(planned) === need && draws.every((row) => row.by.plain)) {
       warnings.set(
         input.itemId,
-        'Expected equals planned, so no loss is planned — any shrinkage will be booked as job order loss, not as part of the landed cost.',
+        'Expected equals planned, so no loss is planned. Any shrinkage will be booked as job order loss, not as part of the landed cost.',
       );
     }
   }
