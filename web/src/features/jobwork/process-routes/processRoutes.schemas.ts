@@ -36,7 +36,6 @@ export const routeStepSchema = z.object({
       id: z.string(),
       name: z.string(),
       code: z.string().nullable(),
-      itemChanges: z.boolean(),
     })
     .optional(),
   workCentre: namedRefSchema.nullable().optional(),

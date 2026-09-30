@@ -102,16 +102,16 @@ a dyer is a _transfer_, not a disposal. It changes location; it never leaves you
 **Writes:** `processes`
 
 A Process is a single operation your shop does or buys: Dyeing, Cutting, Stitching, Washing. Defined
-once. It holds _defaults_ and _behavioural flags_ — never quantities, never a price for a specific
-job.
+once. It is a name and nothing more — no behavioural flags, never quantities, never a price for a
+specific job. What a step consumes and produces is the step's own rows.
 
-| Field                     | Source | What it decides                                                                                                                                                 |
-| ------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                    | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key          |
-| `code`, `description`     | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
-| `itemChanges`             | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
-| ~~`rateBasis`~~           | —      | **Gone, 2026-09-15.** Every charge is rate × accepted qty on an output row (§4.4). The column is dropped by landed-cost Migration 2                             |
-| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance is typed on each consumed row of the job order (§4.3); the item-level default that briefly replaced it went on 2026-09-16       |
+| Field                     | Source | What it decides                                                                                                                                           |
+| ------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                    | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key    |
+| `code`, `description`     | typed  | Free text. Nothing derives meaning from either                                                                                                            |
+| ~~`itemChanges`~~         | —      | **Gone, 2026-09-30.** It only seeded a step's output from its first input; the step's **Same as consumed** box copies every input, with quantities        |
+| ~~`rateBasis`~~           | —      | **Gone, 2026-09-15.** Every charge is rate × accepted qty on an output row (§4.4). The column is dropped by landed-cost Migration 2                       |
+| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance is typed on each consumed row of the job order (§4.3); the item-level default that briefly replaced it went on 2026-09-16 |
 
 ---
 

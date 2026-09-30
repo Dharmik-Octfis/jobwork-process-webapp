@@ -59,7 +59,7 @@ const ROUTE_INCLUDE = {
       // The bill of materials on the template side (§5.7).
       inputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
       outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' }, include: ROW_INCLUDE },
-      process: { select: { id: true, name: true, code: true, itemChanges: true } },
+      process: { select: { id: true, name: true, code: true } },
       workCentre: { select: { id: true, name: true } },
     },
   },
