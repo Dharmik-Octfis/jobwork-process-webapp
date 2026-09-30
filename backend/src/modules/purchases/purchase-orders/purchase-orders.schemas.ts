@@ -25,9 +25,15 @@ export const purchaseOrderItemSchema = z.object({
   costPrice: z.coerce.number().optional().nullable(),
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
-  discountPercentage: z.coerce.number().optional().nullable(),
-  discount: z.coerce.number().optional().nullable(),
-  itemTotal: z.coerce.number(),
+  discountPercentage: z.coerce
+    .number()
+    .min(0, 'Discount cannot be negative.')
+    .max(100, 'Discount cannot exceed 100%.')
+    .optional()
+    .nullable(),
+  discount: z.coerce.number().min(0, 'Discount cannot be negative.').optional().nullable(),
+  // accepted for compatibility, but recomputed by the service — see `priceLines`
+  itemTotal: z.coerce.number().optional(),
   projectId: emptyToNullUuid,
   reportingTags: z.any().optional().nullable(),
   customFields: z.record(z.string(), z.unknown()).optional(),
@@ -44,8 +50,8 @@ const basePurchaseOrderSchema = z.object({
   date: z.coerce.date(),
   deliveryDate: emptyToNullDate,
   paymentTerms: z.string().optional().nullable(),
-  subTotal: z.coerce.number(),
-  totalAmount: z.coerce.number(),
+  subTotal: z.coerce.number().optional(),
+  totalAmount: z.coerce.number().optional(),
   notes: z.string().optional().nullable(),
   termsAndConditions: z.string().optional().nullable(),
   documents: z.array(z.any()).optional().nullable(),
@@ -54,7 +60,6 @@ const basePurchaseOrderSchema = z.object({
   lineItems: z.array(purchaseOrderItemSchema).min(1),
 });
 
- 
 const validateDeliveryDate = (data: { date?: Date; deliveryDate?: Date | null }) => {
   if (data.date && data.deliveryDate) {
     const poTime = new Date(data.date).setHours(0, 0, 0, 0);

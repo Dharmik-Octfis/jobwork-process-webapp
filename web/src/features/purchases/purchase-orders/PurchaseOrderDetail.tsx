@@ -23,6 +23,7 @@ import {
   deletePurchaseOrder,
   type POAttachment,
 } from './purchase-orders.api';
+import { storedLineDiscount } from '../lineDiscount';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
 import { toast } from 'react-hot-toast';
@@ -30,7 +31,17 @@ import { toApiErrorMessage } from '../../../api/client';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer, Eye } from 'lucide-react';
+import {
+  X,
+  Edit,
+  ChevronDown,
+  FileText,
+  Paperclip,
+  Copy,
+  Trash2,
+  Printer,
+  Eye,
+} from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
@@ -102,9 +113,7 @@ function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: PO
 
   if (finalUrl) {
     return (
-      <div 
-        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <a
           href={finalUrl}
           target="_blank"
@@ -182,7 +191,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       setActiveTab('Overview');
       setIsPdfView(true);
     });
-    
+
     // Some browsers need a tiny delay even after flushSync to apply print CSS correctly
     setTimeout(() => {
       window.print();
@@ -243,7 +252,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const isRejected = Boolean(
     isApprovalRejected ||
     po?.status?.toLowerCase() === 'rejected' ||
-    (po as any)?.approvalStatus?.toUpperCase() === 'REJECTED',
+    (po as { approvalStatus?: string } | undefined)?.approvalStatus?.toUpperCase() === 'REJECTED',
   );
 
   const { data: paymentTerms } = useQuery({
@@ -284,6 +293,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   }
 
   const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
+  const pdfDiscountTotal = Number(po.subTotal || 0) - Number(po.totalAmount || 0);
+  const pdfHasDiscount = (po.lineItems || []).some((item) => Number(item.discount || 0) > 0);
 
   const labelStyle = {
     fontSize: '11px',
@@ -510,7 +521,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   background: 'white',
                   border: '1px solid #eef0f3',
                   borderRadius: '4px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  boxShadow:
+                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                   width: '130px',
                   zIndex: 20,
                   display: 'flex',
@@ -592,7 +604,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               organizationId={orgId}
               moduleId="purchase_orders"
               recordId={poId}
-              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] })}
+              onActionComplete={() =>
+                queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] })
+              }
             />
           </div>
         )}
@@ -647,7 +661,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </button>
             </div>
           </div>
-
 
           {/* Bills List View */}
           {!isPdfView && activeSubTab === 'Bills' && po.bills && po.bills.length > 0 && (
@@ -1126,13 +1139,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </thead>
                   <tbody>
                     {(po.lineItems || []).map((item, index) => {
-                      const discVal = Number(
-                        item.discountValue !== undefined && item.discountValue !== null
-                          ? item.discountValue
-                          : item.discountPercentage || item.discount || 0,
-                      );
+                      const stored = storedLineDiscount(item);
+                      const discVal = Number(stored.value || 0);
                       const discDisplay =
-                        item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+                        stored.type === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
                       return (
                         <tr
@@ -1612,6 +1622,18 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       >
                         Unit Rate (INR)
                       </th>
+                      {pdfHasDiscount && (
+                        <th
+                          style={{
+                            padding: '6px 8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'right',
+                            width: '85px',
+                          }}
+                        >
+                          Discount
+                        </th>
+                      )}
                       <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>
                         Total Value
                       </th>
@@ -1666,6 +1688,22 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         >
                           ₹{Number(item.rate || 0).toFixed(2)}
                         </td>
+                        {pdfHasDiscount && (
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'right',
+                            }}
+                          >
+                            {Number(item.discount || 0) > 0
+                              ? `-₹${Number(item.discount).toFixed(2)}` +
+                                (storedLineDiscount(item).type === 'percentage'
+                                  ? ` (${Number(item.discountPercentage)}%)`
+                                  : '')
+                              : '-'}
+                          </td>
+                        )}
                         <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
                           ₹{Number(item.itemTotal || 0).toFixed(2)}
                         </td>
@@ -1734,6 +1772,18 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           <span>Sub Total:</span>
                           <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
                         </div>
+                        {pdfDiscountTotal > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: '8px',
+                            }}
+                          >
+                            <span>Discount:</span>
+                            <strong>-₹{pdfDiscountTotal.toFixed(2)}</strong>
+                          </div>
+                        )}
                         <div
                           style={{
                             display: 'flex',
@@ -1764,7 +1814,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         </div>
 
         <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
-          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="purchase_orders" recordId={poId} />
+          <RecordApprovalHistoryTimeline
+            organizationId={orgId!}
+            moduleId="purchase_orders"
+            recordId={poId}
+          />
         </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <PurchaseOrderComments orgId={orgId!} poId={poId} />

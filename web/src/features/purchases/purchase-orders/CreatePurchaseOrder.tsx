@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
 import {
   Plus,
   Trash2,
@@ -49,6 +50,26 @@ import { CreateItemModal } from '../../items/CreateItemModal';
 import type { ItemOpeningStockLocationRowDto } from '../../items/items.schemas';
 import { LineItemStockDisplay } from '../bills/components/LineItemStockDisplay';
 import { WarehouseLocationsPopover } from '../bills/components/WarehouseLocationsPopover';
+import {
+  lineDiscountAmount,
+  lineDiscountError,
+  lineGross,
+  storedLineDiscount,
+} from '../lineDiscount';
+
+// react-hook-form nests errors by field path (lineItems → [i] → discountValue)
+function firstErrorMessage(node: unknown): string | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const { message } = node as { message?: unknown };
+  if (typeof message === 'string' && message) return message;
+  for (const [key, child] of Object.entries(node)) {
+    if (key === 'ref') continue; // a DOM node — walking it walks React's fiber tree
+    const found = firstErrorMessage(child);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -109,13 +130,7 @@ function ItemImage({
   );
 }
 
-function AttachmentLink({
-  orgId,
-  attachment,
-}: {
-  orgId: string;
-  attachment: POAttachment;
-}) {
+function AttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
   const { data: signedUrl } = useQuery({
     queryKey: ['poAttachmentSignedUrl', orgId, attachment.key],
@@ -178,9 +193,7 @@ function AttachmentLink({
 
   if (finalUrl) {
     return (
-      <div 
-        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <a
           href={finalUrl}
           target="_blank"
@@ -318,17 +331,14 @@ export function CreatePurchaseOrder() {
   useEffect(() => {
     if (existingPo) {
       const formattedLineItems = (existingPo.lineItems || []).map((item) => {
-        const discountVal =
-          item.discountValue !== undefined && item.discountValue !== null
-            ? item.discountValue
-            : item.discountPercentage || item.discount || 0;
+        const { value: discountVal, type: discountType } = storedLineDiscount(item);
         return {
           itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          discountType,
           itemTotal: item.itemTotal || 0,
         };
       });
@@ -494,18 +504,10 @@ export function CreatePurchaseOrder() {
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
   (watchItems || []).forEach((item: PurchaseOrderItem) => {
-    const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
-    const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-    const basePrice = qty * rate;
-    const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
-    const discType = item?.discountType || 'percentage';
-
-    const discountAmount =
-      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-    computedSubTotal += basePrice;
-    computedTotalDiscount += discountAmount;
+    computedSubTotal += lineGross(item);
+    computedTotalDiscount += lineDiscountAmount(item);
   });
-  const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
+  const computedTotalAmount = computedSubTotal - computedTotalDiscount;
 
   useEffect(() => {
     setValue('subTotal', computedSubTotal);
@@ -574,17 +576,14 @@ export function CreatePurchaseOrder() {
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-      const basePrice = qty * rate;
       const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
       const discType = item?.discountType || 'percentage';
-      const discountAmount =
-        discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-      const itemTotal = Math.max(0, basePrice - discountAmount);
+      const discountAmount = lineDiscountAmount(item);
       return {
         ...item,
         quantity: qty,
         rate: rate,
-        itemTotal: itemTotal,
+        itemTotal: lineGross(item) - discountAmount,
         discount: discountAmount,
         discountPercentage: discType === 'percentage' ? discountVal : null,
       };
@@ -677,7 +676,9 @@ export function CreatePurchaseOrder() {
       <div className="page-body">
         <form
           id="create-po-form"
-          onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
+          onSubmit={handleSubmit(onSubmit, (errs) =>
+            toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+          )}
           noValidate
         >
           {/* Main Details Section */}
@@ -708,7 +709,9 @@ export function CreatePurchaseOrder() {
               <div>
                 <input type="hidden" {...register('vendorId', { required: true })} />
                 <SearchableSelect
-                  options={vendors.filter(v => v.status !== 'inactive' || v.id === watch('vendorId')).map((v) => ({ label: v.contactName, value: v.id }))}
+                  options={vendors
+                    .filter((v) => v.status !== 'inactive' || v.id === watch('vendorId'))
+                    .map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
                   onChange={(val) => setValue('vendorId', val, { shouldValidate: true })}
                   placeholder="Select a Vendor"
@@ -983,10 +986,15 @@ export function CreatePurchaseOrder() {
                 {watchDeliveryType === 'Customer' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <SearchableSelect
-                      options={customers.filter((c: Customer) => c.status !== 'inactive' || c.id === watchDeliveryCustomerId).map((c: Customer) => ({
-                        label: c.contactName,
-                        value: c.id,
-                      }))}
+                      options={customers
+                        .filter(
+                          (c: Customer) =>
+                            c.status !== 'inactive' || c.id === watchDeliveryCustomerId,
+                        )
+                        .map((c: Customer) => ({
+                          label: c.contactName,
+                          value: c.id,
+                        }))}
                       value={watchDeliveryCustomerId || undefined}
                       onChange={(val) => setValue('deliveryCustomerId', val)}
                       placeholder="Select Customer"
@@ -1317,16 +1325,10 @@ export function CreatePurchaseOrder() {
                     const itemImageUrl =
                       getImageKey(selectedItem?.frontImage) ||
                       getImageKey(selectedItem?.images?.[0]);
-                    const qty = isNaN(Number(curItem?.quantity)) ? 0 : Number(curItem?.quantity);
-                    const rate = isNaN(Number(curItem?.rate)) ? 0 : Number(curItem?.rate);
-                    const basePrice = qty * rate;
-                    const discountVal = isNaN(Number(curItem?.discountValue))
-                      ? 0
-                      : Number(curItem?.discountValue);
-                    const discType = curItem?.discountType || 'percentage';
-                    const discountAmount =
-                      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-                    const calculatedRowAmount = Math.max(0, basePrice - discountAmount);
+                    const calculatedRowAmount = curItem
+                      ? lineGross(curItem) - lineDiscountAmount(curItem)
+                      : 0;
+                    const discountInvalid = !!errors.lineItems?.[index]?.discountValue;
 
                     return (
                       <tr
@@ -1585,7 +1587,7 @@ export function CreatePurchaseOrder() {
                               alignItems: 'center',
                               width: '100%',
                               boxSizing: 'border-box',
-                              border: '1px solid #d1d5db',
+                              border: `1px solid ${discountInvalid ? '#ef4444' : '#d1d5db'}`,
                               borderRadius: '6px',
                               background: '#ffffff',
                             }}
@@ -1593,9 +1595,12 @@ export function CreatePurchaseOrder() {
                             <input
                               type="number"
                               step="0.01"
+                              min={0}
+                              aria-invalid={discountInvalid}
                               {...register(`lineItems.${index}.discountValue`, {
                                 valueAsNumber: true,
-                                min: 0,
+                                validate: (_value, form) =>
+                                  lineDiscountError(form.lineItems?.[index] ?? {}) ?? true,
                               })}
                               style={{
                                 border: 'none',
@@ -1619,6 +1624,8 @@ export function CreatePurchaseOrder() {
                                   `lineItems.${index}.discountType`,
                                   val as 'percentage' | 'fixed',
                                 );
+                                // 150 is fine as ₹ but not as % — re-check a field already flagged
+                                if (discountInvalid) trigger(`lineItems.${index}.discountValue`);
                               }}
                               options={[
                                 { value: 'percentage', label: '%' },

@@ -9,6 +9,8 @@ export const billItemSchema = z.object({
   rate: z.number().or(z.string()).optional(),
   discountPercentage: z.number().or(z.string()).nullable().optional(),
   discountAmount: z.number().or(z.string()).nullable().optional(),
+  // what a saved line comes back with — the column is `discount`, not `discountAmount`
+  discount: z.number().or(z.string()).nullable().optional(),
   amount: z.number().or(z.string()).optional(),
   itemTotal: z.number().or(z.string()).nullable().optional(),
   jobReceiptId: z.string().optional(),

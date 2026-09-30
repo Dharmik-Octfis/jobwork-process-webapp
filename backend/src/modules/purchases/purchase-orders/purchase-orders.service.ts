@@ -1,7 +1,8 @@
 import { runAsTenant } from '../../../db/prisma.ts';
-import type { Prisma } from '../../../../generated/prisma/client.ts';
+import { Prisma } from '../../../../generated/prisma/client.ts';
 import type {
   CreatePurchaseOrderPayload,
+  PurchaseOrderItemPayload,
   UpdatePurchaseOrderPayload,
 } from './purchase-orders.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
@@ -11,6 +12,34 @@ import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 const DUPLICATE_NUMBER = 'A purchase order with this PO number already exists.';
+
+/**
+ * Line and document totals are derived here, never taken from the client: a PO
+ * whose lines did not sum to its total was only as correct as whoever sent it.
+ * A percentage wins over an amount; an amount above the line's value is refused.
+ */
+export function priceLines(lineItems: PurchaseOrderItemPayload[]) {
+  const zero = new Prisma.Decimal(0);
+  let subTotal = zero;
+  let totalAmount = zero;
+  const lines = lineItems.map((line, index) => {
+    const gross = new Prisma.Decimal(line.quantity).times(line.rate).toDecimalPlaces(2);
+    const discount =
+      line.discountPercentage != null
+        ? gross.times(line.discountPercentage).dividedBy(100).toDecimalPlaces(2)
+        : new Prisma.Decimal(line.discount ?? 0).toDecimalPlaces(2);
+    if (discount.greaterThan(gross)) {
+      throw ApiError.badRequest('Discount cannot exceed the line amount.', {
+        [`lineItems.${index}.discount`]: 'Discount cannot exceed the line amount.',
+      });
+    }
+    const itemTotal = gross.minus(discount);
+    subTotal = subTotal.plus(gross);
+    totalAmount = totalAmount.plus(itemTotal);
+    return { ...line, discount, itemTotal };
+  });
+  return { lines, subTotal, totalAmount };
+}
 
 function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOrderWhereInput {
   const baseWhere: Prisma.PurchaseOrderWhereInput = {
@@ -91,7 +120,8 @@ export async function createPurchaseOrder(
   userId: string,
   data: CreatePurchaseOrderPayload,
 ) {
-  const { lineItems: lineItems, ...poData } = data;
+  const { lineItems: rawLineItems, ...poData } = data;
+  const { lines: lineItems, subTotal, totalAmount } = priceLines(rawLineItems);
   return runAsTenant(orgId, async (tx) => {
     await assertOnOrAfterMigration(tx, {
       organizationId: orgId,
@@ -126,6 +156,8 @@ export async function createPurchaseOrder(
       tx.purchaseOrder.create({
         data: {
           ...poData,
+          subTotal,
+          totalAmount,
           organizationId: orgId,
           createdBy: userId,
           updatedBy: userId,
@@ -178,7 +210,10 @@ export async function updatePurchaseOrder(
   userId: string,
   data: UpdatePurchaseOrderPayload,
 ) {
-  const { lineItems: lineItems, ...poData } = data;
+  // totals move only with the lines they are summed from
+  const { lineItems: rawLineItems, subTotal: _s, totalAmount: _t, ...poData } = data;
+  const priced = rawLineItems ? priceLines(rawLineItems) : undefined;
+  const lineItems = priced?.lines;
   return runAsTenant(orgId, async (tx) => {
     // `updatePurchaseOrderSchema` is partial, so an edit that does not touch the
     // date must not be refused for one it never sent.
@@ -204,6 +239,8 @@ export async function updatePurchaseOrder(
         where: { id, organizationId: orgId, isDeleted: false },
         data: {
           ...poData,
+          subTotal: priced?.subTotal,
+          totalAmount: priced?.totalAmount,
           updatedBy: userId,
           documents:
             poData.documents !== undefined
@@ -256,7 +293,15 @@ export async function updatePurchaseOrder(
           recordId: id,
           recordTitle: `PO #${poData.poNumber || id}`,
           triggerType: 'EDIT',
-          record: { id, ...poData },
+          record: {
+            id,
+            ...poData,
+            // approval rules can key on the amount, so they see the server's figure
+            ...(priced && {
+              subTotal: priced.subTotal.toNumber(),
+              totalAmount: priced.totalAmount.toNumber(),
+            }),
+          },
           actorUserId: userId,
         })
         .catch((err) => console.error('[ApprovalTrigger] Error in update purchase order:', err));
