@@ -37,7 +37,6 @@ import {
   Share2,
   MessageSquare,
   Sparkles,
-  Info,
   Check,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -218,18 +217,11 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
   const tabs = ['Overview', 'Comments', 'Activity'];
 
-  const labelStyle = {
-    fontSize: '11px',
-    color: '#64748b',
-    marginBottom: '2px',
-  };
-
-  const valueStyle = {
-    fontSize: '12px',
-    color: '#1e293b',
-    fontWeight: 500,
-    marginBottom: '12px',
-  };
+  const poMeta = po as unknown as Record<string, unknown>;
+  const rawLocation = poMeta.location as { name?: string } | undefined;
+  const rawComments = Array.isArray(poMeta.comments) ? poMeta.comments : [];
+  const createdByUser = poMeta.createdByUser as { name?: string; email?: string } | undefined;
+  const updatedByUser = poMeta.updatedByUser as { name?: string; email?: string } | undefined;
 
   return (
     <div
@@ -256,7 +248,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, marginBottom: 2 }}>
-              Location: {po.deliveryLocation?.name || po.location?.name || 'Head Office'}
+              Location: {po.deliveryLocation?.name || rawLocation?.name || 'Head Office'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <h1
@@ -362,7 +354,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               }}
             >
               <MessageSquare size={18} />
-              {po.comments && po.comments.length > 0 && (
+              {rawComments.length > 0 && (
                 <span
                   style={{
                     position: 'absolute',
@@ -380,7 +372,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                     justifyContent: 'center',
                   }}
                 >
-                  {po.comments.length}
+                  {rawComments.length}
                 </span>
               )}
             </button>
@@ -682,10 +674,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 fontWeight: 700,
               }}
             >
-              {(po.createdByUser?.name || 'U').charAt(0).toUpperCase()}
+              {(createdByUser?.name || 'U').charAt(0).toUpperCase()}
             </div>
             <span style={{ fontWeight: 500, color: '#1e293b' }}>
-              {po.createdByUser?.name || po.createdByUser?.email || 'User'}
+              {createdByUser?.name || createdByUser?.email || 'User'}
             </span>
           </div>
 
@@ -705,10 +697,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 fontWeight: 700,
               }}
             >
-              {(po.updatedByUser?.name || 'A').charAt(0).toUpperCase()}
+              {(updatedByUser?.name || 'A').charAt(0).toUpperCase()}
             </div>
             <span style={{ fontWeight: 500, color: '#1e293b' }}>
-              {po.updatedByUser?.name || po.updatedByUser?.email || 'Approver'}
+              {updatedByUser?.name || updatedByUser?.email || 'Approver'}
             </span>
           </div>
         </div>
@@ -927,114 +919,203 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
             </div>
           </div>
 
-          {/* Status Summary & PDF View Toggle */}
+          {/* Executive Lifecycle Workflow Tracker */}
           <div
             style={{
-              padding: '10px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '10px',
-              fontSize: '13px',
-              background: '#fff',
-              borderRadius: '8px',
+              background: '#ffffff',
               border: '1px solid #e2e8f0',
-              marginTop: '12px',
+              borderRadius: '8px',
+              padding: '14px 20px',
+              margin: '14px 0 16px 0',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: '12.5px' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#475569', fontWeight: 500 }}>Receive Status :</span>
-                <span
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+              }}
+            >
+              {/* Stepper Pipeline */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {/* Step 1: Draft */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: '#10b981',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    ✓
+                  </div>
+                  <span style={{ fontWeight: 600, color: '#0f172a' }}>Draft</span>
+                </div>
+
+                <div style={{ width: 24, height: 2, background: '#10b981', borderRadius: 1 }} />
+
+                {/* Step 2: Issued */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: po.status !== 'Draft' ? '#10b981' : '#e0f2fe',
+                      color: po.status !== 'Draft' ? 'white' : '#0284c7',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {po.status !== 'Draft' ? '✓' : '2'}
+                  </div>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: po.status !== 'Draft' ? '#0f172a' : '#64748b',
+                    }}
+                  >
+                    Issued
+                  </span>
+                </div>
+
+                <div
                   style={{
-                    color: po.status === 'Closed' ? '#16a34a' : '#64748b',
-                    fontWeight: 700,
-                    letterSpacing: '0.02em',
+                    width: 24,
+                    height: 2,
+                    background: po.bills?.length ? '#10b981' : '#e2e8f0',
+                    borderRadius: 1,
+                  }}
+                />
+
+                {/* Step 3: Billed */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: po.bills?.length ? '#10b981' : '#f1f5f9',
+                      color: po.bills?.length ? 'white' : '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {po.bills?.length ? '✓' : '3'}
+                  </div>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: po.bills?.length ? '#059669' : '#64748b',
+                    }}
+                  >
+                    {po.bills?.length ? 'Billed' : 'Yet to be Billed'}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    width: 24,
+                    height: 2,
+                    background: po.status === 'Closed' ? '#10b981' : '#e2e8f0',
+                    borderRadius: 1,
+                  }}
+                />
+
+                {/* Step 4: Received */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: po.status === 'Closed' ? '#10b981' : '#f1f5f9',
+                      color: po.status === 'Closed' ? 'white' : '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {po.status === 'Closed' ? '✓' : '4'}
+                  </div>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: po.status === 'Closed' ? '#059669' : '#64748b',
+                    }}
+                  >
+                    {po.status === 'Closed' ? 'Received' : 'Yet to be Received'}
+                  </span>
+                </div>
+              </div>
+
+              {/* PDF View Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '12.5px', color: '#64748b', fontWeight: 500 }}>
+                  Show PDF Print View
+                </span>
+                <label
+                  style={{
+                    position: 'relative',
+                    display: 'inline-block',
+                    width: '36px',
+                    height: '20px',
+                    cursor: 'pointer',
                   }}
                 >
-                  {po.status === 'Closed' ? 'RECEIVED' : 'YET TO BE RECEIVED'}
-                </span>
-              </span>
-
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#475569', fontWeight: 500 }}>Bill Status :</span>
-                <span
-                  style={{
-                    color: po.bills?.length ? '#16a34a' : '#d97706',
-                    fontWeight: 700,
-                    letterSpacing: '0.02em',
-                  }}
-                >
-                  {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
-                </span>
-              </span>
+                  <input
+                    type="checkbox"
+                    checked={isPdfView}
+                    onChange={(e) => setIsPdfView(e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }}
+                  />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      cursor: 'pointer',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundColor: isPdfView ? '#0284c7' : '#cbd5e1',
+                      transition: '0.2s',
+                      borderRadius: '20px',
+                    }}
+                  />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      height: '14px',
+                      width: '14px',
+                      left: isPdfView ? '19px' : '3px',
+                      bottom: '3px',
+                      backgroundColor: 'white',
+                      transition: '0.2s',
+                      borderRadius: '50%',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                    }}
+                  />
+                </label>
+              </div>
             </div>
-
-            {/* Toggle Switch */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span
-                style={{ fontSize: '13px', color: '#64748b', fontWeight: 500, fontStyle: 'italic' }}
-              >
-                Show PDF View
-              </span>
-              <label
-                style={{
-                  position: 'relative',
-                  display: 'inline-block',
-                  width: '38px',
-                  height: '20px',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isPdfView}
-                  onChange={(e) => setIsPdfView(e.target.checked)}
-                  style={{ opacity: 0, width: 0, height: 0 }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: isPdfView ? '#0284c7' : '#cbd5e1',
-                    transition: '0.2s',
-                    borderRadius: '20px',
-                  }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    height: '14px',
-                    width: '14px',
-                    left: isPdfView ? '20px' : '3px',
-                    bottom: '3px',
-                    backgroundColor: 'white',
-                    transition: '0.2s',
-                    borderRadius: '50%',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                  }}
-                />
-              </label>
-            </div>
-          </div>
-
-          {/* Info Notice */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              color: '#0284c7',
-              fontSize: '12px',
-              marginBottom: '16px',
-              paddingLeft: '4px',
-            }}
-          >
-            <Info size={14} />
-            <span>This preview does not display the custom template.</span>
           </div>
 
           {/* Bills List View */}
@@ -1322,21 +1403,61 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </div>
                 </div>
 
-                {/* Purchase Order Title */}
-                <div style={{ textAlign: 'right' }}>
+                {/* Purchase Order Title & Details */}
+                <div style={{ textAlign: 'right', minWidth: '220px' }}>
                   <h1
                     style={{
                       fontSize: '24px',
                       fontWeight: 800,
                       color: '#0f172a',
                       letterSpacing: '0.02em',
-                      margin: '0 0 4px 0',
+                      margin: '0 0 6px 0',
                     }}
                   >
                     PURCHASE ORDER
                   </h1>
-                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>
                     Purchase Order# <strong style={{ color: '#0f172a' }}>{po.poNumber}</strong>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      textAlign: 'right',
+                      fontSize: '12px',
+                      color: '#475569',
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: '#64748b' }}>Order Date: </span>
+                      <strong style={{ color: '#0f172a' }}>
+                        {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
+                      </strong>
+                    </div>
+                    {po.deliveryDate && (
+                      <div>
+                        <span style={{ color: '#64748b' }}>Expected Delivery: </span>
+                        <strong style={{ color: '#0f172a' }}>
+                          {format(new Date(po.deliveryDate), 'dd-MM-yyyy')}
+                        </strong>
+                      </div>
+                    )}
+                    {po.referenceNumber && (
+                      <div>
+                        <span style={{ color: '#64748b' }}>Ref#: </span>
+                        <strong style={{ color: '#0f172a' }}>{po.referenceNumber}</strong>
+                      </div>
+                    )}
+                    {po.paymentTerms && (
+                      <div>
+                        <span style={{ color: '#64748b' }}>Payment Terms: </span>
+                        <strong style={{ color: '#0f172a' }}>
+                          {getPaymentTermLabel(po.paymentTerms)}
+                        </strong>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1414,81 +1535,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   >
                     {po.deliveryType === 'Location' && po.deliveryLocation?.address}
                   </div>
-                </div>
-              </div>
-
-              {/* Status & Order Details Grid */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
-                  gap: '20px',
-                  marginBottom: '28px',
-                  background: '#fafafa',
-                  padding: '16px 20px',
-                  borderRadius: '6px',
-                  border: '1px solid #f1f5f9',
-                }}
-              >
-                <div>
-                  <div style={labelStyle}>ORDER STATUS</div>
-                  <div style={{ marginBottom: '12px', marginTop: '4px' }}>
-                    <PurchaseOrderStatusBadge status={po.status} />
-                  </div>
-
-                  <div style={labelStyle}>BILLED STATUS</div>
-                  <div style={{ marginTop: '4px' }}>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.03em',
-                        background: po.bills?.length ? '#ecfdf5' : '#f1f5f9',
-                        color: po.bills?.length ? '#059669' : '#475569',
-                        border: po.bills?.length ? '1px solid #a7f3d0' : '1px solid #e2e8f0',
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <div style={labelStyle}>ORDER DATE</div>
-                  <div style={valueStyle}>
-                    {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
-                  </div>
-
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY DATE</div>
-                  <div style={valueStyle}>
-                    {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd-MM-yyyy') : '-'}
-                  </div>
-                </div>
-
-                <div>
-                  <div style={labelStyle}>REFERENCE#</div>
-                  <div style={valueStyle}>
-                    {po.referenceNumber ||
-                      ((po.customFields as Record<string, unknown>)?.referenceNumber as string) ||
-                      '-'}
-                  </div>
-
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>PAYMENT TERMS</div>
-                  <div style={valueStyle}>{getPaymentTermLabel(po.paymentTerms)}</div>
-                </div>
-
-                <div>
-                  <div style={labelStyle}>PO TYPE</div>
-                  <div style={valueStyle}>Standard</div>
-
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
-                  <div style={valueStyle}>{po.deliveryType || 'Location'}</div>
                 </div>
               </div>
 

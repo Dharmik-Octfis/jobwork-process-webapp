@@ -11,13 +11,13 @@ import {
   FileText,
   Search,
   MoreHorizontal,
-  ChevronRight,
-  Download,
-  Upload,
   RotateCw,
   Settings,
   Layers,
-  ArrowUpDown,
+  CheckCircle2,
+  Clock,
+  Send,
+  ShoppingCart,
 } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -32,8 +32,8 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { format } from 'date-fns';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import type { PurchaseOrder } from './purchase-orders.schemas';
 import { PurchaseOrderStatusBadge } from './PurchaseOrderStatusBadge';
+import type { PurchaseOrder } from './purchase-orders.schemas';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 
@@ -48,12 +48,116 @@ function formatDate(val: unknown): string {
   }
 }
 
+function getVendorInitials(name?: string): string {
+  if (!name) return 'PO';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  { bg: '#e0f2fe', text: '#0284c7' },
+  { bg: '#fef3c7', text: '#b45309' },
+  { bg: '#dcfce7', text: '#15803d' },
+  { bg: '#f3e8ff', text: '#7e22ce' },
+  { bg: '#ffe4e6', text: '#be123c' },
+  { bg: '#ffedd5', text: '#c2410c' },
+  { bg: '#f1f5f9', text: '#475569' },
+];
+
+function getAvatarColor(name?: string) {
+  if (!name) return AVATAR_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 function renderPoCell(
   po: PurchaseOrder,
   key: string,
   paymentTerms: PaymentTerm[] = [],
   customFieldsDef?: CustomFieldDefinition[],
 ): React.ReactNode {
+  if (key === 'status') {
+    return <PurchaseOrderStatusBadge status={po.status} />;
+  }
+
+  if (key === 'poNumber') {
+    return (
+      <span
+        style={{
+          fontWeight: 600,
+          color: '#0284c7',
+        }}
+      >
+        {po.poNumber || '-'}
+      </span>
+    );
+  }
+
+  if (key === 'vendor' || key === 'vendorName') {
+    const vendorName = po.vendor?.contactName || po.vendor?.companyName || '-';
+    const subText =
+      po.vendor?.contactName &&
+      po.vendor?.companyName &&
+      po.vendor.contactName !== po.vendor.companyName
+        ? po.vendor.companyName
+        : null;
+    const initials = getVendorInitials(vendorName);
+    const color = getAvatarColor(vendorName);
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            background: color.bg,
+            color: color.text,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 700,
+            fontSize: 11,
+            flexShrink: 0,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+          }}
+        >
+          {initials}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 500,
+              color: '#1e293b',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {vendorName}
+          </div>
+          {subText && (
+            <div
+              style={{
+                fontSize: 11,
+                color: '#64748b',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {subText}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (key === 'billed' || key === 'billedStatus') {
     const isBilled = Boolean(po.bills && po.bills.length > 0);
     return (
@@ -61,13 +165,28 @@ function renderPoCell(
         <span
           title={isBilled ? 'Billed' : 'Unbilled'}
           style={{
-            display: 'inline-block',
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            backgroundColor: isBilled ? '#0284c7' : '#cbd5e1',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '2px 8px',
+            borderRadius: 12,
+            fontSize: 11,
+            fontWeight: 600,
+            background: isBilled ? '#ecfdf5' : '#f8fafc',
+            color: isBilled ? '#059669' : '#64748b',
+            border: `1px solid ${isBilled ? '#a7f3d0' : '#e2e8f0'}`,
           }}
-        />
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: isBilled ? '#10b981' : '#94a3b8',
+            }}
+          />
+          {isBilled ? 'Billed' : 'Unbilled'}
+        </span>
       </div>
     );
   }
@@ -80,14 +199,38 @@ function renderPoCell(
         <span
           title={isReceived ? 'Received' : 'Not Received'}
           style={{
-            display: 'inline-block',
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            backgroundColor: isReceived ? '#0284c7' : '#cbd5e1',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '2px 8px',
+            borderRadius: 12,
+            fontSize: 11,
+            fontWeight: 600,
+            background: isReceived ? '#f0f9ff' : '#f8fafc',
+            color: isReceived ? '#0284c7' : '#64748b',
+            border: `1px solid ${isReceived ? '#bae6fd' : '#e2e8f0'}`,
           }}
-        />
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: isReceived ? '#0284c7' : '#94a3b8',
+            }}
+          />
+          {isReceived ? 'Received' : 'Pending'}
+        </span>
       </div>
+    );
+  }
+
+  if (key === 'totalAmount' || key === 'total' || key === 'amount') {
+    const amt = Number((po as Record<string, unknown>).total || po.totalAmount || 0);
+    return (
+      <span style={{ fontWeight: 600, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+        ₹{amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </span>
     );
   }
 
@@ -155,11 +298,6 @@ function renderPoCell(
     return po.vendor?.contactName || '-';
   }
 
-  if (key === 'totalAmount' || key === 'total' || key === 'amount') {
-    const amt = Number((po as Record<string, unknown>).total || po.totalAmount || 0);
-    return `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-
   if (key === 'date' || key === 'createdAt' || key === 'updatedAt') {
     return formatDate((po as unknown as Record<string, unknown>)[key]);
   }
@@ -196,42 +334,7 @@ export function PurchaseOrdersList() {
 
   const results = data?.results;
   const pageContext = data?.pageContext;
-
-  const [sortBy, setSortBy] = useState<string>('createdAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [isSortSubmenuOpen, setIsSortSubmenuOpen] = useState(false);
-
-  const purchaseOrders = useMemo(() => {
-    return [...(results ?? [])].sort((a, b) => {
-      let valA: unknown = '';
-      let valB: unknown = '';
-      if (sortBy === 'date') {
-        valA = new Date(a.date || 0).getTime();
-        valB = new Date(b.date || 0).getTime();
-      } else if (sortBy === 'poNumber') {
-        valA = (a.poNumber || '').toLowerCase();
-        valB = (b.poNumber || '').toLowerCase();
-      } else if (sortBy === 'vendorName') {
-        valA = (a.vendor?.contactName || '').toLowerCase();
-        valB = (b.vendor?.contactName || '').toLowerCase();
-      } else if (sortBy === 'amount') {
-        valA = Number((a as Record<string, unknown>).total || a.totalAmount || 0);
-        valB = Number((b as Record<string, unknown>).total || b.totalAmount || 0);
-      } else if (sortBy === 'createdAt') {
-        valA = new Date((a as unknown as { createdAt?: string }).createdAt || 0).getTime();
-        valB = new Date((b as unknown as { createdAt?: string }).createdAt || 0).getTime();
-      } else if (sortBy === 'updatedAt') {
-        valA = new Date((a as unknown as { updatedAt?: string }).updatedAt || 0).getTime();
-        valB = new Date((b as unknown as { updatedAt?: string }).updatedAt || 0).getTime();
-      }
-
-      if ((valA as number | string) < (valB as number | string))
-        return sortOrder === 'asc' ? -1 : 1;
-      if ((valA as number | string) > (valB as number | string))
-        return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [results, sortBy, sortOrder]);
+  const purchaseOrders = useMemo(() => results ?? [], [results]);
 
   const {
     total,
@@ -243,26 +346,52 @@ export function PurchaseOrdersList() {
 
   const { catalog, visible, filters, columns, save } = useListColumns(orgId, 'purchase_order');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
-  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
-        setIsMoreMenuOpen(false);
-      }
-    }
-    if (isMoreMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isMoreMenuOpen]);
 
   const queryClient = useQueryClient();
   const [poToDelete, setPoToDelete] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+
+  // More menu state
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const [showRefreshToast, setShowRefreshToast] = useState(false);
+
+  // Close more menu on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Compute summary stats for the Executive KPI ribbon
+  const stats = useMemo(() => {
+    let totalAmt = 0;
+    let drafts = 0;
+    let issued = 0;
+    let approved = 0;
+
+    for (const po of purchaseOrders) {
+      totalAmt += Number((po as Record<string, unknown>).total || po.totalAmount || 0);
+      const st = (po.status || '').toLowerCase();
+      if (st === 'draft') drafts++;
+      else if (st === 'issued' || st === 'sent') issued++;
+      else if (st === 'approved' || st === 'closed' || st === 'completed') approved++;
+    }
+
+    return {
+      totalAmt,
+      drafts,
+      issued,
+      approved,
+      count: total ?? purchaseOrders.length,
+    };
+  }, [purchaseOrders, total]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deletePurchaseOrder(orgId!, id),
@@ -288,6 +417,13 @@ export function PurchaseOrdersList() {
     }
   };
 
+  const handleRefresh = () => {
+    setIsMoreMenuOpen(false);
+    queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+    setShowRefreshToast(true);
+    setTimeout(() => setShowRefreshToast(false), 2500);
+  };
+
   const headerStyle: React.CSSProperties = {
     padding: '12px 16px',
     fontWeight: 600,
@@ -296,6 +432,15 @@ export function PurchaseOrdersList() {
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
   };
+
+  // Status quick filter options
+  const STATUS_TABS = [
+    { key: 'all', label: 'All Orders' },
+    { key: 'draft', label: 'Draft' },
+    { key: 'issued', label: 'Issued' },
+    { key: 'approved', label: 'Approved' },
+    { key: 'closed', label: 'Closed' },
+  ];
 
   return (
     <div
@@ -314,7 +459,7 @@ export function PurchaseOrdersList() {
         <div
           className="master-pane"
           style={{
-            flex: selectedPoId ? '0 0 320px' : 1,
+            flex: selectedPoId ? '0 0 340px' : 1,
             borderRight: selectedPoId ? '1px solid #eef0f3' : 'none',
             display: 'flex',
             flexDirection: 'column',
@@ -337,353 +482,121 @@ export function PurchaseOrdersList() {
                 padding: selectedPoId ? '12px 16px' : '16px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #e2e8f0',
-                gap: 8,
+                gap: 12,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
                 <ListFilterDropdown
                   filters={filters}
                   value={filter}
                   onChange={setFilter}
                   fallbackLabel="All Purchase Orders"
                 />
+                {!selectedPoId && total !== null && total !== undefined && (
+                  <span
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#475569',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: 12,
+                    }}
+                  >
+                    {total}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                {!selectedPoId ? (
-                  <>
-                    <button
-                      onClick={() =>
-                        navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, {
-                          state: { returnUrl: location.pathname + location.search },
-                        })
-                      }
+                {/* Search Bar on Header (Full view only) */}
+                {!selectedPoId && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 6,
+                      padding: '0 10px',
+                      height: 34,
+                      width: 200,
+                      transition: 'all 0.15s ease',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = '#0284c7';
+                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(2, 132, 199, 0.15)';
+                      e.currentTarget.style.background = '#fff';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                      e.currentTarget.style.boxShadow = 'none';
+                      e.currentTarget.style.background = '#f8fafc';
+                    }}
+                  >
+                    <Search size={14} color="#94a3b8" />
+                    <input
+                      type="text"
+                      placeholder="Search orders..."
+                      defaultValue={search}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const timeout = setTimeout(() => {
+                          const params = new URLSearchParams(location.search);
+                          if (val.trim()) params.set('search', val.trim());
+                          else params.delete('search');
+                          navigate({ search: params.toString() }, { replace: true });
+                        }, 300);
+                        return () => clearTimeout(timeout);
+                      }}
                       style={{
-                        background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                        color: 'white',
                         border: 'none',
-                        padding: '7px 14px',
-                        borderRadius: '6px',
-                        fontWeight: 600,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
-                        transition: 'all 0.15s ease',
+                        background: 'transparent',
+                        outline: 'none',
+                        fontSize: 12,
+                        paddingLeft: 8,
+                        width: '100%',
+                        color: '#1e293b',
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
-                        e.currentTarget.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
-                        e.currentTarget.style.transform = 'none';
-                      }}
-                    >
-                      <Plus size={16} /> New
-                    </button>
+                    />
+                  </div>
+                )}
 
-                    {/* More Options (...) button with dropdown menu matching Screenshot 3 */}
-                    <div ref={moreMenuRef} style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsMoreMenuOpen((prev) => !prev);
-                          setIsSortSubmenuOpen(false);
-                        }}
-                        title="More options"
-                        aria-label="More options"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: 32,
-                          height: 32,
-                          borderRadius: 6,
-                          border: '1px solid #cbd5e1',
-                          background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
-                          cursor: 'pointer',
-                          color: '#475569',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f8fafc';
-                          e.currentTarget.style.borderColor = '#94a3b8';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = isMoreMenuOpen ? '#f1f5f9' : '#fff';
-                          e.currentTarget.style.borderColor = '#cbd5e1';
-                        }}
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-
-                      {isMoreMenuOpen && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: 'calc(100% + 4px)',
-                            right: 0,
-                            width: '230px',
-                            background: '#ffffff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            boxShadow:
-                              '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                            zIndex: 100,
-                            padding: '6px 0',
-                          }}
-                        >
-                          {/* Sort By item with hover submenu */}
-                          <div
-                            style={{ position: 'relative' }}
-                            onMouseEnter={() => setIsSortSubmenuOpen(true)}
-                            onMouseLeave={() => setIsSortSubmenuOpen(false)}
-                          >
-                            <div
-                              onClick={() => setIsSortSubmenuOpen((prev) => !prev)}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '8px 16px',
-                                fontSize: '13px',
-                                color: isSortSubmenuOpen ? '#0284c7' : '#1e293b',
-                                cursor: 'pointer',
-                                background: isSortSubmenuOpen ? '#f0f9ff' : 'transparent',
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <ArrowUpDown size={15} color="#0284c7" />
-                                <span style={{ fontWeight: 500 }}>Sort by</span>
-                              </div>
-                              <ChevronRight size={14} color="#64748b" />
-                            </div>
-
-                            {/* Sort Submenu to the left */}
-                            {isSortSubmenuOpen && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  right: '100%',
-                                  width: '190px',
-                                  background: '#ffffff',
-                                  border: '1px solid #e2e8f0',
-                                  borderRadius: '8px',
-                                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                                  zIndex: 101,
-                                  padding: '4px',
-                                  marginRight: '2px',
-                                }}
-                              >
-                                {[
-                                  { label: 'Date', key: 'date' },
-                                  { label: 'Purchase Order#', key: 'poNumber' },
-                                  { label: 'Vendor Name', key: 'vendorName' },
-                                  { label: 'Amount', key: 'amount' },
-                                  { label: 'Created Time', key: 'createdAt' },
-                                  { label: 'Last Modified Time', key: 'updatedAt' },
-                                ].map((item) => {
-                                  const isSelected = sortBy === item.key;
-                                  return (
-                                    <div
-                                      key={item.key}
-                                      onClick={() => {
-                                        if (sortBy === item.key) {
-                                          setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-                                        } else {
-                                          setSortBy(item.key);
-                                          setSortOrder(
-                                            item.key === 'createdAt' || item.key === 'updatedAt'
-                                              ? 'desc'
-                                              : 'asc',
-                                          );
-                                        }
-                                        setIsMoreMenuOpen(false);
-                                      }}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '7px 12px',
-                                        borderRadius: '5px',
-                                        fontSize: '12.5px',
-                                        color: isSelected ? '#ffffff' : '#334155',
-                                        background: isSelected ? '#0284c7' : 'transparent',
-                                        cursor: 'pointer',
-                                        fontWeight: isSelected ? 600 : 400,
-                                        marginBottom: '2px',
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        if (!isSelected)
-                                          e.currentTarget.style.background = '#f8fafc';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        if (!isSelected)
-                                          e.currentTarget.style.background = 'transparent';
-                                      }}
-                                    >
-                                      <span>{item.label}</span>
-                                      {isSelected && (
-                                        <span>{sortOrder === 'desc' ? '↓' : '↑'}</span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
-
-                          {/* Import Purchase Orders */}
-                          <div
-                            onClick={() => {
-                              setIsMoreMenuOpen(false);
-                              alert('Import Purchase Orders feature will be available soon.');
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              padding: '8px 16px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                          >
-                            <Download size={15} color="#0284c7" />
-                            <span>Import Purchase Orders</span>
-                          </div>
-
-                          {/* Export */}
-                          <div
-                            onClick={() => {
-                              setIsMoreMenuOpen(false);
-                              const csvRows = [
-                                ['Purchase Order#', 'Date', 'Vendor Name', 'Status', 'Amount'].join(
-                                  ',',
-                                ),
-                                ...purchaseOrders.map((po) =>
-                                  [
-                                    `"${po.poNumber || ''}"`,
-                                    `"${po.date || ''}"`,
-                                    `"${po.vendor?.contactName || ''}"`,
-                                    `"${po.status || ''}"`,
-                                    `"${po.totalAmount || 0}"`,
-                                  ].join(','),
-                                ),
-                              ];
-                              const blob = new Blob([csvRows.join('\n')], {
-                                type: 'text/csv',
-                              });
-                              const url = window.URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `purchase-orders-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-                              a.click();
-                              window.URL.revokeObjectURL(url);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '8px 16px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <Upload size={15} color="#0284c7" />
-                              <span>Export</span>
-                            </div>
-                            <ChevronRight size={14} color="#64748b" />
-                          </div>
-
-                          <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
-
-                          {/* Preferences */}
-                          <div
-                            onClick={() => {
-                              setIsMoreMenuOpen(false);
-                              navigate(`/organizations/${orgId}/purchases/purchase-orders/new`);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              padding: '8px 16px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                          >
-                            <Settings size={15} color="#0284c7" />
-                            <span>Preferences</span>
-                          </div>
-
-                          {/* Manage Custom Fields */}
-                          <div
-                            onClick={() => {
-                              setIsMoreMenuOpen(false);
-                              navigate(
-                                `/organizations/${orgId}/settings/custom-fields?module=purchase_order`,
-                              );
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              padding: '8px 16px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                          >
-                            <Layers size={15} color="#0284c7" />
-                            <span>Manage Custom Fields</span>
-                          </div>
-
-                          {/* Refresh List */}
-                          <div
-                            onClick={() => {
-                              setIsMoreMenuOpen(false);
-                              queryClient.invalidateQueries({
-                                queryKey: ['purchaseOrders', orgId],
-                              });
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              padding: '8px 16px',
-                              fontSize: '13px',
-                              color: '#1e293b',
-                              cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                          >
-                            <RotateCw size={15} color="#0284c7" />
-                            <span>Refresh List</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
+                {/* + New Button */}
+                {!selectedPoId ? (
+                  <button
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, {
+                        state: { returnUrl: location.pathname + location.search },
+                      })
+                    }
+                    style={{
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '7px 14px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+                      e.currentTarget.style.transform = 'none';
+                    }}
+                  >
+                    <Plus size={16} /> New PO
+                  </button>
                 ) : (
                   <button
                     onClick={() =>
@@ -718,14 +631,453 @@ export function PurchaseOrdersList() {
                     <Plus size={16} />
                   </button>
                 )}
+
+                {/* More Options Dropdown */}
+                <div ref={moreMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMoreMenuOpen((v) => !v)}
+                    title="More Options"
+                    aria-label="More Options"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
+                      background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                      color: '#475569',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f8fafc';
+                      e.currentTarget.style.color = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isMoreMenuOpen) {
+                        e.currentTarget.style.background = '#fff';
+                        e.currentTarget.style.color = '#475569';
+                      }
+                    }}
+                  >
+                    <MoreHorizontal size={16} />
+                  </button>
+
+                  {isMoreMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: '100%',
+                        marginTop: 6,
+                        width: 210,
+                        background: '#fff',
+                        borderRadius: 8,
+                        boxShadow:
+                          '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.05)',
+                        border: '1px solid #e2e8f0',
+                        padding: '6px 0',
+                        zIndex: 100,
+                      }}
+                    >
+                      {/* Customize Columns */}
+                      <div
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          setIsColumnsOpen(true);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 16px',
+                          fontSize: 13,
+                          color: '#1e293b',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <SlidersHorizontal size={15} color="#0284c7" />
+                        <span>Customize Columns</span>
+                      </div>
+
+                      {/* Manage Custom Fields */}
+                      <div
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          navigate(
+                            `/organizations/${orgId}/settings/custom-fields?module=purchase_order`,
+                          );
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 16px',
+                          fontSize: 13,
+                          color: '#1e293b',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <Layers size={15} color="#0284c7" />
+                        <span>Custom Fields</span>
+                      </div>
+
+                      {/* Preferences */}
+                      <div
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          navigate(`/organizations/${orgId}/settings/preferences`);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 16px',
+                          fontSize: 13,
+                          color: '#1e293b',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <Settings size={15} color="#0284c7" />
+                        <span>Preferences</span>
+                      </div>
+
+                      <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
+
+                      {/* Refresh */}
+                      <div
+                        onClick={handleRefresh}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 16px',
+                          fontSize: 13,
+                          color: '#1e293b',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <RotateCw size={15} color="#0284c7" />
+                        <span>Refresh List</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </header>
           )}
 
+          {/* Executive KPI Metric Ribbon (UI 2 Feature - when no PO selected) */}
+          {!selectedPoId && purchaseOrders.length > 0 && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 12,
+                padding: '16px 24px',
+                background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
+              }}
+            >
+              {/* Card 1: Total Orders */}
+              <div
+                onClick={() => setFilter('all')}
+                style={{
+                  background: '#fff',
+                  border: filter === 'all' ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#0284c7')}
+                onMouseLeave={(e) => {
+                  if (filter !== 'all') e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 8,
+                    background: '#e0f2fe',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <ShoppingCart size={19} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    Total Orders
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                      {stats.count}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#0284c7', fontWeight: 600 }}>
+                      ₹{stats.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Draft Orders */}
+              <div
+                onClick={() => setFilter('draft')}
+                style={{
+                  background: '#fff',
+                  border: filter === 'draft' ? '1.5px solid #d97706' : '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#d97706')}
+                onMouseLeave={(e) => {
+                  if (filter !== 'draft') e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 8,
+                    background: '#fef3c7',
+                    color: '#d97706',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Clock size={19} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    Drafts
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                      {stats.drafts}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#b45309' }}>Awaiting issue</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Issued Orders */}
+              <div
+                onClick={() => setFilter('issued')}
+                style={{
+                  background: '#fff',
+                  border: filter === 'issued' ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#0284c7')}
+                onMouseLeave={(e) => {
+                  if (filter !== 'issued') e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 8,
+                    background: '#e0f2fe',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Send size={19} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    Issued
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                      {stats.issued}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#0284c7' }}>With vendors</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Approved & Closed */}
+              <div
+                onClick={() => setFilter('approved')}
+                style={{
+                  background: '#fff',
+                  border: filter === 'approved' ? '1.5px solid #16a34a' : '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#16a34a')}
+                onMouseLeave={(e) => {
+                  if (filter !== 'approved') e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+              >
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 8,
+                    background: '#dcfce7',
+                    color: '#16a34a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <CheckCircle2 size={19} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    Approved & Closed
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                      {stats.approved}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#16a34a' }}>Fulfilled</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Status Tab Pills Bar (Full view only) */}
+          {!selectedPoId && purchaseOrders.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #f1f5f9',
+                overflowX: 'auto',
+              }}
+            >
+              {STATUS_TABS.map((tab) => {
+                const isActive = filter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setFilter(tab.key)}
+                    style={{
+                      background: isActive ? '#0284c7' : '#f8fafc',
+                      color: isActive ? '#fff' : '#64748b',
+                      border: `1px solid ${isActive ? '#0284c7' : '#e2e8f0'}`,
+                      borderRadius: 20,
+                      padding: '4px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = '#f1f5f9';
+                        e.currentTarget.style.color = '#1e293b';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.color = '#64748b';
+                      }
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                Loading purchase orders...
+              <div style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
+                <RotateCw
+                  size={24}
+                  style={{ animation: 'spin 1s linear infinite', marginBottom: 12 }}
+                />
+                <div>Loading purchase orders...</div>
               </div>
             ) : isError ? (
               <div style={{ padding: '32px', textAlign: 'center', color: '#ef4444' }}>
@@ -743,29 +1095,35 @@ export function PurchaseOrdersList() {
               >
                 <div
                   style={{
-                    width: 80,
-                    height: 80,
+                    width: 72,
+                    height: 72,
                     borderRadius: '50%',
-                    background: '#f1f5f9',
+                    background: '#f0f9ff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginBottom: '16px',
                   }}
                 >
-                  <FileText size={40} color="#94a3b8" />
+                  <FileText size={36} color="#0284c7" />
                 </div>
                 <h2
-                  style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}
+                  style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}
                 >
                   No Purchase Orders Found
                 </h2>
                 <p
-                  style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}
+                  style={{
+                    color: '#64748b',
+                    maxWidth: 400,
+                    margin: '0 0 20px 0',
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}
                 >
                   {search
-                    ? `No purchase orders match "${search}".`
-                    : "You haven't created any purchase orders yet."}
+                    ? `No purchase orders match "${search}". Try clearing search filters.`
+                    : 'Create your first purchase order to track vendor procurement, pricing, and receipts.'}
                 </p>
                 <button
                   onClick={() =>
@@ -777,21 +1135,13 @@ export function PurchaseOrdersList() {
                     background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                     color: 'white',
                     border: 'none',
-                    padding: '10px 24px',
+                    padding: '8px 20px',
                     borderRadius: '6px',
                     fontWeight: 600,
-                    fontSize: 14,
+                    fontSize: 13,
                     cursor: 'pointer',
                     boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
                     transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
-                    e.currentTarget.style.transform = 'none';
                   }}
                 >
                   Create Purchase Order
@@ -800,36 +1150,35 @@ export function PurchaseOrdersList() {
             ) : (
               <div>
                 {selectedPoId ? (
+                  /* Master List in Split-View Mode */
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <div
                       style={{
                         padding: '10px 16px',
-                        fontSize: '12px',
-                        fontWeight: 600,
+                        fontSize: '11px',
+                        fontWeight: 700,
                         color: '#64748b',
                         background: '#f8fafc',
                         borderBottom: '1px solid #e2e8f0',
-                        letterSpacing: '0.03em',
+                        letterSpacing: '0.04em',
                         textTransform: 'uppercase',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
                       }}
                     >
-                      {filters.find((f) => f.key === filter)?.label ?? 'All Purchase Orders'}
+                      <span>
+                        {filters.find((f) => f.key === filter)?.label ?? 'All Purchase Orders'}
+                      </span>
+                      <span style={{ fontWeight: 600, color: '#94a3b8' }}>
+                        {purchaseOrders.length}
+                      </span>
                     </div>
                     {purchaseOrders.map((po) => {
                       const isSelected = selectedPoId === po.id;
-                      const statusUpper = (po.status || 'DRAFT').toUpperCase();
-                      const statusColor =
-                        statusUpper === 'ISSUED'
-                          ? '#0284c7'
-                          : statusUpper === 'APPROVED'
-                            ? '#16a34a'
-                            : statusUpper === 'CLOSED'
-                              ? '#475569'
-                              : statusUpper.includes('PENDING')
-                                ? '#ea580c'
-                                : statusUpper === 'CANCELLED'
-                                  ? '#ef4444'
-                                  : '#64748b';
+                      const vendorName = po.vendor?.contactName || po.vendor?.companyName || '-';
+                      const initials = getVendorInitials(vendorName);
+                      const color = getAvatarColor(vendorName);
 
                       return (
                         <div
@@ -839,7 +1188,7 @@ export function PurchaseOrdersList() {
                             padding: '12px 14px',
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
-                            background: isSelected ? '#f0f7fd' : 'transparent',
+                            background: isSelected ? '#f0f9ff' : 'transparent',
                             borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
                             transition: 'all 0.12s ease',
                             display: 'flex',
@@ -860,54 +1209,87 @@ export function PurchaseOrdersList() {
                               e.stopPropagation();
                               toggleSelection(po.id);
                             }}
-                            style={{ marginTop: 2, cursor: 'pointer' }}
+                            style={{ marginTop: 3, cursor: 'pointer', accentColor: '#0284c7' }}
                           />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div
                               style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'baseline',
-                                marginBottom: 3,
+                                alignItems: 'center',
+                                marginBottom: 4,
                               }}
                             >
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  minWidth: 0,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: 22,
+                                    height: 22,
+                                    borderRadius: '50%',
+                                    background: color.bg,
+                                    color: color.text,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontWeight: 700,
+                                    fontSize: 10,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {initials}
+                                </div>
+                                <span
+                                  style={{
+                                    fontWeight: 600,
+                                    fontSize: 13,
+                                    color: '#0f172a',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {vendorName}
+                                </span>
+                              </div>
                               <span
                                 style={{
-                                  fontWeight: 600,
+                                  fontWeight: 700,
                                   fontSize: 13,
-                                  color: '#1e293b',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
+                                  color: '#0f172a',
+                                  marginLeft: 6,
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                                {po.vendor?.contactName || po.vendor?.companyName || '-'}
-                              </span>
-                              <span
-                                style={{
-                                  fontWeight: 600,
-                                  fontSize: 13,
-                                  color: '#1e293b',
-                                  marginLeft: 8,
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                ₹{Number(po.totalAmount || 0).toFixed(2)}
+                                ₹
+                                {Number(po.totalAmount || 0).toLocaleString('en-IN', {
+                                  maximumFractionDigits: 0,
+                                })}
                               </span>
                             </div>
-                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-                              {po.poNumber} • {formatDate(po.date)}
-                            </div>
+
                             <div
                               style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.04em',
-                                color: statusColor,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                fontSize: 12,
+                                color: '#64748b',
                               }}
                             >
-                              {po.status}
+                              <span>
+                                <span style={{ fontWeight: 600, color: '#0284c7' }}>
+                                  {po.poNumber}
+                                </span>{' '}
+                                • {formatDate(po.date)}
+                              </span>
+                              <PurchaseOrderStatusBadge status={po.status} size="sm" />
                             </div>
                           </div>
                         </div>
@@ -915,7 +1297,11 @@ export function PurchaseOrdersList() {
                     })}
                   </div>
                 ) : (
-                  <div className="responsive-table-wrapper">
+                  /* Modern Full Table View */
+                  <div
+                    className="responsive-table-wrapper"
+                    style={{ overflowX: 'auto', width: '100%' }}
+                  >
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr
@@ -975,8 +1361,7 @@ export function PurchaseOrdersList() {
                               />
                             </div>
                           </th>
-                          {columns.map((col, idx) => {
-                            const isLast = idx === columns.length - 1;
+                          {columns.map((col) => {
                             const isCenter =
                               col.key === 'billed' ||
                               col.key === 'received' ||
@@ -991,59 +1376,10 @@ export function PurchaseOrdersList() {
                                 style={{
                                   ...headerStyle,
                                   textAlign: isRight ? 'right' : isCenter ? 'center' : 'left',
-                                  width: isCenter ? 85 : undefined,
+                                  width: isCenter ? 95 : undefined,
                                 }}
                               >
-                                <div
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: isRight
-                                      ? 'flex-end'
-                                      : isCenter
-                                        ? 'center'
-                                        : 'space-between',
-                                    gap: 6,
-                                  }}
-                                >
-                                  <span>{col.label}</span>
-                                  {isLast && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const searchInput =
-                                          document.querySelector<HTMLInputElement>(
-                                            '.topbar-search-area input, .global-search-container input, input[placeholder*="Search"]',
-                                          );
-                                        if (searchInput) {
-                                          searchInput.focus();
-                                          searchInput.select();
-                                        }
-                                      }}
-                                      title="Search in Purchase Orders"
-                                      aria-label="Search"
-                                      style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        color: '#94a3b8',
-                                        padding: '2px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        marginLeft: 4,
-                                        transition: 'color 0.15s ease',
-                                      }}
-                                      onMouseEnter={(e) =>
-                                        (e.currentTarget.style.color = '#0284c7')
-                                      }
-                                      onMouseLeave={(e) =>
-                                        (e.currentTarget.style.color = '#94a3b8')
-                                      }
-                                    >
-                                      <Search size={13} />
-                                    </button>
-                                  )}
-                                </div>
+                                <span>{col.label}</span>
                               </th>
                             );
                           })}
@@ -1058,9 +1394,9 @@ export function PurchaseOrdersList() {
                               onClick={() => setSearchParams({ id: po.id })}
                               style={{
                                 borderBottom: '1px solid #f1f5f9',
-                                transition: 'background 0.12s ease',
+                                transition: 'all 0.12s ease',
                                 cursor: 'pointer',
-                                background: isChecked ? '#f0f7fd' : 'transparent',
+                                background: isChecked ? '#f0f9ff' : 'transparent',
                               }}
                               onMouseEnter={(e) => {
                                 if (!isChecked) e.currentTarget.style.background = '#f8fafc';
@@ -1106,7 +1442,10 @@ export function PurchaseOrdersList() {
                                     }}
                                   >
                                     {col.key === 'status' ? (
-                                      <PurchaseOrderStatusBadge status={po.status} variant="text" />
+                                      <PurchaseOrderStatusBadge
+                                        status={po.status}
+                                        variant="badge"
+                                      />
                                     ) : (
                                       renderPoCell(po, col.key, paymentTerms, customFieldsDef)
                                     )}
@@ -1124,7 +1463,7 @@ export function PurchaseOrdersList() {
             )}
           </div>
 
-          {/* Pagination — hidden while a PO is selected (narrow master pane) */}
+          {/* Pagination */}
           {!selectedPoId && (
             <Pagination
               pageContext={pageContext}
@@ -1139,7 +1478,7 @@ export function PurchaseOrdersList() {
           )}
         </div>
 
-        {/* Right Panel - Detail */}
+        {/* Right Panel - Detail View */}
         {selectedPoId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
             <PurchaseOrderDetail poId={selectedPoId} onClose={() => setSearchParams({})} />
@@ -1190,6 +1529,31 @@ export function PurchaseOrdersList() {
         }}
         onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
+
+      {/* Refresh Toast Notification */}
+      {showRefreshToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 999,
+            background: '#0f172a',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: 8,
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          <RotateCw size={15} color="#38bdf8" />
+          Purchase orders list refreshed
+        </div>
+      )}
     </div>
   );
 }

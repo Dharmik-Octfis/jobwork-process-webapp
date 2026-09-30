@@ -19,7 +19,10 @@ import {
   FileText,
   X,
   Search,
+  ArrowLeft,
+  Info,
 } from 'lucide-react';
+import { PurchaseOrderStatusBadge } from './PurchaseOrderStatusBadge';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { fetchPaymentTerms } from './payment-terms.api';
@@ -28,6 +31,7 @@ import { DateInput } from '../../../components/ui/DateInput';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { formatDate } from '../../../lib/formatDate';
 import type { CreatePurchaseOrderData, PurchaseOrderItem } from './purchase-orders.schemas';
 import {
   createPurchaseOrder,
@@ -127,9 +131,11 @@ export function CreatePurchaseOrder() {
 
   const { data: orgs } = useQuery({
     queryKey: ['organizations'],
-    queryFn: () => organizationsApi.list(),
+    queryFn: () => organizationsApi.getOrganizations(),
   });
-  const currentOrg = orgs?.find((o) => o.organizationId === orgId);
+  const currentOrg = orgs?.find(
+    (o: { organizationId?: string; id?: string }) => o.organizationId === orgId || o.id === orgId,
+  );
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['purchaseOrder', orgId, poIdToFetch],
@@ -617,39 +623,242 @@ export function CreatePurchaseOrder() {
   return (
     <div className="page-container">
       {/* Header */}
-      <div className="page-header">
-        <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
-          {isEdit
-            ? `Edit Purchase Order (${existingPo?.poNumber || ''})`
-            : isClone
-              ? 'Clone Purchase Order'
-              : 'New Purchase Order'}
-        </h1>
-        <button
-          type="button"
-          onClick={() =>
-            navigate(
-              (location.state as { returnUrl?: string })?.returnUrl ||
-                `/organizations/${orgId}/purchases/purchase-orders`,
-            )
-          }
+      {isEdit ? (
+        <div
           style={{
-            background: 'none',
-            border: 'none',
-            color: '#64748b',
-            cursor: 'pointer',
             display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            borderRadius: '4px',
+            padding: '16px 24px',
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+            borderBottom: '1px solid #e2e8f0',
+            gap: 16,
           }}
         >
-          <X size={20} />
-        </button>
-      </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  (location.state as { returnUrl?: string })?.returnUrl ||
+                    `/organizations/${orgId}/purchases/purchase-orders?id=${id}`,
+                )
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                background: '#fff',
+                color: '#64748b',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f1f5f9';
+                e.currentTarget.style.color = '#0284c7';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#fff';
+                e.currentTarget.style.color = '#64748b';
+              }}
+              title="Back"
+            >
+              <ArrowLeft size={17} />
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    background: '#e0f2fe',
+                    color: '#0284c7',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                  }}
+                >
+                  Edit Mode
+                </span>
+                <h1
+                  style={{
+                    fontSize: 19,
+                    fontWeight: 700,
+                    margin: 0,
+                    color: '#0f172a',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {existingPo?.poNumber || 'Purchase Order'}
+                </h1>
+                {existingPo?.status && (
+                  <PurchaseOrderStatusBadge status={existingPo.status} size="sm" />
+                )}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: '#64748b',
+                  marginTop: 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>
+                  Vendor:{' '}
+                  <strong style={{ color: '#1e293b' }}>
+                    {existingPo?.vendor?.contactName || existingPo?.vendor?.companyName || 'Vendor'}
+                  </strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Date: <strong style={{ color: '#1e293b' }}>{formatDate(existingPo?.date)}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Current Total:{' '}
+                  <strong style={{ color: '#0284c7' }}>
+                    ₹
+                    {computedTotalAmount.toLocaleString('en-IN', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  (location.state as { returnUrl?: string })?.returnUrl ||
+                    `/organizations/${orgId}/purchases/purchase-orders?id=${id}`,
+                )
+              }
+              style={{
+                padding: '7px 16px',
+                background: '#fff',
+                border: '1px solid #cbd5e1',
+                borderRadius: 6,
+                color: '#475569',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.color = '#0f172a';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#fff';
+                e.currentTarget.style.color = '#475569';
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              form="create-po-form"
+              type="submit"
+              onClick={() => setSubmitStatus(existingPo?.status || 'Draft')}
+              disabled={mutation.isPending}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '7px 18px',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: mutation.isPending ? 'not-allowed' : 'pointer',
+                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!mutation.isPending) {
+                  e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!mutation.isPending) {
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+                  e.currentTarget.style.transform = 'none';
+                }
+              }}
+            >
+              {mutation.isPending ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="page-header">
+          <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
+            {isClone ? 'Clone Purchase Order' : 'New Purchase Order'}
+          </h1>
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                (location.state as { returnUrl?: string })?.returnUrl ||
+                  `/organizations/${orgId}/purchases/purchase-orders`,
+              )
+            }
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              borderRadius: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
 
       <div className="page-body">
+        {isEdit && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              background: '#f0f9ff',
+              border: '1px solid #bae6fd',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: '20px',
+              fontSize: 13,
+              color: '#0369a1',
+            }}
+          >
+            <Info size={18} color="#0284c7" style={{ flexShrink: 0 }} />
+            <div>
+              You are updating Purchase Order <strong>{existingPo?.poNumber}</strong>. Modifying
+              items, quantities, or rates will automatically recalculate order subtotals and grand
+              totals upon saving.
+            </div>
+          </div>
+        )}
         <form
           id="create-po-form"
           onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
@@ -2950,7 +3159,7 @@ export function CreatePurchaseOrder() {
         <button
           form="create-po-form"
           type="submit"
-          onClick={() => setSubmitStatus('Draft')}
+          onClick={() => setSubmitStatus(isEdit ? existingPo?.status || 'Draft' : 'Draft')}
           disabled={mutation.isPending}
           style={{
             padding: '7px 22px',
@@ -2968,7 +3177,13 @@ export function CreatePurchaseOrder() {
             if (!mutation.isPending) e.currentTarget.style.backgroundColor = '#0369a1';
           }}
         >
-          {mutation.isPending && submitStatus === 'Draft' ? 'Saving...' : 'Save'}
+          {isEdit
+            ? mutation.isPending
+              ? 'Updating...'
+              : 'Update Purchase Order'
+            : mutation.isPending && submitStatus === 'Draft'
+              ? 'Saving...'
+              : 'Save'}
         </button>
 
         {/* Split Button: Save and Send + Caret */}
@@ -3153,6 +3368,33 @@ export function CreatePurchaseOrder() {
         >
           Cancel
         </button>
+
+        {/* Live Total Pill */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            padding: '6px 14px',
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          <span style={{ color: '#64748b' }}>
+            {itemFields.length} {itemFields.length === 1 ? 'line item' : 'line items'}
+          </span>
+          <span style={{ color: '#cbd5e1' }}>|</span>
+          <span style={{ fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+            Total: ₹
+            {computedTotalAmount.toLocaleString('en-IN', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        </div>
       </div>
 
       <PurchaseOrderNumberConfigModal
