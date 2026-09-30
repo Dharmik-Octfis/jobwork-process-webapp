@@ -12,6 +12,7 @@ import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
+import { AssociatedItemsView } from '../inventory/composite-items/AssociatedItemsView';
 import { ItemTransactions } from './components/ItemTransactions';
 import {
   fetchLocations,
@@ -21,6 +22,9 @@ import {
 import { availableOf, declaredOpeningOf, stockOnHandOf } from './stockFigures';
 import type { Item } from './items.schemas';
 import { patchListRow, releaseListRow } from '../../hooks/useListRowRetention';
+import { RecordApprovalBanner } from '../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../approvals/useRecordApproval';
 
 interface ItemDetailProps {
   itemId: string;
@@ -32,6 +36,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'items', itemId);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState('Overview');
@@ -52,6 +57,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     queryFn: () => itemsApi.getItem(orgId!, itemId),
     enabled: Boolean(orgId && itemId),
   });
+
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    (item as any)?.approvalStatus === 'REJECTED' ||
+    (item as any)?.status?.toLowerCase() === 'rejected',
+  );
 
   const isInventoryTracked = item?.trackInventory !== false;
 
@@ -220,7 +231,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             </h2>
             <span
               style={{
-                background: item.isActive !== false ? '#3b82f6' : '#94a3b8',
+                background: isUnderApproval || (item as any)?.isPendingApproval
+                  ? '#f59e0b'
+                  : item.isActive !== false
+                  ? '#3b82f6'
+                  : '#94a3b8',
                 color: 'white',
                 fontSize: '11px',
                 padding: '2px 8px',
@@ -229,13 +244,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 marginTop: '4px',
               }}
             >
-              {item.isActive !== false ? 'Active' : 'Inactive'}
+              {isUnderApproval || (item as any)?.isPendingApproval
+                ? 'Pending Approval'
+                : item.isActive !== false
+                ? 'Active'
+                : 'Inactive'}
             </span>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {item.itemStructure === 'composite' && (
+          {item.itemStructure === 'composite' && !isUnderApproval && !isRejected && (
             <button
               onClick={() =>
                 navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)
@@ -320,34 +339,38 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   padding: '4px 0',
                 }}
               >
-                <div
-                  onClick={handleClone}
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#1e293b',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  Clone
-                </div>
-                <div
-                  onClick={() =>
-                    toggleActiveMutation.mutate(item.isActive === false ? true : false)
-                  }
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#1e293b',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                >
-                  Mark as {item.isActive !== false ? 'Inactive' : 'Active'}
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={handleClone}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#1e293b',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    Clone
+                  </div>
+                )}
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() =>
+                      toggleActiveMutation.mutate(item.isActive === false ? true : false)
+                    }
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#1e293b',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    Mark as {item.isActive !== false ? 'Inactive' : 'Active'}
+                  </div>
+                )}
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
@@ -401,6 +424,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           ...(isInventoryTracked ? ['Locations'] : []),
           ...(isBatchTracked ? [batchTabName] : []),
           'Transactions',
+          'Related Lists',
+          'Approvals',
           'History',
           ...(showComponentsTab ? ['Components'] : []),
         ].map((tab) => (
@@ -416,7 +441,19 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
       {/* Content */}
       <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-        {effectiveActiveTab === 'History' ? (
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && itemId && (
+          <RecordApprovalBanner
+            organizationId={orgId}
+            moduleId="items"
+            recordId={itemId}
+            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] })}
+          />
+        )}
+
+        {effectiveActiveTab === 'Approvals' ? (
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="items" recordId={itemId} />
+        ) : effectiveActiveTab === 'History' ? (
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
@@ -556,6 +593,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {item.itemStructure === 'composite' && (
+                <AssociatedItemsView orgId={orgId!} itemId={itemId} />
               )}
             </div>
 

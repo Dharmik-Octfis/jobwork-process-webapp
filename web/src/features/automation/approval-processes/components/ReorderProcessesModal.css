@@ -1,0 +1,137 @@
+/* ==========================================================================
+   Reorder Approval Processes Modal Styles
+   Matches OCTFIS design system & theme tokens
+   ========================================================================== */
+
+.ap-reorder-intro {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.ap-reorder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.ap-reorder-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: all 0.15s ease;
+  cursor: grab;
+  user-select: none;
+}
+
+.ap-reorder-item:active {
+  cursor: grabbing;
+}
+
+.ap-reorder-item:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border-strong);
+}
+
+.ap-reorder-item.is-dragging {
+  opacity: 0.45;
+  border-style: dashed;
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft, #eff6ff);
+  transform: scale(0.98);
+}
+
+.ap-reorder-item.is-drag-over {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-focus-ring, rgba(37, 99, 235, 0.2));
+  background: #f0fdf4;
+  transform: translateY(-2px);
+}
+
+.ap-reorder-handle {
+  color: var(--color-text-subtle);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+}
+
+.ap-reorder-order {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-bg);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.ap-reorder-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ap-reorder-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-reorder-module {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.ap-reorder-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ap-reorder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ap-reorder-btn:hover:not(:disabled) {
+  background: var(--color-bg);
+  border-color: var(--color-border-strong);
+  color: var(--color-primary);
+}
+
+.ap-reorder-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ap-reorder-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}

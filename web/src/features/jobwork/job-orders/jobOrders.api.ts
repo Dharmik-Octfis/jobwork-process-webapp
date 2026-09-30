@@ -29,14 +29,21 @@ export async function fetchJobOrderCount(orgId: string, params: PageParams = {})
   return z.object({ total: z.number() }).parse(response.data).total;
 }
 
-export async function fetchJobOrderById(orgId: string, id: string, light = false): Promise<JobOrder> {
+export async function fetchJobOrderById(
+  orgId: string,
+  id: string,
+  light = false,
+): Promise<JobOrder> {
   const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}`, {
     params: light ? { light: 'true' } : undefined,
   });
   return jobOrderSchema.parse(response.data);
 }
 
-export async function fetchJobOrderWithStepsById(orgId: string, id: string): Promise<JobOrderWithSteps> {
+export async function fetchJobOrderWithStepsById(
+  orgId: string,
+  id: string,
+): Promise<JobOrderWithSteps> {
   const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/${id}/with-steps`);
   return jobOrderWithStepsSchema.parse(response.data);
 }
@@ -110,9 +117,11 @@ export async function completeJobOrderStep(
   orgId: string,
   id: string,
   stepId: string,
+  reason?: string,
 ): Promise<JobOrderOverviewData> {
   const response = await apiClient.post(
     `${endpoints.jobwork.jobOrders(orgId)}/${id}/steps/${stepId}/complete`,
+    { reason: reason || undefined },
   );
   return jobOrderOverviewSchema.parse(response.data);
 }

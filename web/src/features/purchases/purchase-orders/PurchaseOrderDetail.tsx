@@ -35,6 +35,9 @@ import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
 import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 
 function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -232,6 +235,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     enabled: Boolean(orgId && poId),
   });
 
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'purchase_orders',
+    poId,
+  );
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    po?.status?.toLowerCase() === 'rejected' ||
+    (po as any)?.approvalStatus?.toUpperCase() === 'REJECTED',
+  );
+
   const { data: paymentTerms } = useQuery({
     queryKey: ['paymentTerms', orgId],
     queryFn: () => fetchPaymentTerms(orgId!),
@@ -269,7 +283,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -305,10 +319,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           </h2>
           <span
             style={{
-              // Lowercased: the column stores "Draft", not "draft" (the filter
-              // presets match it capitalised), so the bare compare was never true
-              // and a draft PO was painted with the issued colour.
-              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
+              background: (() => {
+                const s = (po.status || '').toLowerCase();
+                if (s === 'draft' || s === '') return '#94a3b8';
+                if (s === 'pending approval') return '#f59e0b';
+                if (s === 'approved' || s === 'active') return '#10b981';
+                if (s === 'rejected') return '#ef4444';
+                return '#3b82f6';
+              })(),
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -382,27 +400,29 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
-                    );
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Copy size={14} /> Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      navigate(
+                        `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
+                      );
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Copy size={14} /> Clone
+                  </div>
+                )}
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
@@ -565,6 +585,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="purchase_orders"
+              recordId={poId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -997,7 +1028,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
                       <span
                         style={{
-                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
+                          background: (() => {
+                            const s = (po.status || '').toLowerCase();
+                            if (s === 'draft' || s === '') return '#94a3b8';
+                            if (s === 'pending approval') return '#f59e0b';
+                            if (s === 'approved' || s === 'active') return '#10b981';
+                            if (s === 'rejected') return '#ef4444';
+                            return '#3b82f6';
+                          })(),
                           color: 'white',
                           fontSize: '10px',
                           padding: '1px 6px',
@@ -1759,6 +1797,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           )}
         </div>
 
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="purchase_orders" recordId={poId} />
+        </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <PurchaseOrderComments orgId={orgId!} poId={poId} />
         </div>

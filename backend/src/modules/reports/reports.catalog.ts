@@ -36,6 +36,12 @@ export const REPORTS = [
     category: 'Inventory',
     path: 'fifo-cost-lot-tracking',
   },
+  {
+    key: 'job_order_loss',
+    name: 'Job Order Loss Report',
+    category: 'Job Work',
+    path: 'job-order-loss',
+  },
 ] as const satisfies readonly ReportDef[];
 
 export type ReportKey = (typeof REPORTS)[number]['key'];

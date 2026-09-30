@@ -96,6 +96,13 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'total', label: 'Total', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
   ],
+  sales_order: [
+    { key: 'soNumber', label: 'SO Number', locked: true },
+    { key: 'date', label: 'SO Date', defaultVisible: true },
+    { key: 'customer', label: 'Customer', defaultVisible: true },
+    { key: 'totalAmount', label: 'Amount', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+  ],
   customer: [
     { key: 'contactName', label: 'Name', locked: true },
     { key: 'companyName', label: 'Company Name', defaultVisible: true },

@@ -107,7 +107,7 @@ const MODULE_GROUPS: readonly {
   {
     key: 'sales',
     label: 'Sales',
-    resources: [{ resource: 'customer', label: 'Customers' }],
+    resources: [{ resource: 'customer', label: 'Customers' }, { resource: 'sales_order', label: 'Sales Orders' }],
   },
   {
     /**
@@ -163,6 +163,14 @@ const MODULE_GROUPS: readonly {
       { resource: 'payment_term', label: 'Payment Terms' },
       { resource: 'location', label: 'Locations' },
       { resource: 'custom_field', label: 'Custom Fields' },
+    ],
+  },
+  {
+    key: 'automation',
+    label: 'Automation',
+    resources: [
+      { resource: 'approval_process', label: 'Approval Processes' },
+      { resource: 'approval_request', label: 'Approval Requests' },
     ],
   },
   {

@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react';
+import { Check, X, ChevronDown } from 'lucide-react';
 import { useCombobox } from 'downshift';
 import { useState, useMemo, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -20,7 +20,9 @@ interface LocalComboBoxProps {
   hasError?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
+  className?: string;
   style?: React.CSSProperties;
+  inputStyle?: React.CSSProperties;
   onBlur?: () => void;
   name?: string;
   portal?: boolean;
@@ -34,7 +36,9 @@ export function LocalComboBox({
   hasError,
   disabled = false,
   ariaLabel,
+  className,
   style,
+  inputStyle,
   onBlur,
   name,
   portal = false,
@@ -63,6 +67,7 @@ export function LocalComboBox({
 
   const {
     isOpen,
+    getToggleButtonProps,
     getMenuProps,
     getInputProps,
     highlightedIndex,
@@ -133,6 +138,7 @@ export function LocalComboBox({
         width,
         maxHeight: Math.min(MENU_MAX_HEIGHT, Math.max(openUp ? above : below, MENU_MIN_HEIGHT)),
         ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+        visibility: 'visible',
       });
     };
     place();
@@ -142,22 +148,26 @@ export function LocalComboBox({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [portal, isOpen]);
+  }, [portal, isOpen, filteredOptions.length]);
 
   return (
-    <div ref={anchorRef} style={{ position: 'relative', width: '100%', ...style }}>
+    <div
+      ref={anchorRef}
+      className={className}
+      style={{ position: 'relative', width: '100%', boxSizing: 'border-box', ...style }}
+    >
       <div style={{ position: 'relative', width: '100%' }}>
         <input
           {...getInputProps({
             name,
             placeholder,
             disabled,
-            'aria-label': ariaLabel,
+            'aria-label': ariaLabel || placeholder,
             onBlur: () => {
               if (onBlur) onBlur();
             },
             onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
-              e.target.style.borderColor = 'var(--color-primary)';
+              e.target.style.borderColor = 'var(--color-primary, #6366f1)';
               e.target.select();
               if (!isOpen) {
                 openMenu();
@@ -170,15 +180,16 @@ export function LocalComboBox({
             },
             style: {
               width: '100%',
-              padding: '8px 28px 8px 12px',
-              fontSize: '14px',
-              minHeight: '38px',
+              padding: '6px 48px 6px 10px',
+              fontSize: '13px',
+              minHeight: '34px',
               border: `1px solid ${hasError ? 'var(--color-danger, #ef4444)' : 'var(--color-border, #d1d5db)'}`,
               borderRadius: '4px',
               boxSizing: 'border-box',
               outline: 'none',
               background: disabled ? 'var(--color-bg, #f4f5f7)' : '#fff',
               cursor: disabled ? 'not-allowed' : 'text',
+              ...inputStyle,
             },
           })}
           onBlurCapture={(e: React.FocusEvent<HTMLInputElement>) => {
@@ -190,12 +201,12 @@ export function LocalComboBox({
         <div
           style={{
             position: 'absolute',
-            right: '4px',
+            right: '6px',
             top: '50%',
             transform: 'translateY(-50%)',
             display: 'flex',
             alignItems: 'center',
-            gap: '2px',
+            gap: '3px',
           }}
         >
           {selectedOption && !disabled && (
@@ -215,10 +226,24 @@ export function LocalComboBox({
                 borderRadius: '50%',
                 background: '#e2e8f0',
               }}
+              title="Clear selection"
             >
-              <X size={12} color="#475569" />
+              <X size={11} color="#475569" />
             </div>
           )}
+          <div
+            {...getToggleButtonProps()}
+            style={{
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--color-text-muted, #9ca3af)',
+              padding: '2px',
+            }}
+          >
+            <ChevronDown size={13} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+          </div>
         </div>
       </div>
 

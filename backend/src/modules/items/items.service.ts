@@ -26,6 +26,7 @@ import {
 } from '../inventory/stock-ledger/stockLedger.service.ts';
 import { consumersOfEntries } from '../inventory/stock-ledger/costLayers.ts';
 import type { ItemOpeningStockDto } from './items.schemas.ts';
+import { approvalTriggerService } from '../automation/approval-processes/approvalTrigger.service.ts';
 import { SOURCE_DOC_TYPES } from '../jobwork/jobwork.types.ts';
 
 export function toItemResponse(item: Record<string, unknown> | null | undefined) {
@@ -607,6 +608,21 @@ export class ItemsService {
               ? Number(item.openingStockValuePerUnit)
               : null;
 
+          const committedStockRes = await tx.salesOrderItem.aggregate({
+            _sum: { quantity: true },
+            where: {
+              itemId,
+              isDeleted: false,
+              salesOrder: {
+                organizationId,
+                locationId: primaryLoc.id,
+                status: 'Approved',
+                isDeleted: false,
+              },
+            },
+          });
+          const committedStock = Number(committedStockRes._sum.quantity || 0);
+
           return [
             {
               id: primaryLoc.id,
@@ -615,8 +631,8 @@ export class ItemsService {
               openingStockValue: itemOpeningVal,
               stockOnHand: itemOpeningQty,
               unallocatedQty: 0,
-              committedStock: 0,
-              availableForSale: itemOpeningQty,
+              committedStock,
+              availableForSale: itemOpeningQty - committedStock,
               batches: [],
             },
           ];
@@ -640,6 +656,21 @@ export class ItemsService {
         .filter(isHeld)
         .reduce((sum, entry) => sum.plus(entry.qty), new Prisma.Decimal(0));
 
+      const committedStockRes = await tx.salesOrderItem.aggregate({
+        _sum: { quantity: true },
+        where: {
+          itemId,
+          isDeleted: false,
+          salesOrder: {
+            organizationId,
+            locationId,
+            status: 'Approved',
+            isDeleted: false,
+          },
+        },
+      });
+      const committedStock = Number(committedStockRes._sum.quantity || 0);
+
       out.push({
         id: row?.id ?? locationId,
         locationId,
@@ -655,8 +686,8 @@ export class ItemsService {
         stockOnHand: Number(balance.qty),
         /** Opening stock here not yet assigned to a batch: counted, not issuable. */
         unallocatedQty: Number(unallocatedQty),
-        committedStock: 0,
-        availableForSale: Number(balance.qty.minus(unallocatedQty)),
+        committedStock,
+        availableForSale: Number(balance.qty.minus(unallocatedQty)) - committedStock,
         batches: toBatchRows(mine),
       });
     }
@@ -735,9 +766,30 @@ export class ItemsService {
       });
 
       const paginated = pageSlice(rows, page, perPage);
+      const itemIds = paginated.results.map((r) => r.id);
+      let pendingApprovalItemIds = new Set<string>();
+      if (itemIds.length > 0) {
+        try {
+          const activeReqs = await tx.$queryRaw<Array<{ record_id: string }>>`
+            SELECT "record_id" FROM "approval_requests"
+            WHERE "organization_id" = ${organizationId}::uuid
+              AND "module_id" = ANY(ARRAY['items', 'item']::text[])
+              AND "record_id" = ANY(${itemIds}::text[])
+              AND "status" IN ('PENDING', 'IN_PROGRESS')
+          `;
+          pendingApprovalItemIds = new Set(activeReqs.map((a) => a.record_id));
+        } catch (_e) {
+          // ignore if table does not exist
+        }
+      }
+
       return {
         ...paginated,
-        results: paginated.results.map(toItemResponse),
+        results: paginated.results.map((row) => ({
+          ...toItemResponse(row),
+          isPendingApproval: pendingApprovalItemIds.has(row.id),
+          approvalStatus: pendingApprovalItemIds.has(row.id) ? 'Pending Approval' : null,
+        })),
       };
     });
   }
@@ -758,7 +810,27 @@ export class ItemsService {
       if (!item) {
         throw ApiError.notFound('Item not found');
       }
-      return toItemResponse(item);
+
+      let isPendingApproval = false;
+      try {
+        const activeReqs = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "approval_requests"
+          WHERE "organization_id" = ${organizationId}::uuid
+            AND "module_id" = ANY(ARRAY['items', 'item']::text[])
+            AND "record_id" = ${id}
+            AND "status" IN ('PENDING', 'IN_PROGRESS')
+          LIMIT 1
+        `;
+        isPendingApproval = activeReqs.length > 0;
+      } catch (_e) {
+        // ignore
+      }
+
+      return {
+        ...toItemResponse(item),
+        isPendingApproval,
+        approvalStatus: isPendingApproval ? 'Pending Approval' : null,
+      };
     });
   }
 
@@ -1192,7 +1264,22 @@ export class ItemsService {
         },
       });
 
-      return toItemResponse(item);
+      const responseItem = toItemResponse(item);
+
+      // Trigger approval workflow evaluation asynchronously post-commit
+      approvalTriggerService
+        .trigger({
+          organizationId,
+          moduleId: 'items',
+          recordId: item.id,
+          recordTitle: item.name || `Item ${item.id}`,
+          triggerType: 'CREATE',
+          record: responseItem as Record<string, unknown>,
+          actorUserId: userId,
+        })
+        .catch((err) => console.error('[ApprovalTrigger] Error in create item:', err));
+
+      return responseItem;
     });
   }
 
@@ -1298,7 +1385,22 @@ export class ItemsService {
         },
       });
 
-      return toItemResponse(updatedItem);
+      const responseUpdatedItem = toItemResponse(updatedItem);
+
+      // Trigger approval workflow evaluation asynchronously post-commit
+      approvalTriggerService
+        .trigger({
+          organizationId,
+          moduleId: 'items',
+          recordId: updatedItem.id,
+          recordTitle: updatedItem.name || `Item ${updatedItem.id}`,
+          triggerType: 'EDIT',
+          record: responseUpdatedItem as Record<string, unknown>,
+          actorUserId: userId,
+        })
+        .catch((err) => console.error('[ApprovalTrigger] Error in update item:', err));
+
+      return responseUpdatedItem;
     });
   }
 

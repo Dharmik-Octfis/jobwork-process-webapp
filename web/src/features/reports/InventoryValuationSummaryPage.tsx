@@ -9,6 +9,7 @@ import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
+import { useOrganizationName } from '../../hooks/useOrganizationName';
 import {
   reportsApi,
   type InventoryValuationQuery,
@@ -44,6 +45,7 @@ export function InventoryValuationSummaryPage() {
   const navigate = useNavigate();
 
   const { orgId } = useParams<{ orgId: string }>();
+  const organizationName = useOrganizationName();
   useRecordReportVisit(orgId, 'inventory_valuation_summary');
 
   const initialState = useMemo(() => {
@@ -568,7 +570,7 @@ export function InventoryValuationSummaryPage() {
                 fontWeight: 500,
               }}
             >
-              OCTFIS TECHNO llp
+              {organizationName}
             </div>
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
@@ -582,231 +584,240 @@ export function InventoryValuationSummaryPage() {
           <div style={{ overflowX: 'auto', width: '100%' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
-              <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
-                {visibleColumns.map((colKey) => {
-                  switch (colKey) {
-                    case 'itemName':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          ITEM NAME{' '}
-                          <ChevronDown
-                            size={12}
-                            color="#9ca3af"
-                            style={{
-                              display: 'inline',
-                              verticalAlign: 'middle',
-                              marginLeft: '4px',
-                            }}
-                          />
-                        </th>
-                      );
-                    case 'categoryName':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          CATEGORY NAME
-                        </th>
-                      );
-                    case 'sku':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          SKU
-                        </th>
-                      );
-                    case 'hsnCode':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          HSN CODE
-                        </th>
-                      );
-                    case 'uomName':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          UNIT
-                        </th>
-                      );
-                    case 'stockOnHand':
-                      return (
-                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                          STOCK ON HAND
-                        </th>
-                      );
-                    case 'inventoryAssetValue':
-                      return (
-                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                          INVENTORY ASSET VALUE
-                        </th>
-                      );
-                    default:
-                      if (colKey.startsWith('cf_')) {
-                        const cfKey = colKey.replace('cf_', '');
-                        const cfLabel = customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
+                <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
+                  {visibleColumns.map((colKey) => {
+                    switch (colKey) {
+                      case 'itemName':
                         return (
                           <th key={colKey} style={thStyle}>
-                            {cfLabel.toUpperCase()}
+                            ITEM NAME{' '}
+                            <ChevronDown
+                              size={12}
+                              color="#9ca3af"
+                              style={{
+                                display: 'inline',
+                                verticalAlign: 'middle',
+                                marginLeft: '4px',
+                              }}
+                            />
                           </th>
                         );
-                      }
-                      return null;
-                  }
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={visibleColumns.length}
-                    style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
-                  >
-                    Loading...
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={visibleColumns.length}
-                    style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
-                  >
-                    No data found
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr
-                    key={row.itemId}
-                    className="table-row-hover"
-                    style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
-                    onClick={() => {
-                      const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
-                      const queryStr = locationCond?.value ? `?locationId=${locationCond.value}` : '';
-                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}${queryStr}`);
-                    }}
-                  >
-                    {visibleColumns.map((colKey) => {
-                      switch (colKey) {
-                        case 'itemName':
+                      case 'categoryName':
+                        return (
+                          <th key={colKey} style={thStyle}>
+                            CATEGORY NAME
+                          </th>
+                        );
+                      case 'sku':
+                        return (
+                          <th key={colKey} style={thStyle}>
+                            SKU
+                          </th>
+                        );
+                      case 'hsnCode':
+                        return (
+                          <th key={colKey} style={thStyle}>
+                            HSN CODE
+                          </th>
+                        );
+                      case 'uomName':
+                        return (
+                          <th key={colKey} style={thStyle}>
+                            UNIT
+                          </th>
+                        );
+                      case 'stockOnHand':
+                        return (
+                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
+                            STOCK ON HAND
+                          </th>
+                        );
+                      case 'inventoryAssetValue':
+                        return (
+                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
+                            INVENTORY ASSET VALUE
+                          </th>
+                        );
+                      default:
+                        if (colKey.startsWith('cf_')) {
+                          const cfKey = colKey.replace('cf_', '');
+                          const cfLabel =
+                            customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
                           return (
-                            <td key={colKey} style={tdStyle}>
-                              <span style={{ color: '#111827', fontWeight: 500 }}>
-                                {row.itemName}
-                              </span>{' '}
-                              <span style={{ color: '#9ca3af', fontSize: '12px' }}>
-                                ({row.uomName || 'unit'})
-                              </span>
-                            </td>
+                            <th key={colKey} style={thStyle}>
+                              {cfLabel.toUpperCase()}
+                            </th>
                           );
-                        case 'categoryName':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.categoryName || '-'}
-                            </td>
-                          );
-                        case 'sku':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.sku || '-'}
-                            </td>
-                          );
-                        case 'hsnCode':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.hsnCode || '-'}
-                            </td>
-                          );
-                        case 'uomName':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.uomName || '-'}
-                            </td>
-                          );
-                        case 'stockOnHand':
-                          return (
-                            <td
-                              key={colKey}
-                              style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
-                            >
-                              {row.stockOnHand.toFixed(2)}
-                            </td>
-                          );
-                        case 'inventoryAssetValue':
-                          return (
-                            <td
-                              key={colKey}
-                              style={{
-                                ...tdStyle,
-                                textAlign: 'right',
-                                color: '#111827',
-                                fontWeight: 600,
-                              }}
-                            >
-                              ₹{row.inventoryAssetValue < 0 ? '-' : ''}
-                              {Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                          );
-                        default:
-                          if (colKey.startsWith('cf_')) {
-                            const cfKey = colKey.replace('cf_', '');
-                            const cfValue = row.customFields?.[cfKey];
-                            return (
-                              <td key={colKey} style={tdStyle}>
-                                {cfValue !== undefined && cfValue !== null ? String(cfValue) : '-'}
-                              </td>
-                            );
-                          }
-                          return null;
-                      }
-                    })}
-                  </tr>
-                ))
-              )}
-              {rows.length > 0 && (
-                <tr style={{ borderTop: '1px solid #e5e7eb' }}>
-                  {visibleColumns.map((colKey, index) => {
-                    if (index === 0) {
-                      return (
-                        <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
-                          Total
-                        </td>
-                      );
+                        }
+                        return null;
                     }
-                    if (colKey === 'stockOnHand') {
-                      return (
-                        <td
-                          key={colKey}
-                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
-                        >
-                          {totalQty.toFixed(2)}
-                        </td>
-                      );
-                    }
-                    if (colKey === 'inventoryAssetValue') {
-                      return (
-                        <td
-                          key={colKey}
-                          style={{
-                            ...tdStyle,
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            color: '#111827',
-                          }}
-                        >
-                          ₹{totalValue < 0 ? '-' : ''}
-                          {Math.abs(totalValue).toLocaleString('en-IN', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                      );
-                    }
-                    return <td key={colKey} style={tdStyle} />; // Empty cell for non-total columns
                   })}
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={visibleColumns.length}
+                      style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
+                    >
+                      Loading...
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={visibleColumns.length}
+                      style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
+                    >
+                      No data found
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => (
+                    <tr
+                      key={row.itemId}
+                      className="table-row-hover"
+                      style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
+                      onClick={() => {
+                        const locationCond = appliedFilters.conditions.find(
+                          (c) => c.field === 'locationId',
+                        );
+                        const queryStr = locationCond?.value
+                          ? `?locationId=${locationCond.value}`
+                          : '';
+                        navigate(
+                          `/organizations/${orgId}/reports/inventory-valuation/${row.itemId}${queryStr}`,
+                        );
+                      }}
+                    >
+                      {visibleColumns.map((colKey) => {
+                        switch (colKey) {
+                          case 'itemName':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                <span style={{ color: '#111827', fontWeight: 500 }}>
+                                  {row.itemName}
+                                </span>{' '}
+                                <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                                  ({row.uomName || 'unit'})
+                                </span>
+                              </td>
+                            );
+                          case 'categoryName':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.categoryName || '-'}
+                              </td>
+                            );
+                          case 'sku':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.sku || '-'}
+                              </td>
+                            );
+                          case 'hsnCode':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.hsnCode || '-'}
+                              </td>
+                            );
+                          case 'uomName':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.uomName || '-'}
+                              </td>
+                            );
+                          case 'stockOnHand':
+                            return (
+                              <td
+                                key={colKey}
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                              >
+                                {row.stockOnHand.toFixed(2)}
+                              </td>
+                            );
+                          case 'inventoryAssetValue':
+                            return (
+                              <td
+                                key={colKey}
+                                style={{
+                                  ...tdStyle,
+                                  textAlign: 'right',
+                                  color: '#111827',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ₹{row.inventoryAssetValue < 0 ? '-' : ''}
+                                {Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                            );
+                          default:
+                            if (colKey.startsWith('cf_')) {
+                              const cfKey = colKey.replace('cf_', '');
+                              const cfValue = row.customFields?.[cfKey];
+                              return (
+                                <td key={colKey} style={tdStyle}>
+                                  {cfValue !== undefined && cfValue !== null
+                                    ? String(cfValue)
+                                    : '-'}
+                                </td>
+                              );
+                            }
+                            return null;
+                        }
+                      })}
+                    </tr>
+                  ))
+                )}
+                {rows.length > 0 && (
+                  <tr style={{ borderTop: '1px solid #e5e7eb' }}>
+                    {visibleColumns.map((colKey, index) => {
+                      if (index === 0) {
+                        return (
+                          <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
+                            Total
+                          </td>
+                        );
+                      }
+                      if (colKey === 'stockOnHand') {
+                        return (
+                          <td
+                            key={colKey}
+                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                          >
+                            {totalQty.toFixed(2)}
+                          </td>
+                        );
+                      }
+                      if (colKey === 'inventoryAssetValue') {
+                        return (
+                          <td
+                            key={colKey}
+                            style={{
+                              ...tdStyle,
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              color: '#111827',
+                            }}
+                          >
+                            ₹{totalValue < 0 ? '-' : ''}
+                            {Math.abs(totalValue).toLocaleString('en-IN', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                        );
+                      }
+                      return <td key={colKey} style={tdStyle} />; // Empty cell for non-total columns
+                    })}
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           <Pagination
@@ -841,7 +852,12 @@ export function InventoryValuationSummaryPage() {
             })),
             { key: 'uomName', label: 'UNIT', defaultVisible: false },
             { key: 'stockOnHand', label: 'STOCK ON HAND', locked: true, defaultVisible: true },
-            { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', locked: true, defaultVisible: true },
+            {
+              key: 'inventoryAssetValue',
+              label: 'INVENTORY ASSET VALUE',
+              locked: true,
+              defaultVisible: true,
+            },
           ]}
           visible={visibleColumns}
           onSave={(newCols) => {

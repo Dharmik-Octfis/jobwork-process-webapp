@@ -7,7 +7,11 @@ import { Modal } from '../../../components/ui/Modal';
 import { StepsGrid } from '../StepsGrid';
 import { emptyStep, emptyStepItem, toNumber } from '../jobwork.schemas';
 import { appendJobOrderSteps } from './jobOrders.api';
-import type { JobOrderStepData, OverviewStep } from './jobOrders.schemas';
+import {
+  unissuablePlanMessage,
+  type JobOrderStepData,
+  type OverviewStep,
+} from './jobOrders.schemas';
 
 interface Props {
   isOpen: boolean;
@@ -120,7 +124,9 @@ export function AddStepsDialog({
         steps: rows.map((row) => ({ ...row, plannedInputQty: null })),
         reason: reason.trim() || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      const planWarning = unissuablePlanMessage(saved);
+      if (planWarning) toast(planWarning, { icon: '⚠️', duration: 8000 });
       onAdded();
       onClose();
     },

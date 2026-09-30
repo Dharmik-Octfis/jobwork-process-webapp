@@ -666,7 +666,7 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      placeholder="10"
+                      placeholder="0"
                       title={`Rate per ${unit?.label ?? 'unit'}`}
                       style={fieldError('rate') ? cellInputError : cellInput}
                     />
@@ -903,7 +903,7 @@ export function StepsGrid<T extends StepGridRow>({
    */
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'step-grid'],
-    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500 }),
+    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500, filter: 'active' }),
     enabled: Boolean(orgId),
   });
   const items = itemsPage?.results ?? [];

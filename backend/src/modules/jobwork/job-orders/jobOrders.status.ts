@@ -437,7 +437,7 @@ export interface ChainWarning {
  * By ITEM, against every earlier step producing it, not just the one directly
  * above: stitching that takes dyed fabric AND embroidered patches waits on both.
  * An input no earlier step produces is drawn from stock and never warns. A
- * producer closed short is finished by decision, so nobody waits on it.
+ * producer completed or closed short is finished by decision, so nobody waits on it.
  *
  * "Come back" is `receivedQty > 0` of that item on a POSTED receipt — rework
  * included (it came back), a draft receipt not (paperwork is not goods).
@@ -484,6 +484,7 @@ export async function getChainWarnings(
         (p) =>
           p.seq < step.seq &&
           p.status !== 'short_closed' &&
+          p.status !== 'completed' &&
           p.outputs.some((o) => o.itemId === itemId),
       );
       if (producers.length === 0) continue;

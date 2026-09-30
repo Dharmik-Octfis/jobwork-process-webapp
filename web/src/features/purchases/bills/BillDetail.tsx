@@ -33,6 +33,9 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillComments } from './BillComments';
 import { BillActivityTimeline } from './BillActivityTimeline';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 
@@ -238,6 +241,13 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     enabled: Boolean(orgId && poId),
   });
 
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'bills', poId);
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    po?.status?.toLowerCase() === 'rejected' ||
+    (po as any)?.approvalStatus?.toUpperCase() === 'REJECTED',
+  );
+
   const { data: orgs } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizationsApi.getOrganizations(),
@@ -261,7 +271,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -394,25 +404,27 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Copy size={14} /> Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Copy size={14} /> Clone
+                  </div>
+                )}
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
@@ -545,6 +557,17 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="bills"
+              recordId={poId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1833,6 +1856,9 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           )}
         </div>
 
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="bills" recordId={poId} />
+        </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <BillComments orgId={orgId!} poId={poId} />
         </div>

@@ -20,6 +20,9 @@ import { CustomerActivityTimeline } from './CustomerActivityTimeline';
 import { CustomerComments } from './CustomerComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import { CustomerTransactions } from './CustomerTransactions';
@@ -34,6 +37,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'customers', customerId);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -80,6 +85,12 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     queryFn: () => fetchCustomerById(orgId!, customerId),
     enabled: Boolean(orgId && customerId),
   });
+
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    (customer as Customer & { approvalStatus?: string })?.approvalStatus === 'REJECTED' ||
+    customer?.status?.toLowerCase() === 'rejected',
+  );
 
   const { data: activities, isLoading: isActivitiesLoading } = useQuery({
     queryKey: ['customer-activities', orgId, customerId],
@@ -467,7 +478,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Transactions'];
+  const tabs = ['Overview', 'Comments', 'Transactions', 'Approvals'];
 
   const sectionHeaderStyle = {
     fontSize: '13px',
@@ -519,20 +530,33 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
           </h2>
           <span
             onClick={() => {
+              if (isUnderApproval || isRejected || (customer as Record<string, unknown>)?.isPendingApproval) return;
               statusMutation.mutate(customer.status === 'inactive' ? 'active' : 'inactive');
             }}
             style={{
-              background: customer.status === 'inactive' ? '#94a3b8' : '#3b82f6',
+              background: isUnderApproval || (customer as Record<string, unknown>)?.isPendingApproval
+                ? '#f59e0b'
+                : isRejected
+                ? '#ef4444'
+                : customer.status === 'inactive'
+                ? '#94a3b8'
+                : '#3b82f6',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
               fontWeight: 500,
-              cursor: 'pointer',
+              cursor: isUnderApproval || isRejected || (customer as Record<string, unknown>)?.isPendingApproval ? 'default' : 'pointer',
               transition: 'background 0.2s',
             }}
           >
-            {customer.status === 'inactive' ? 'Inactive' : 'Active'}
+            {isUnderApproval || (customer as Record<string, unknown>)?.isPendingApproval
+              ? 'Pending Approval'
+              : isRejected
+              ? 'Rejected'
+              : customer.status === 'inactive'
+              ? 'Inactive'
+              : 'Active'}
           </span>
         </div>
 
@@ -597,19 +621,21 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={handleClone}
-                >
-                  Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={handleClone}
+                  >
+                    Clone
+                  </div>
+                )}
                 <div
                   style={{
                     padding: '8px 12px',
@@ -626,22 +652,24 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 >
                   Delete
                 </div>
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    statusMutation.mutate(customer.status === 'inactive' ? 'active' : 'inactive');
-                  }}
-                >
-                  {customer.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      statusMutation.mutate(customer.status === 'inactive' ? 'active' : 'inactive');
+                    }}
+                  >
+                    {customer.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -675,6 +703,17 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && customerId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="customers"
+              recordId={customerId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1562,9 +1601,14 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
           style={{
             display: activeTab === 'Transactions' ? 'block' : 'none',
             color: '#64748b',
+            padding: '16px',
           }}
         >
           <CustomerTransactions orgId={orgId!} customerId={customerId} />
+        </div>
+
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="customers" recordId={customerId} />
         </div>
       </div>
 

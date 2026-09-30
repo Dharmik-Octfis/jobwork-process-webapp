@@ -72,13 +72,13 @@ export function ItemSearchableSelect({
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['items-search', orgId, debouncedSearch, filter],
+    queryKey: ['items-search', orgId, debouncedSearch, filter || 'active'],
     queryFn: ({ pageParam }) =>
       itemsApi.getItems(orgId, {
         search: debouncedSearch || undefined,
         perPage: 15,
         page: pageParam,
-        filter,
+        filter: filter || 'active',
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -88,7 +88,14 @@ export function ItemSearchableSelect({
   });
 
   const fetchedOptions = useMemo(() => {
-    return itemsData?.pages.flatMap((page) => page.results) || [];
+    let options = itemsData?.pages.flatMap((page) => page.results) || [];
+    // Only active items should be available in dropdowns
+    return options.filter(
+      (opt) =>
+        opt.isActive !== false &&
+        !(opt as any).isPendingApproval &&
+        (opt as any).approvalStatus !== 'Pending Approval',
+    );
   }, [itemsData]);
 
   const selectedItem = useMemo(() => {

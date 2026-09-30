@@ -21,9 +21,11 @@ import {
 } from './jobOrders.service.ts';
 import {
   appendJobOrderStepsSchema,
+  completeStepSchema,
   createJobOrderSchema,
   shortCloseSchema,
   type AppendJobOrderStepsInput,
+  type CompleteStepInput,
   type CreateJobOrderInput,
   type ShortCloseInput,
   type UpdateJobOrderInput,
@@ -97,7 +99,7 @@ openApiRegistry.registerPath({
   tags: ['Job Orders'],
   summary:
     'The Overview page: stepper, per-step totals, live stock balance and the order’s issue/receipt history',
-  request: { 
+  request: {
     params: orgParam.extend({ id: z.string() }),
     query: z.object({ stepId: z.string().optional() }),
   },
@@ -138,8 +140,13 @@ openApiRegistry.registerPath({
   summary: 'Manually complete a job order step',
   request: {
     params: orgParam.extend({ id: z.string(), stepId: z.string() }),
+    body: { content: { 'application/json': { schema: completeStepSchema } } },
   },
-  responses: { 200: { description: 'Step completed' } },
+  responses: {
+    200: { description: 'Step completed' },
+    400: { description: 'A reason is required — the step issued or received nothing' },
+    409: { description: 'Already completed, or drafts are parked on the step' },
+  },
 });
 
 export const getJobOrders = async (req: Request, res: Response) => {
@@ -232,11 +239,13 @@ export const updateNumberPreferenceRoute = async (req: Request, res: Response) =
 };
 
 export const completeStep = async (req: Request, res: Response) => {
+  const { reason } = req.body as CompleteStepInput;
   const updated = await manuallyCompleteStep(
     req.tenantId!,
     req.params.id as string,
     req.params.stepId as string,
     req.user?.id,
+    reason,
   );
   sendSuccess(res, updated, 'Step completed.');
 };

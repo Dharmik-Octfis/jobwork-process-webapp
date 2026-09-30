@@ -239,21 +239,45 @@ export function EditItemPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    let hasErrors = false;
+    const newErrors: Record<string, string> = {};
+    const newCustomFieldErrors: Record<string, string> = {};
+
     try {
       itemFormSchema.parse(formData);
-      setErrors({});
-      setCustomFieldErrors({});
-      updateMutation.mutate(formData);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const formattedErrors: Record<string, string> = {};
+        hasErrors = true;
         error.issues.forEach((err: z.ZodIssue) => {
           if (err.path[0]) {
-            formattedErrors[err.path[0].toString()] = err.message;
+            newErrors[err.path[0].toString()] = err.message;
           }
         });
-        setErrors(formattedErrors);
       }
+    }
+
+    // Custom fields validation
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = formData.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setErrors(newErrors);
+    setCustomFieldErrors(newCustomFieldErrors);
+
+    if (!hasErrors) {
+      updateMutation.mutate(formData);
     }
   };
 

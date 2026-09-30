@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import {
   allocateNumber,
@@ -30,6 +31,7 @@ import { shareSplitOutputs } from '../receipts/landedCost.ts';
 import {
   getAllStepTotals,
   getChainWarnings,
+  getStepTotals,
   recomputeJobOrder,
   recomputeStep,
 } from './jobOrders.status.ts';
@@ -702,12 +704,18 @@ async function loadExistingSteps(tx: TenantClient, organizationId: string, jobOr
  * (R8), and the step is then closed to every document (R9) — so a draft still
  * parked against it would be a document that can never post. Those are refused
  * by name rather than silently stranded. There is no reopen.
+ *
+ * A step that issued nothing, or received nothing against what it issued, takes a
+ * reason: the first skips an operation, the second writes off every challan whole —
+ * both decisions someone has to own, like closing short. Not a refusal: an untouched
+ * step inside the locked prefix cannot be removed, so completing is its only way out.
  */
 export async function manuallyCompleteStep(
   organizationId: string,
   jobOrderId: string,
   stepId: string,
   userId: string | undefined,
+  reason?: string,
 ) {
   return withUniqueViolation('Order already closed or not found', async () => {
     // A fifty-line challan writes fifty scrap rows (jobwork.types.ts).
@@ -715,7 +723,7 @@ export async function manuallyCompleteStep(
       await lockStep(tx, organizationId, stepId);
       const step = await tx.jobOrderStep.findFirst({
         where: { id: stepId, jobOrderId, organizationId, isDeleted: false },
-        select: { id: true, seq: true, status: true },
+        select: { id: true, seq: true, status: true, remarks: true },
       });
       if (!step) throw ApiError.notFound('Step not found.');
       if (step.status === 'completed' || step.status === 'short_closed') {
@@ -743,15 +751,29 @@ export async function manuallyCompleteStep(
         );
       }
 
+      const totals = await getStepTotals(tx, organizationId, step.id);
+      const why = reason?.trim() || null;
+      if (!why && (totals.issueCount === 0 || totals.receiptCount === 0)) {
+        const message =
+          totals.issueCount === 0
+            ? `Nothing has been issued on step ${step.seq}. Say why it is being completed without being done.`
+            : `Nothing has been received on step ${step.seq}, so everything issued will be written off. Say why.`;
+        throw new ApiError(400, message, { reason: message });
+      }
+
       await writeOffStep(tx, organizationId, step.id, {
-        reason: 'Step completed — still at the processor, written off as job order loss.',
+        reason: why
+          ? `Step completed: ${why} — still at the processor, written off as job order loss.`
+          : 'Step completed — still at the processor, written off as job order loss.',
         userId,
       });
 
+      const note = why ? `Completed: ${why}` : null;
       await tx.jobOrderStep.update({
         where: { id: step.id },
         data: {
           isCompleted: true,
+          ...(note ? { remarks: step.remarks ? `${step.remarks}\n${note}` : note } : {}),
           updatedBy: userId,
         },
       });
@@ -1201,7 +1223,7 @@ export async function createNewJobOrder(
 
   // `runAsDocument`, not `runAsTenant`: Material In for a fifty-taka consignment
   // writes ~150 rows and blows Prisma's 5-second default (jobwork.types.ts).
-  return runAsDocument(organizationId, async (tx) => {
+  const result = await runAsDocument(organizationId, async (tx) => {
     await assertStepRefs(tx, organizationId, steps);
 
     const ownership = (header.ownership ?? 'own') as Ownership;
@@ -1294,8 +1316,23 @@ export async function createNewJobOrder(
 
     await writeSteps(tx, organizationId, created.id, stepRows, userId);
 
-    return readBack(tx, organizationId, created.id);
+    return await readBack(tx, organizationId, created.id);
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'job_orders',
+      recordId: result.id,
+      recordTitle: `Job Order #${result.jobOrderNumber}`,
+      triggerType: 'CREATE',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in create job order:', err));
+
+  return result;
 }
 
 type StepRow = Awaited<ReturnType<typeof buildSteps>>[number];
@@ -1583,7 +1620,7 @@ export async function updateJobOrderById(
 ) {
   const { customFields: rawCustomFields, steps, ...header } = data;
 
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const existing = await tx.jobOrder.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
@@ -1699,8 +1736,23 @@ export async function updateJobOrderById(
     // step completes the order, and adding one reopens it.
     await recomputeJobOrder(tx, organizationId, id);
 
-    return readBack(tx, organizationId, id);
+    return await readBack(tx, organizationId, id);
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'job_orders',
+      recordId: result.id,
+      recordTitle: `Job Order #${result.jobOrderNumber}`,
+      triggerType: 'EDIT',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in update job order:', err));
+
+  return result;
 }
 
 /**

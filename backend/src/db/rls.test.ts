@@ -38,6 +38,10 @@ const TENANT_TABLES = [
   'vendor_addresses',
   'customer_contact_persons',
   'customer_activities',
+  'sales_orders',
+  'sales_order_items',
+  'sales_order_activities',
+  'sales_order_comments',
   'customer_comments',
   'customer_addresses',
   'units_of_measurement',
@@ -126,6 +130,18 @@ const TENANT_TABLES = [
   'purchase_order_items',
   'purchase_order_activities',
   'purchase_order_comments',
+  // Approval Processes & Workflow Execution tables
+  'approval_processes',
+  'approval_process_versions',
+  'approval_process_rules',
+  'approval_stages',
+  'approval_actions',
+  'approval_process_admins',
+  'approval_requests',
+  'approval_request_stages',
+  'approval_request_approvers',
+  'approval_history',
+  'approval_action_executions',
 ] as const;
 
 /**
