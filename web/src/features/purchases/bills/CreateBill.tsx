@@ -613,6 +613,8 @@ export function CreateBill() {
   const watchPaymentTerms = watch('paymentTerms');
   const watchStatus = watch('status');
 
+  const hasJobReceiptLines = watchItems?.some((item) => !!item.jobReceiptId);
+
   useEffect(() => {
     if (watchPoDate && watchPaymentTerms && paymentTerms) {
       const term = paymentTerms.find((pt) => pt.id.toString() === watchPaymentTerms);
@@ -1320,9 +1322,9 @@ export function CreateBill() {
                                       setValue(`lineItems.${index}.discountType`, 'percentage');
                                     }
                                   }}
-                                  filter={curItem?.jobReceiptId ? 'services' : undefined}
+                                  filter={hasJobReceiptLines ? 'services' : undefined}
                                   placeholder={
-                                    curItem?.jobReceiptId
+                                    hasJobReceiptLines
                                       ? 'Select a service item.'
                                       : 'Type or click to select an item.'
                                   }
@@ -2066,6 +2068,7 @@ export function CreateBill() {
           setMultiSelectTargetIndex(null);
         }}
         orgId={orgId!}
+        filter={hasJobReceiptLines ? 'services' : undefined}
         onAddNewItem={() => {
           setItemModalIndex(multiSelectTargetIndex !== null ? multiSelectTargetIndex : 0);
         }}
