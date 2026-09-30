@@ -209,16 +209,14 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
   job_order: [
     { key: 'jobOrderNumber', label: 'Job Order #', locked: true },
     { key: 'orderDate', label: 'Date', defaultVisible: true },
-    { key: 'inputItem', label: 'Item', defaultVisible: true },
-    { key: 'inputQty', label: 'Quantity', defaultVisible: true },
     { key: 'routeNameSnapshot', label: 'Route', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'createdAt', label: 'Created At', defaultVisible: true },
+    { key: 'updatedAt', label: 'Last Modified', defaultVisible: true },
     { key: 'ownership', label: 'Ownership' },
     { key: 'targetDate', label: 'Target Date' },
     { key: 'stepCount', label: 'Steps' },
     { key: 'remarks', label: 'Remarks' },
-    { key: 'createdAt', label: 'Created At' },
-    { key: 'updatedAt', label: 'Last Modified' },
   ],
   /**
    * Issues — the challans out. Ordered the way someone chases material: number,
