@@ -26,6 +26,7 @@ interface LocalComboBoxProps {
   onBlur?: () => void;
   name?: string;
   portal?: boolean;
+  actionItem?: React.ReactNode;
 }
 
 export function LocalComboBox({
@@ -42,6 +43,7 @@ export function LocalComboBox({
   onBlur,
   name,
   portal = false,
+  actionItem,
 }: LocalComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -309,6 +311,11 @@ export function LocalComboBox({
                 </div>
               ))}
           </div>
+          {actionItem && (
+            <div style={{ borderTop: '1px solid var(--color-border, #e5e7eb)', padding: '4px' }}>
+              {actionItem}
+            </div>
+          )}
         </div>,
       )}
     </div>

@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Select } from '../../components/ui/Select';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { CategorySelectDropdown } from './components/CategorySelectDropdown';
 import { itemsApi } from './items.api.ts';
 import type { ItemFormData, Item, ItemImageAttachment } from './items.schemas.ts';
@@ -530,7 +530,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       Unit
                     </div>
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                      <Select
+                      <SearchableSelect
                         value={formData.stockingUomId ?? ''}
                         /**
                          * 🔴 SETS BOTH. `stockingUomId` is the FK the stock
@@ -567,38 +567,20 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonClassName="no-global-focus"
-                        buttonStyle={{
+                        triggerStyle={{
                           border: 'none',
                           height: '100%',
+                          minHeight: '100%',
+                          background: 'transparent',
+                          boxShadow: 'none',
                           padding: '0 12px',
                           fontSize: 13,
                         }}
-                        actionItem={
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsUomModalOpen(true);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              width: '100%',
-                              padding: '8px 12px',
-                              color: '#0062ff',
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: 13,
-                              textAlign: 'left',
-                            }}
-                          >
-                            <Plus size={14} /> New Unit Group
-                          </button>
-                        }
+                        footerAction={{
+                          text: 'New Unit Group',
+                          icon: <Plus size={14} />,
+                          onClick: () => setIsUomModalOpen(true),
+                        }}
                       />
                     </div>
                   </div>

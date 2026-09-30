@@ -177,10 +177,12 @@ export function CategorySelectDropdown({ value, onChange, error, hideManageButto
                     {...getInputProps({
                       placeholder: 'Search',
                       autoFocus: true,
+                      className: 'no-global-focus',
                       style: {
                         border: 'none',
                         background: 'transparent',
                         outline: 'none',
+                        boxShadow: 'none',
                         fontSize: 12,
                         marginLeft: 6,
                         width: '100%',

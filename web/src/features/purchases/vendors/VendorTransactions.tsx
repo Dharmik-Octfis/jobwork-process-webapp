@@ -7,6 +7,12 @@ import { fetchJobIssues } from '../../jobwork/issues/jobIssues.api';
 import { fetchJobReceipts } from '../../jobwork/receipts/jobReceipts.api';
 import { format } from 'date-fns';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Pagination } from '../../../components/ui/Pagination';
+import { useListCount } from '../../../hooks/useListCount';
+import { fetchPurchaseOrderCount } from '../purchase-orders/purchase-orders.api';
+import { fetchBillCount } from '../bills/bills.api';
+import { fetchJobIssueCount } from '../../jobwork/issues/jobIssues.api';
+import { fetchJobReceiptCount } from '../../jobwork/receipts/jobReceipts.api';
 
 interface VendorTransactionsProps {
   orgId: string;
@@ -16,10 +22,17 @@ interface VendorTransactionsProps {
 export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [expandedSection, setExpandedSection] = useState<string | null>('Vendor Payments');
+  const [expandedSection, setExpandedSection] = useState<string | null>('Purchase Orders');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
 
   const toggleSection = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
+    if (expandedSection !== section) {
+      setPage(1);
+      setExpandedSection(section);
+    } else {
+      setExpandedSection(null);
+    }
   };
 
   const sections = ['Purchase Orders', 'Bills', 'Job Issues', 'Job Receipts'];
@@ -28,28 +41,48 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
   const jobworkFilters = JSON.stringify({ processorId: vendorId });
 
   const { data: poData, isLoading: isLoadingPO } = useQuery({
-    queryKey: ['vendor-purchaseOrders', orgId, vendorId],
-    queryFn: () => fetchPurchaseOrders(orgId, { fieldFilters }),
-    enabled: Boolean(orgId && vendorId),
+    queryKey: ['vendor-purchaseOrders', orgId, vendorId, page, perPage],
+    queryFn: () => fetchPurchaseOrders(orgId, { fieldFilters, page, perPage }),
+    enabled: Boolean(orgId && vendorId && expandedSection === 'Purchase Orders'),
   });
 
   const { data: billData, isLoading: isLoadingBills } = useQuery({
-    queryKey: ['vendor-bills', orgId, vendorId],
-    queryFn: () => fetchBills(orgId, { fieldFilters }),
-    enabled: Boolean(orgId && vendorId),
+    queryKey: ['vendor-bills', orgId, vendorId, page, perPage],
+    queryFn: () => fetchBills(orgId, { fieldFilters, page, perPage }),
+    enabled: Boolean(orgId && vendorId && expandedSection === 'Bills'),
   });
 
   const { data: issuesData, isLoading: isLoadingIssues } = useQuery({
-    queryKey: ['vendor-issues', orgId, vendorId],
-    queryFn: () => fetchJobIssues(orgId, { fieldFilters: jobworkFilters }),
-    enabled: Boolean(orgId && vendorId),
+    queryKey: ['vendor-issues', orgId, vendorId, page, perPage],
+    queryFn: () => fetchJobIssues(orgId, { fieldFilters: jobworkFilters, page, perPage }),
+    enabled: Boolean(orgId && vendorId && expandedSection === 'Job Issues'),
   });
 
   const { data: receiptsData, isLoading: isLoadingReceipts } = useQuery({
-    queryKey: ['vendor-receipts', orgId, vendorId],
-    queryFn: () => fetchJobReceipts(orgId, { fieldFilters: jobworkFilters }),
-    enabled: Boolean(orgId && vendorId),
+    queryKey: ['vendor-receipts', orgId, vendorId, page, perPage],
+    queryFn: () => fetchJobReceipts(orgId, { fieldFilters: jobworkFilters, page, perPage }),
+    enabled: Boolean(orgId && vendorId && expandedSection === 'Job Receipts'),
   });
+
+  const { total: totalPO, isCounting: isCountingPO, request: requestCountPO } = useListCount(
+    ['vendor-purchaseOrders-count', orgId, vendorId],
+    () => fetchPurchaseOrderCount(orgId, { fieldFilters })
+  );
+
+  const { total: totalBills, isCounting: isCountingBills, request: requestCountBills } = useListCount(
+    ['vendor-bills-count', orgId, vendorId],
+    () => fetchBillCount(orgId, { fieldFilters })
+  );
+
+  const { total: totalIssues, isCounting: isCountingIssues, request: requestCountIssues } = useListCount(
+    ['vendor-issues-count', orgId, vendorId],
+    () => fetchJobIssueCount(orgId, { fieldFilters: jobworkFilters })
+  );
+
+  const { total: totalReceipts, isCounting: isCountingReceipts, request: requestCountReceipts } = useListCount(
+    ['vendor-receipts-count', orgId, vendorId],
+    () => fetchJobReceiptCount(orgId, { fieldFilters: jobworkFilters })
+  );
 
   const purchaseOrders = poData?.results || [];
   const bills = billData?.results || [];
@@ -59,7 +92,7 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
 
 
   return (
-    <div style={{ padding: '16px', background: '#f8fafc', height: '100%', minHeight: '500px' }}>
+    <div style={{ padding: 0, background: '#f8fafc', height: '100%', minHeight: '500px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {sections.map((section) => {
           const isExpanded = expandedSection === section;
@@ -73,6 +106,30 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
             section === 'Bills' ? bills :
             section === 'Job Issues' ? jobIssues :
             jobReceipts;
+          
+          const pageContext = 
+            section === 'Purchase Orders' ? poData?.pageContext :
+            section === 'Bills' ? billData?.pageContext :
+            section === 'Job Issues' ? issuesData?.pageContext :
+            receiptsData?.pageContext;
+
+          const total = 
+            section === 'Purchase Orders' ? totalPO :
+            section === 'Bills' ? totalBills :
+            section === 'Job Issues' ? totalIssues :
+            totalReceipts;
+
+          const isCounting = 
+            section === 'Purchase Orders' ? isCountingPO :
+            section === 'Bills' ? isCountingBills :
+            section === 'Job Issues' ? isCountingIssues :
+            isCountingReceipts;
+
+          const onRequestCount = 
+            section === 'Purchase Orders' ? requestCountPO :
+            section === 'Bills' ? requestCountBills :
+            section === 'Job Issues' ? requestCountIssues :
+            requestCountReceipts;
 
           return (
             <div
@@ -269,6 +326,18 @@ export function VendorTransactions({ orgId, vendorId }: VendorTransactionsProps)
                     <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
                       No {section.toLowerCase()} found.
                     </div>
+                  )}
+                  {items.length > 0 && (
+                    <Pagination
+                      pageContext={pageContext}
+                      page={page}
+                      onPageChange={setPage}
+                      perPage={perPage}
+                      onPerPageChange={setPerPage}
+                      total={total}
+                      isCounting={isCounting}
+                      onRequestCount={() => void onRequestCount()}
+                    />
                   )}
                 </div>
               )}

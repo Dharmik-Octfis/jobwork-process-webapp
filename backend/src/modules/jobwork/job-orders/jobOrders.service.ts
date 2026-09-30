@@ -72,11 +72,22 @@ import type {
 const DUPLICATE_NUMBER = 'A job order with this number already exists in this organization.';
 
 function jobOrderListWhere(organizationId: string, opts: ListQuery): Prisma.JobOrderWhereInput {
-  const baseWhere = {
+  const baseWhere: Prisma.JobOrderWhereInput = {
     organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.JobOrderWhereInput>('job_order', opts.filter),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.ownerPartyId) {
+        baseWhere.ownerPartyId = filters.ownerPartyId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
 
   if (!opts.search) return baseWhere;
 

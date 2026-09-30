@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchJobOrders } from '../../jobwork/job-orders/jobOrders.api';
+import { fetchJobOrders, fetchJobOrderCount } from '../../jobwork/job-orders/jobOrders.api';
+import { fetchSalesOrders, fetchSalesOrderCount } from '../sales-orders/sales-orders.api';
+import { Pagination } from '../../../components/ui/Pagination';
+import { useListCount } from '../../../hooks/useListCount';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import type { JobOrder } from '../../jobwork/job-orders/jobOrders.schemas';
+import type { SalesOrder } from '../sales-orders/sales-orders.schemas';
 
 interface CustomerTransactionsProps {
   orgId: string;
@@ -11,114 +16,63 @@ interface CustomerTransactionsProps {
 }
 
 export function CustomerTransactions({ orgId, customerId }: CustomerTransactionsProps) {
-  const [expandedSection, setExpandedSection] = useState<string | null>('Customer Payments');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [expandedSection, setExpandedSection] = useState<string | null>('Sales Orders');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
 
   const toggleSection = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
+    if (expandedSection !== section) {
+      setPage(1);
+      setExpandedSection(section);
+    } else {
+      setExpandedSection(null);
+    }
   };
 
-  const sections = ['Job Orders'];
+  const sections = ['Sales Orders', 'Job Orders'];
 
-  const fieldFilters = JSON.stringify({ ownerPartyId: customerId });
+  const soFilters = JSON.stringify({ customerId: customerId });
+  const joFilters = JSON.stringify({ ownerPartyId: customerId });
 
-  const { data: joData, isLoading: isLoadingJO } = useQuery({
-    queryKey: ['customer-jobOrders', orgId, customerId],
-    queryFn: () => fetchJobOrders(orgId, { fieldFilters }),
-    enabled: Boolean(orgId && customerId),
+  const { data: soData, isLoading: isLoadingSO } = useQuery({
+    queryKey: ['customer-salesOrders', orgId, customerId, page, perPage],
+    queryFn: () => fetchSalesOrders(orgId, { fieldFilters: soFilters, page, perPage }),
+    enabled: Boolean(orgId && customerId && expandedSection === 'Sales Orders'),
   });
 
+  const { data: joData, isLoading: isLoadingJO } = useQuery({
+    queryKey: ['customer-jobOrders', orgId, customerId, page, perPage],
+    queryFn: () => fetchJobOrders(orgId, { fieldFilters: joFilters, page, perPage }),
+    enabled: Boolean(orgId && customerId && expandedSection === 'Job Orders'),
+  });
+
+  const { total: totalSO, isCounting: isCountingSO, request: requestCountSO } = useListCount(
+    ['customer-salesOrders-count', orgId, customerId],
+    () => fetchSalesOrderCount(orgId, { fieldFilters: soFilters })
+  );
+
+  const { total: totalJO, isCounting: isCountingJO, request: requestCountJO } = useListCount(
+    ['customer-jobOrders-count', orgId, customerId],
+    () => fetchJobOrderCount(orgId, { fieldFilters: joFilters })
+  );
+
+  const salesOrders = soData?.results || [];
   const jobOrders = joData?.results || [];
 
-  const _dummyPayments = [
-    {
-      date: '22/09/2026',
-      location: 'Head Office',
-      paymentNumber: '306',
-      referenceNumber: '-',
-      paymentMode: 'Cash',
-      amount: '₹726.00',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '19/09/2026',
-      location: 'Head Office',
-      paymentNumber: '312',
-      referenceNumber: '-',
-      paymentMode: 'UPI',
-      amount: '₹2,300.00',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '19/09/2026',
-      location: 'Head Office',
-      paymentNumber: '311',
-      referenceNumber: '-',
-      paymentMode: 'Card',
-      amount: '₹7,000.00',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '18/09/2026',
-      location: 'Head Office',
-      paymentNumber: '310',
-      referenceNumber: '-',
-      paymentMode: 'Debit Card',
-      amount: '₹169.46',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '16/09/2026',
-      location: 'Head Office',
-      paymentNumber: '305',
-      referenceNumber: '-',
-      paymentMode: 'Cash',
-      amount: '₹560.00',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '17/08/2026',
-      location: 'Head Office',
-      paymentNumber: '290',
-      referenceNumber: '-',
-      paymentMode: 'Cash',
-      amount: '₹590.00',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '08/08/2026',
-      location: 'Head Office',
-      paymentNumber: '289',
-      referenceNumber: '-',
-      paymentMode: 'Cash',
-      amount: '₹10.50',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-    {
-      date: '23/06/2026',
-      location: 'Head Office',
-      paymentNumber: '287',
-      referenceNumber: '-',
-      paymentMode: 'Cash',
-      amount: '₹308.70',
-      unusedAmount: '₹0.00',
-      status: 'Paid',
-    },
-  ];
-
   return (
-    <div style={{ padding: '16px', background: '#f8fafc', height: '100%', minHeight: '500px' }}>
+    <div style={{ padding: 0, background: '#f8fafc', height: '100%', minHeight: '500px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {sections.map((section) => {
           const isExpanded = expandedSection === section;
-          const isLoading = isLoadingJO;
-          const items = jobOrders;
+          const isLoading = section === 'Sales Orders' ? isLoadingSO : isLoadingJO;
+          const items = section === 'Sales Orders' ? salesOrders : jobOrders;
+
+          const pageContext = section === 'Sales Orders' ? soData?.pageContext : joData?.pageContext;
+          const total = section === 'Sales Orders' ? totalSO : totalJO;
+          const isCounting = section === 'Sales Orders' ? isCountingSO : isCountingJO;
+          const onRequestCount = section === 'Sales Orders' ? requestCountSO : requestCountJO;
 
           return (
             <div
@@ -155,6 +109,14 @@ export function CustomerTransactions({ orgId, customerId }: CustomerTransactions
                 </div>
                 <div onClick={(e) => e.stopPropagation()}>
                   <button
+                    onClick={() => {
+                      const newRoute = section === 'Sales Orders'
+                        ? `/organizations/${orgId}/sales/sales-orders/new`
+                        : `/organizations/${orgId}/jobwork/job-orders/new`;
+                      navigate(newRoute, {
+                        state: { returnUrl: location.pathname + location.search }
+                      });
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -205,72 +167,79 @@ export function CustomerTransactions({ orgId, customerId }: CustomerTransactions
                               textTransform: 'uppercase',
                               borderBottom: '1px solid #e2e8f0',
                             }}
-                          >
-                            JOB ORDER
+                          > 
+                            {section === 'Sales Orders' ? 'SALES ORDER' : 'JOB ORDER'}
                           </th>
-                          <th
-                            style={{
-                              padding: '12px 16px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              color: '#64748b',
-                              textTransform: 'uppercase',
-                              borderBottom: '1px solid #e2e8f0',
-                              textAlign: 'right',
-                            }}
-                          >
-                            QTY
-                          </th>
-                          <th
-                            style={{
-                              padding: '12px 16px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              color: '#64748b',
-                              textTransform: 'uppercase',
-                              borderBottom: '1px solid #e2e8f0',
-                            }}
-                          >
-                            STATUS
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item: any) => {
-                          const date = item.orderDate;
-                          const number = item.jobOrderNumber;
-                          const amount = item.inputQty || 0;
-                          const status = item.status || 'Draft';
-                          const link = `/organizations/${orgId}/jobwork/job-orders?id=${item.id}`;
 
-                          return (
-                            <tr
-                              key={item.id}
+                            <th
                               style={{
+                                padding: '12px 16px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                color: '#64748b',
+                                textTransform: 'uppercase',
                                 borderBottom: '1px solid #e2e8f0',
-                                backgroundColor: '#fff',
+                                textAlign: 'right',
                               }}
                             >
-                              <td style={{ padding: '12px 16px', fontSize: '13px', color: '#1e293b' }}>
-                                {date ? format(new Date(date), 'dd/MM/yyyy') : '-'}
-                              </td>
-                              <td style={{ padding: '12px 16px', fontSize: '13px', color: '#2563eb' }}>
-                                <Link to={link} style={{ color: '#2563eb', textDecoration: 'none' }}>
-                                  {number}
-                                </Link>
-                              </td>
-                              <td
+                              {section === 'Sales Orders' ? 'AMOUNT' : 'QTY'}
+                            </th>
+                            <th
+                              style={{
+                                padding: '12px 16px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                color: '#64748b',
+                                textTransform: 'uppercase',
+                                borderBottom: '1px solid #e2e8f0',
+                              }}
+                            >
+                              STATUS
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((item: SalesOrder | JobOrder) => {
+                            const isSO = section === 'Sales Orders';
+                            const so = item as SalesOrder;
+                            const jo = item as JobOrder;
+
+                            const date = isSO ? so.date : jo.orderDate;
+                            const number = isSO ? so.soNumber : jo.jobOrderNumber;
+                            const amount = isSO ? `₹${Number(so.totalAmount || 0).toFixed(2)}` : (jo.inputQty || 0);
+                            const status = item.status || 'Draft';
+                            const link = isSO
+                              ? `/organizations/${orgId}/sales/sales-orders?id=${item.id}`
+                              : `/organizations/${orgId}/jobwork/job-orders?id=${item.id}`;
+
+                            return (
+                              <tr
+                                key={item.id}
                                 style={{
-                                  padding: '12px 16px',
-                                  fontSize: '13px',
-                                  color: '#1e293b',
-                                  textAlign: 'right',
+                                  borderBottom: '1px solid #e2e8f0',
+                                  backgroundColor: '#fff',
                                 }}
                               >
-                                {amount}
-                              </td>
-                              <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                                <span style={{ 
+                                <td style={{ padding: '12px 16px', fontSize: '13px', color: '#1e293b' }}>
+                                  {date ? format(new Date(date), 'dd/MM/yyyy') : '-'}
+                                </td>
+                                <td style={{ padding: '12px 16px', fontSize: '13px', color: '#2563eb' }}>
+                                  <Link to={link} style={{ color: '#2563eb', textDecoration: 'none' }}>
+                                    {number}
+                                  </Link>
+                                </td>
+                                <td
+                                  style={{
+                                    padding: '12px 16px',
+                                    fontSize: '13px',
+                                    color: '#1e293b',
+                                    textAlign: 'right',
+                                  }}
+                                >
+                                  {amount}
+                                </td>
+                                <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                                <span style={{
                                   color: status === 'Draft' ? '#64748b' : '#16a34a',
                                   background: status === 'Draft' ? '#f1f5f9' : '#dcfce7',
                                   padding: '2px 8px',
@@ -289,6 +258,18 @@ export function CustomerTransactions({ orgId, customerId }: CustomerTransactions
                     <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
                       No {section.toLowerCase()} found.
                     </div>
+                  )}
+                  {items.length > 0 && (
+                    <Pagination
+                      pageContext={pageContext}
+                      page={page}
+                      onPageChange={setPage}
+                      perPage={perPage}
+                      onPerPageChange={setPerPage}
+                      total={total}
+                      isCounting={isCounting}
+                      onRequestCount={() => void onRequestCount()}
+                    />
                   )}
                 </div>
               )}

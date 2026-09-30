@@ -86,12 +86,25 @@ const ZERO = new Prisma.Decimal(0);
 const SEARCH_COLUMNS = ['receiptNumber', 'processorNameSnapshot'] as const;
 
 function receiptListWhere(organizationId: string, opts: ListQuery): Prisma.JobReceiptWhereInput {
-  return {
+  const baseWhere: Prisma.JobReceiptWhereInput = {
     organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.JobReceiptWhereInput>('job_receipt', opts.filter),
     ...searchWhere<Prisma.JobReceiptWhereInput>(opts.search, [...SEARCH_COLUMNS]),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.processorId) {
+        baseWhere.processorId = filters.processorId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 const RECEIPT_INCLUDE = {

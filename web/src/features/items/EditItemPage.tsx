@@ -6,7 +6,7 @@ import { itemsApi } from './items.api.ts';
 import type { ItemFormData } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
-import { Select } from '../../components/ui/Select.tsx';
+import { SearchableSelect } from '../../components/ui/SearchableSelect.tsx';
 import { CategorySelectDropdown } from './components/CategorySelectDropdown.tsx';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
@@ -478,7 +478,7 @@ export function EditItemPage() {
                       Unit
                     </div>
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                      <Select
+                      <SearchableSelect
                         value={formData.stockingUomId ?? ''}
                         onChange={(val) => {
                           const picked = uoms.find((u) => u.id === val);
@@ -501,38 +501,20 @@ export function EditItemPage() {
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonClassName="no-global-focus"
-                        buttonStyle={{
+                        triggerStyle={{
                           border: 'none',
                           height: '100%',
+                          minHeight: '100%',
+                          background: 'transparent',
+                          boxShadow: 'none',
                           padding: '0 12px',
                           fontSize: 13,
                         }}
-                        actionItem={
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsUomModalOpen(true);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              width: '100%',
-                              padding: '8px 12px',
-                              color: '#0062ff',
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: 13,
-                              textAlign: 'left',
-                            }}
-                          >
-                            <Plus size={14} /> New Unit Group
-                          </button>
-                        }
+                        footerAction={{
+                          text: 'New Unit Group',
+                          icon: <Plus size={14} />,
+                          onClick: () => setIsUomModalOpen(true),
+                        }}
                       />
                     </div>
                   </div>

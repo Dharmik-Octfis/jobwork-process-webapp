@@ -143,7 +143,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
-  const [activeSubTab, setActiveSubTab] = useState<'Bills' | 'Receives'>('Bills');
+  const [activeSubTab, setActiveSubTab] = useState<'Bills'>('Bills');
   const [isPdfView, setIsPdfView] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
@@ -645,118 +645,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   {po.bills?.length || 0}
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('Receives')}
-                style={{
-                  padding: '12px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom:
-                    activeSubTab === 'Receives' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Receives' ? '#0062ff' : '#475569',
-                  fontWeight: activeSubTab === 'Receives' ? 600 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                Receives{' '}
-                <span
-                  style={{
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                  }}
-                >
-                  0
-                </span>
-              </button>
             </div>
           </div>
 
-          {/* Status Bar & PDF View Toggle */}
-          <div
-            style={{
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '20px',
-              fontSize: '13px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
-              {isPdfView && (
-                <>
-                  <span>
-                    Receive Status : <strong style={{ color: '#64748b' }}>YET TO BE RECEIVED</strong>
-                  </span>
-                  <span style={{ color: '#cbd5e1' }}>|</span>
-                  <span>
-                    Bill Status :{' '}
-                    <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
-                      {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
-                    </strong>
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Toggle Switch */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
-              >
-                Show PDF View
-              </span>
-              <label
-                style={{
-                  position: 'relative',
-                  display: 'inline-block',
-                  width: '38px',
-                  height: '20px',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isPdfView}
-                  onChange={(e) => setIsPdfView(e.target.checked)}
-                  style={{ opacity: 0, width: 0, height: 0 }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
-                    transition: '0.3s',
-                    borderRadius: '20px',
-                  }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    content: '""',
-                    height: '14px',
-                    width: '14px',
-                    left: isPdfView ? '20px' : '3px',
-                    bottom: '3px',
-                    backgroundColor: 'white',
-                    transition: '0.3s',
-                    borderRadius: '50%',
-                  }}
-                />
-              </label>
-            </div>
-          </div>
 
           {/* Bills List View */}
           {!isPdfView && activeSubTab === 'Bills' && po.bills && po.bills.length > 0 && (
@@ -904,6 +795,81 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </div>
             </div>
           )}
+
+          {/* Status Bar & PDF View Toggle */}
+          <div
+            style={{
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px',
+              fontSize: '13px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
+              {isPdfView && (
+                <>
+                  <span>
+                    Bill Status :{' '}
+                    <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+                      {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
+                    </strong>
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Toggle Switch */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
+              >
+                Show PDF View
+              </span>
+              <label
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                  width: '38px',
+                  height: '20px',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isPdfView}
+                  onChange={(e) => setIsPdfView(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
+                    transition: '0.3s',
+                    borderRadius: '20px',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    content: '""',
+                    height: '14px',
+                    width: '14px',
+                    left: isPdfView ? '20px' : '3px',
+                    bottom: '3px',
+                    backgroundColor: 'white',
+                    transition: '0.3s',
+                    borderRadius: '50%',
+                  }}
+                />
+              </label>
+            </div>
+          </div>
 
           {/* VIEW MODE 1: Standard Web View (isPdfView === false) */}
           {!isPdfView && (

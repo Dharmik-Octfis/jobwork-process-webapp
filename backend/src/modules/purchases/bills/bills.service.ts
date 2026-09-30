@@ -941,12 +941,25 @@ async function retireBillUnits(
 }
 
 function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWhereInput {
-  return {
+  const baseWhere: Prisma.BillWhereInput = {
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.BillWhereInput>('bill', opts.filter),
     ...searchWhere<Prisma.BillWhereInput>(opts.search, ['billNumber', 'notes', 'status']),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.vendorId) {
+        baseWhere.vendorId = filters.vendorId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 /**
@@ -1435,6 +1448,13 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
         billDate: createdBill.billDate,
         userId: userId || null,
         postings,
+      });
+    }
+
+    if (createdBill.sourcePoId) {
+      await tx.purchaseOrder.update({
+        where: { id: createdBill.sourcePoId },
+        data: { status: 'Billed' },
       });
     }
 

@@ -60,12 +60,25 @@ const DUPLICATE_NUMBER = 'A challan with this number already exists in this orga
 const SEARCH_COLUMNS = ['challanNumber', 'processorNameSnapshot'] as const;
 
 function issueListWhere(organizationId: string, opts: ListQuery): Prisma.JobIssueWhereInput {
-  return {
+  const baseWhere: Prisma.JobIssueWhereInput = {
     organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.JobIssueWhereInput>('job_issue', opts.filter),
     ...searchWhere<Prisma.JobIssueWhereInput>(opts.search, [...SEARCH_COLUMNS]),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.processorId) {
+        baseWhere.processorId = filters.processorId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 const ISSUE_INCLUDE = {

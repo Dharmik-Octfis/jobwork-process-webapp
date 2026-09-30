@@ -114,12 +114,14 @@ export function ItemComboBox({
   const fetchedOptions = useMemo(() => {
     let options = itemsData?.pages.flatMap((page) => page.results) || [];
     // Only active items should be available in transaction dropdowns
-    options = options.filter(
-      (opt) =>
-        opt.isActive !== false &&
-        !(opt as any).isPendingApproval &&
-        (opt as any).approvalStatus !== 'Pending Approval',
-    );
+    options = options.filter((opt) => {
+      const item = opt as Item & { isPendingApproval?: boolean; approvalStatus?: string };
+      return (
+        item.isActive !== false &&
+        !item.isPendingApproval &&
+        item.approvalStatus !== 'Pending Approval'
+      );
+    });
     if (excludeItemId) {
       options = options.filter((opt) => opt.id !== excludeItemId);
     }

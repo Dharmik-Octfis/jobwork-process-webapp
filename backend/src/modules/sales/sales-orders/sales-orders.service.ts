@@ -12,7 +12,7 @@ import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 const DUPLICATE_NUMBER = 'A sales order with this SO number already exists.';
 
 function soListWhere(organizationId: string, opts: ListQuery): Prisma.SalesOrderWhereInput {
-  return {
+  const baseWhere: Prisma.SalesOrderWhereInput = {
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.SalesOrderWhereInput>('sales_order', opts.filter),
@@ -23,6 +23,19 @@ function soListWhere(organizationId: string, opts: ListQuery): Prisma.SalesOrder
       'status',
     ]),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.customerId) {
+        baseWhere.customerId = filters.customerId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 export async function getSalesOrdersList(organizationId: string, opts: ListQuery) {

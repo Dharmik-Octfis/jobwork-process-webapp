@@ -13,7 +13,7 @@ import { approvalTriggerService } from '../../automation/approval-processes/appr
 const DUPLICATE_NUMBER = 'A purchase order with this PO number already exists.';
 
 function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOrderWhereInput {
-  return {
+  const baseWhere: Prisma.PurchaseOrderWhereInput = {
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.PurchaseOrderWhereInput>('purchase_order', opts.filter),
@@ -24,6 +24,19 @@ function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOr
       'status',
     ]),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.vendorId) {
+        baseWhere.vendorId = filters.vendorId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 export async function getPurchaseOrdersList(organizationId: string, opts: ListQuery) {
