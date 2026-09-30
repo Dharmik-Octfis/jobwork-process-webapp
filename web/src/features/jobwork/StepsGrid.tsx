@@ -1214,23 +1214,9 @@ export function StepsGrid<T extends StepGridRow>({
                   <div style={{ width: '100%' }}>
                     <ProcessSelect
                       value={step.processId || null}
-                      onChange={(processId, process) =>
-                        update(index, {
-                          processId,
-                          outputs:
-                            (step.outputs ?? []).length === 0 &&
-                            !process.itemChanges &&
-                            step.inputs?.[0]?.itemId
-                              ? [
-                                  {
-                                    ...emptyStepItem(),
-                                    itemId: step.inputs[0]!.itemId,
-                                    uomId: step.inputs[0]!.uomId ?? null,
-                                  },
-                                ]
-                              : step.outputs,
-                        })
-                      }
+                      // Picking a process seeds nothing — "Same as consumed" is the
+                      // one way to say a step returns what it took.
+                      onChange={(processId) => update(index, { processId })}
                       disabled={readOnly}
                       ariaLabel={`Step ${stepNo} process`}
                       minWidth="100%"

@@ -244,8 +244,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
 
     const cutting = await createNewProcess(orgId, {
       name: 'Cutting',
-      // Cloth in, panels out — a different item in a different unit.
-      itemChanges: true,
     });
 
     const route = await createNewRoute(orgId, {
@@ -948,7 +946,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('consumes three items and produces two, in three different units', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1004,7 +1001,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('carries a default quantity on a route’s CONSUMES rows, and copies it into a job order', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching template ${unique()}`,
-      itemChanges: true,
     });
 
     const route = await createNewRoute(orgId, {
@@ -1074,11 +1070,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('labels a chain-fed input, and plans it from what the step above produces', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1128,11 +1122,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('saves an input only a later step produces, drawn from stock', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1169,11 +1161,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('derives an expected quantity only from a stated yield or a matching unit', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const washing = await createNewProcess(orgId, {
       name: `Washing ${unique()}`,
-      itemChanges: false,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1229,11 +1219,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('shares one step’s output between later steps, and saves an over-plan anyway', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const shared = await createNewJobOrder(orgId, {
@@ -1295,7 +1283,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('carries two items on one challan and the third on another', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1372,7 +1359,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('measures the tolerance ceiling against each item’s own plan', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1425,7 +1411,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses a line whose item the step does not consume', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1476,7 +1461,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses a batch-less line for a batch-tracked item, and allows one for an untracked item', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const dyedBatch = await stockUp(dyedId, 100);
@@ -1533,7 +1517,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('consumes three items and returns two, with the value conserved', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     /* 🔴 Its own godown. Cost is FIFO per item per location, so on the shared
@@ -1693,7 +1676,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses a bulk receipt that does not say which item it accounts for', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1754,11 +1736,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('lets a step issue existing stock before the step above has delivered, and warns', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(dyedId, 100);
@@ -1805,7 +1785,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('never warns about a step whose inputs no earlier step produces', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const packing = await createNewProcess(orgId, { name: `Packing ${unique()}` });
 
@@ -1836,7 +1815,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses two primary outputs, and the same item listed twice', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const order = (steps: Parameters<typeof createNewJobOrder>[1]['steps']) =>
@@ -1885,11 +1863,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     it('appends after the last step while it is still at the processor, and leaves its challan intact', async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
       const stitching = await createNewProcess(orgId, {
         name: `Stitching ${unique()}`,
-        itemChanges: true,
       });
 
       // Dyed Fabric is batch-tracked, so the line has to name the batch it came
@@ -1967,11 +1943,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     it('refuses an order that has been closed short', async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
       const stitching = await createNewProcess(orgId, {
         name: `Stitching ${unique()}`,
-        itemChanges: true,
       });
 
       const jobOrder = await createNewJobOrder(orgId, {
@@ -2022,11 +1996,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const twoStepOrder = async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
       const stitching = await createNewProcess(orgId, {
         name: `Stitching ${unique()}`,
-        itemChanges: true,
       });
       // Batch-tracked, so the line names its batch — see the note above.
       const dyedBatch = await stockUp(dyedId, 100);
@@ -2148,7 +2120,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     it('still rewrites a draft end to end, header included', async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
 
       const jobOrder = await createNewJobOrder(orgId, {
@@ -2237,7 +2208,6 @@ describe('jobwork — FIFO allocation for untracked items', () => {
   const stepFor = async (itemId: string) => {
     const packing = await createNewProcess(orgId, {
       name: `Packing ${unique()}`,
-      itemChanges: true,
     });
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
@@ -2406,7 +2376,6 @@ describe('jobwork — one challan, one location', { timeout: 60_000 }, () => {
   const stepFor = async (itemId: string) => {
     const packing = await createNewProcess(orgId, {
       name: `Packing ${unique()}`,
-      itemChanges: true,
     });
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [

@@ -75,7 +75,6 @@ function writableFields(data: CreateProcessInput) {
     // later query has to test for separately.
     code: data.code?.trim() || null,
     description: data.description?.trim() || null,
-    itemChanges: data.itemChanges ?? false,
   };
 }
 
