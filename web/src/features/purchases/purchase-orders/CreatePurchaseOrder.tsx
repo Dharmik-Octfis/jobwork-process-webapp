@@ -786,7 +786,7 @@ export function CreatePurchaseOrder() {
 
               <label style={labelStyle}>Location</label>
               <SearchableSelect
-                options={locations.filter((l: Location) => l.isActive !== false || l.id === watch('locationId')).map((l: Location) => ({ label: l.name, value: l.id }))}
+                options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
                 value={watch('locationId') || undefined}
                 onChange={(val) => setValue('locationId', val)}
                 placeholder="Select Location"
@@ -868,7 +868,7 @@ export function CreatePurchaseOrder() {
                 {watchDeliveryType === 'Location' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <SearchableSelect
-                      options={locations.filter((l: Location) => l.isActive !== false || l.id === watch('deliveryLocationId')).map((l: Location) => ({ label: l.name, value: l.id }))}
+                      options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
                       value={watch('deliveryLocationId') || undefined}
                       onChange={(val) => setValue('deliveryLocationId', val)}
                       placeholder="Select Location"

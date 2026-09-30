@@ -22,6 +22,7 @@ import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+import { CustomerTransactions } from './CustomerTransactions';
 
 interface CustomerDetailProps {
   customerId: string;
@@ -1561,10 +1562,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
           style={{
             display: activeTab === 'Transactions' ? 'block' : 'none',
             color: '#64748b',
-            padding: '16px',
           }}
         >
-          No transactions found.
+          <CustomerTransactions orgId={orgId!} customerId={customerId} />
         </div>
       </div>
 

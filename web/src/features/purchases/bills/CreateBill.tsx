@@ -985,7 +985,7 @@ export function CreateBill() {
 
               <label style={labelStyle}>Location</label>
               <SearchableSelect
-                options={locations.filter((l: Location) => l.isActive !== false || l.id === watch('locationId')).map((l: Location) => ({ label: l.name, value: l.id }))}
+                options={locations.map((l: Location) => ({ label: l.name, value: l.id }))}
                 value={watch('locationId') || undefined}
                 onChange={(val) => setValue('locationId', val)}
                 placeholder="Select Location"

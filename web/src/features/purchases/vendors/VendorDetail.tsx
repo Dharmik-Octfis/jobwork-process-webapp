@@ -15,6 +15,7 @@ import { VendorActivityTimeline } from './VendorActivityTimeline';
 import { VendorComments } from './VendorComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { VendorTransactions } from './VendorTransactions';
 
 interface VendorDetailProps {
   vendorId: string;
@@ -1465,10 +1466,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           style={{
             display: activeTab === 'Transactions' ? 'block' : 'none',
             color: '#64748b',
-            padding: '16px',
           }}
         >
-          No transactions found.
+          <VendorTransactions orgId={orgId!} vendorId={vendorId} />
         </div>
       </div>
 
