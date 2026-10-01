@@ -57,12 +57,11 @@ export async function getJobworkChallans(
       (where.issueDate as Prisma.DateTimeFilter).lte = cutoff;
     }
     
-    if (openOnly) {
-      where.status = { not: 'closed' };
-    }
+    // We do NOT override status here for openOnly. 'closed' status doesn't exist,
+    // and overwriting would remove POSTED_DOC_STATUS (allowing drafts/cancelled).
 
-    const total = await tx.jobIssue.count({ where });
-
+    // If openOnly is true, we must calculate pendingQty for all matching records first
+    // before we can paginate, because pendingQty is derived from receipts/ledger.
     const issues = await tx.jobIssue.findMany({
       where,
       include: {
@@ -77,25 +76,15 @@ export async function getJobworkChallans(
         },
       },
       orderBy: { issueDate: 'desc' },
-      skip: (page - 1) * perPage,
-      take: perPage,
+      ...(openOnly ? {} : { skip: (page - 1) * perPage, take: perPage }),
     });
 
     const allLineIds = issues.flatMap((issue) => issue.lines.map((l) => l.id));
     const closedMap = await closedQtyByIssueLine(tx, organizationId, allLineIds);
 
-    const results: JobworkChallanRow[] = issues.map((issue) => {
+    let results: JobworkChallanRow[] = issues.map((issue) => {
       let pendingQty = 0;
       let issuedQty = 0;
-
-      // Note: closedQty is not returnedQty, returned is something else, but here we just
-      // aggregate standard values from lines, which only have issued qty, while we can approximate
-      // received/accepted/rework by fetching receipts... wait, we need receipt aggregates per line?
-      // The prompt only requires: "pendingQty = Σ outstanding over its lines."
-      // Outstanding = line.qty - closedQtyByIssueLine(line).
-      // We are not strictly asked to map "receivedQty", "acceptedQty", "reworkQty", "scrapQty" for this row
-      // accurately unless we query the receipts, but the standard challan register might just put zeros for now,
-      // or we can just fetch the aggregates if needed.
       
       const processSet = new Set<string>();
       const itemSet = new Set<string>();
@@ -104,13 +93,8 @@ export async function getJobworkChallans(
         const iq = Number(line.qty);
         issuedQty += iq;
         
-        if (issue.status === 'closed') {
-          // A challan whose status is closed has pendingQty = 0 by construction
-          pendingQty += 0;
-        } else {
-          const closed = Number(closedMap.get(line.id) || 0);
-          pendingQty += Math.max(0, iq - closed);
-        }
+        const closed = Number(closedMap.get(line.id) || 0);
+        pendingQty += Math.max(0, iq - closed);
 
         if (issue.step?.process?.name) {
           processSet.add(issue.step.process.name);
@@ -152,12 +136,20 @@ export async function getJobworkChallans(
       };
     });
 
+    let finalTotal = await tx.jobIssue.count({ where });
+
+    if (openOnly) {
+      results = results.filter((r) => r.pendingQty > 0);
+      finalTotal = results.length;
+      results = results.slice((page - 1) * perPage, page * perPage);
+    }
+
     return {
       results,
-      total,
+      total: finalTotal,
       page,
       perPage,
-      totalPages: Math.ceil(total / perPage),
+      totalPages: Math.ceil(finalTotal / perPage),
     };
   });
 }

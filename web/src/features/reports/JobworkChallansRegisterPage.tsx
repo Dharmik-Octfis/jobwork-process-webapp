@@ -516,6 +516,7 @@ const thStyle = {
   textTransform: 'uppercase' as const,
   background: '#f9fafb',
   letterSpacing: '0.5px',
+  whiteSpace: 'nowrap' as const,
 };
 
 const tdStyle = {
@@ -523,4 +524,5 @@ const tdStyle = {
   fontSize: '13px',
   color: '#111827',
   borderBottom: '1px solid #f3f4f6',
+  whiteSpace: 'nowrap' as const,
 };
