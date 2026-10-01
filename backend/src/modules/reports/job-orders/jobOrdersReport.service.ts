@@ -1,5 +1,6 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
+import { POSTED_DOC_STATUS } from '../../jobwork/jobwork.types.ts';
 
 export async function getJobOrdersReport(
   organizationId: string,
@@ -9,9 +10,23 @@ export async function getJobOrdersReport(
     jobOrderNumber?: string;
     processorName?: string;
     processName?: string;
+    status?: string;
+    fromDate?: string;
+    toDate?: string;
+    jobOrderCustomFields?: Record<string, unknown>;
   }
 ) {
-  const { page = 1, pageSize = 20, jobOrderNumber, processorName, processName } = params;
+  const {
+    page = 1,
+    pageSize = 20,
+    jobOrderNumber,
+    processorName,
+    processName,
+    status,
+    fromDate,
+    toDate,
+    jobOrderCustomFields,
+  } = params;
   const skip = (page - 1) * pageSize;
 
   return runAsTenant(organizationId, async (tx) => {
@@ -19,6 +34,41 @@ export async function getJobOrdersReport(
       organizationId,
       isDeleted: false,
     };
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (fromDate || toDate) {
+      where.orderDate = {};
+      if (fromDate) where.orderDate.gte = new Date(fromDate);
+      if (toDate) where.orderDate.lte = new Date(toDate);
+    }
+
+    if (jobOrderCustomFields) {
+      const customFieldsWhere: Prisma.JobOrderWhereInput[] = [];
+      Object.entries(jobOrderCustomFields).forEach(([cfKey, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          if (Array.isArray(value)) {
+            customFieldsWhere.push({
+              OR: value.map((v) => ({
+                customFields: { path: [cfKey], array_contains: v },
+              })),
+            });
+          } else {
+            customFieldsWhere.push({
+              OR: [
+                { customFields: { path: [cfKey], equals: value } },
+                { customFields: { path: [cfKey], array_contains: value } },
+              ],
+            });
+          }
+        }
+      });
+      if (customFieldsWhere.length > 0) {
+        where.AND = customFieldsWhere;
+      }
+    }
 
     if (jobOrderNumber) {
       where.jobOrderNumber = { contains: jobOrderNumber, mode: 'insensitive' };
@@ -52,6 +102,15 @@ export async function getJobOrdersReport(
           where: { isDeleted: false },
           include: {
             process: { select: { name: true } },
+            workCentre: { select: { name: true } },
+            issues: {
+              where: { isDeleted: false, status: POSTED_DOC_STATUS },
+              select: { totalQty: true, processorNameSnapshot: true },
+            },
+            receipts: {
+              where: { isDeleted: false, status: POSTED_DOC_STATUS },
+              select: { totalReceivedQty: true },
+            },
           },
         },
       },
@@ -61,52 +120,34 @@ export async function getJobOrdersReport(
       return { results: [], totalCount, page, pageSize };
     }
 
-    // N+1 protection: get all step IDs for ledger aggregation
-    const stepIds = jobOrders.flatMap((jo) => jo.steps.map((s) => s.id));
-
-    // Ledger aggregation for sent/received quantities against steps
-    const ledgerSums = stepIds.length > 0 ? await tx.stockLedgerEntry.groupBy({
-      by: ['sourceDocId'],
-      where: {
-        organizationId,
-        sourceDocType: 'job_order_step',
-        sourceDocId: { in: stepIds },
-      },
-      _sum: {
-        qtyIn: true,  // Total Received
-        qtyOut: true, // Total Sent
-      },
-    }) : [];
-
-    const ledgerMap = new Map(
-      ledgerSums.map(s => [
-        s.sourceDocId, 
-        {
-          receivedQty: Number(s._sum.qtyIn || 0),
-          issuedQty: Number(s._sum.qtyOut || 0),
-        }
-      ])
-    );
-
     const results = jobOrders.map((jo) => {
-      const processSet = new Set<string>();
-      const processorSet = new Set<string>();
-      
-      let totalIssued = 0;
-      let totalReceived = 0;
+      const stepPairs: { process: string; processorName: string; totalIssued: number; totalReceived: number }[] = [];
 
       for (const step of jo.steps) {
-        if (step.process?.name) {
-          processSet.add(step.process.name);
+        const processName = step.process?.name || '-';
+        
+        let pName = step.processorNameSnapshot;
+        if (!pName && step.processorType === 'in_house' && step.workCentre?.name) {
+          pName = step.workCentre.name;
         }
-        if (step.processorNameSnapshot) {
-          processorSet.add(step.processorNameSnapshot);
+        if (!pName && step.issues.length > 0) {
+          pName = step.issues.find(i => i.processorNameSnapshot)?.processorNameSnapshot ?? null;
         }
         
-        const sums = ledgerMap.get(step.id);
-        if (sums) {
-          totalIssued += sums.issuedQty;
-          totalReceived += sums.receivedQty;
+        const processorName = pName || '-';
+
+        let existingPair = stepPairs.find(p => p.process === processName && p.processorName === processorName);
+        if (!existingPair) {
+           existingPair = { process: processName, processorName: processorName, totalIssued: 0, totalReceived: 0 };
+           stepPairs.push(existingPair);
+        }
+        
+        for (const issue of step.issues) {
+          existingPair.totalIssued += Number(issue.totalQty || 0);
+        }
+        
+        for (const receipt of step.receipts) {
+          existingPair.totalReceived += Number(receipt.totalReceivedQty || 0);
         }
       }
 
@@ -115,10 +156,11 @@ export async function getJobOrdersReport(
         jobOrderNumber: jo.jobOrderNumber,
         orderDate: jo.orderDate,
         status: jo.status,
-        process: Array.from(processSet).join(', '),
-        processorName: Array.from(processorSet).join(', '),
-        totalIssued,
-        totalReceived,
+        process: stepPairs.map(p => p.process),
+        processorName: stepPairs.map(p => p.processorName),
+        totalIssued: stepPairs.map(p => p.totalIssued),
+        totalReceived: stepPairs.map(p => p.totalReceived),
+        pendingQty: stepPairs.map(p => Math.max(0, p.totalIssued - p.totalReceived)),
       };
     });
 

@@ -2,52 +2,70 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, endOfDay, startOfMonth } from 'date-fns';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
 import { Pagination } from '../../components/ui/Pagination';
+import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
+import type { Item } from '../items/items.schemas';
+import { ReportDateFilter } from './components/ReportDateFilter';
 import { useRecordReportVisit } from './useRecordReportVisit';
-import { reportsApi, type JobOrdersReportQuery, type JobOrdersReportRow } from './reports.api';
-import { useActiveCustomFields } from '../custom-fields/customFields.api';
-import { JOB_ORDER_STATUS_META } from '../jobwork/jobwork.schemas';
-import { fetchProcesses } from '../jobwork/processes/processes.api';
-import { fetchVendors } from '../purchases/vendors/vendors.api';
+import { reportsApi, type JobworkReceiptsQuery, type JobworkReceiptRow } from './reports.api';
 
 const COLUMN_CATALOG = [
-  { key: 'jobOrderNumber', label: 'JOB ORDER#', locked: true, defaultVisible: true },
-  { key: 'orderDate', label: 'DATE', locked: true, defaultVisible: true },
-  { key: 'status', label: 'STATUS', defaultVisible: true },
-  { key: 'process', label: 'PROCESS', defaultVisible: true },
+  { key: 'receiptDate', label: 'DATE', locked: true, defaultVisible: true },
+  { key: 'receiptNumber', label: 'RECEIPT#', locked: true, defaultVisible: true },
   { key: 'processorName', label: 'PROCESSOR', defaultVisible: true },
-  { key: 'totalIssued', label: 'TOTAL ISSUED', defaultVisible: true },
-  { key: 'totalReceived', label: 'TOTAL RECEIVED', defaultVisible: true },
-  { key: 'pendingQty', label: 'PENDING QTY', defaultVisible: true },
+  { key: 'process', label: 'PROCESS', defaultVisible: true },
+  { key: 'jobOrderNumber', label: 'JOB ORDER#', defaultVisible: true },
+  { key: 'items', label: 'ITEMS', defaultVisible: true },
+  { key: 'issuedQty', label: 'ISSUED QTY', defaultVisible: true },
+  { key: 'receivedQty', label: 'RECEIVED QTY', defaultVisible: true },
+  { key: 'acceptedQty', label: 'ACCEPTED', defaultVisible: false },
+  { key: 'reworkQty', label: 'REWORK', defaultVisible: false },
+  { key: 'scrapQty', label: 'SCRAP', defaultVisible: false },
+  { key: 'returnedQty', label: 'RETURNED', defaultVisible: false },
+  { key: 'status', label: 'STATUS', defaultVisible: true },
+  { key: 'processChargeTotal', label: 'PROCESS CHARGE', defaultVisible: false },
 ];
 
-const RIGHT_ALIGNED = new Set(['totalIssued', 'totalReceived', 'pendingQty']);
+const RIGHT_ALIGNED = new Set(['issuedQty', 'receivedQty', 'acceptedQty', 'reworkQty', 'scrapQty', 'returnedQty', 'processChargeTotal']);
+
+const firstOfMonth = () => startOfMonth(new Date());
 
 interface Applied {
+  fromDate: Date;
+  toDate: Date;
   conditions: FilterCondition[];
 }
 
-export function JobOrdersReportPage() {
+export function JobworkReceiptsRegisterPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
-  useRecordReportVisit(orgId, 'job_order_report');
+  useRecordReportVisit(orgId, 'jobwork_receipt_register');
 
-  const storageKey = `jobOrdersReportState_${orgId}`;
+  const storageKey = `jobworkReceiptsState_${orgId}`;
   const initialState = useMemo(() => {
     try {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
       if (!stored) return null;
       const parsed = JSON.parse(stored);
+      const safeDate = (val: unknown, fallback: Date) => {
+        const d = new Date(val as string);
+        return val && !isNaN(d.getTime()) ? d : fallback;
+      };
       return {
+        dateRange: (parsed.dateRange as string) || 'This Month',
+        fromDate: safeDate(parsed.fromDate, firstOfMonth()),
+        toDate: safeDate(parsed.toDate, new Date()),
         conditions: (parsed.conditions as FilterCondition[]) || [],
         applied: {
+          fromDate: safeDate(parsed.applied?.fromDate, firstOfMonth()),
+          toDate: safeDate(parsed.applied?.toDate, new Date()),
           conditions: (parsed.applied?.conditions as FilterCondition[]) || [],
         } satisfies Applied,
       };
@@ -56,150 +74,158 @@ export function JobOrdersReportPage() {
     }
   }, [orgId, storageKey]);
 
+  const [dateRange, setDateRange] = useState(initialState?.dateRange ?? 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate ?? firstOfMonth());
+  const [toDate, setToDate] = useState<Date>(initialState?.toDate ?? new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
-  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [] });
+  const [applied, setApplied] = useState<Applied>(
+    initialState?.applied ?? { fromDate: firstOfMonth(), toDate: new Date(), conditions: [] },
+  );
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(storageKey, JSON.stringify({ conditions, applied }));
-  }, [orgId, storageKey, conditions, applied]);
+    sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }),
+    );
+  }, [orgId, storageKey, dateRange, fromDate, toDate, conditions, applied]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
     COLUMN_CATALOG.filter((col) => col.defaultVisible).map((col) => col.key),
   );
 
-  const { data: customFields = [] } = useActiveCustomFields(orgId, 'jobOrder');
-
-  const { data: processesPage } = useQuery({
-    queryKey: ['processes', orgId],
-    queryFn: () => fetchProcesses(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId),
-  });
-  const processes = useMemo(() => processesPage?.results || [], [processesPage?.results]);
-
-  const { data: vendorsPage } = useQuery({
-    queryKey: ['vendors', orgId],
-    queryFn: () => fetchVendors(orgId!, { perPage: 500 }),
-    enabled: Boolean(orgId),
-  });
-  const processors = useMemo(() => vendorsPage?.results || [], [vendorsPage?.results]);
-
-  const customFilterFields = useMemo(() => {
-    return customFields.map((cf) => {
-      let dataType: FilterField['dataType'] = 'string';
-      if (cf.dataType === 'checkbox') dataType = 'boolean';
-      if (cf.dataType === 'date') dataType = 'date';
-      if (cf.dataType === 'number' || cf.dataType === 'decimal') dataType = 'number';
-
-      const options = cf.config?.options?.map((opt) => ({ label: opt.label, value: opt.id }));
-      if (cf.dataType === 'select' || cf.dataType === 'multi_select') dataType = 'select';
-
-      return {
-        key: `cf_${cf.key}`,
-        label: cf.label,
-        dataType,
-        group: 'Custom Fields',
-        options: options,
-      } as FilterField;
-    });
-  }, [customFields]);
-
-  const filterFields = useMemo<FilterField[]>(() => {
-    const statusOptions = Object.entries(JOB_ORDER_STATUS_META).map(([key, meta]) => ({
-      label: meta.label,
-      value: key,
-    }));
-    
-    const processOptions = processes.map((p) => ({ label: p.name, value: p.name }));
-    const processorOptions = processors.map((v) => ({ label: v.contactName, value: v.contactName }));
-
-    return [
+  const filterFields = useMemo<FilterField[]>(
+    () => [
+      {
+        key: 'itemName',
+        label: 'Item Name',
+        dataType: 'string',
+        group: 'Report',
+        renderInput: ({ value, onChange }) => (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <ItemComboBox
+              orgId={orgId!}
+              value={(value as string) || ''}
+              initialItem={
+                value ? ({ id: value as string, name: value as string } as unknown as Item) : null
+              }
+              onChange={(item) => onChange(item?.name || '')}
+              placeholder="Select an item…"
+              portal
+            />
+          </div>
+        ),
+      },
+      { key: 'processorName', label: 'Processor', dataType: 'string', group: 'Report' },
+      { key: 'processName', label: 'Process', dataType: 'string', group: 'Report' },
       { key: 'jobOrderNumber', label: 'Job Order#', dataType: 'string', group: 'Report' },
-      { key: 'orderDate', label: 'Order Date', dataType: 'date', group: 'Report' },
-      { key: 'status', label: 'Status', dataType: 'select', options: statusOptions, group: 'Report' },
-      { key: 'processName', label: 'Process', dataType: 'select', options: processOptions, group: 'Report' },
-      { key: 'processorName', label: 'Processor', dataType: 'select', options: processorOptions, group: 'Report' },
-      ...customFilterFields,
-    ];
-  }, [customFilterFields, processes, processors]);
+      { key: 'receiptNumber', label: 'Receipt#', dataType: 'string', group: 'Report' },
+      {
+        key: 'status',
+        label: 'Status',
+        dataType: 'select',
+        group: 'Report',
+        options: [
+          { label: 'Draft', value: 'draft' },
+          { label: 'Posted', value: 'posted' },
+          { label: 'Cancelled', value: 'cancelled' },
+        ],
+      },
+      { key: 'issuedQty', label: 'Issued Qty', dataType: 'number', group: 'Quantities' },
+      { key: 'receivedQty', label: 'Received Qty', dataType: 'number', group: 'Quantities' },
+      { key: 'minAgeDays', label: 'Min Age (Days)', dataType: 'number', group: 'Report' },
+    ],
+    [orgId],
+  );
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const query = useMemo<JobOrdersReportQuery>(() => {
+  const query = useMemo<JobworkReceiptsQuery>(() => {
     const valueOf = (field: string) => {
       const value = applied.conditions.find((c) => c.field === field)?.value;
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
-    
-    const dateOf = (field: string, suffix: '_from' | '_to') => {
-      const value = applied.conditions.find((c) => c.field === field + suffix)?.value;
-      return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    const numValueOf = (field: string) => {
+      const value = applied.conditions.find((c) => c.field === field)?.value;
+      if (value === undefined || value === null || value === '') return undefined;
+      const num = Number(value);
+      return isNaN(num) ? undefined : num;
     };
-    
-    const customFieldKeys = new Set(customFields.map((cf) => cf.key));
-    const jobOrderCustomFields: Record<string, unknown> = {};
-    
-    for (const c of applied.conditions) {
-      const cfKey = c.field.replace('cf_', '');
-      if (customFieldKeys.has(cfKey)) {
-        jobOrderCustomFields[cfKey] = c.value;
-      }
-    }
-
-    const q: JobOrdersReportQuery = {
-      jobOrderNumber: valueOf('jobOrderNumber'),
+    return {
+      fromDate: applied.fromDate.toISOString(),
+      toDate: endOfDay(applied.toDate).toISOString(),
+      itemName: valueOf('itemName'),
       processorName: valueOf('processorName'),
       processName: valueOf('processName'),
+      jobOrderNumber: valueOf('jobOrderNumber'),
+      receiptNumber: valueOf('receiptNumber'),
       status: valueOf('status'),
-      fromDate: dateOf('orderDate', '_from'),
-      toDate: dateOf('orderDate', '_to'),
+      issuedQty: numValueOf('issuedQty'),
+      receivedQty: numValueOf('receivedQty'),
+      minAgeDays: numValueOf('minAgeDays'),
       page,
       perPage,
     };
-    
-    if (Object.keys(jobOrderCustomFields).length > 0) {
-      q.jobOrderCustomFields = jobOrderCustomFields;
-    }
-    
-    return q;
-  }, [applied, page, perPage, customFields]);
+  }, [applied, page, perPage]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports', orgId, 'job-orders', query],
-    queryFn: () => reportsApi.getJobOrdersReport(orgId!, query),
+    queryKey: ['reports', orgId, 'jobwork-receipts', query],
+    queryFn: () => reportsApi.getJobworkReceipts(orgId!, query),
     enabled: Boolean(orgId),
   });
 
   const rows = data?.results ?? [];
-  const total = data?.totalCount ?? 0;
+  const total = data?.total ?? 0;
+  const formattedFromDate = format(applied.fromDate, 'dd-MM-yyyy');
+  const formattedToDate = format(applied.toDate, 'dd-MM-yyyy');
 
-  const cell = (row: JobOrdersReportRow, key: string, rowIndex: number = 0) => {
+  const cell = (row: JobworkReceiptRow, key: string) => {
     switch (key) {
+      case 'receiptDate':
+        return format(new Date(row.receiptDate), 'dd-MM-yyyy');
+      case 'receiptNumber':
+        return (
+          <Link
+            className="hover-underline"
+            to={`/organizations/${orgId}/jobwork/receipts?id=${row.id}`}
+            style={{ color: '#0062ff', fontWeight: 500 }}
+          >
+            {row.receiptNumber}
+          </Link>
+        );
+      case 'processorName':
+        return row.processorName;
+      case 'process':
+        return row.process;
       case 'jobOrderNumber':
         return (
           <Link
             className="hover-underline"
-            to={`/organizations/${orgId}/jobwork/job-orders/${row.id}`}
-            style={{ color: '#0062ff', fontWeight: 500 }}
+            to={`/organizations/${orgId}/jobwork/job-orders/${row.jobOrderId}`}
+            style={{ color: '#0062ff' }}
           >
             {row.jobOrderNumber}
           </Link>
         );
-      case 'orderDate':
-        return format(new Date(row.orderDate), 'dd-MM-yyyy');
+      case 'items':
+        return row.items;
+      case 'issuedQty':
+        return row.issuedQty.toFixed(2);
+      case 'receivedQty':
+        return row.receivedQty.toFixed(2);
+      case 'acceptedQty':
+        return row.acceptedQty.toFixed(2);
+      case 'reworkQty':
+        return row.reworkQty.toFixed(2);
+      case 'scrapQty':
+        return row.scrapQty.toFixed(2);
+      case 'returnedQty':
+        return row.returnedQty.toFixed(2);
       case 'status':
         return row.status;
-      case 'process':
-        return row.process[rowIndex] || '-';
-      case 'processorName':
-        return row.processorName[rowIndex] || '-';
-      case 'totalIssued':
-        return row.totalIssued[rowIndex]?.toFixed(2) || '0.00';
-      case 'totalReceived':
-        return row.totalReceived[rowIndex]?.toFixed(2) || '0.00';
-      case 'pendingQty':
-        return row.pendingQty[rowIndex]?.toFixed(2) || '0.00';
+      case 'processChargeTotal':
+        return row.processChargeTotal.toFixed(2);
       default:
         return null;
     }
@@ -230,7 +256,10 @@ export function JobOrdersReportPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Job Work</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
-            Job Order Report (Ledger View)
+            Jobwork Receipt Register
+            <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+              • From {formattedFromDate} To {formattedToDate}
+            </span>
           </div>
         </div>
 
@@ -282,6 +311,17 @@ export function JobOrdersReportPage() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', flex: 1 }}>
+          <ReportDateFilter
+            isRange={true}
+            value={dateRange}
+            onChangeRange={(label, start, end) => {
+              setDateRange(label);
+              setFromDate(start);
+              setToDate(end);
+            }}
+            labelPrefix=""
+          />
+
           <AdvancedFilter
             fields={filterFields}
             conditions={conditions}
@@ -298,7 +338,7 @@ export function JobOrdersReportPage() {
             type="button"
             onClick={() => {
               setPage(1);
-              setApplied({ conditions });
+              setApplied({ fromDate, toDate, conditions });
             }}
             style={{
               padding: '6px 12px',
@@ -388,8 +428,11 @@ export function JobOrdersReportPage() {
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
-              Job Order Report (Ledger View)
+              Jobwork Receipt Register
             </h2>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>
+              From {formattedFromDate} To {formattedToDate}
+            </div>
           </div>
 
           {/* Data Table */}
@@ -418,48 +461,31 @@ export function JobOrdersReportPage() {
                         ? 'Loading...'
                         : isError
                           ? 'Could not load the report.'
-                          : 'No job orders found'}
+                          : 'No receipts found'}
                     </td>
                   </tr>
                 ) : (
-                  rows.flatMap((row) => {
-                    const rowSpanCount = Math.max(1, row.process.length);
-                    return Array.from({ length: rowSpanCount }).map((_, rowIndex) => (
-                      <tr
-                        key={`${row.id}-${rowIndex}`}
-                        className="table-row-hover"
-                      >
-                        {visibleColumns.map((key) => {
-                          const isGroupedColumn = ![
-                            'process',
-                            'processorName',
-                            'totalIssued',
-                            'totalReceived',
-                            'pendingQty',
-                          ].includes(key);
-
-                          if (isGroupedColumn && rowIndex > 0) {
-                            return null;
-                          }
-
-                          return (
-                            <td
-                              key={key}
-                              rowSpan={isGroupedColumn ? rowSpanCount : 1}
-                              style={{
-                                ...tdStyle,
-                                ...(RIGHT_ALIGNED.has(key)
-                                  ? { textAlign: 'right', fontWeight: 600 }
-                                  : {}),
-                              }}
-                            >
-                              {cell(row, key, rowIndex)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ));
-                  })
+                  rows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="table-row-hover"
+                      style={{ borderTop: '1px solid #f9fafb' }}
+                    >
+                      {visibleColumns.map((key) => (
+                        <td
+                          key={key}
+                          style={{
+                            ...tdStyle,
+                            ...(RIGHT_ALIGNED.has(key)
+                              ? { textAlign: 'right', fontWeight: 600 }
+                              : {}),
+                          }}
+                        >
+                          {cell(row, key)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -468,8 +494,8 @@ export function JobOrdersReportPage() {
           <Pagination
             pageContext={{
               page: data?.page || page,
-              perPage: data?.pageSize || perPage,
-              hasMore: data ? data.page * data.pageSize < data.totalCount : false,
+              perPage: data?.perPage || perPage,
+              hasMore: data ? data.page < data.totalPages : false,
             }}
             total={total}
             page={page}
@@ -498,21 +524,20 @@ export function JobOrdersReportPage() {
 }
 
 const thStyle = {
-  padding: '10px 15px',
-  textAlign: 'left' as const,
+  padding: '12px 24px',
   fontSize: '11px',
   fontWeight: 600,
-  color: '#333333',
+  color: '#6b7280',
   textTransform: 'uppercase' as const,
-  background: '#fafafa',
-  letterSpacing: '0.3px',
-  border: '1px solid #eeeeee',
+  background: '#f9fafb',
+  letterSpacing: '0.5px',
+  whiteSpace: 'nowrap' as const,
 };
 
 const tdStyle = {
-  padding: '12px 15px',
+  padding: '12px 24px',
   fontSize: '13px',
-  color: '#222222',
-  border: '1px solid #eeeeee',
-  verticalAlign: 'top' as const,
+  color: '#111827',
+  borderBottom: '1px solid #f3f4f6',
+  whiteSpace: 'nowrap' as const,
 };

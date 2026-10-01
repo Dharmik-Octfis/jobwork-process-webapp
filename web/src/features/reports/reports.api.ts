@@ -240,6 +240,7 @@ export type ReportKey =
   | 'batch_report'
   | 'taka_report'
   | 'jobwork_challan_register'
+  | 'jobwork_receipt_register'
   | 'job_order_report';
 
 export interface JobOrdersReportQuery {
@@ -248,6 +249,10 @@ export interface JobOrdersReportQuery {
   jobOrderNumber?: string;
   processorName?: string;
   processName?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  jobOrderCustomFields?: Record<string, unknown>;
 }
 
 export interface JobOrdersReportRow {
@@ -255,10 +260,11 @@ export interface JobOrdersReportRow {
   jobOrderNumber: string;
   orderDate: string;
   status: string;
-  process: string;
-  processorName: string;
-  totalIssued: number;
-  totalReceived: number;
+  process: string[];
+  processorName: string[];
+  totalIssued: number[];
+  totalReceived: number[];
+  pendingQty: number[];
 }
 
 export interface PaginatedJobOrdersReportResponse {
@@ -307,6 +313,46 @@ export interface JobworkChallanRow {
 
 export interface PaginatedJobworkChallansResponse {
   results: JobworkChallanRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue?: number;
+}
+
+export interface JobworkReceiptsQuery {
+  page?: number;
+  perPage?: number;
+  processorName?: string;
+  processName?: string;
+  jobOrderNumber?: string;
+  itemName?: string;
+  fromDate?: string;
+  toDate?: string;
+  minAgeDays?: number;
+}
+
+export interface JobworkReceiptRow {
+  id: string;
+  receiptNumber: string;
+  receiptDate: string;
+  processorName: string;
+  process: string;
+  jobOrderNumber: string;
+  jobOrderId: string;
+  items: string;
+  issuedQty: number;
+  receivedQty: number;
+  acceptedQty: number;
+  reworkQty: number;
+  scrapQty: number;
+  returnedQty: number;
+  status: string;
+  processChargeTotal: number;
+}
+
+export interface PaginatedJobworkReceiptsResponse {
+  results: JobworkReceiptRow[];
   total: number;
   page: number;
   perPage: number;
@@ -487,6 +533,13 @@ export const reportsApi = {
   ): Promise<PaginatedJobworkChallansResponse> => {
     const response = await apiClient.get(endpoints.reports.jobworkChallans(orgId), { params });
     return response.data as PaginatedJobworkChallansResponse;
+  },
+  getJobworkReceipts: async (
+    orgId: string,
+    params: JobworkReceiptsQuery = {},
+  ): Promise<PaginatedJobworkReceiptsResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobworkReceipts(orgId), { params });
+    return response.data as PaginatedJobworkReceiptsResponse;
   },
   getJobOrdersReport: async (
     orgId: string,

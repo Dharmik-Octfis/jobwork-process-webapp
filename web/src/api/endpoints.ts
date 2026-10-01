@@ -179,6 +179,7 @@ export const endpoints = {
     batchReport: (orgId: string) => `/organizations/${orgId}/reports/batch`,
     takaReport: (orgId: string) => `/organizations/${orgId}/reports/taka`,
     jobworkChallans: (orgId: string) => `/organizations/${orgId}/reports/jobwork-challans`,
+    jobworkReceipts: (orgId: string) => `/organizations/${orgId}/reports/jobwork-receipts`,
     jobOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/job-orders`,
   },
   automation: {

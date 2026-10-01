@@ -166,6 +166,10 @@ const JobworkChallansRegisterPage = lazyPage(
   () => import('../features/reports/JobworkChallansRegisterPage'),
   'JobworkChallansRegisterPage',
 );
+const JobworkReceiptsRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkReceiptsRegisterPage'),
+  'JobworkReceiptsRegisterPage',
+);
 const JobOrdersReportPage = lazyPage(
   () => import('../features/reports/JobOrdersReportPage'),
   'JobOrdersReportPage',
@@ -464,6 +468,10 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/reports/jobwork-challans',
                     element: <JobworkChallansRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-receipts',
+                    element: <JobworkReceiptsRegisterPage />,
                   },
                   {
                     path: '/organizations/:orgId/reports/job-orders',

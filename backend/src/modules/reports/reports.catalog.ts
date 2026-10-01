@@ -61,6 +61,12 @@ export const REPORTS = [
     path: 'jobwork-challans',
   },
   {
+    key: 'jobwork_receipt_register',
+    name: 'Jobwork Receipt Register',
+    category: 'Job Work',
+    path: 'jobwork-receipts',
+  },
+  {
     key: 'job_order_report',
     name: 'Job Order Report (Ledger View)',
     category: 'Job Work',
