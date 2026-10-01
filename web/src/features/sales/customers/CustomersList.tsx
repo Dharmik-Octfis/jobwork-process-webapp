@@ -380,7 +380,7 @@ export function CustomersList() {
                             {customer.companyName || customer.email || 'No email'}
                           </div>
                         </div>
-                        {(customer as any).isPendingApproval ? (
+                        {customer.isPendingApproval ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
                             <div
                               style={{
