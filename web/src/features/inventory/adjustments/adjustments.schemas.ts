@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
-/** The server's fixed list (`ADJUSTMENT_REASONS`), with what each is called on screen. */
+export type AdjustmentType = 'quantity' | 'value';
+
+export const ADJUSTMENT_TYPE_OPTIONS: { value: AdjustmentType; label: string }[] = [
+  { value: 'quantity', label: 'Quantity Adjustment' },
+  { value: 'value', label: 'Value Adjustment' },
+];
+
+/** The server's fixed lists (`QUANTITY_REASONS`, `VALUE_REASONS`), as named on screen. */
 export const ADJUSTMENT_REASON_OPTIONS = [
   { value: 'damaged', label: 'Damaged goods' },
   { value: 'lost', label: 'Lost or stolen' },
@@ -9,8 +16,20 @@ export const ADJUSTMENT_REASON_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+export const VALUE_REASON_OPTIONS = [
+  { value: 'write_down', label: 'Write-down to realisable value' },
+  { value: 'cost_correction', label: 'Cost correction' },
+  { value: 'other', label: 'Other' },
+];
+
+export const reasonOptionsFor = (type: AdjustmentType) =>
+  type === 'value' ? VALUE_REASON_OPTIONS : ADJUSTMENT_REASON_OPTIONS;
+
 export const adjustmentReasonLabel = (reason: string) =>
-  ADJUSTMENT_REASON_OPTIONS.find((option) => option.value === reason)?.label ?? reason;
+  [...ADJUSTMENT_REASON_OPTIONS, ...VALUE_REASON_OPTIONS].find((option) => option.value === reason)
+    ?.label ?? reason;
+
+export const adjustmentTypeLabel = (type: string) => (type === 'value' ? 'Value' : 'Quantity');
 
 /**
  * draft | pending_approval | approved | rejected | adjusted | cancelled.
@@ -55,13 +74,16 @@ export interface AdjustmentBatchPayload {
 
 export interface AdjustmentLinePayload {
   itemId: string;
-  /** Signed: positive adds stock, negative removes it. */
-  quantityAdjusted: number;
+  /** Quantity adjustment. Signed: positive adds stock, negative removes it. */
+  quantityAdjusted?: number;
   costPrice?: number | null;
   batches?: AdjustmentBatchPayload[];
+  /** Value adjustment. Signed change in what the stock here is worth. */
+  valueAdjusted?: number;
 }
 
 export interface SaveAdjustmentPayload {
+  adjustmentType: AdjustmentType;
   locationId: string;
   /** `yyyy-MM-dd`, as every other document here sends its date. */
   adjustmentDate: string;
@@ -83,6 +105,7 @@ const lineItemSchema = z.object({
 const headerSchema = z.object({
   id: z.string(),
   adjustmentNumber: z.string(),
+  adjustmentType: z.enum(['quantity', 'value']),
   adjustmentDate: z.string(),
   locationId: z.string(),
   value: decimal,
@@ -99,6 +122,7 @@ export const stockAdjustmentRowSchema = headerSchema.extend({
       id: z.string(),
       itemId: z.string(),
       quantityAdjusted: decimal,
+      valueAdjusted: decimal.nullable(),
       item: lineItemSchema,
     }),
   ),
@@ -134,6 +158,9 @@ const detailLineSchema = z.object({
   quantityBefore: decimal.nullable(),
   costPrice: decimal.nullable(),
   value: decimal,
+  /** Value line: the change asked for, and what the stock was worth when it posted. */
+  valueAdjusted: decimal.nullable(),
+  valueBefore: decimal.nullable(),
   draftBatches: z.array(draftBatchSchema).nullable(),
   item: lineItemSchema.extend({
     unit: z.string().nullable().optional(),
@@ -158,6 +185,18 @@ export const stockAdjustmentDetailSchema = headerSchema.extend({
   createdAt: z.string(),
   createdByUser: z.object({ id: z.string(), fullName: z.string() }).nullable(),
   lines: z.array(detailLineSchema),
+  /** A posted value adjustment: what it did, per line per purchase entry. */
+  valueChanges: z.array(
+    z.object({
+      lineId: z.string(),
+      entry: z.string(),
+      inDate: z.string(),
+      qty: decimal,
+      valueBefore: decimal,
+      valueAfter: decimal,
+      reversed: z.boolean(),
+    }),
+  ),
   /** What the batches and packages a draft points at are called. */
   draftLabels: z.object({
     batches: z.record(z.string(), z.string()),

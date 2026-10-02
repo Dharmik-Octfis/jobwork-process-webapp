@@ -4,6 +4,8 @@ import { toast } from 'react-hot-toast';
 import { X } from 'lucide-react';
 import { Select } from '../../../components/ui/Select';
 import { DateInput } from '../../../components/ui/DateInput';
+import { InfoTip } from '../../../components/ui/InfoTip';
+import { RadioGroup } from '../../../components/ui/RadioGroup';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import {
@@ -13,10 +15,15 @@ import {
 } from '../../configuration/locations/locations.api';
 import { itemsApi } from '../../items/items.api';
 import { stockOnHandOf } from '../../items/stockFigures';
-import { formatQty } from '../../jobwork/jobwork.schemas';
-import { createAdjustment } from './adjustments.api';
+import { formatMoney, formatQty } from '../../jobwork/jobwork.schemas';
+import { createAdjustment, fetchCurrentValues } from './adjustments.api';
 import { FifoCostField } from './FifoCostField';
-import { ADJUSTMENT_REASON_OPTIONS, type SaveAdjustmentPayload } from './adjustments.schemas';
+import {
+  ADJUSTMENT_TYPE_OPTIONS,
+  reasonOptionsFor,
+  type AdjustmentType,
+  type SaveAdjustmentPayload,
+} from './adjustments.schemas';
 import {
   QTY_EPSILON,
   adjustedOf,
@@ -26,7 +33,9 @@ import {
   isBatchTracked,
   lineProblem,
   toLinePayload,
+  toValueLinePayload,
   uomOf,
+  valueProblem,
   withQuantity,
   withoutBatches,
   type AdjustableItem,
@@ -42,7 +51,8 @@ interface AdjustStockPanelProps {
   onClose: () => void;
 }
 
-type Field = 'adjustmentDate' | 'locationId' | 'quantity' | 'costPrice' | 'batches' | 'reason';
+type Field =
+  'adjustmentDate' | 'locationId' | 'quantity' | 'costPrice' | 'batches' | 'reason' | 'value';
 
 const rowStyle: React.CSSProperties = {
   gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 260px)',
@@ -90,6 +100,8 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
   }, []);
   const uomLabel = uomOf(item);
 
+  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('quantity');
+  const isValue = adjustmentType === 'value';
   const [adjustmentDate, setAdjustmentDate] = useState(new Date().toISOString().slice(0, 10));
   const [referenceNumber, setReferenceNumber] = useState('');
   const [chosenLocationId, setChosenLocationId] = useState<string | null>(null);
@@ -121,6 +133,26 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
     return row ? stockOnHandOf(row) : 0;
   }, [stockRows, locationId]);
 
+  // A value adjustment's "Current Value": what the stock here is worth, from the cost layers.
+  const { data: currentRows = [] } = useQuery({
+    queryKey: ['adjustment-values', orgId, locationId, [item.id]],
+    queryFn: () => fetchCurrentValues(orgId, { locationId, itemIds: [item.id] }),
+    enabled: isValue && Boolean(locationId),
+  });
+  const current = {
+    qty: Number(currentRows[0]?.quantity ?? 0),
+    value: Number(currentRows[0]?.value ?? 0),
+  };
+  const valueTexts = boxTexts(line, current.value);
+
+  const changeType = (next: AdjustmentType) => {
+    if (next === adjustmentType) return;
+    setAdjustmentType(next);
+    if (!reasonOptionsFor(next).some((option) => option.value === reason)) setReason('');
+    setLine(emptyLine(item));
+    setInvalid(new Set());
+  };
+
   const adjusted = adjustedOf(line, available);
   const magnitude = Math.abs(adjusted);
   const isIncrease = adjusted > 0;
@@ -140,6 +172,11 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
     clear('quantity', 'batches');
   };
 
+  const setValue = (box: 'adjusted' | 'new', text: string) => {
+    setLine((prev) => withQuantity(prev, box, text, current.value));
+    clear('value');
+  };
+
   const mutation = useMutation({
     mutationFn: (payload: SaveAdjustmentPayload) => createAdjustment(orgId, payload),
     onSuccess: (adjustment) => {
@@ -151,7 +188,11 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
       const fields = reportSaveError(error);
       // The server files a line's problems under `lines`; here that is the quantity row.
       setInvalid(
-        new Set(fields.map((field) => (field.startsWith('lines') ? 'quantity' : field)) as Field[]),
+        new Set(
+          fields.map((field) =>
+            field.startsWith('lines') ? (isValue ? 'value' : 'quantity') : field,
+          ) as Field[],
+        ),
       );
     },
   });
@@ -160,7 +201,14 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
     const problems: [Field, string][] = [];
     if (!adjustmentDate) problems.push(['adjustmentDate', 'Enter the date.']);
     if (!locationId) problems.push(['locationId', 'Select a location.']);
-    if (magnitude < QTY_EPSILON) problems.push(['quantity', 'Enter a quantity to adjust.']);
+    if (isValue) {
+      if (Math.abs(adjustedOf(line, current.value)) < 0.005) {
+        problems.push(['value', 'Enter a value to adjust.']);
+      } else if (saveAs === 'adjust') {
+        const problem = valueProblem(line, item, current);
+        if (problem) problems.push([problem.field, problem.message]);
+      }
+    } else if (magnitude < QTY_EPSILON) problems.push(['quantity', 'Enter a quantity to adjust.']);
     else if (saveAs === 'adjust') {
       // A draft may be incomplete; Adjust is where it has to be right.
       const problem = lineProblem(line, item, available, {
@@ -177,12 +225,17 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
     }
 
     mutation.mutate({
+      adjustmentType,
       locationId,
       adjustmentDate,
       reason,
       referenceNumber: referenceNumber.trim() || null,
       description: description.trim() || null,
-      lines: [toLinePayload(line, item, available)],
+      lines: [
+        isValue
+          ? toValueLinePayload(line, item, current.value)
+          : toLinePayload(line, item, available),
+      ],
       saveAs,
     });
   };
@@ -231,6 +284,15 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
 
       <div className="detail-page-content" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         <div style={{ maxWidth: 680, minWidth: 0 }}>
+          <div style={{ marginBottom: 8 }}>
+            <RadioGroup
+              name="adjust-stock-type"
+              value={adjustmentType}
+              onChange={changeType}
+              options={ADJUSTMENT_TYPE_OPTIONS}
+              ariaLabel="Mode of adjustment"
+            />
+          </div>
           <div
             className="form-field-grid"
             style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}
@@ -292,122 +354,185 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
               />
             </div>
 
-            <div className="form-field-grid" style={rowStyle}>
-              <label htmlFor="adjust-available" style={labelStyle}>
-                Quantity Available
-              </label>
-              <div style={{ minWidth: 0 }}>
-                <input
-                  id="adjust-available"
-                  value={formatQty(available)}
-                  disabled
-                  className="locked-value"
-                  style={inputStyle(false)}
-                />
-                {uomLabel && (
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, textAlign: 'right' }}>
-                    {uomLabel}
+            {isValue ? (
+              <>
+                <div className="form-field-grid" style={rowStyle}>
+                  <label htmlFor="adjust-current-value" style={labelStyle}>
+                    Current Value
+                  </label>
+                  <input
+                    id="adjust-current-value"
+                    value={formatMoney(current.value)}
+                    disabled
+                    className="locked-value"
+                    style={inputStyle(false)}
+                  />
+                </div>
+                <div className="form-field-grid" style={rowStyle}>
+                  <label htmlFor="adjust-new-value" style={labelStyle}>
+                    Changed Value
+                  </label>
+                  <input
+                    id="adjust-new-value"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={valueTexts.newQty}
+                    onChange={(event) => {
+                      if (/^\d*\.?\d{0,2}$/.test(event.target.value)) {
+                        setValue('new', event.target.value);
+                      }
+                    }}
+                    style={inputStyle(invalid.has('value'))}
+                  />
+                </div>
+                <div className="form-field-grid" style={{ ...rowStyle, borderBottom: 'none' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <label htmlFor="adjust-value" style={requiredStyle}>
+                      Adjusted Value*
+                    </label>
+                    <InfoTip label="How a value adjustment works">
+                      The change goes onto the newest purchase of this item at this location; no
+                      stock moves. Lowering the value is a write-down. Raise it only to correct a
+                      cost entered wrong or to undo an earlier write-down. Post the same change in
+                      your accounts.
+                    </InfoTip>
+                  </span>
+                  <input
+                    id="adjust-value"
+                    inputMode="decimal"
+                    placeholder="Eg. +500, -500"
+                    value={valueTexts.adjusted}
+                    onChange={(event) => {
+                      if (/^[+-]?\d*\.?\d{0,2}$/.test(event.target.value)) {
+                        setValue('adjusted', event.target.value);
+                      }
+                    }}
+                    style={inputStyle(invalid.has('value'))}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="form-field-grid" style={rowStyle}>
+                  <label htmlFor="adjust-available" style={labelStyle}>
+                    Quantity Available
+                  </label>
+                  <div style={{ minWidth: 0 }}>
+                    <input
+                      id="adjust-available"
+                      value={formatQty(available)}
+                      disabled
+                      className="locked-value"
+                      style={inputStyle(false)}
+                    />
+                    {uomLabel && (
+                      <div
+                        style={{ fontSize: 11, color: '#64748b', marginTop: 4, textAlign: 'right' }}
+                      >
+                        {uomLabel}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-field-grid" style={rowStyle}>
+                  <label htmlFor="adjust-new" style={labelStyle}>
+                    New Quantity on hand
+                  </label>
+                  <input
+                    id="adjust-new"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={texts.newQty}
+                    onChange={(event) => {
+                      if (/^\d*\.?\d{0,4}$/.test(event.target.value)) {
+                        setQuantity('new', event.target.value);
+                      }
+                    }}
+                    style={inputStyle(invalid.has('quantity'))}
+                  />
+                </div>
+
+                <div className="form-field-grid" style={rowStyle}>
+                  <label htmlFor="adjust-quantity" style={requiredStyle}>
+                    Quantity Adjusted*
+                  </label>
+                  <input
+                    id="adjust-quantity"
+                    inputMode="decimal"
+                    placeholder="Eg. +10, -10"
+                    value={texts.adjusted}
+                    onChange={(event) => {
+                      // A sign, digits and one point — "+5" and "-15" are how this is typed.
+                      if (/^[+-]?\d*\.?\d{0,4}$/.test(event.target.value)) {
+                        setQuantity('adjusted', event.target.value);
+                      }
+                    }}
+                    style={inputStyle(invalid.has('quantity'))}
+                  />
+                </div>
+
+                <div className="form-field-grid" style={rowStyle}>
+                  <label htmlFor="adjust-cost" style={isDecrease ? labelStyle : requiredStyle}>
+                    {isDecrease ? 'Cost Price' : 'Cost Price*'}
+                  </label>
+                  {/* A decrease states no cost — FIFO decides what stock leaving is worth, shown read-only. */}
+                  {isDecrease ? (
+                    <FifoCostField
+                      id="adjust-cost"
+                      orgId={orgId}
+                      itemId={item.id}
+                      locationId={locationId}
+                      quantity={magnitude}
+                      style={inputStyle(false, true)}
+                    />
+                  ) : (
+                    <input
+                      id="adjust-cost"
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min={0}
+                      value={line.costPrice}
+                      onWheel={blurOnWheel}
+                      onChange={(event) => {
+                        setLine((prev) => ({ ...prev, costPrice: event.target.value }));
+                        clear('costPrice');
+                      }}
+                      style={inputStyle(invalid.has('costPrice'))}
+                    />
+                  )}
+                </div>
+
+                {isBatchTracked(item) && magnitude >= QTY_EPSILON && (
+                  <div className="form-field-grid" style={{ ...rowStyle, borderBottom: 'none' }}>
+                    <span style={requiredStyle}>{tracking.singular} Details*</span>
+                    <button
+                      type="button"
+                      disabled={!locationId}
+                      onClick={() => {
+                        setIsPicking(true);
+                        clear('batches');
+                      }}
+                      style={{
+                        minHeight: 36,
+                        padding: '0 10px',
+                        background: 'none',
+                        border: 'none',
+                        borderRadius: 4,
+                        color: invalid.has('batches') ? '#dc2626' : '#2563eb',
+                        fontSize: 13,
+                        textAlign: 'right',
+                        cursor: locationId ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      {picked.count > 0
+                        ? `${picked.count} ${picked.count === 1 ? tracking.singular : tracking.plural} · ${formatQty(picked.total)} ${uomLabel}`
+                        : `${isIncrease ? 'Add' : 'Select'} ${tracking.plural}`}
+                    </button>
                   </div>
                 )}
-              </div>
-            </div>
-
-            <div className="form-field-grid" style={rowStyle}>
-              <label htmlFor="adjust-new" style={labelStyle}>
-                New Quantity on hand
-              </label>
-              <input
-                id="adjust-new"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={texts.newQty}
-                onChange={(event) => {
-                  if (/^\d*\.?\d{0,4}$/.test(event.target.value)) {
-                    setQuantity('new', event.target.value);
-                  }
-                }}
-                style={inputStyle(invalid.has('quantity'))}
-              />
-            </div>
-
-            <div className="form-field-grid" style={rowStyle}>
-              <label htmlFor="adjust-quantity" style={requiredStyle}>
-                Quantity Adjusted*
-              </label>
-              <input
-                id="adjust-quantity"
-                inputMode="decimal"
-                placeholder="Eg. +10, -10"
-                value={texts.adjusted}
-                onChange={(event) => {
-                  // A sign, digits and one point — "+5" and "-15" are how this is typed.
-                  if (/^[+-]?\d*\.?\d{0,4}$/.test(event.target.value)) {
-                    setQuantity('adjusted', event.target.value);
-                  }
-                }}
-                style={inputStyle(invalid.has('quantity'))}
-              />
-            </div>
-
-            <div className="form-field-grid" style={rowStyle}>
-              <label htmlFor="adjust-cost" style={isDecrease ? labelStyle : requiredStyle}>
-                {isDecrease ? 'Cost Price' : 'Cost Price*'}
-              </label>
-              {/* A decrease states no cost — FIFO decides what stock leaving is worth, shown read-only. */}
-              {isDecrease ? (
-                <FifoCostField
-                  id="adjust-cost"
-                  orgId={orgId}
-                  itemId={item.id}
-                  locationId={locationId}
-                  quantity={magnitude}
-                  style={inputStyle(false, true)}
-                />
-              ) : (
-                <input
-                  id="adjust-cost"
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  min={0}
-                  value={line.costPrice}
-                  onWheel={blurOnWheel}
-                  onChange={(event) => {
-                    setLine((prev) => ({ ...prev, costPrice: event.target.value }));
-                    clear('costPrice');
-                  }}
-                  style={inputStyle(invalid.has('costPrice'))}
-                />
-              )}
-            </div>
-
-            {isBatchTracked(item) && magnitude >= QTY_EPSILON && (
-              <div className="form-field-grid" style={{ ...rowStyle, borderBottom: 'none' }}>
-                <span style={requiredStyle}>{tracking.singular} Details*</span>
-                <button
-                  type="button"
-                  disabled={!locationId}
-                  onClick={() => {
-                    setIsPicking(true);
-                    clear('batches');
-                  }}
-                  style={{
-                    minHeight: 36,
-                    padding: '0 10px',
-                    background: 'none',
-                    border: 'none',
-                    borderRadius: 4,
-                    color: invalid.has('batches') ? '#dc2626' : '#2563eb',
-                    fontSize: 13,
-                    textAlign: 'right',
-                    cursor: locationId ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  {picked.count > 0
-                    ? `${picked.count} ${picked.count === 1 ? tracking.singular : tracking.plural} · ${formatQty(picked.total)} ${uomLabel}`
-                    : `${isIncrease ? 'Add' : 'Select'} ${tracking.plural}`}
-                </button>
-              </div>
+              </>
             )}
           </div>
 
@@ -419,7 +544,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
                 setReason(value);
                 clear('reason');
               }}
-              options={ADJUSTMENT_REASON_OPTIONS}
+              options={reasonOptionsFor(adjustmentType)}
               placeholder="Select a reason…"
               hasError={invalid.has('reason')}
               ariaLabel="Reason"

@@ -69,6 +69,8 @@ const TENANT_TABLES = [
   // would notice its policy going missing.
   'stock_cost_layers',
   'stock_layer_draws',
+  // What a value adjustment did to each layer, 20261002120013_value_adjustment.
+  'stock_layer_revaluations',
   // The optional level below a batch — a taka/roll/bale — added in
   // 20260901120700_add_batch_units. It carries its own `organization_id`
   // (denormalised from the parent batch) precisely so it can hold its own

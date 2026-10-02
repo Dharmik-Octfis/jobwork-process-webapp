@@ -1,6 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import type { TenantClient } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
+import { splitByQty } from '../../../lib/splitByQty.ts';
 
 /**
  * 🔴 FIFO COST LAYERS — the engine behind `postMovement` (docs/FIFO_COSTING_PLAN.md).
@@ -169,6 +170,16 @@ export async function drawLayers(
 ): Promise<{ draws: LayerDraw[]; value: Prisma.Decimal }> {
   const layers = await lockLayers(tx, key, scope);
 
+  // A document taking back its own stock would take it back at the ADJUSTED value
+  // and leave the difference on a document that no longer exists (value plan V12).
+  if (scope.kind === 'withdraw' || scope.kind === 'entry') {
+    await refuseRevaluedLayers(
+      tx,
+      key.organizationId,
+      layers.map((layer) => layer.id),
+    );
+  }
+
   let need = qty;
   const draws: LayerDraw[] = [];
   for (const layer of layers) {
@@ -243,6 +254,10 @@ export async function recordDraws(
   draws: readonly LayerDraw[],
 ) {
   if (draws.length === 0) return;
+  // The clock, not `now()`: `now()` is when the TRANSACTION began, and a challan
+  // that waited on a value adjustment's layer lock would look older than it.
+  // Cancelling that adjustment asks "drawn on since?" by this column.
+  const createdAt = new Date();
   await tx.stockLayerDraw.createMany({
     data: draws.map((draw) => ({
       organizationId,
@@ -250,6 +265,7 @@ export async function recordDraws(
       outLedgerEntryId,
       qty: draw.qty,
       value: draw.value,
+      createdAt,
     })),
   });
 }
@@ -331,6 +347,297 @@ export async function restoreDraws(
     qty: live.reduce((sum, draw) => sum.plus(draw.qty), ZERO),
     value: live.reduce((sum, draw) => sum.plus(draw.value), ZERO),
   };
+}
+
+/** Refuse when a live value adjustment holds any of these layers, naming it. */
+async function refuseRevaluedLayers(
+  tx: TenantClient,
+  organizationId: string,
+  layerIds: readonly string[],
+): Promise<void> {
+  if (layerIds.length === 0) return;
+  const rows = await tx.$queryRaw<{ sourceDocType: string; sourceDocId: string | null }[]>`
+    SELECT DISTINCT e.source_doc_type AS "sourceDocType", e.source_doc_id AS "sourceDocId"
+    FROM stock_layer_revaluations r
+    JOIN stock_ledger e ON e.id = r.ledger_entry_id
+    WHERE r.organization_id = ${organizationId}::uuid
+      AND r.layer_id = ANY(${[...layerIds]}::uuid[])
+      AND r.reversed_at IS NULL
+    LIMIT 5`;
+  if (rows.length === 0) return;
+  const named = (
+    await describeDocuments(
+      tx,
+      organizationId,
+      rows.map((row) => ({ type: row.sourceDocType, id: row.sourceDocId })),
+    )
+  ).join(', ');
+  throw ApiError.conflict(
+    `The value of this stock was changed by ${named}, so it can no longer be changed or ` +
+      `reversed here. Cancel ${named} first.`,
+  );
+}
+
+/** One layer a value adjustment changed. */
+export interface LayerRevaluation {
+  layerId: string;
+  batchId: string;
+  /** The package the layer's inward row named — null for loose stock and legacy layers. */
+  batchUnitId: string | null;
+  qty: Prisma.Decimal;
+  valueBefore: Prisma.Decimal;
+  valueAfter: Prisma.Decimal;
+}
+
+interface RevaluableLayer {
+  id: string;
+  batchId: string;
+  batchUnitId: string | null;
+  remainingQty: Prisma.Decimal;
+  remainingValue: Prisma.Decimal;
+  inDate: Date;
+  entryKey: string;
+}
+
+/**
+ * Split `amount` over `parts`, weighted by `weights`, the last part taking the
+ * remainder — and never giving a part more than `caps[i]` when caps are passed.
+ */
+function splitCapped(
+  amount: Prisma.Decimal,
+  weights: readonly Prisma.Decimal[],
+  caps?: readonly Prisma.Decimal[],
+): Prisma.Decimal[] {
+  const shares = splitByQty(amount, weights);
+  if (!caps) return shares;
+  // Rounding can push the last share a fraction past its layer; hand the excess
+  // to layers with room. Only ever a few ten-thousandths.
+  let excess = ZERO;
+  for (const [index, cap] of caps.entries()) {
+    if (shares[index]!.greaterThan(cap)) {
+      excess = excess.plus(shares[index]!.minus(cap));
+      shares[index] = cap;
+    }
+  }
+  for (const [index, cap] of caps.entries()) {
+    if (!excess.greaterThan(0)) break;
+    const room = cap.minus(shares[index]!);
+    const give = Prisma.Decimal.min(room, excess);
+    shares[index] = shares[index]!.plus(give);
+    excess = excess.minus(give);
+  }
+  return shares;
+}
+
+/**
+ * 🔴 CHANGE WHAT THE STOCK ON HAND IS WORTH, without moving any of it
+ * (docs/STOCK_ADJUSTMENT_VALUE_PLAN.md).
+ *
+ * The change lands on the NEWEST purchase entry — one inward document's layers
+ * here, on one date — whole: an increase entirely, a decrease down to ₹0 and then
+ * the next-newest entry. Inside an entry it is spread so every unit moves alike.
+ * Never touches `value` (what the layer was created at), only `remaining_value`.
+ *
+ * The caller writes the matching value-only ledger rows; this only changes layers.
+ */
+export async function revalueLayers(
+  tx: TenantClient,
+  key: QueueKey,
+  change: Prisma.Decimal,
+): Promise<LayerRevaluation[]> {
+  if (change.isZero()) return [];
+
+  // Newest first — the entry that will be consumed last. Untagged only: a layer
+  // tagged to a challan line is a job's, not the godown's.
+  const layers = await tx.$queryRaw<
+    (Omit<RevaluableLayer, 'entryKey'> & {
+      isLegacy: boolean;
+      docType: string | null;
+      docId: string | null;
+    })[]
+  >`
+    SELECT l.id, l.batch_id AS "batchId", e.batch_unit_id AS "batchUnitId",
+           l.remaining_qty AS "remainingQty", l.remaining_value AS "remainingValue",
+           l.in_date AS "inDate", l.is_legacy AS "isLegacy",
+           e.source_doc_type AS "docType", e.source_doc_id AS "docId"
+    FROM stock_cost_layers l
+    LEFT JOIN stock_ledger e ON e.id = l.in_ledger_entry_id
+    WHERE l.organization_id = ${key.organizationId}::uuid
+      AND l.item_id = ${key.itemId}::uuid
+      AND l.location_id = ${key.locationId}::uuid
+      AND l.remaining_qty > 0
+      AND l.source_doc_line_id IS NULL
+    ORDER BY l.in_date DESC, l.in_seq DESC
+    FOR UPDATE OF l`;
+
+  // A purchase entry: one document's layers here on one date. A layer with no
+  // document (cut-over) is an entry on its own.
+  const entries = new Map<string, RevaluableLayer[]>();
+  for (const layer of layers) {
+    const entryKey = layer.docType
+      ? `${layer.docType}|${layer.docId ?? layer.id}|${layer.inDate.toISOString()}`
+      : layer.id;
+    const list = entries.get(entryKey) ?? [];
+    list.push({
+      id: layer.id,
+      batchId: layer.batchId,
+      batchUnitId: layer.batchUnitId,
+      remainingQty: layer.remainingQty,
+      remainingValue: layer.remainingValue,
+      inDate: layer.inDate,
+      entryKey,
+    });
+    entries.set(entryKey, list);
+  }
+  if (entries.size === 0) {
+    throw ApiError.badRequest('There is no stock of this item here to change the value of.');
+  }
+
+  const changes: LayerRevaluation[] = [];
+  const apply = (entry: readonly RevaluableLayer[], amounts: readonly Prisma.Decimal[]) => {
+    for (const [index, layer] of entry.entries()) {
+      const amount = amounts[index] ?? ZERO;
+      if (amount.isZero()) continue;
+      changes.push({
+        layerId: layer.id,
+        batchId: layer.batchId,
+        batchUnitId: layer.batchUnitId,
+        qty: layer.remainingQty,
+        valueBefore: layer.remainingValue,
+        valueAfter: layer.remainingValue.plus(amount),
+      });
+    }
+  };
+
+  const ordered = [...entries.values()];
+  if (change.greaterThan(0)) {
+    // By quantity, so every unit of the entry rises by the same amount.
+    const newest = ordered[0]!;
+    apply(
+      newest,
+      splitByQty(
+        change,
+        newest.map((layer) => layer.remainingQty),
+      ),
+    );
+  } else {
+    const total = layers.reduce((sum, layer) => sum.plus(layer.remainingValue), ZERO);
+    let need = change.abs();
+    if (need.greaterThan(total)) {
+      throw ApiError.badRequest(
+        `Only ${total.toFixed(2)} of value is on the books here, so ${need.toFixed(2)} ` +
+          'cannot be taken off it.',
+      );
+    }
+    for (const entry of ordered) {
+      if (!need.greaterThan(0)) break;
+      const values = entry.map((layer) => layer.remainingValue);
+      const entryValue = values.reduce((sum, value) => sum.plus(value), ZERO);
+      if (entryValue.isZero()) continue;
+      const take = Prisma.Decimal.min(need, entryValue);
+      // By value: with one rate across the entry this is the same as by quantity,
+      // and it can never take a layer below zero when the entry's rates differ.
+      const shares = take.equals(entryValue) ? values : splitCapped(take, values, values);
+      apply(
+        entry,
+        shares.map((share) => share.negated()),
+      );
+      need = need.minus(take);
+    }
+  }
+
+  for (const row of changes) {
+    await tx.stockCostLayer.update({
+      where: { id: row.layerId },
+      data: { remainingValue: row.valueAfter },
+    });
+  }
+  return changes;
+}
+
+/**
+ * Give back what a value adjustment did to its layers — the cost half of
+ * cancelling it. Refused, naming the consumer, once any of those layers has been
+ * drawn on since; and refused if giving it back would take a layer below zero.
+ */
+export async function unrevalueLayers(
+  tx: TenantClient,
+  organizationId: string,
+  ledgerEntryIds: readonly string[],
+): Promise<{ ledgerEntryId: string; change: Prisma.Decimal }[]> {
+  if (ledgerEntryIds.length === 0) return [];
+  const records = await tx.stockLayerRevaluation.findMany({
+    where: { organizationId, ledgerEntryId: { in: [...ledgerEntryIds] }, reversedAt: null },
+    select: {
+      id: true,
+      layerId: true,
+      ledgerEntryId: true,
+      valueBefore: true,
+      valueAfter: true,
+      createdAt: true,
+    },
+  });
+  if (records.length === 0) {
+    throw ApiError.conflict('This value adjustment has already been reversed.');
+  }
+
+  const layerIds = [...new Set(records.map((row) => row.layerId))];
+  const locked = await tx.$queryRaw<{ id: string; remainingValue: Prisma.Decimal }[]>`
+    SELECT l.id, l.remaining_value AS "remainingValue"
+    FROM stock_cost_layers l
+    WHERE l.organization_id = ${organizationId}::uuid AND l.id = ANY(${layerIds}::uuid[])
+    FOR UPDATE`;
+  const valueOf = new Map(locked.map((row) => [row.id, row.remainingValue]));
+
+  // Drawn on SINCE the adjustment: the changed value has already flowed onward.
+  const since = records.reduce(
+    (min, row) => (row.createdAt < min ? row.createdAt : min),
+    records[0]!.createdAt,
+  );
+  const consumers = await tx.$queryRaw<{ sourceDocType: string; sourceDocId: string | null }[]>`
+    SELECT DISTINCT o.source_doc_type AS "sourceDocType", o.source_doc_id AS "sourceDocId"
+    FROM stock_layer_draws d
+    JOIN stock_ledger o ON o.id = d.out_ledger_entry_id
+    WHERE d.organization_id = ${organizationId}::uuid
+      AND d.layer_id = ANY(${layerIds}::uuid[])
+      AND d.reversed_at IS NULL
+      AND d.created_at >= ${since}
+    LIMIT 5`;
+  if (consumers.length > 0) {
+    const named = (
+      await describeDocuments(
+        tx,
+        organizationId,
+        consumers.map((row) => ({ type: row.sourceDocType, id: row.sourceDocId })),
+      )
+    ).join(', ');
+    throw ApiError.conflict(
+      `Stock whose value this adjustment changed has since been used by ${named}, so it ` +
+        `cannot be cancelled. Reverse ${named} first.`,
+    );
+  }
+
+  const out: { ledgerEntryId: string; change: Prisma.Decimal }[] = [];
+  for (const row of records) {
+    const change = row.valueAfter.minus(row.valueBefore);
+    const after = (valueOf.get(row.layerId) ?? ZERO).minus(change);
+    if (after.isNegative()) {
+      throw ApiError.conflict(
+        'A later value adjustment has written this stock down further. Cancel that one first.',
+      );
+    }
+    valueOf.set(row.layerId, after);
+    await tx.stockCostLayer.update({
+      where: { id: row.layerId },
+      data: { remainingValue: after },
+    });
+    out.push({ ledgerEntryId: row.ledgerEntryId, change });
+  }
+  await tx.stockLayerRevaluation.updateMany({
+    where: { id: { in: records.map((row) => row.id) } },
+    data: { reversedAt: new Date() },
+  });
+  return out;
 }
 
 /**
@@ -469,6 +776,16 @@ export async function describeDocuments(
   organizationId: string,
   refs: readonly { type: string; id: string | null }[],
 ): Promise<string[]> {
+  const label = await labelDocuments(tx, organizationId, refs);
+  return [...new Set(refs.map((ref) => label(ref)))];
+}
+
+/** The same labels, as a lookup per reference. */
+export async function labelDocuments(
+  tx: TenantClient,
+  organizationId: string,
+  refs: readonly { type: string; id: string | null }[],
+): Promise<(ref: { type: string; id: string | null }) => string> {
   const idsOf = (type: string) => [
     ...new Set(refs.filter((ref) => ref.type === type && ref.id).map((ref) => ref.id!)),
   ];
@@ -530,15 +847,10 @@ export async function describeDocuments(
     }
   }
 
-  return [
-    ...new Set(
-      refs.map((ref) =>
-        ref.type === 'item_opening_stock'
-          ? 'opening stock'
-          : ((ref.id && label.get(ref.id)) ?? ref.type.replaceAll('_', ' ')),
-      ),
-    ),
-  ];
+  return (ref) =>
+    ref.type === 'item_opening_stock'
+      ? 'opening stock'
+      : ((ref.id && label.get(ref.id)) ?? ref.type.replaceAll('_', ' '));
 }
 
 export interface OpenLayer {

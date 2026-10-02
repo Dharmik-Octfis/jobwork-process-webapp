@@ -9,6 +9,7 @@ import {
   createAdjustment,
   getAdjustmentById,
   getAdjustments,
+  getCurrentValues,
   getFifoCost,
   removeAdjustment,
   updateAdjustment,
@@ -21,6 +22,7 @@ router.use(authenticate, tenantContext);
 router.get('/', requirePermission('stock_adjustment:read'), getAdjustments);
 // Before `/:id`, or "fifo-cost" is read as an adjustment id.
 router.get('/fifo-cost', requirePermission('stock_adjustment:read'), getFifoCost);
+router.get('/current-values', requirePermission('stock_adjustment:read'), getCurrentValues);
 router.get('/:id', requirePermission('stock_adjustment:read'), getAdjustmentById);
 router.post(
   '/',

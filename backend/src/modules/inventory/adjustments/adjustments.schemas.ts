@@ -1,12 +1,18 @@
 import { z } from 'zod';
 
-export const ADJUSTMENT_REASONS = [
-  'damaged',
-  'lost',
-  'found',
-  'count_correction',
-  'other',
-] as const;
+export const ADJUSTMENT_TYPES = ['quantity', 'value'] as const;
+export type AdjustmentType = (typeof ADJUSTMENT_TYPES)[number];
+
+export const QUANTITY_REASONS = ['damaged', 'lost', 'found', 'count_correction', 'other'] as const;
+export const VALUE_REASONS = ['write_down', 'cost_correction', 'other'] as const;
+export const ADJUSTMENT_REASONS = [...new Set([...QUANTITY_REASONS, ...VALUE_REASONS])] as [
+  string,
+  ...string[],
+];
+const REASONS_BY_TYPE: Record<AdjustmentType, readonly string[]> = {
+  quantity: QUANTITY_REASONS,
+  value: VALUE_REASONS,
+};
 
 const emptyToUndefinedUuid = z.preprocess(
   (val) => (val === '' || val === null ? undefined : val),
@@ -51,31 +57,86 @@ const adjustmentBatchSchema = z.object({
   units: z.array(adjustmentBatchUnitSchema).optional(),
 });
 
-const adjustmentLineSchema = z.object({
-  itemId: z.string().uuid(),
-  /** Signed: positive adds stock, negative removes it. The server never takes a
-   * "new quantity on hand" — it re-reads the balance itself when it posts. */
-  quantityAdjusted: z.coerce.number().refine((value) => value !== 0, 'Enter a quantity to adjust.'),
-  /** Increase only; ignored on a decrease, which FIFO costs. */
-  costPrice: z.coerce.number().min(0, 'Cost price cannot be negative.').optional().nullable(),
-  batches: z.array(adjustmentBatchSchema).max(100).optional(),
-});
+const optionalNumber = z.preprocess(
+  (val) => (val === '' || val === null ? undefined : val),
+  z.coerce.number().optional(),
+);
 
-export const saveAdjustmentSchema = z.object({
-  locationId: z.string().uuid(),
-  adjustmentDate: z.string().datetime({ offset: true }).or(z.string().min(1)),
-  reason: z.enum(ADJUSTMENT_REASONS),
-  referenceNumber: z.string().trim().max(100).optional().nullable(),
-  description: z.string().trim().max(500).optional().nullable(),
-  lines: z.array(adjustmentLineSchema).min(1, 'Add at least one item.').max(200),
-  /**
-   * `draft` only saves. `adjust` saves and then posts the stock — or, when an
-   * approval process applies, sends it for approval instead.
-   */
-  saveAs: z.enum(['draft', 'adjust']).default('adjust'),
-});
+const adjustmentLineSchema = z
+  .object({
+    itemId: z.string().uuid(),
+    /** Quantity adjustment. Signed: positive adds stock, negative removes it. The
+     * server never takes a "new quantity on hand" — it re-reads the balance itself. */
+    quantityAdjusted: optionalNumber,
+    /** Increase only; ignored on a decrease, which FIFO costs. */
+    costPrice: z.coerce.number().min(0, 'Cost price cannot be negative.').optional().nullable(),
+    batches: z.array(adjustmentBatchSchema).max(100).optional(),
+    /** Value adjustment. Signed change in what the stock here is worth. */
+    valueAdjusted: optionalNumber,
+  })
+  // Here, not on the document: Zod skips the document's refine whenever another
+  // field already failed, and this detail is what highlights the row.
+  .superRefine((line, ctx) => {
+    if (line.quantityAdjusted || line.valueAdjusted) return;
+    const isValue = line.valueAdjusted !== undefined;
+    ctx.addIssue({
+      code: 'custom',
+      path: [isValue ? 'valueAdjusted' : 'quantityAdjusted'],
+      message: isValue ? 'Enter a value to adjust.' : 'Enter a quantity to adjust.',
+    });
+  });
 
-export type SaveAdjustmentDto = z.infer<typeof saveAdjustmentSchema>;
+export const saveAdjustmentSchema = z
+  .object({
+    adjustmentType: z.enum(ADJUSTMENT_TYPES).default('quantity'),
+    locationId: z.string().uuid(),
+    adjustmentDate: z.string().datetime({ offset: true }).or(z.string().min(1)),
+    reason: z.enum(ADJUSTMENT_REASONS),
+    referenceNumber: z.string().trim().max(100).optional().nullable(),
+    description: z.string().trim().max(500).optional().nullable(),
+    lines: z.array(adjustmentLineSchema).min(1, 'Add at least one item.').max(200),
+    /**
+     * `draft` only saves. `adjust` saves and then posts the stock — or, when an
+     * approval process applies, sends it for approval instead.
+     */
+    saveAs: z.enum(['draft', 'adjust']).default('adjust'),
+  })
+  .superRefine((data, ctx) => {
+    if (!REASONS_BY_TYPE[data.adjustmentType].includes(data.reason)) {
+      ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Select a reason.' });
+    }
+    // One kind per document (value plan V1).
+    for (const [index, line] of data.lines.entries()) {
+      const isValue = data.adjustmentType === 'value';
+      if (isValue ? !line.valueAdjusted : !line.quantityAdjusted) {
+        const field = isValue ? 'valueAdjusted' : 'quantityAdjusted';
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines', index, field],
+          message: isValue ? 'Enter a value to adjust.' : 'Enter a quantity to adjust.',
+        });
+      }
+      if (isValue && (line.quantityAdjusted || line.batches?.length)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines', index, 'quantityAdjusted'],
+          message: 'A value adjustment moves no stock.',
+        });
+      }
+      if (!isValue && line.valueAdjusted) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines', index, 'valueAdjusted'],
+          message: 'A quantity adjustment changes no value by itself.',
+        });
+      }
+    }
+  });
+
+/** The type defaults to `quantity` for callers that predate value adjustments. */
+export type SaveAdjustmentDto = Omit<z.infer<typeof saveAdjustmentSchema>, 'adjustmentType'> & {
+  adjustmentType?: AdjustmentType;
+};
 /** What a caller passes: `saveAs` may be left to its default. */
 export type SaveAdjustmentInput = z.input<typeof saveAdjustmentSchema>;
 export type AdjustmentLineDto = z.infer<typeof adjustmentLineSchema>;

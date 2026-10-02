@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { formatQty, toNumber } from '../../jobwork/jobwork.schemas';
+import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas';
 import { fetchAdjustments } from './adjustments.api';
 import { adjustmentReasonLabel, adjustmentStatusMeta } from './adjustments.schemas';
 
@@ -45,7 +45,7 @@ export function ItemAdjustmentsTable({ orgId, itemId }: { orgId: string; itemId:
             <th style={th}>ADJUSTMENT#</th>
             <th style={th}>LOCATION</th>
             <th style={th}>REASON</th>
-            <th style={{ ...th, textAlign: 'right' }}>QUANTITY ADJUSTED</th>
+            <th style={{ ...th, textAlign: 'right' }}>ADJUSTED</th>
             <th style={th}>STATUS</th>
           </tr>
         </thead>
@@ -65,9 +65,9 @@ export function ItemAdjustmentsTable({ orgId, itemId }: { orgId: string; itemId:
           ) : (
             rows.map((row) => {
               // An adjustment may cover several items; this tab is about one of them.
-              const quantity = toNumber(
-                row.lines.find((line) => line.itemId === itemId)?.quantityAdjusted,
-              );
+              const mine = row.lines.find((line) => line.itemId === itemId);
+              const isValue = row.adjustmentType === 'value';
+              const quantity = toNumber(isValue ? mine?.valueAdjusted : mine?.quantityAdjusted);
               const status = adjustmentStatusMeta(row.status);
               return (
                 <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -91,7 +91,7 @@ export function ItemAdjustmentsTable({ orgId, itemId }: { orgId: string; itemId:
                     }}
                   >
                     {quantity > 0 ? '+' : '−'}
-                    {formatQty(Math.abs(quantity))}
+                    {isValue ? formatMoney(Math.abs(quantity)) : formatQty(Math.abs(quantity))}
                   </td>
                   <td style={td}>
                     <span

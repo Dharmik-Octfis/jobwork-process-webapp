@@ -5,6 +5,8 @@ import { toast } from 'react-hot-toast';
 import { Plus, Trash2, X } from 'lucide-react';
 import { Select } from '../../../components/ui/Select';
 import { DateInput } from '../../../components/ui/DateInput';
+import { InfoTip } from '../../../components/ui/InfoTip';
+import { RadioGroup } from '../../../components/ui/RadioGroup';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
@@ -16,10 +18,17 @@ import {
 import type { Item } from '../../items/items.schemas';
 import { fetchStockLocations } from '../../jobwork/batches/batches.api';
 import { formatQty } from '../../jobwork/jobwork.schemas';
-import { createAdjustment, fetchAdjustment, updateAdjustment } from './adjustments.api';
 import {
-  ADJUSTMENT_REASON_OPTIONS,
+  createAdjustment,
+  fetchAdjustment,
+  fetchCurrentValues,
+  updateAdjustment,
+} from './adjustments.api';
+import {
+  ADJUSTMENT_TYPE_OPTIONS,
   isUnposted,
+  reasonOptionsFor,
+  type AdjustmentType,
   type SaveAdjustmentPayload,
   type StockAdjustmentDetail,
 } from './adjustments.schemas';
@@ -33,7 +42,9 @@ import {
   isBatchTracked,
   lineProblem,
   toLinePayload,
+  toValueLinePayload,
   uomOf,
+  valueProblem,
   withQuantity,
   withoutBatches,
   type AdjustableItem,
@@ -43,6 +54,7 @@ import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
 import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
 import { LineBatchPicker } from './LineBatchPicker';
 import { FifoCostField } from './FifoCostField';
+import { ValueCells } from './ValueAdjustmentCells';
 
 interface Row {
   key: string;
@@ -145,6 +157,10 @@ function AdjustmentForm({
   const leave = (adjustmentId?: string) =>
     navigate(adjustmentId ? `${listUrl}?id=${adjustmentId}` : listUrl);
 
+  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>(
+    existing?.adjustmentType ?? 'quantity',
+  );
+  const isValue = adjustmentType === 'value';
   const [adjustmentDate, setAdjustmentDate] = useState(
     (existing?.adjustmentDate ?? new Date().toISOString()).slice(0, 10),
   );
@@ -199,6 +215,30 @@ function AdjustmentForm({
     return Number(here?.items.find((one) => one.itemId === itemId)?.availableQty ?? 0) || 0;
   };
 
+  // A value line's "Current Value": what the stock here is worth, from the cost layers.
+  const { data: currentValues = [] } = useQuery({
+    queryKey: ['adjustment-values', orgId, locationId, itemIds],
+    queryFn: () => fetchCurrentValues(orgId, { locationId, itemIds }),
+    enabled: isValue && itemIds.length > 0 && Boolean(locationId),
+    // Keep the old figures only while the location is the same — another
+    // location's value would turn a typed "New Value" into the wrong change.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[2] === locationId ? prev : undefined,
+  });
+  const currentOf = (itemId: string | undefined) => {
+    const row = currentValues.find((one) => one.itemId === itemId);
+    return { qty: Number(row?.quantity ?? 0), value: Number(row?.value ?? 0) };
+  };
+
+  const changeType = (next: AdjustmentType) => {
+    if (next === adjustmentType) return;
+    setAdjustmentType(next);
+    // The two kinds share no reason and no figure; the items stay.
+    if (!reasonOptionsFor(next).some((option) => option.value === reason)) setReason('');
+    setRows((prev) => prev.map((row) => ({ ...row, line: emptyLine(row.item) })));
+    setInvalid(new Set());
+  };
+
   const clear = (...names: string[]) =>
     setInvalid((prev) => {
       const next = new Set(prev);
@@ -242,6 +282,18 @@ function AdjustmentForm({
       }
       seen.add(row.item.id);
 
+      if (isValue) {
+        const current = currentOf(row.item.id);
+        if (Math.abs(adjustedOf(row.line, current.value)) < 0.005) {
+          problems.push([`${row.key}:value`, `${row.item.name}: enter a value to adjust.`]);
+        } else if (saveAs === 'adjust') {
+          // A draft only needs a figure; Adjust needs one that can post.
+          const problem = valueProblem(row.line, row.item, current);
+          if (problem) problems.push([`${row.key}:${problem.field}`, problem.message]);
+        }
+        continue;
+      }
+
       const available = availableOf(row.item.id);
       if (Math.abs(adjustedOf(row.line, available)) < QTY_EPSILON) {
         problems.push([`${row.key}:quantity`, `${row.item.name}: enter a quantity to adjust.`]);
@@ -261,12 +313,17 @@ function AdjustmentForm({
     }
 
     mutation.mutate({
+      adjustmentType,
       locationId,
       adjustmentDate,
       reason,
       referenceNumber: referenceNumber.trim() || null,
       description: description.trim() || null,
-      lines: filled.map((row) => toLinePayload(row.line, row.item!, availableOf(row.item!.id))),
+      lines: filled.map((row) =>
+        isValue
+          ? toValueLinePayload(row.line, row.item!, currentOf(row.item!.id).value)
+          : toLinePayload(row.line, row.item!, availableOf(row.item!.id)),
+      ),
       saveAs,
     });
   };
@@ -304,6 +361,17 @@ function AdjustmentForm({
 
       <div className="page-body">
         <div className="form-field-grid" style={headerRow}>
+          <span style={fieldLabel}>Mode of adjustment</span>
+          <RadioGroup
+            name="adjustment-type"
+            value={adjustmentType}
+            onChange={changeType}
+            options={ADJUSTMENT_TYPE_OPTIONS}
+            ariaLabel="Mode of adjustment"
+          />
+        </div>
+
+        <div className="form-field-grid" style={headerRow}>
           <label htmlFor="adj-reference" style={fieldLabel}>
             Reference Number
           </label>
@@ -339,7 +407,7 @@ function AdjustmentForm({
               setReason(value);
               clear('reason');
             }}
-            options={ADJUSTMENT_REASON_OPTIONS}
+            options={reasonOptionsFor(adjustmentType)}
             placeholder="Select a reason…"
             hasError={invalid.has('reason')}
             ariaLabel="Reason"
@@ -400,17 +468,40 @@ function AdjustmentForm({
             Item Table
           </div>
           <div className="responsive-table-wrapper">
-            <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse' }}>
+            <table
+              style={{ width: '100%', minWidth: isValue ? 860 : 980, borderCollapse: 'collapse' }}
+            >
               <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: 'left', minWidth: 260 }}>Item Details</th>
-                  <th style={th}>Quantity Available</th>
-                  <th style={th}>New Quantity on hand</th>
-                  <th style={th}>Quantity Adjusted</th>
-                  <th style={th}>Cost Price</th>
-                  <th style={th}>{tracking.plural}</th>
-                  <th style={{ ...th, width: 44 }} aria-label="Remove" />
-                </tr>
+                {isValue ? (
+                  <tr>
+                    <th style={{ ...th, textAlign: 'left', minWidth: 260 }}>Item Details</th>
+                    <th style={th}>Quantity on hand</th>
+                    <th style={th}>Current Value</th>
+                    <th style={th}>New Value</th>
+                    <th style={th}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        Adjusted Value
+                        <InfoTip label="How a value adjustment works">
+                          The change goes onto the newest purchase of this item at this location; no
+                          stock moves. Lowering the value is a write-down. Raise it only to correct
+                          a cost entered wrong or to undo an earlier write-down. Post the same
+                          change in your accounts.
+                        </InfoTip>
+                      </span>
+                    </th>
+                    <th style={{ ...th, width: 44 }} aria-label="Remove" />
+                  </tr>
+                ) : (
+                  <tr>
+                    <th style={{ ...th, textAlign: 'left', minWidth: 260 }}>Item Details</th>
+                    <th style={th}>Quantity Available</th>
+                    <th style={th}>New Quantity on hand</th>
+                    <th style={th}>Quantity Adjusted</th>
+                    <th style={th}>Cost Price</th>
+                    <th style={th}>{tracking.plural}</th>
+                    <th style={{ ...th, width: 44 }} aria-label="Remove" />
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {rows.map((row) => {
@@ -452,138 +543,161 @@ function AdjustmentForm({
                           </div>
                         )}
                       </td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        {row.item ? (
-                          <>
-                            <input
-                              aria-label={`Quantity available, ${itemName}`}
-                              value={formatQty(available)}
-                              disabled
-                              className="locked-value"
-                              style={numberCell('available')}
-                            />
-                            {uomOf(row.item) && (
-                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                                {uomOf(row.item)}
-                              </div>
+                      {isValue ? (
+                        <ValueCells
+                          row={row}
+                          current={currentOf(row.item?.id)}
+                          itemName={itemName}
+                          numberCell={numberCell}
+                          onType={(box, text, currentValue) => {
+                            updateRow(row.key, (prev) => ({
+                              ...prev,
+                              line: withQuantity(prev.line, box, text, currentValue),
+                            }));
+                            clear(`${row.key}:value`);
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <td style={{ ...td, textAlign: 'right' }}>
+                            {row.item ? (
+                              <>
+                                <input
+                                  aria-label={`Quantity available, ${itemName}`}
+                                  value={formatQty(available)}
+                                  disabled
+                                  className="locked-value"
+                                  style={numberCell('available')}
+                                />
+                                {uomOf(row.item) && (
+                                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                                    {uomOf(row.item)}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
+                                -
+                              </span>
                             )}
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
-                            -
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        <input
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          aria-label={`New quantity on hand, ${itemName}`}
-                          disabled={!row.item}
-                          value={texts.newQty}
-                          onChange={(event) => {
-                            if (!/^\d*\.?\d{0,4}$/.test(event.target.value)) return;
-                            updateRow(row.key, (prev) => ({
-                              ...prev,
-                              line: withQuantity(prev.line, 'new', event.target.value, available),
-                            }));
-                            clear(`${row.key}:quantity`, `${row.key}:batches`);
-                          }}
-                          style={numberCell('quantity')}
-                        />
-                      </td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        <input
-                          inputMode="decimal"
-                          placeholder="Eg. +10, -10"
-                          aria-label={`Quantity adjusted, ${itemName}`}
-                          disabled={!row.item}
-                          value={texts.adjusted}
-                          onChange={(event) => {
-                            // A sign, digits and one point — "+5" and "-15".
-                            if (!/^[+-]?\d*\.?\d{0,4}$/.test(event.target.value)) return;
-                            updateRow(row.key, (prev) => ({
-                              ...prev,
-                              line: withQuantity(
-                                prev.line,
-                                'adjusted',
-                                event.target.value,
-                                available,
-                              ),
-                            }));
-                            clear(`${row.key}:quantity`, `${row.key}:batches`);
-                          }}
-                          style={numberCell('quantity')}
-                        />
-                      </td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        {/* A decrease states no cost — FIFO decides what leaving stock is worth, shown read-only. */}
-                        {row.item && adjusted <= -QTY_EPSILON ? (
-                          <FifoCostField
-                            orgId={orgId}
-                            itemId={row.item.id}
-                            locationId={locationId}
-                            quantity={Math.abs(adjusted)}
-                            ariaLabel={`Cost price, ${itemName}`}
-                            style={numberCell('costPrice')}
-                          />
-                        ) : row.item ? (
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            step="any"
-                            min={0}
-                            aria-label={`Cost price, ${itemName}`}
-                            value={row.line.costPrice}
-                            onWheel={blurOnWheel}
-                            onChange={(event) => {
-                              updateRow(row.key, (prev) => ({
-                                ...prev,
-                                line: { ...prev.line, costPrice: event.target.value },
-                              }));
-                              clear(`${row.key}:costPrice`);
-                            }}
-                            style={numberCell('costPrice')}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
-                            -
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        {row.item &&
-                        isBatchTracked(row.item) &&
-                        Math.abs(adjusted) >= QTY_EPSILON ? (
-                          <button
-                            type="button"
-                            disabled={!locationId}
-                            onClick={() => {
-                              setPickingKey(row.key);
-                              clear(`${row.key}:batches`);
-                            }}
-                            style={{
-                              minHeight: 36,
-                              padding: '0 10px',
-                              background: 'none',
-                              border: 'none',
-                              borderRadius: 4,
-                              color: invalid.has(`${row.key}:batches`) ? '#dc2626' : '#2563eb',
-                              fontSize: 13,
-                              whiteSpace: 'nowrap',
-                              cursor: locationId ? 'pointer' : 'not-allowed',
-                            }}
-                          >
-                            {picked.count > 0
-                              ? `${picked.count} · ${formatQty(picked.total)}`
-                              : `${adjusted > 0 ? 'Add' : 'Select'} ${tracking.plural}`}
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
-                            -
-                          </span>
-                        )}
-                      </td>
+                          </td>
+                          <td style={{ ...td, textAlign: 'right' }}>
+                            <input
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              aria-label={`New quantity on hand, ${itemName}`}
+                              disabled={!row.item}
+                              value={texts.newQty}
+                              onChange={(event) => {
+                                if (!/^\d*\.?\d{0,4}$/.test(event.target.value)) return;
+                                updateRow(row.key, (prev) => ({
+                                  ...prev,
+                                  line: withQuantity(
+                                    prev.line,
+                                    'new',
+                                    event.target.value,
+                                    available,
+                                  ),
+                                }));
+                                clear(`${row.key}:quantity`, `${row.key}:batches`);
+                              }}
+                              style={numberCell('quantity')}
+                            />
+                          </td>
+                          <td style={{ ...td, textAlign: 'right' }}>
+                            <input
+                              inputMode="decimal"
+                              placeholder="Eg. +10, -10"
+                              aria-label={`Quantity adjusted, ${itemName}`}
+                              disabled={!row.item}
+                              value={texts.adjusted}
+                              onChange={(event) => {
+                                // A sign, digits and one point — "+5" and "-15".
+                                if (!/^[+-]?\d*\.?\d{0,4}$/.test(event.target.value)) return;
+                                updateRow(row.key, (prev) => ({
+                                  ...prev,
+                                  line: withQuantity(
+                                    prev.line,
+                                    'adjusted',
+                                    event.target.value,
+                                    available,
+                                  ),
+                                }));
+                                clear(`${row.key}:quantity`, `${row.key}:batches`);
+                              }}
+                              style={numberCell('quantity')}
+                            />
+                          </td>
+                          <td style={{ ...td, textAlign: 'right' }}>
+                            {/* A decrease states no cost — FIFO decides what leaving stock is worth, shown read-only. */}
+                            {row.item && adjusted <= -QTY_EPSILON ? (
+                              <FifoCostField
+                                orgId={orgId}
+                                itemId={row.item.id}
+                                locationId={locationId}
+                                quantity={Math.abs(adjusted)}
+                                ariaLabel={`Cost price, ${itemName}`}
+                                style={numberCell('costPrice')}
+                              />
+                            ) : row.item ? (
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
+                                min={0}
+                                aria-label={`Cost price, ${itemName}`}
+                                value={row.line.costPrice}
+                                onWheel={blurOnWheel}
+                                onChange={(event) => {
+                                  updateRow(row.key, (prev) => ({
+                                    ...prev,
+                                    line: { ...prev.line, costPrice: event.target.value },
+                                  }));
+                                  clear(`${row.key}:costPrice`);
+                                }}
+                                style={numberCell('costPrice')}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
+                                -
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ ...td, textAlign: 'right' }}>
+                            {row.item &&
+                            isBatchTracked(row.item) &&
+                            Math.abs(adjusted) >= QTY_EPSILON ? (
+                              <button
+                                type="button"
+                                disabled={!locationId}
+                                onClick={() => {
+                                  setPickingKey(row.key);
+                                  clear(`${row.key}:batches`);
+                                }}
+                                style={{
+                                  minHeight: 36,
+                                  padding: '0 10px',
+                                  background: 'none',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  color: invalid.has(`${row.key}:batches`) ? '#dc2626' : '#2563eb',
+                                  fontSize: 13,
+                                  whiteSpace: 'nowrap',
+                                  cursor: locationId ? 'pointer' : 'not-allowed',
+                                }}
+                              >
+                                {picked.count > 0
+                                  ? `${picked.count} · ${formatQty(picked.total)}`
+                                  : `${adjusted > 0 ? 'Add' : 'Select'} ${tracking.plural}`}
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
+                                -
+                              </span>
+                            )}
+                          </td>
+                        </>
+                      )}
                       <td style={{ ...td, textAlign: 'center' }}>
                         <button
                           type="button"

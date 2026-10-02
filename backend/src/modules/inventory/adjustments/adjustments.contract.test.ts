@@ -178,4 +178,29 @@ describe('stock adjustments — the shape the screens parse', { timeout: 60_000 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.lines).toHaveLength(2);
   });
+
+  it('a value adjustment — draft, posted with its purchases, cancelled — parses', async () => {
+    const value = (saveAs: 'draft' | 'adjust') =>
+      adjustmentsService.createAdjustment(orgId, userId, {
+        adjustmentType: 'value',
+        locationId: godownId,
+        adjustmentDate: new Date().toISOString(),
+        reason: 'write_down',
+        saveAs,
+        lines: [{ itemId: trackedId, valueAdjusted: -1 }],
+      });
+
+    const draft = client.stockAdjustmentDetailSchema.parse(overHttp(await value('draft')));
+    expect(draft.status).toBe('draft');
+
+    const posted = await value('adjust');
+    const parsed = client.stockAdjustmentDetailSchema.parse(overHttp(posted)) as ParsedDetail & {
+      valueChanges: unknown[];
+    };
+    expect(parsed.status).toBe('adjusted');
+    expect(parsed.valueChanges.length).toBeGreaterThan(0);
+
+    const cancelled = await adjustmentsService.removeAdjustment(orgId, posted.id, userId);
+    expect(client.stockAdjustmentDetailSchema.parse(overHttp(cancelled)).status).toBe('cancelled');
+  });
 });

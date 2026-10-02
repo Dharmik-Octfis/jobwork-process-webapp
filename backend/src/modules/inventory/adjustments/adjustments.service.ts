@@ -11,13 +11,15 @@ import {
   createBatchUnits,
   getBalancesByBatchUnit,
   postMovement,
+  postRevaluation,
   resolveBatchesForPosting,
   resolveExistingBatchUnits,
   reverseMovement,
+  reverseRevaluation,
   type ResolvedBatches,
 } from '../stock-ledger/stockLedger.service.js';
 import { allocateOutward } from '../stock-ledger/allocateOutward.js';
-import { previewFifoDraw } from '../stock-ledger/costLayers.ts';
+import { labelDocuments, previewFifoDraw } from '../stock-ledger/costLayers.ts';
 import { approvalExecutionService } from '../../automation/approval-processes/approvalExecution.service.ts';
 import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
 import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
@@ -25,6 +27,7 @@ import { Prisma } from '../../../../generated/prisma/client.ts';
 import type {
   AdjustmentBatchDto,
   AdjustmentLineDto,
+  AdjustmentType,
   SaveAdjustmentDto,
 } from './adjustments.schemas.js';
 
@@ -37,6 +40,10 @@ import type {
  * posts inward `adjustment` rows at the cost the user states; a decrease posts
  * outward ones and FIFO decides what they cost. Once adjusted it is never
  * edited: cancel reverses the rows.
+ *
+ * A VALUE adjustment (STOCK_ADJUSTMENT_VALUE_PLAN.md) moves no stock: each line
+ * changes what the newest purchase entry of its item here is worth, through
+ * `postRevaluation`.
  */
 
 /** Already the FIFO cost-lot report's key for these rows. */
@@ -90,6 +97,7 @@ interface PostableLine {
   quantityAdjusted: Prisma.Decimal;
   costPrice: Prisma.Decimal | null;
   batches: AdjustmentBatchDto[];
+  valueAdjusted: Prisma.Decimal | null;
 }
 
 const isTracked = (item: LineItem) => (item.inventoryTracking ?? 'none') !== 'none';
@@ -99,8 +107,16 @@ const isTracked = (item: LineItem) => (item.inventoryTracking ?? 'none') !== 'no
  * check. Run when a draft is submitted as well as when it posts, so an approver
  * is never asked to approve a document that could not post in any case.
  */
-function assertLineComplete(line: PostableLine): void {
+function assertLineComplete(line: PostableLine, type: AdjustmentType): void {
   const { item } = line;
+  if (type === 'value') {
+    if (!line.valueAdjusted || line.valueAdjusted.isZero()) {
+      throw ApiError.badRequest(`${item.name}: enter the value to adjust.`, {
+        lines: `${item.name}: enter the value to adjust.`,
+      });
+    }
+    return;
+  }
   const increase = line.quantityAdjusted.greaterThan(0);
   const magnitude = line.quantityAdjusted.abs();
 
@@ -329,6 +345,8 @@ const DETAIL_INCLUDE = {
       quantityBefore: true,
       costPrice: true,
       value: true,
+      valueAdjusted: true,
+      valueBefore: true,
       draftBatches: true,
       item: { select: LINE_ITEM_SELECT },
       batches: {
@@ -452,7 +470,9 @@ async function writeDocument(
     }
   }
 
+  const isValue = data.adjustmentType === 'value';
   const header = {
+    adjustmentType: data.adjustmentType ?? 'quantity',
     adjustmentDate,
     locationId: location.id,
     reason: data.reason,
@@ -490,20 +510,24 @@ async function writeDocument(
   }
 
   await tx.stockAdjustmentLine.createMany({
-    data: data.lines.map((line: AdjustmentLineDto, seq) => ({
-      organizationId,
-      adjustmentId,
-      seq,
-      itemId: line.itemId,
-      quantityAdjusted: decimal(line.quantityAdjusted),
-      costPrice:
-        line.quantityAdjusted > 0 && line.costPrice !== null && line.costPrice !== undefined
-          ? decimal(line.costPrice)
-          : null,
-      draftBatches: (line.batches ?? []) as unknown as Prisma.InputJsonValue,
-      createdBy: userId,
-      updatedBy: userId,
-    })),
+    data: data.lines.map((line: AdjustmentLineDto, seq) => {
+      const quantityAdjusted = isValue ? 0 : (line.quantityAdjusted ?? 0);
+      return {
+        organizationId,
+        adjustmentId,
+        seq,
+        itemId: line.itemId,
+        quantityAdjusted: decimal(quantityAdjusted),
+        costPrice:
+          quantityAdjusted > 0 && line.costPrice !== null && line.costPrice !== undefined
+            ? decimal(line.costPrice)
+            : null,
+        valueAdjusted: isValue && line.valueAdjusted ? decimal(line.valueAdjusted) : null,
+        draftBatches: (isValue ? [] : (line.batches ?? [])) as unknown as Prisma.InputJsonValue,
+        createdBy: userId,
+        updatedBy: userId,
+      };
+    }),
   });
   return adjustmentId;
 }
@@ -515,6 +539,7 @@ async function loadForPosting(tx: TenantClient, organizationId: string, id: stri
     select: {
       id: true,
       status: true,
+      adjustmentType: true,
       adjustmentNumber: true,
       adjustmentDate: true,
       locationId: true,
@@ -529,6 +554,7 @@ async function loadForPosting(tx: TenantClient, organizationId: string, id: stri
           id: true,
           quantityAdjusted: true,
           costPrice: true,
+          valueAdjusted: true,
           draftBatches: true,
           item: {
             select: {
@@ -551,8 +577,124 @@ async function loadForPosting(tx: TenantClient, organizationId: string, id: stri
     costPrice: line.costPrice,
     // An untracked item's batches are plumbing the user never names.
     batches: isTracked(line.item) ? draftBatchesOf(line.draftBatches) : [],
+    valueAdjusted: line.valueAdjusted,
   }));
-  return { adjustment, lines };
+  return { adjustment, type: adjustment.adjustmentType as AdjustmentType, lines };
+}
+
+/** The untagged FIFO layers still on hand, per item, at one place — what a value
+ * adjustment can change. One grouped read. */
+async function layerTotals(
+  tx: TenantClient,
+  organizationId: string,
+  locationId: string,
+  itemIds: readonly string[],
+) {
+  const rows = await tx.stockCostLayer.groupBy({
+    by: ['itemId'],
+    where: {
+      organizationId,
+      locationId,
+      itemId: { in: [...itemIds] },
+      sourceDocLineId: null,
+      remainingQty: { gt: 0 },
+    },
+    _sum: { remainingQty: true, remainingValue: true },
+  });
+  return new Map(
+    rows.map((row) => [
+      row.itemId,
+      { qty: row._sum.remainingQty ?? ZERO, value: row._sum.remainingValue ?? ZERO },
+    ]),
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 🔴 POST A VALUE ADJUSTMENT, in the caller's transaction. Moves no stock: each
+ * line changes what the newest purchase entry of its item here is worth.
+ */
+async function postValueAdjustment(
+  tx: TenantClient,
+  organizationId: string,
+  userId: string | null,
+  adjustment: { id: string; adjustmentDate: Date; locationId: string },
+  lines: readonly PostableLine[],
+): Promise<void> {
+  const itemIds = lines.map((line) => line.item.id);
+
+  // V8: dated earlier than a movement already on the books, the as-on valuation
+  // would show the change against stock that had not arrived yet.
+  const latest = await tx.stockLedgerEntry.groupBy({
+    by: ['itemId'],
+    where: {
+      organizationId,
+      itemId: { in: itemIds },
+      locationId: adjustment.locationId,
+      ownership: 'own',
+      stockEffect: { in: ['accounting', 'both'] },
+    },
+    _max: { postedAt: true },
+  });
+  const latestOf = new Map(latest.map((row) => [row.itemId, row._max.postedAt]));
+  const totals = await layerTotals(tx, organizationId, adjustment.locationId, itemIds);
+
+  let total = ZERO;
+  for (const line of lines) {
+    const change = line.valueAdjusted!;
+    const last = latestOf.get(line.item.id) ?? null;
+    if (last && last.getTime() >= adjustment.adjustmentDate.getTime() + DAY_MS) {
+      throw ApiError.badRequest(
+        `${line.item.name} has stock movements after this date, so its value can only be ` +
+          `adjusted on or after ${last.toISOString().slice(0, 10)}.`,
+        { adjustmentDate: 'Pick a later date.' },
+      );
+    }
+    const here = totals.get(line.item.id);
+    if (!here || !here.qty.greaterThan(0)) {
+      throw ApiError.badRequest(
+        `${line.item.name} has no stock at this location, so there is no value to adjust.`,
+        { lines: `${line.item.name}: no stock here.` },
+      );
+    }
+    if (change.isNegative() && change.abs().greaterThan(here.value)) {
+      throw ApiError.badRequest(
+        `${line.item.name} is worth ${here.value.toFixed(2)} here, so ` +
+          `${change.abs().toFixed(2)} cannot be taken off it.`,
+        { lines: `${line.item.name}: at most ${here.value.toFixed(2)} can be taken off.` },
+      );
+    }
+
+    // Never before the movement it revalues, or the item report would print the
+    // change above the bill that brought the stock in.
+    const postedAt =
+      last && last.getTime() > adjustment.adjustmentDate.getTime()
+        ? last
+        : adjustment.adjustmentDate;
+    const { value } = await postRevaluation(tx, {
+      organizationId,
+      itemId: line.item.id,
+      locationId: adjustment.locationId,
+      change,
+      sourceDocType: ADJUSTMENT_DOC_TYPE,
+      sourceDocId: adjustment.id,
+      sourceDocLineId: line.id,
+      postedAt,
+      userId,
+    });
+
+    await tx.stockAdjustmentLine.updateMany({
+      where: { id: line.id, organizationId },
+      data: { quantityBefore: here.qty, valueBefore: here.value, value, updatedBy: userId },
+    });
+    total = total.plus(value);
+  }
+
+  await tx.stockAdjustment.updateMany({
+    where: { id: adjustment.id, organizationId },
+    data: { value: total },
+  });
 }
 
 /**
@@ -577,9 +719,13 @@ async function postAdjustment(
     throw ApiError.conflict('This adjustment has already been adjusted or changed. Refresh it.');
   }
 
-  const { adjustment, lines } = await loadForPosting(tx, organizationId, id);
+  const { adjustment, type, lines } = await loadForPosting(tx, organizationId, id);
   if (lines.length === 0) throw ApiError.badRequest('This adjustment has no items.');
-  for (const line of lines) assertLineComplete(line);
+  for (const line of lines) assertLineComplete(line, type);
+  if (type === 'value') {
+    await postValueAdjustment(tx, organizationId, userId, adjustment, lines);
+    return;
+  }
 
   // The live balances, never the form's figures — stock may have moved since the
   // document was written. One grouped read for every item on it.
@@ -723,9 +869,9 @@ async function postAdjustment(
 async function adjust(organizationId: string, id: string, userId: string | null): Promise<void> {
   const state = await runAsTenant(organizationId, async (tx) => {
     const editable = await loadEditable(tx, organizationId, id);
-    const { adjustment, lines } = await loadForPosting(tx, organizationId, id);
+    const { adjustment, type, lines } = await loadForPosting(tx, organizationId, id);
     if (lines.length === 0) throw ApiError.badRequest('Add at least one item.');
-    for (const line of lines) assertLineComplete(line);
+    for (const line of lines) assertLineComplete(line, type);
     return { status: editable.status, adjustment, lineCount: lines.length };
   });
 
@@ -742,6 +888,7 @@ async function adjust(organizationId: string, id: string, userId: string | null)
       {
         id,
         adjustmentNumber: adjustment.adjustmentNumber,
+        adjustmentType: adjustment.adjustmentType,
         adjustmentDate: adjustment.adjustmentDate,
         locationId: adjustment.locationId,
         reason: adjustment.reason,
@@ -821,6 +968,39 @@ async function cancelPosted(
   id: string,
   userId: string | null,
 ): Promise<void> {
+  const header = await tx.stockAdjustment.findFirst({
+    where: { id, organizationId, isDeleted: false },
+    select: { adjustmentType: true },
+  });
+  if (header?.adjustmentType === 'value') {
+    const rows = await tx.stockLedgerEntry.findMany({
+      where: {
+        organizationId,
+        sourceDocType: ADJUSTMENT_DOC_TYPE,
+        sourceDocId: id,
+        movementType: 'revaluation',
+      },
+      select: { id: true },
+    });
+    await reverseRevaluation(
+      tx,
+      organizationId,
+      rows.map((row) => row.id),
+      {
+        sourceDocType: ADJUSTMENT_DOC_TYPE,
+        sourceDocId: id,
+        remarks: 'Cancelled.',
+        postedAt: new Date(),
+        userId,
+      },
+    );
+    await tx.stockAdjustment.updateMany({
+      where: { id, organizationId },
+      data: { status: 'cancelled', updatedBy: userId },
+    });
+    return;
+  }
+
   const existing = await tx.stockAdjustment.findFirst({
     where: { id, organizationId, isDeleted: false },
     select: {
@@ -912,6 +1092,54 @@ async function cancelPosted(
   });
 }
 
+/** What a posted value adjustment did, per line per purchase entry. */
+async function readValueChanges(tx: TenantClient, organizationId: string, id: string) {
+  const rows = await tx.$queryRaw<
+    {
+      lineId: string;
+      docType: string | null;
+      docId: string | null;
+      inDate: Date;
+      qty: Prisma.Decimal;
+      valueBefore: Prisma.Decimal;
+      valueAfter: Prisma.Decimal;
+      reversed: boolean;
+    }[]
+  >`
+    SELECT e.source_doc_line_id AS "lineId",
+           ie.source_doc_type AS "docType", ie.source_doc_id AS "docId",
+           l.in_date AS "inDate",
+           SUM(r.qty) AS qty,
+           SUM(r.value_before) AS "valueBefore",
+           SUM(r.value_after) AS "valueAfter",
+           BOOL_OR(r.reversed_at IS NOT NULL) AS reversed
+    FROM stock_layer_revaluations r
+    JOIN stock_ledger e ON e.id = r.ledger_entry_id
+    JOIN stock_cost_layers l ON l.id = r.layer_id
+    LEFT JOIN stock_ledger ie ON ie.id = l.in_ledger_entry_id
+    WHERE r.organization_id = ${organizationId}::uuid
+      AND e.source_doc_type = ${ADJUSTMENT_DOC_TYPE}
+      AND e.source_doc_id = ${id}::uuid
+      AND e.movement_type = 'revaluation'
+    GROUP BY e.source_doc_line_id, ie.source_doc_type, ie.source_doc_id, l.in_date,
+             CASE WHEN ie.id IS NULL THEN l.id END
+    ORDER BY l.in_date DESC`;
+  const label = await labelDocuments(
+    tx,
+    organizationId,
+    rows.map((row) => ({ type: row.docType ?? '', id: row.docId })),
+  );
+  return rows.map((row) => ({
+    lineId: row.lineId,
+    entry: row.docType ? label({ type: row.docType, id: row.docId }) : 'stock before FIFO',
+    inDate: row.inDate,
+    qty: row.qty.toString(),
+    valueBefore: row.valueBefore.toString(),
+    valueAfter: row.valueAfter.toString(),
+    reversed: row.reversed,
+  }));
+}
+
 /** The detail, plus what the batches a draft names are CALLED — a draft stores
  * ids, and an id is not something a person can read. */
 async function readDetail(tx: TenantClient, organizationId: string, id: string) {
@@ -946,6 +1174,8 @@ async function readDetail(tx: TenantClient, organizationId: string, id: string) 
 
   return {
     ...adjustment,
+    valueChanges:
+      adjustment.adjustmentType === 'value' ? await readValueChanges(tx, organizationId, id) : [],
     draftLabels: {
       batches: Object.fromEntries(batches.map((row) => [row.id, row.supplierBatchRef ?? ''])),
       units: Object.fromEntries(units.map((row) => [row.id, row.label])),
@@ -983,6 +1213,7 @@ export const adjustmentsService = {
               id: true,
               itemId: true,
               quantityAdjusted: true,
+              valueAdjusted: true,
               item: { select: { id: true, name: true, sku: true } },
             },
           },
@@ -1015,6 +1246,18 @@ export const adjustmentsService = {
         value: value.toString(),
         unitCost: qty.greaterThan(0) ? value.dividedBy(qty).toDecimalPlaces(4).toString() : null,
       };
+    }),
+
+  /** Quantity and value on hand per item at one place, from the FIFO layers — the
+   * value form's "Current Value". Display only: posting reads them again. */
+  currentValues: (orgId: string, query: { locationId: string; itemIds: string[] }) =>
+    runAsTenant(orgId, async (tx) => {
+      const totals = await layerTotals(tx, orgId, query.locationId, query.itemIds);
+      return query.itemIds.map((itemId) => ({
+        itemId,
+        quantity: (totals.get(itemId)?.qty ?? ZERO).toString(),
+        value: (totals.get(itemId)?.value ?? ZERO).toString(),
+      }));
     }),
 
   /** Create, as a draft or adjusted in the same request. */

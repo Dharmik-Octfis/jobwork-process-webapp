@@ -344,13 +344,13 @@ export function InventoryValuationDetailPage() {
                             : ''}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                          {row.stockOnHand.toFixed(2)}
+                          {row.stockOnHand?.toFixed(2) ?? ''}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                          {row.inventoryAssetValue.toLocaleString('en-IN', {
+                          {row.inventoryAssetValue?.toLocaleString('en-IN', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
-                          })}
+                          }) ?? ''}
                         </td>
                       </tr>
                     );

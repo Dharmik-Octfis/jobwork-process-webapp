@@ -43,6 +43,15 @@ interface DrawRow {
   outDate: Date;
 }
 
+interface RevaluationRow {
+  layerId: string;
+  qty: Prisma.Decimal;
+  valueBefore: Prisma.Decimal;
+  valueAfter: Prisma.Decimal;
+  docId: string;
+  date: Date;
+}
+
 const DOC_LABELS: Record<string, string> = {
   bill: 'Bill',
   invoice: 'Invoice',
@@ -104,6 +113,23 @@ export async function getFifoCostLotTracking(
           ORDER BY o.posted_at ASC, d.created_at ASC`
       : [];
 
+    // Value adjustments still standing on these layers — an event on the lot, not a dispersal.
+    const revaluations = layers.length
+      ? await tx.$queryRaw<RevaluationRow[]>`
+          SELECT r.layer_id AS "layerId", r.qty, r.value_before AS "valueBefore",
+                 r.value_after AS "valueAfter", e.source_doc_id AS "docId", e.posted_at AS "date"
+          FROM stock_layer_revaluations r
+          JOIN stock_ledger e ON e.id = r.ledger_entry_id
+          WHERE r.organization_id = ${organizationId}::uuid
+            AND r.reversed_at IS NULL
+            AND r.layer_id = ANY(${layers.map((layer) => layer.id)}::uuid[])
+          ORDER BY e.posted_at ASC`
+      : [];
+    const revaluationsByLayer = new Map<string, RevaluationRow[]>();
+    for (const row of revaluations) {
+      revaluationsByLayer.set(row.layerId, [...(revaluationsByLayer.get(row.layerId) ?? []), row]);
+    }
+
     const drawsByLayer = new Map<string, DrawRow[]>();
     for (const draw of draws) {
       drawsByLayer.set(draw.layerId, [...(drawsByLayer.get(draw.layerId) ?? []), draw]);
@@ -116,6 +142,7 @@ export async function getFifoCostLotTracking(
       ...draws.flatMap((draw) =>
         draw.outDocId ? [{ type: draw.outDocType, id: draw.outDocId }] : [],
       ),
+      ...revaluations.map((row) => ({ type: 'inventory_adjustment', id: row.docId })),
     ]);
 
     const describe = (type: string | null, id: string | null) => {
@@ -148,6 +175,11 @@ export async function getFifoCostLotTracking(
       qty: Prisma.Decimal;
       remaining: Prisma.Decimal;
       dispersals: DrawRow[];
+      /** Per value adjustment: what it moved across this lot's layers. */
+      revalued: Map<
+        string,
+        { date: Date; qty: Prisma.Decimal; before: Prisma.Decimal; after: Prisma.Decimal }
+      >;
     }
     const lots = new Map<string, Lot>();
     for (const layer of layers) {
@@ -174,16 +206,29 @@ export async function getFifoCostLotTracking(
             unitCost.toFixed(4),
           ].join('|')
         : layer.id;
-      const lot = lots.get(key) ?? {
+      const lot: Lot = lots.get(key) ?? {
         key,
         layer,
         unitCost,
         qty: new Prisma.Decimal(0),
         remaining: new Prisma.Decimal(0),
         dispersals: [],
+        revalued: new Map(),
       };
       lot.qty = lot.qty.plus(lotQty);
       lot.remaining = lot.remaining.plus(layer.remainingQty);
+      for (const row of revaluationsByLayer.get(layer.id) ?? []) {
+        const seen = lot.revalued.get(row.docId) ?? {
+          date: row.date,
+          qty: new Prisma.Decimal(0),
+          before: new Prisma.Decimal(0),
+          after: new Prisma.Decimal(0),
+        };
+        seen.qty = seen.qty.plus(row.qty);
+        seen.before = seen.before.plus(row.valueBefore);
+        seen.after = seen.after.plus(row.valueAfter);
+        lot.revalued.set(row.docId, seen);
+      }
       for (const draw of layerDraws.filter((row) => !own(row))) {
         // One challan drawing on both layers of a lot is one dispersal of that lot.
         const same = draw.outDocId
@@ -200,7 +245,15 @@ export async function getFifoCostLotTracking(
     const rows: FifoCostLotTrackingRow[] = [];
     let currentItemId = '';
 
-    for (const { key, layer, unitCost, qty: lotQty, remaining, dispersals } of lots.values()) {
+    for (const {
+      key,
+      layer,
+      unitCost,
+      qty: lotQty,
+      remaining,
+      dispersals,
+      revalued,
+    } of lots.values()) {
       dispersals.sort((a, b) => a.outDate.getTime() - b.outDate.getTime());
       const inDoc = describe(layer.inDocType, layer.inDocId);
       const age = differenceInDays(new Date(), layer.inDate);
@@ -246,13 +299,34 @@ export async function getFifoCostLotTracking(
         };
       };
 
+      // A value adjustment on the lot: no quantity left, the rate it changed.
+      const rate = (value: Prisma.Decimal, q: Prisma.Decimal) =>
+        q.isZero() ? '0.00' : value.dividedBy(q).toFixed(2);
+      const events = [...revalued.entries()].map(([docId, change]) => {
+        const doc = describe('inventory_adjustment', docId);
+        return {
+          date: change.date,
+          cols: {
+            ...noOut,
+            outDate: format(change.date, 'dd-MM-yyyy'),
+            outTransaction:
+              `${doc.transaction.replace('By Quantity', 'By Value')} ` +
+              `(rate ${rate(change.before, change.qty)} → ${rate(change.after, change.qty)})`,
+            outDocType: 'inventory_adjustment',
+            outDocId: docId,
+          },
+        };
+      });
+      const timeline = [
+        ...dispersals.map((draw) => ({ date: draw.outDate, cols: outCols(draw) })),
+        ...events,
+      ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
       const printed = isProductOut
-        ? dispersals
-            .filter((draw) => inRange(draw.outDate))
-            .map((draw) => ({ ...inCols, ...outCols(draw) }))
+        ? timeline.filter((row) => inRange(row.date)).map((row) => ({ ...inCols, ...row.cols }))
         : inRange(layer.inDate)
-          ? dispersals.length
-            ? dispersals.map((draw) => ({ ...inCols, ...outCols(draw) }))
+          ? timeline.length
+            ? timeline.map((row) => ({ ...inCols, ...row.cols }))
             : [{ ...inCols, ...noOut }]
           : [];
 

@@ -30,12 +30,12 @@ Still owed:
 Round 1 (`STOCK_ADJUSTMENT_PLAN.md`) built one item per adjustment, posted on save. This round
 reshapes it into Zoho's Inventory → New Adjustment page. Decided with the user on 2026-10-02:
 
-| Question                  | Decision                                                            |
-| ------------------------- | ------------------------------------------------------------------- |
-| Many items                | One form, one API call, one transaction, one adjustment number      |
-| Save as Draft             | In this round                                                       |
-| Approval                  | The shared approval engine, but **stock moves only after approval** |
-| Value Adjustment, Account | Still out                                                           |
+| Question                  | Decision                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Many items                | One form, one API call, one transaction, one adjustment number                                          |
+| Save as Draft             | In this round                                                                                           |
+| Approval                  | The shared approval engine, but **stock moves only after approval**                                     |
+| Value Adjustment, Account | Still out — Value Adjustment built 2026-10-02 (`STOCK_ADJUSTMENT_VALUE_PLAN.md`); Account never (no GL) |
 
 ## 1. What changes, in one paragraph
 

@@ -228,8 +228,48 @@ export function toLinePayload(
   };
 }
 
+/**
+ * A VALUE line reuses the same two boxes — "New Value" and "Adjusted Value" —
+ * with the current value standing where the quantity available stands.
+ */
+export function valueProblem(
+  line: LineDraft,
+  item: AdjustableItem,
+  current: { qty: number; value: number },
+): { field: 'value'; message: string } | null {
+  const change = adjustedOf(line, current.value);
+  if (Math.abs(change) < 0.005) {
+    return { field: 'value', message: `${item.name}: enter a value to adjust.` };
+  }
+  if (current.qty <= QTY_EPSILON) {
+    return { field: 'value', message: `${item.name}: no stock here to change the value of.` };
+  }
+  if (change < 0 && -change > current.value + 0.005) {
+    return {
+      field: 'value',
+      message: `${item.name}: at most ${current.value.toFixed(2)} can be taken off.`,
+    };
+  }
+  return null;
+}
+
+export const toValueLinePayload = (
+  line: LineDraft,
+  item: AdjustableItem,
+  currentValue: number,
+): AdjustmentLinePayload => ({
+  itemId: item.id,
+  valueAdjusted: adjustedOf(line, currentValue),
+});
+
 /** A saved, unposted line back into form state — for editing a draft. */
 export function fromSavedLine(saved: StockAdjustmentDetailLine): LineDraft {
+  if (saved.valueAdjusted !== null) {
+    return {
+      ...emptyLine(),
+      typed: { box: 'adjusted', text: String(Number(saved.valueAdjusted)) },
+    };
+  }
   const quantity = Number(saved.quantityAdjusted);
   const drafts = saved.draftBatches ?? [];
   return {

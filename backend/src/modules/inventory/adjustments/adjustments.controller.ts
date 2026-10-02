@@ -44,6 +44,21 @@ export const getFifoCost = async (req: Request, res: Response) => {
   sendSuccess(res, await adjustmentsService.previewDecreaseCost(req.tenantId!, query.data));
 };
 
+const currentValuesQuerySchema = z.object({
+  locationId: z.string().uuid(),
+  // `itemIds=a,b,c` — one request for every row on the form.
+  itemIds: z
+    .string()
+    .transform((value) => value.split(',').filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1).max(200)),
+});
+
+export const getCurrentValues = async (req: Request, res: Response) => {
+  const query = currentValuesQuerySchema.safeParse(req.query);
+  if (!query.success) throw ApiError.badRequest('Select a location and at least one item.');
+  sendSuccess(res, await adjustmentsService.currentValues(req.tenantId!, query.data));
+};
+
 export const getAdjustmentById = async (req: Request, res: Response) => {
   sendSuccess(res, await adjustmentsService.getAdjustment(req.tenantId!, adjustmentId(req)));
 };

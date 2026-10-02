@@ -29,6 +29,7 @@ export function refreshAfterAdjustment(queryClient: QueryClient, itemIds: readon
         'stockAdjustment',
         'stockAdjustments-count',
         'adjustment-stock',
+        'adjustment-values',
         'record-approvals',
       ].includes(String(queryKey[0])),
   });

@@ -1,5 +1,5 @@
-/// Stock adjustment — docs/STOCK_ADJUSTMENT_PLAN.md and STOCK_ADJUSTMENT_ROUND2_PLAN.md.
-/// Quantity only.
+/// Stock adjustment — docs/STOCK_ADJUSTMENT_PLAN.md, STOCK_ADJUSTMENT_ROUND2_PLAN.md and
+/// STOCK_ADJUSTMENT_VALUE_PLAN.md.
 ///
 /// A header, one LINE per item, and the batches each line touched. One location
 /// per document; lines may go in different directions. Never edited once
@@ -16,12 +16,17 @@ model StockAdjustment {
 
   locationId String @map("location_id") @db.Uuid
 
+  /// quantity | value. A value adjustment moves no stock: it changes what the
+  /// newest purchase entry on hand is worth.
+  adjustmentType String @default("quantity") @map("adjustment_type") @db.VarChar(10)
+
   /// Snapshot of what the ledger rows carried, summed over the lines. Zero
-  /// until the adjustment posts.
+  /// until the adjustment posts. Signed on a value adjustment.
   value Decimal @default(0) @db.Decimal(18, 4)
 
-  /// damaged | lost | found | count_correction | other
-  reason          String  @db.VarChar(40)
+  /// quantity: damaged | lost | found | count_correction | other
+  /// value:    write_down | cost_correction | other
+  reason         String  @db.VarChar(40)
   referenceNumber String? @map("reference_number") @db.VarChar(100)
   description     String?
 
@@ -65,7 +70,7 @@ model StockAdjustmentLine {
   itemId String @map("item_id") @db.Uuid
 
   /// SIGNED here, positive = increase. The ledger rows stay unsigned
-  /// (`qtyIn` / `qtyOut`); the sign lives only on the document.
+  /// (`qtyIn` / `qtyOut`); the sign lives only on the document. 0 on a value line.
   quantityAdjusted Decimal  @map("quantity_adjusted") @db.Decimal(18, 4)
   /// The balance the SERVER read at POST time. Null until then — a draft has no
   /// honest answer, the stock keeps moving under it.
@@ -75,6 +80,11 @@ model StockAdjustmentLine {
   costPrice Decimal? @map("cost_price") @db.Decimal(18, 4)
   /// Snapshot of what this line's ledger rows carried. Zero until posted.
   value     Decimal  @default(0) @db.Decimal(18, 4)
+
+  /// Value line only: the change the user asked for, SIGNED.
+  valueAdjusted Decimal? @map("value_adjusted") @db.Decimal(18, 4)
+  /// Value line only: what the stock here was worth when it POSTED, read by the server.
+  valueBefore   Decimal? @map("value_before") @db.Decimal(18, 4)
 
   /// 🔴 THE BATCHES WHILE UNPOSTED — exactly what the form sent, and nothing
   /// else. No batch, package or ledger row exists for a draft, so it cannot

@@ -54,6 +54,23 @@ export async function fetchFifoCost(
   return response.data as FifoCost;
 }
 
+export interface CurrentValue {
+  itemId: string;
+  quantity: string;
+  value: string;
+}
+
+/** Quantity and value on hand per item at one location — a value adjustment's "Current Value". */
+export async function fetchCurrentValues(
+  orgId: string,
+  params: { locationId: string; itemIds: readonly string[] },
+): Promise<CurrentValue[]> {
+  const response = await apiClient.get(`${endpoints.inventory.adjustments(orgId)}/current-values`, {
+    params: { locationId: params.locationId, itemIds: params.itemIds.join(',') },
+  });
+  return response.data as CurrentValue[];
+}
+
 /** Create — as a draft, or adjusted in the same request (`saveAs`). */
 export async function createAdjustment(
   orgId: string,

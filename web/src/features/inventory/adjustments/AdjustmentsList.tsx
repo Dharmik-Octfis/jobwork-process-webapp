@@ -6,11 +6,12 @@ import { useListCount } from '../../../hooks/useListCount';
 import { Pagination } from '../../../components/ui/Pagination';
 import { NewButton } from '../../../components/ui/NewButton';
 import { formatDate } from '../../../lib/formatDate';
-import { formatQty, toNumber } from '../../jobwork/jobwork.schemas';
+import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas';
 import { AdjustmentDetail } from './AdjustmentDetail';
 import { fetchAdjustmentCount, fetchAdjustments } from './adjustments.api';
 import {
   adjustmentReasonLabel,
+  adjustmentTypeLabel,
   adjustmentStatusMeta,
   type StockAdjustmentRow,
 } from './adjustments.schemas';
@@ -53,10 +54,19 @@ function itemsOf(row: StockAdjustmentRow): string {
   return rest.length > 0 ? `${first.item.name} +${rest.length} more` : first.item.name;
 }
 
-/** A single item's signed quantity; several items have no one quantity to show. */
+/** A single item's signed quantity or value; several items have no one figure to show. */
 function QuantityCell({ row }: { row: StockAdjustmentRow }) {
   if (row.lines.length !== 1)
     return <span style={{ color: '#64748b' }}>{row.lines.length} items</span>;
+  if (row.adjustmentType === 'value') {
+    const value = toNumber(row.lines[0]!.valueAdjusted);
+    return (
+      <span style={{ color: value > 0 ? '#166534' : '#b91c1c', fontWeight: 500 }}>
+        {value > 0 ? '+' : '−'}
+        {formatMoney(Math.abs(value))}
+      </span>
+    );
+  }
   const quantity = toNumber(row.lines[0]!.quantityAdjusted);
   return (
     <span style={{ color: quantity > 0 ? '#166534' : '#b91c1c', fontWeight: 500 }}>
@@ -233,9 +243,10 @@ export function AdjustmentsList() {
                     <tr>
                       <th style={headerStyle}>Date</th>
                       <th style={headerStyle}>Adjustment#</th>
+                      <th style={headerStyle}>Type</th>
                       <th style={headerStyle}>Items</th>
                       <th style={headerStyle}>Location</th>
-                      <th style={{ ...headerStyle, textAlign: 'right' }}>Quantity Adjusted</th>
+                      <th style={{ ...headerStyle, textAlign: 'right' }}>Adjusted</th>
                       <th style={headerStyle}>Reason</th>
                       <th style={headerStyle}>Status</th>
                     </tr>
@@ -269,6 +280,7 @@ export function AdjustmentsList() {
                             {row.adjustmentNumber}
                           </button>
                         </td>
+                        <td style={cellStyle}>{adjustmentTypeLabel(row.adjustmentType)}</td>
                         <td style={cellStyle}>{itemsOf(row)}</td>
                         <td style={cellStyle}>{row.location.name}</td>
                         <td style={{ ...cellStyle, textAlign: 'right' }}>

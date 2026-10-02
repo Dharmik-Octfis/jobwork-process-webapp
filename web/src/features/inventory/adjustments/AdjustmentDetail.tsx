@@ -15,6 +15,7 @@ import { adjustAdjustment, fetchAdjustment, removeAdjustment } from './adjustmen
 import {
   ADJUSTMENT_APPROVAL_MODULE,
   adjustmentReasonLabel,
+  adjustmentTypeLabel,
   adjustmentStatusMeta,
   isUnposted,
   type StockAdjustmentDetail,
@@ -22,6 +23,7 @@ import {
 } from './adjustments.schemas';
 import { headerButton } from './adjustmentButtons';
 import { announceOutcome, refreshAfterAdjustment } from './adjustmentSave';
+import { ValueAdjustmentLines } from './ValueAdjustmentLines';
 
 interface AdjustmentDetailProps {
   orgId: string;
@@ -145,6 +147,7 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
     (line) => batchNames(line, adjustment.draftLabels, showUnits).length > 0,
   );
   const busy = adjustMutation.isPending || removeMutation.isPending;
+  const isValue = adjustment.adjustmentType === 'value';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
@@ -261,6 +264,7 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
             gap: 20,
           }}
         >
+          <Fact label="Mode">{adjustmentTypeLabel(adjustment.adjustmentType)}</Fact>
           <Fact label="Date">{formatDate(adjustment.adjustmentDate)}</Fact>
           <Fact label="Location">{adjustment.location.name}</Fact>
           <Fact label="Reason">{adjustmentReasonLabel(adjustment.reason)}</Fact>
@@ -275,63 +279,69 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
           </div>
         )}
 
-        <div style={{ marginTop: 24 }}>
-          <div className="responsive-table-wrapper">
-            <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
-              <thead style={{ background: '#f8fafc' }}>
-                <tr>
-                  <th style={headStyle}>Item</th>
-                  {/* A balance exists only once it posts; a draft has no honest "before". */}
-                  {posted && <th style={{ ...headStyle, textAlign: 'right' }}>Before</th>}
-                  <th style={{ ...headStyle, textAlign: 'right' }}>Adjusted</th>
-                  {posted && <th style={{ ...headStyle, textAlign: 'right' }}>After</th>}
-                  <th style={{ ...headStyle, textAlign: 'right' }}>Cost Price</th>
-                  {posted && <th style={{ ...headStyle, textAlign: 'right' }}>Value</th>}
-                  {anyBatches && <th style={headStyle}>{tracking.plural}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {adjustment.lines.map((line) => {
-                  const quantity = toNumber(line.quantityAdjusted);
-                  const before = toNumber(line.quantityBefore);
-                  return (
-                    <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                      <td style={cellStyle}>
-                        {line.item.name}
-                        {line.item.sku && (
-                          <div style={{ fontSize: 11, color: '#64748b' }}>SKU: {line.item.sku}</div>
-                        )}
-                      </td>
-                      {posted && <td style={rightCell}>{formatQty(before)}</td>}
-                      <td
-                        style={{
-                          ...rightCell,
-                          color: quantity > 0 ? '#166534' : '#b91c1c',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {quantity > 0 ? '+' : '−'}
-                        {formatQty(Math.abs(quantity))}
-                      </td>
-                      {posted && <td style={rightCell}>{formatQty(before + quantity)}</td>}
-                      <td style={rightCell}>
-                        {line.costPrice === null ? '-' : formatMoney(line.costPrice)}
-                      </td>
-                      {posted && <td style={rightCell}>{formatMoney(line.value)}</td>}
-                      {anyBatches && (
+        {isValue ? (
+          <ValueAdjustmentLines adjustment={adjustment} posted={posted} />
+        ) : (
+          <div style={{ marginTop: 24 }}>
+            <div className="responsive-table-wrapper">
+              <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
+                <thead style={{ background: '#f8fafc' }}>
+                  <tr>
+                    <th style={headStyle}>Item</th>
+                    {/* A balance exists only once it posts; a draft has no honest "before". */}
+                    {posted && <th style={{ ...headStyle, textAlign: 'right' }}>Before</th>}
+                    <th style={{ ...headStyle, textAlign: 'right' }}>Adjusted</th>
+                    {posted && <th style={{ ...headStyle, textAlign: 'right' }}>After</th>}
+                    <th style={{ ...headStyle, textAlign: 'right' }}>Cost Price</th>
+                    {posted && <th style={{ ...headStyle, textAlign: 'right' }}>Value</th>}
+                    {anyBatches && <th style={headStyle}>{tracking.plural}</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {adjustment.lines.map((line) => {
+                    const quantity = toNumber(line.quantityAdjusted);
+                    const before = toNumber(line.quantityBefore);
+                    return (
+                      <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
                         <td style={cellStyle}>
-                          {batchNames(line, adjustment.draftLabels, showUnits).map((name) => (
-                            <div key={name}>{name}</div>
-                          ))}
+                          {line.item.name}
+                          {line.item.sku && (
+                            <div style={{ fontSize: 11, color: '#64748b' }}>
+                              SKU: {line.item.sku}
+                            </div>
+                          )}
                         </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {posted && <td style={rightCell}>{formatQty(before)}</td>}
+                        <td
+                          style={{
+                            ...rightCell,
+                            color: quantity > 0 ? '#166534' : '#b91c1c',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {quantity > 0 ? '+' : '−'}
+                          {formatQty(Math.abs(quantity))}
+                        </td>
+                        {posted && <td style={rightCell}>{formatQty(before + quantity)}</td>}
+                        <td style={rightCell}>
+                          {line.costPrice === null ? '-' : formatMoney(line.costPrice)}
+                        </td>
+                        {posted && <td style={rightCell}>{formatMoney(line.value)}</td>}
+                        {anyBatches && (
+                          <td style={cellStyle}>
+                            {batchNames(line, adjustment.draftLabels, showUnits).map((name) => (
+                              <div key={name}>{name}</div>
+                            ))}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
         {approval.allRequests.length > 0 && (
           <div style={{ marginTop: 24 }}>
@@ -347,7 +357,11 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
       <ConfirmDialog
         isOpen={confirming === 'cancel'}
         title="Cancel Adjustment"
-        message={`${adjustment.adjustmentNumber} will be reversed: the stock it added is taken back and the stock it removed is put back. The adjustment stays in the list as cancelled.`}
+        message={
+          isValue
+            ? `${adjustment.adjustmentNumber} will be reversed: the stock goes back to the value it had before. The adjustment stays in the list as cancelled.`
+            : `${adjustment.adjustmentNumber} will be reversed: the stock it added is taken back and the stock it removed is put back. The adjustment stays in the list as cancelled.`
+        }
         confirmText="Cancel Adjustment"
         cancelText="Keep"
         onConfirm={() => removeMutation.mutate()}

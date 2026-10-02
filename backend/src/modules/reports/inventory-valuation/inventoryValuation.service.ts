@@ -217,8 +217,10 @@ export async function getItemLedger(
         value: Prisma.Decimal;
         sourceDocType: string;
         sourceDocId: string | null;
+        locationId: string;
         createdAt: Date;
         isReversal: boolean;
+        valueOnly: boolean;
       }[]
     >`
       SELECT
@@ -227,8 +229,10 @@ export async function getItemLedger(
         SUM(l.value_in - l.value_out) AS "value",
         l.source_doc_type AS "sourceDocType",
         l.source_doc_id AS "sourceDocId",
+        l.location_id AS "locationId",
         MIN(l.created_at) AS "createdAt",
-        BOOL_AND(l.movement_type = 'reversal') AS "isReversal"
+        BOOL_AND(l.movement_type = 'reversal') AS "isReversal",
+        BOOL_AND(l.qty_in = 0 AND l.qty_out = 0) AS "valueOnly"
       FROM stock_ledger l
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.item_id = ${itemId}::uuid
@@ -344,6 +348,50 @@ export async function getItemLedger(
       docs.forEach((d) => docNumbers.set(d.id, d.poNumber));
     }
 
+    /**
+     * A value adjustment prints like Zoho's: per purchase entry it changed, the
+     * stock out at the old rate and back in at the new one (value plan §8). Read
+     * from what it did to each layer — its ledger rows carry value only.
+     */
+    const valueDocIds = [
+      ...new Set(
+        entries
+          .filter((e) => e.valueOnly && e.sourceDocType === 'inventory_adjustment' && e.sourceDocId)
+          .map((e) => e.sourceDocId!),
+      ),
+    ];
+    const revaluations = valueDocIds.length
+      ? await tx.$queryRaw<
+          {
+            docId: string;
+            locationId: string;
+            qty: Prisma.Decimal;
+            valueBefore: Prisma.Decimal;
+            valueAfter: Prisma.Decimal;
+          }[]
+        >`
+          SELECT e.source_doc_id AS "docId", e.location_id AS "locationId",
+                 SUM(r.qty) AS qty,
+                 SUM(r.value_before) AS "valueBefore",
+                 SUM(r.value_after) AS "valueAfter"
+          FROM stock_layer_revaluations r
+          JOIN stock_ledger e ON e.id = r.ledger_entry_id
+          JOIN stock_cost_layers c ON c.id = r.layer_id
+          LEFT JOIN stock_ledger ie ON ie.id = c.in_ledger_entry_id
+          WHERE e.organization_id = ${organizationId}::uuid
+            AND e.item_id = ${itemId}::uuid
+            AND e.source_doc_type = 'inventory_adjustment'
+            AND e.source_doc_id = ANY(${valueDocIds}::uuid[])
+          GROUP BY e.source_doc_id, e.location_id, ie.source_doc_type, ie.source_doc_id,
+                   c.in_date, CASE WHEN ie.id IS NULL THEN c.id END
+          ORDER BY MIN(c.in_date) DESC`
+      : [];
+    const pairsOf = new Map<string, typeof revaluations>();
+    for (const row of revaluations) {
+      const key = `${row.docId}|${row.locationId}`;
+      pairsOf.set(key, [...(pairsOf.get(key) ?? []), row]);
+    }
+
     const drawsByOutDocId = new Map<string, { label: string; qty: number; value: number }[]>();
     for (const draw of draws) {
       const type = draw.inDocType;
@@ -406,8 +454,49 @@ export async function getItemLedger(
 
       const entryDraws =
         qty < 0 && entry.sourceDocId ? drawsByOutDocId.get(entry.sourceDocId) : null;
+      const pairs =
+        entry.valueOnly && entry.sourceDocId
+          ? pairsOf.get(`${entry.sourceDocId}|${entry.locationId}`)
+          : undefined;
 
-      if (entryDraws && entryDraws.length > 0) {
+      if (pairs && pairs.length > 0) {
+        // A cancellation is its own event even straight after the posting.
+        const head = !isSameAsPrevious || entry.isReversal;
+        for (const [index, pair] of pairs.entries()) {
+          const q = Number(pair.qty);
+          // A cancellation is the mirror: out at the new rate, back in at the old.
+          const [outValue, inValue] = entry.isReversal
+            ? [Number(pair.valueAfter), Number(pair.valueBefore)]
+            : [Number(pair.valueBefore), Number(pair.valueAfter)];
+          const first = head && index === 0;
+          currentValue += inValue - outValue;
+          rows.push({
+            isCancellation: first && entry.isReversal,
+            date: first ? entry.date.toISOString() : null,
+            transactionDetails: first ? 'Inventory Adjustment By Value' : '',
+            quantity: -q,
+            unitCost: Math.abs(outValue / q),
+            totalCost: -outValue,
+            stockOnHand: null,
+            inventoryAssetValue: null,
+            sourceDocType: first ? entry.sourceDocType : null,
+            sourceDocId: first ? entry.sourceDocId : null,
+            sourceDocNumber: first ? docNumbers.get(entry.sourceDocId!) || null : null,
+          });
+          rows.push({
+            date: null,
+            transactionDetails: '',
+            quantity: q,
+            unitCost: Math.abs(inValue / q),
+            totalCost: inValue,
+            stockOnHand: currentQty,
+            inventoryAssetValue: currentValue,
+            sourceDocType: null,
+            sourceDocId: null,
+            sourceDocNumber: null,
+          });
+        }
+      } else if (entryDraws && entryDraws.length > 0) {
         let first = true;
         for (const draw of entryDraws) {
           const drawQty = -draw.qty; // draw qty is positive, we want outflow to be negative
