@@ -325,6 +325,12 @@ ephemeral token tables, no master-data reference tables):
   module has no gate, every member can do everything, and nothing warns you (same shape as a tenant
   table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
   Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
+- 🔴 **An approval that gates stock is not a label.** By default the approval engine writes
+  `Pending Approval` / `Approved` / `Rejected` straight into the record's `status`. A document that
+  posts stock registers an outcome handler (`approvalOutcome.registry.ts`), keeps approval in its own
+  column, and **awaits** `evaluateAndTriggerApproval` before posting — never the fire-and-forget
+  `approvalTriggerService.trigger`, which swallows errors. Copy `bills.service.ts` `requestOpen` or
+  `adjustments.service.ts` `adjust`.
 - 🔴 **A Role is NOT a permission set.** Since 2026-07-25 they are two independent things on a
   Membership: `roleId` → `roles` is a **job title that grants nothing** (no middleware reads it),
   and `permissionTemplateId` → `permission_templates` **is** the authorization. Same title with

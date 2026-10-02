@@ -4,6 +4,7 @@ import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { toast } from 'react-hot-toast';
+import { announceOpenOutcome } from './billApproval';
 import { toApiErrorMessage } from '../../../api/client';
 import {
   Plus,
@@ -723,6 +724,9 @@ export function CreateBill() {
       // an edited bill's number, status and amount show on its source PO too
       queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['record-approvals', orgId, 'bills'] });
+      // An Open bill being corrected was already open; only a first opening is news.
+      if (data && !isOpenBill) announceOpenOutcome(data);
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },

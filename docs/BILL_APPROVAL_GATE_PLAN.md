@@ -1,9 +1,16 @@
 # Bill approval — make it a gate, and stop it overwriting the bill's status
 
-**Status: planned 2026-10-02. Nothing in this file is built.** Written to be picked up in a fresh
-session — §0 says where to start.
+**Status: built 2026-10-02 on `feat/stockAdjustment`. Tests pass; the screens have not been
+walked in a browser yet.** What was found at build time is in §13; the rest of this file is the plan
+as it was decided.
 
-Until this is built: **do not activate an approval process on Bills.**
+- Backend: `bills.service.ts` — `requestOpen` (the awaited gate), `openBill` (the one opening path),
+  `writeBillLines`, `assertOpenable`, the G6 / G10 guards, and the registered outcome handler.
+  Engine: `approvalExecution.service.ts` `evaluateApprovalRequirement` (read-only), sharing
+  `matchProcess` with `evaluateAndTriggerApproval`.
+- Migration `20261002074813_bill_approval_status`, applied to `jobwork_local` only.
+- Tests: `bills.approval.test.ts` (§9's 1–15, plus a batch-tracked opening and a batch-tracked
+  untouched re-save).
 
 ## 0. Picking this up
 
@@ -254,3 +261,32 @@ Own organization, users and approval process, hard-deleted — copy `adjustments
   produces no withdrawals, receipts or re-takes.
 - Whether the organization owner should pass G10 without being a process admin. The engine's own
   rule knows only process admins; this plan follows it. Ask the user if it comes up.
+
+## 13. Found at build time (2026-10-02)
+
+- **§1 #4 and #5 reproduced before the fix.** With an active process, an Open bill posted at once,
+  the engine wrote `Approved` into `status`, and Save as Draft was accepted and took 200 units off the
+  books. The same test (`bills.approval.test.ts` → 10) now passes.
+- **§6 on both databases:** zero overwritten bills in `jobwork_local` and `jobwork_dev`, and no bill
+  approval request ever raised in either. So the migration has no repair step.
+- **Status is now Draft | Open at the schema too.** `bills.schemas.ts` accepts either spelling and
+  refuses anything else, so a client can no longer write an approval word into `status`.
+- **The read-only engine check runs outside a transaction while it introspects fields.**
+  `getModuleFields` reads `information_schema` and outlived the 5 s budget of the transaction around
+  it when called from inside a bill edit. `evaluateApprovalRequirement` loads processes, introspects
+  and matches in separate steps. `evaluateAndTriggerApproval` keeps its old order.
+- **A refused open never leaves a half-saved bill.** `assertOpenable` (location, and batches on
+  every batch-tracked line) runs inside the same transaction as the save, before the engine is asked.
+  So an approver is never sent a bill that could not post. A brand-new bill whose open is refused
+  after that (engine error, posting error) is soft-deleted, and its PO's status is put back.
+- **§12, answered:**
+  - Other readers of an approval word in `bills.status`: only `BillDetail.tsx` and the list filters,
+    both changed. The dashboard's "Pending Approvals" card is a hard-coded number.
+  - PO "Billed": still set when the bill is created, pending or not, as before. Not decided here.
+  - Status-only Open Bill and Save as Open now both save a draft and then call `openBill`. The
+    existing package suites (`bills.batchUnits.test.ts`) pass through it unchanged.
+  - An untouched re-save produces no withdrawals, receipts or re-takes. This is tested for untracked
+    and batch-tracked lines, **not** for lines with packages.
+  - Owner vs G10: not raised. G10 follows the engine, which knows only process admins.
+- **Approving from the bill's own banner now also refreshes stock figures**, because approving
+  opens the bill.

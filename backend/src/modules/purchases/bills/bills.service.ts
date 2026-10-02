@@ -19,9 +19,27 @@ import {
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
 import type { TenantClient } from '../../../db/prisma.ts';
-import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
+import { approvalExecutionService } from '../../automation/approval-processes/approvalExecution.service.ts';
+import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
+import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
 
 const DUPLICATE_NUMBER = 'A bill with this number already exists.';
+
+/** What the approval engine knows bills as — the table name. */
+export const BILL_APPROVAL_MODULE = 'bills';
+
+/**
+ * 🔴 TWO COLUMNS, TWO QUESTIONS (docs/BILL_APPROVAL_GATE_PLAN.md G1). `status` is
+ * only ever Draft or Open — whether the stock is on the books. Where an approval
+ * stands is `approval_status`; nothing writes an approval word into `status`.
+ */
+const DRAFT = 'Draft';
+const OPEN = 'Open';
+const isOpen = (status: string | null | undefined) => status?.toLowerCase() === 'open';
+
+const G10_REFUSAL =
+  'This bill is open and its quantities, rates or location are covered by an approval ' +
+  'process. Ask a process admin to make this change.';
 
 /** Same tolerance `assertAllocationsBalance` uses one level up: an exact
  * comparison rejects `3 × 33.3333` for being a billionth off. */
@@ -656,6 +674,8 @@ async function reconcileBillPostings(
     newDate: Date;
     userId: string | null;
     postings: readonly BillPosting[];
+    /** Called only when this edit moves stock — G10's check (BILL_APPROVAL_GATE_PLAN.md §4). */
+    assertMayChangeStock?: () => Promise<void>;
   },
 ) {
   const { organizationId, billId, billNumber, oldDate, newDate, userId } = args;
@@ -750,6 +770,9 @@ async function reconcileBillPostings(
     }
   }
   if (withdrawals.length === 0 && receipts.length === 0) return;
+  // Hung on what the reconcile found rather than on which form fields changed,
+  // so it cannot drift from what actually posts.
+  await args.assertMayChangeStock?.();
 
   const labelOf = async (batchId: string) =>
     (await tx.batch.findFirst({
@@ -939,6 +962,395 @@ async function retireBillUnits(
     data: { isDeleted: true, updatedBy: userId },
   });
 }
+
+/**
+ * 🔴 WRITE A BILL'S DOCUMENT ROWS, AND — when `post` — RECONCILE ITS STOCK.
+ *
+ * Every line goes through `receiveBillBatch`, so the batch detail is stored
+ * whether or not anything posts; an Open bill is then reconciled by the
+ * difference (`reconcileBillPostings`). Used by a draft save, an edit of an Open
+ * bill and `openBill`, so the three cannot drift.
+ */
+async function writeBillLines(
+  tx: TenantClient,
+  args: {
+    organizationId: string;
+    billId: string;
+    billNumber: string;
+    locationId: string | null;
+    oldDate: Date;
+    newDate: Date;
+    userId: string | null;
+    lines: readonly { payload: BillItemPayload; lineId: string }[];
+    post: boolean;
+    assertMayChangeStock?: () => Promise<void>;
+  },
+) {
+  const { organizationId, billId, userId, post } = args;
+  const itemIds = args.lines.map((line) => line.payload.itemId);
+  const items = await tx.item.findMany({
+    where: { id: { in: itemIds }, organizationId },
+    select: { id: true, name: true, inventoryTracking: true, trackInventory: true },
+  });
+  const itemsById = new Map(items.map((i) => [i.id, i]));
+
+  /* Every package this save actually used, created ones included — which is
+     why it is collected HERE and not read off the payload: a taka the user
+     has just added carries no id until `createBatchUnits` gives it one. */
+  const usedUnitIds = new Set<string>();
+  const postings: BillPosting[] = [];
+
+  for (const line of args.lines) {
+    const payload = line.payload;
+    const item = itemsById.get(payload.itemId);
+
+    // Lines billed from a Job Receipt do not affect inventory.
+    // The Job Receipt already received the physical stock.
+    // However, the document rows (`billItemBatch`) still need to be written,
+    // so we process the batches with `post: false` to skip ledger postings.
+    const shouldPost = post && !payload.jobReceiptId;
+
+    if (item?.trackInventory && item.inventoryTracking !== 'none') {
+      for (const b of batchesToReceive(item, payload, shouldPost)) {
+        const received = await receiveBillBatch(tx, {
+          organizationId,
+          userId,
+          itemId: item.id,
+          billId,
+          lineId: line.lineId,
+          locationId: args.locationId,
+          value: batchValue(payload, b.quantity),
+          batch: b,
+          post: shouldPost,
+        });
+        for (const unitId of received.unitIds) usedUnitIds.add(unitId);
+        postings.push(...received.postings);
+      }
+      /* An item tracked at neither batch nor package level has no detail to
+         remember: its quantity is the line's own column, and the anonymous
+         batch below exists only to give the ledger something to hang on. So
+         this branch stays posting-only, and a draft writes nothing for it. */
+    } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
+      postings.push(
+        await untrackedPosting(tx, {
+          organizationId,
+          billId,
+          itemId: item.id,
+          lineId: line.lineId,
+          locationId: args.locationId,
+          payload,
+          userId,
+        }),
+      );
+    }
+  }
+
+  // Before retiring packages: a package being taken back must still be live
+  // for `postMovement` to post against it.
+  if (post) {
+    await reconcileBillPostings(tx, {
+      organizationId,
+      billId,
+      billNumber: args.billNumber,
+      oldDate: args.oldDate,
+      newDate: args.newDate,
+      userId,
+      postings,
+      assertMayChangeStock: args.assertMayChangeStock,
+    });
+  }
+
+  /* 🔴 LAST, once every package this save uses is known. A taka the user
+     deleted from a DRAFT moves no stock, so nothing reverses it — but its
+     `batch_units` row still has to go, or the tag stays reserved and the
+     picker keeps offering a roll the bill no longer claims. */
+  await retireBillUnits(tx, { organizationId, billId, keepUnitIds: usedUnitIds, userId });
+}
+
+/**
+ * 🔴 WHAT MUST BE TRUE OF A DRAFT BEFORE IT CAN OPEN, read from what it stores.
+ * Checked before the approval engine is asked, so an approver is never sent a
+ * bill that could not post anyway — the same rule `batchesToReceive` and
+ * `requireReceivingLocation` apply at the posting.
+ */
+async function assertOpenable(tx: TenantClient, organizationId: string, billId: string) {
+  const bill = await tx.bill.findFirst({
+    where: { id: billId, organizationId, isDeleted: false },
+    select: {
+      locationId: true,
+      lineItems: {
+        where: { isDeleted: false },
+        select: {
+          id: true,
+          jobReceiptId: true,
+          item: { select: { name: true, trackInventory: true, inventoryTracking: true } },
+        },
+      },
+    },
+  });
+  if (!bill) throw ApiError.notFound('Bill not found');
+  const posting = bill.lineItems.filter((line) => !line.jobReceiptId && line.item.trackInventory);
+  if (posting.length === 0) return;
+  requireReceivingLocation(bill.locationId);
+
+  const tracked = posting.filter((line) => line.item.inventoryTracking !== 'none');
+  if (tracked.length === 0) return;
+  const stored = await storedBatchesByLine(
+    tx,
+    organizationId,
+    tracked.map((line) => line.id),
+  );
+  for (const line of tracked) {
+    batchesToReceive(line.item, { batches: stored.get(line.id) } as BillItemPayload, true);
+  }
+}
+
+/**
+ * 🔴 OPEN A DRAFT — post the lines and batches it already stores.
+ *
+ * The one path a bill becomes Open by: the status-only "Open Bill", Save as Open
+ * and an approval all come through here, so they cannot post differently. The
+ * first statement is a compare-and-swap on `Draft`, so an approval landing while
+ * somebody clicks Open Bill cannot post the bill twice.
+ */
+async function openBill(
+  tx: TenantClient,
+  organizationId: string,
+  id: string,
+  userId: string | null,
+): Promise<void> {
+  const claimed = await tx.bill.updateMany({
+    where: { id, organizationId, isDeleted: false, status: DRAFT },
+    data: { status: OPEN, updatedBy: userId },
+  });
+  if (claimed.count !== 1) {
+    throw ApiError.conflict('This bill has already been opened or changed. Refresh it.');
+  }
+
+  const bill = await tx.bill.findFirstOrThrow({
+    where: { id, organizationId },
+    include: { lineItems: { where: { isDeleted: false } } },
+  });
+  await assertReceiptLines(tx, {
+    organizationId,
+    billId: id,
+    vendorId: bill.vendorId,
+    lines: bill.lineItems,
+  });
+  await assertOnOrAfterMigration(tx, {
+    organizationId,
+    date: bill.billDate,
+    field: 'billDate',
+    label: 'bill',
+  });
+
+  /* 🔴 OPENING A DRAFT FROM ITS STORED ROWS POSTED NOTHING until 2026-09-11 —
+     the lines carried no `batches`, so the bill turned Open with an empty ledger
+     behind it. Its stored batch detail rides along now and is rewritten exactly
+     as an edit's would be; the old rows go first because `receiveBillBatch`
+     writes them again. */
+  const stored = await storedBatchesByLine(
+    tx,
+    organizationId,
+    bill.lineItems.map((row) => row.id),
+  );
+  await tx.billItemBatch.updateMany({
+    where: { organizationId, billItem: { billId: id } },
+    data: { isDeleted: true, updatedBy: userId },
+  });
+
+  await writeBillLines(tx, {
+    organizationId,
+    billId: id,
+    billNumber: bill.billNumber,
+    locationId: bill.locationId,
+    oldDate: bill.billDate,
+    newDate: bill.billDate,
+    userId,
+    lines: bill.lineItems.map((row) => ({
+      payload: { ...(row as unknown as BillItemPayload), batches: stored.get(row.id) },
+      lineId: row.id,
+    })),
+    post: true,
+  });
+}
+
+/** Is an approval request still open for this bill? */
+async function hasLiveApprovalRequest(
+  tx: TenantClient,
+  organizationId: string,
+  billId: string,
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "approval_requests"
+    WHERE "organization_id" = ${organizationId}::uuid
+      AND "record_id" = ${billId}
+      AND "status" IN ('PENDING', 'IN_PROGRESS')
+    LIMIT 1`;
+  return rows.length > 0;
+}
+
+/**
+ * G6 — somebody is deciding on exactly what this bill says, so it cannot change
+ * under them. The engine does not tell the record when a request is withdrawn,
+ * so "pending with no live request" is nobody's to decide and is a plain draft.
+ */
+async function assertNotAwaitingApproval(
+  tx: TenantClient,
+  organizationId: string,
+  bill: { id: string; billNumber: string; approvalStatus: string | null },
+) {
+  if (bill.approvalStatus !== 'pending') return;
+  if (!(await hasLiveApprovalRequest(tx, organizationId, bill.id))) return;
+  throw ApiError.conflict(
+    `${bill.billNumber} is waiting for approval and cannot be changed until that is decided.`,
+  );
+}
+
+/**
+ * 🔴 G10 — may `userId` change the stock of this Open bill? Only if no approval
+ * process applies to it as it now stands, or they are an admin of the one that
+ * does. Fails closed: an engine error refuses the change.
+ */
+async function assertMayChangeOpenBill(
+  organizationId: string,
+  bill: Record<string, unknown>,
+  userId: string | null,
+  message: string,
+) {
+  await ensureApprovalTables();
+  const { applies, actorIsAdmin } = await approvalExecutionService.evaluateApprovalRequirement(
+    organizationId,
+    BILL_APPROVAL_MODULE,
+    bill,
+    userId ?? undefined,
+  );
+  if (applies && !actorIsAdmin) throw new ApiError(403, message);
+}
+
+/** The document leaves every screen; its stock, if any, must already be off the books. */
+async function softDeleteBill(
+  tx: TenantClient,
+  organizationId: string,
+  id: string,
+  userId: string | null,
+) {
+  /* 🔴 THE DOCUMENT'S OWN ROWS GO FIRST, and the order is load-bearing:
+     `retireBillUnits` reads this table to decide which packages are still
+     claimed by a live line. Leave these standing and every one of them looks
+     spoken for, so nothing is retired. */
+  await tx.billItemBatch.updateMany({
+    where: { organizationId, billItem: { billId: id } },
+    data: { isDeleted: true, updatedBy: userId },
+  });
+
+  // Nothing is kept: the bill is going away, so every package it created goes
+  // with it — unless another document has moved one, which keeps its row so the
+  // ledger rows naming it stay interpretable.
+  await retireBillUnits(tx, { organizationId, billId: id, keepUnitIds: new Set(), userId });
+
+  await tx.bill.update({
+    where: { id },
+    data: { isDeleted: true, updatedBy: userId },
+  });
+}
+
+/**
+ * 🔴 OPEN — now, or once approved (G3).
+ *
+ * The engine is asked FIRST and awaited, because here approval is a gate: called
+ * fire-and-forget after posting, with its errors swallowed, it let a bill post
+ * unapproved and then overwrote its status. An engine error now refuses the
+ * open instead (G4).
+ */
+async function requestOpen(
+  organizationId: string,
+  id: string,
+  userId: string | null,
+): Promise<'opened' | 'pending'> {
+  const bill = await runAsTenant(organizationId, async (tx) => {
+    const row = await tx.bill.findFirst({ where: { id, organizationId, isDeleted: false } });
+    if (!row) throw ApiError.notFound('Bill not found');
+    if (isOpen(row.status)) throw ApiError.conflict(`${row.billNumber} is already open.`);
+    await assertOpenable(tx, organizationId, id);
+    return row;
+  });
+
+  // Already approved — its opening failed last time (G8). No second approval.
+  if (bill.approvalStatus !== 'approved') {
+    await ensureApprovalTables();
+    const outcome = await approvalExecutionService.evaluateAndTriggerApproval(
+      organizationId,
+      BILL_APPROVAL_MODULE,
+      id,
+      `Bill #${bill.billNumber}`,
+      'CREATE',
+      bill as unknown as Record<string, unknown>,
+      userId ?? undefined,
+    );
+    if (outcome.triggered || outcome.requestId) {
+      // The engine's own write goes through the handler below, best-effort; the
+      // gate must not be.
+      await runAsTenant(organizationId, (tx) =>
+        tx.bill.updateMany({
+          where: { id, organizationId, status: DRAFT },
+          data: { approvalStatus: 'pending', updatedBy: userId },
+        }),
+      );
+      return 'pending';
+    }
+  }
+
+  await runAsDocument(organizationId, (tx) => openBill(tx, organizationId, id, userId));
+  return 'opened';
+}
+
+/**
+ * What each approval outcome does to a bill — registered with the engine in
+ * place of its raw write to `bills.status` (approvalOutcome.registry.ts).
+ */
+registerApprovalOutcomeHandler(BILL_APPROVAL_MODULE, async (outcome) => {
+  const { organizationId, recordId: id } = outcome;
+  const mark = (from: Prisma.BillWhereInput, approvalStatus: string) =>
+    runAsTenant(organizationId, (tx) =>
+      tx.bill.updateMany({
+        where: { id, organizationId, isDeleted: false, status: DRAFT, ...from },
+        data: { approvalStatus },
+      }),
+    );
+
+  if (outcome.status === 'Pending Approval') {
+    await mark({}, 'pending');
+    return;
+  }
+  if (outcome.status === 'Rejected') {
+    await mark({ approvalStatus: 'pending' }, 'rejected');
+    return;
+  }
+  if (outcome.status !== 'Approved') return;
+
+  // Only a bill that was WAITING opens on approval. The engine also says
+  // "Approved" for a process admin's own bill before any request exists — that
+  // one is still unmarked here, and `requestOpen` opens it itself.
+  const approved = await mark({ approvalStatus: 'pending' }, 'approved');
+  if (approved.count !== 1) return;
+
+  const requester = await runAsTenant(organizationId, (tx) =>
+    tx.bill.findFirst({
+      where: { id, organizationId },
+      select: { updatedBy: true, createdBy: true },
+    }),
+  );
+  try {
+    await runAsDocument(organizationId, (tx) =>
+      openBill(tx, organizationId, id, requester?.updatedBy ?? requester?.createdBy ?? null),
+    );
+  } catch (error) {
+    // Left as Draft + approved (G8): the approval stands, and Open Bill shows the
+    // person why it could not post.
+    console.error(`[bills] ${id} was approved but could not be opened:`, error);
+  }
+});
 
 function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWhereInput {
   const baseWhere: Prisma.BillWhereInput = {
@@ -1277,9 +1689,11 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
     notes: _notes,
     ...billData
   } = data as CreateBillPayload & { notes?: string };
+  // Written as a Draft whatever was asked; opening is `requestOpen`'s, below.
+  const wantsOpen = isOpen(billData.status);
   // `runAsDocument`, like `updateBill`: a fifty-taka consignment now writes fifty
-  // package rows, fifty document rows and fifty ledger rows in one transaction.
-  const createdBill = await runAsDocument(orgId, async (tx) => {
+  // package rows and fifty document rows in one transaction.
+  const { poStatusBefore, ...createdBill } = await runAsDocument(orgId, async (tx) => {
     // Drafts too: a bill's date rides through to the ledger the moment it opens,
     // so a parked one holding an invalid date is a posting waiting to happen.
     await assertOnOrAfterMigration(tx, {
@@ -1339,6 +1753,7 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
     const createdBill = await tx.bill.create({
       data: {
         ...billData,
+        status: DRAFT,
         totalAmount: totalAmount,
         termsAndConditions: termsAndConditions,
         organizationId: orgId,
@@ -1383,75 +1798,34 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
      * This whole block used to sit behind that condition, so a DRAFT stored none
      * of its batches or takas and reopening it showed an empty form. Now the
      * condition only decides `post` — the same shape `jobIssues.service` uses to
-     * park a challan without moving anything.
+     * park a challan without moving anything. Here it never posts: an Open bill
+     * is opened by `requestOpen` once this has committed.
      */
-    const posting = createdBill.status?.toLowerCase() === 'open';
-    {
-      const itemIds = lineItems.map((li: BillItemPayload) => li.itemId);
-      const items = await tx.item.findMany({
-        where: { id: { in: itemIds }, organizationId: orgId },
-        select: { id: true, name: true, inventoryTracking: true, trackInventory: true },
-      });
-      const itemsById = new Map(items.map((i) => [i.id, i]));
-      const postings: BillPosting[] = [];
+    await writeBillLines(tx, {
+      organizationId: orgId,
+      billId: createdBill.id,
+      billNumber: createdBill.billNumber,
+      locationId: createdBill.locationId,
+      oldDate: createdBill.billDate,
+      newDate: createdBill.billDate,
+      userId: userId || null,
+      // Paired by index, unchanged from before the approval gate.
+      lines: lineItems.flatMap((payload: BillItemPayload, i: number) => {
+        const lineRecord = createdBill.lineItems[i];
+        return lineRecord ? [{ payload, lineId: lineRecord.id }] : [];
+      }),
+      post: false,
+    });
+    // Refused here, inside the write, so a bill that could never open is not saved at all.
+    if (wantsOpen) await assertOpenable(tx, orgId, createdBill.id);
 
-      for (let i = 0; i < lineItems.length; i++) {
-        const payload = lineItems[i];
-        if (!payload) continue;
-        const lineRecord = createdBill.lineItems[i]; // assuming same order since Prisma returns in create order mostly
-        if (!lineRecord) continue;
-        const item = itemsById.get(payload.itemId);
-
-        // Lines billed from a Job Receipt do not affect inventory.
-        // The Job Receipt already received the physical stock.
-        // However, the document rows (`billItemBatch`) still need to be written,
-        // so we process the batches with `post: false` to skip ledger postings.
-        const shouldPost = posting && !payload.jobReceiptId;
-
-        if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          for (const b of batchesToReceive(item, payload, shouldPost)) {
-            const received = await receiveBillBatch(tx, {
-              organizationId: orgId,
-              userId: userId || null,
-              itemId: item.id,
-              billId: createdBill.id,
-              lineId: lineRecord.id,
-              locationId: createdBill.locationId,
-              value: batchValue(payload, b.quantity),
-              batch: b,
-              post: shouldPost,
-            });
-            postings.push(...received.postings);
-          }
-          /* An item tracked at neither batch nor package level has no detail to
-             remember: its quantity is the line's own column, and the anonymous
-             batch below exists only to give the ledger something to hang on. So
-             this branch stays posting-only, and a draft writes nothing for it. */
-        } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
-          postings.push(
-            await untrackedPosting(tx, {
-              organizationId: orgId,
-              billId: createdBill.id,
-              itemId: item.id,
-              lineId: lineRecord.id,
-              locationId: createdBill.locationId,
-              payload,
-              userId: userId || null,
-            }),
-          );
-        }
-      }
-
-      await postBillReceipts(tx, {
-        organizationId: orgId,
-        billId: createdBill.id,
-        billDate: createdBill.billDate,
-        userId: userId || null,
-        postings,
-      });
-    }
-
+    let poStatusBefore: string | null = null;
     if (createdBill.sourcePoId) {
+      const po = await tx.purchaseOrder.findFirst({
+        where: { id: createdBill.sourcePoId },
+        select: { status: true },
+      });
+      poStatusBefore = po?.status ?? null;
       await tx.purchaseOrder.update({
         where: { id: createdBill.sourcePoId },
         data: { status: 'Billed' },
@@ -1462,23 +1836,36 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
     return {
       ...restBill,
       attachments: documents,
+      poStatusBefore,
     };
   });
 
-  // Trigger approval workflow evaluation asynchronously post-commit
-  approvalTriggerService
-    .trigger({
-      organizationId: orgId,
-      moduleId: 'bills',
-      recordId: createdBill.id,
-      recordTitle: `Bill #${createdBill.billNumber}`,
-      triggerType: 'CREATE',
-      record: createdBill as unknown as Record<string, unknown>,
-      actorUserId: userId,
-    })
-    .catch((err) => console.error('[ApprovalTrigger] Error in create bill:', err));
+  if (!wantsOpen) return createdBill;
 
-  return createdBill;
+  try {
+    await requestOpen(orgId, createdBill.id, userId || null);
+  } catch (error) {
+    // The caller asked for an open bill and got a refusal. Leaving it behind as a
+    // draft would give them a second one on retry.
+    await runAsDocument(orgId, async (tx) => {
+      await softDeleteBill(tx, orgId, createdBill.id, userId || null);
+      if (createdBill.sourcePoId && poStatusBefore !== null) {
+        await tx.purchaseOrder.updateMany({
+          where: { id: createdBill.sourcePoId, status: 'Billed' },
+          data: { status: poStatusBefore },
+        });
+      }
+    });
+    throw error;
+  }
+
+  const now = await runAsTenant(orgId, (tx) =>
+    tx.bill.findFirstOrThrow({
+      where: { id: createdBill.id, organizationId: orgId },
+      select: { status: true, approvalStatus: true },
+    }),
+  );
+  return { ...createdBill, ...now };
 }
 
 export async function updateBill(
@@ -1499,6 +1886,7 @@ export async function updateBill(
   // `runAsDocument`, not `runAsTenant`: an edit now reverses every row this bill
   // posted before re-posting the new ones, so a fifty-taka consignment is a
   // hundred `postMovement` calls on one connection.
+  let goingOpen = false;
   const updatedBill = await runAsDocument(orgId, async (tx) => {
     const existing = await tx.bill.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
@@ -1506,6 +1894,7 @@ export async function updateBill(
     });
 
     if (!existing) throw ApiError.notFound('Bill not found');
+    await assertNotAwaitingApproval(tx, orgId, existing);
 
     const effectiveStatus = (billData.status ?? existing.status ?? '').toLowerCase();
     /**
@@ -1521,10 +1910,15 @@ export async function updateBill(
         { status: 'An open bill stays open.' },
       );
     }
-    const goingOpen = existing.status.toLowerCase() === 'draft' && effectiveStatus === 'open';
-    /* The detail page's "Open Bill" sends the status and nothing else, so the lines
-       and batches to post are the ones the draft already stores. */
-    const openingFromDocument = goingOpen && !lineItems;
+    const existingOpen = isOpen(existing.status);
+    /* Saved as a Draft here and opened by `requestOpen` once this commits — the
+       same path the detail page's status-only "Open Bill" takes (G3). */
+    goingOpen = !existingOpen && effectiveStatus === 'open';
+    /* G7: an edit is a different document from the one that was approved or
+       rejected. A status-only Open keeps an approval whose opening failed (G8). */
+    const editsDocument = Object.entries(data).some(
+      ([key, value]) => key !== 'status' && value !== undefined,
+    );
 
     let performedBy = 'System';
     if (userId) {
@@ -1576,6 +1970,9 @@ export async function updateBill(
       where: { id },
       data: {
         ...billData,
+        // Never changed by an edit: only `openBill` turns a bill Open.
+        status: existingOpen ? OPEN : DRAFT,
+        ...(editsDocument && !existingOpen ? { approvalStatus: null } : {}),
         totalAmount: totalAmount,
         termsAndConditions: termsAndConditions,
         documents: attachments !== undefined ? (attachments as Prisma.InputJsonValue) : undefined,
@@ -1643,43 +2040,13 @@ export async function updateBill(
         });
         writtenLines.push({ payload: item, lineId: created.id });
       }
-    } else {
-      /* No lines in the payload: the rows already on the bill ARE the lines, so
-         each one pairs with itself and no ordering question arises.
-
-         🔴 OPENING A DRAFT THIS WAY POSTED NOTHING until 2026-09-11. The lines
-         carried no `batches` and nothing was written, so the bill turned Open with
-         an empty ledger behind it — stock that never arrived at its location and
-         a batch no Batch Details tab could find. Now its stored batch detail rides
-         along and is rewritten below exactly as an edit's would be; the old rows
-         go first because `receiveBillBatch` writes them again. Every other
-         line-less save still carries no batches and never touches the ledger. */
-      const stored = openingFromDocument
-        ? await storedBatchesByLine(
-            tx,
-            orgId,
-            existing.lineItems.map((row) => row.id),
-          )
-        : undefined;
-      if (openingFromDocument) {
-        await tx.billItemBatch.updateMany({
-          where: { organizationId: orgId, billItem: { billId: id } },
-          data: { isDeleted: true, updatedBy: userId },
-        });
-      }
-      for (const row of existing.lineItems) {
-        writtenLines.push({
-          payload: { ...(row as unknown as BillItemPayload), batches: stored?.get(row.id) },
-          lineId: row.id,
-        });
-      }
     }
 
     const effectiveLocationId =
       billData.locationId !== undefined ? billData.locationId : existing.locationId;
-    // Re-dating a bill re-dates the stock it moved: the reversal below withdraws
-    // every old row and this save posts fresh ones, so they must carry the date
-    // the bill now says, not the one it used to.
+    // Re-dating a bill re-dates the stock it moved: the reconcile below takes the
+    // old rows back and posts fresh ones, so they must carry the date the bill now
+    // says, not the one it used to.
     const effectiveBillDate = billData.billDate ?? existing.billDate;
     await assertOnOrAfterMigration(tx, {
       organizationId: orgId,
@@ -1711,31 +2078,19 @@ export async function updateBill(
      * zero. Being idempotent, the reversal is a no-op there.
      *
      * 🔴 SO THE ONE CASE THAT MUST NOT TOUCH STOCK is a payload with no `lineItems`
-     * that leaves the bill OPEN — a note, an attachment, a payment term. There
-     * `writtenLines` falls back to the rows already on the bill, which carry no
-     * `batches`, so reversing would withdraw the stock and re-post it from a
-     * payload that never described it, flattening every taka into one untagged
-     * lump on an edit that never mentioned them.
+     * that leaves the bill OPEN — a note, an attachment, a payment term. Nothing
+     * below runs for it: the rows already on the bill carry no `batches`, so
+     * re-posting them would flatten every taka into one untagged lump on an edit
+     * that never mentioned them.
      */
     const rewritingLines = Boolean(lineItems);
-
-    /**
-     * 🔴 THE DOCUMENT ROWS ARE REWRITTEN WHENEVER THE LINES ARE — draft or open,
-     * and independently of whether anything posts. That is what lets a draft be
-     * edited over and over and still read back exactly what was typed. Opening a
-     * draft from its stored rows is the same rewrite, fed from the database.
-     */
-    const mustWrite = rewritingLines || openingFromDocument;
-    /* Only a bill that is not Open takes everything back — in practice the old
-       drafts sent back before Open → Draft was refused, which already net to zero.
-       An Open bill is reconciled by the difference instead (`reconcileBillPostings`). */
-    const mustReverse = alreadyPosted > 0 && effectiveStatus !== 'open';
+    const mustReverse = alreadyPosted > 0 && !existingOpen;
     /* 🔴 An Open bill whose lines are saved ALWAYS ends up holding what they say. This
        used to require `alreadyPosted > 0`, which is exactly what an Open bill with an
        empty ledger lacks — so the bills the status-only "Open Bill" left unposted
        could never be repaired by editing them. No location is refused inside the
        posting (`requireReceivingLocation`) rather than silently skipping it. */
-    const mustPost = effectiveStatus === 'open' && (goingOpen || rewritingLines);
+    const mustPost = existingOpen && rewritingLines;
 
     if (mustReverse) {
       await reverseBillPostings(tx, {
@@ -1747,106 +2102,43 @@ export async function updateBill(
       });
     }
 
-    if (mustWrite) {
-      const itemIds = writtenLines.map((line) => line.payload.itemId);
-      const items = await tx.item.findMany({
-        where: { id: { in: itemIds }, organizationId: orgId },
-        select: { id: true, name: true, inventoryTracking: true, trackInventory: true },
-      });
-      const itemsById = new Map(items.map((i) => [i.id, i]));
-
-      /* Every package this save actually used, created ones included — which is
-         why it is collected HERE and not read off the payload: a taka the user
-         has just added carries no id until `createBatchUnits` gives it one. */
-      const usedUnitIds = new Set<string>();
-      const postings: BillPosting[] = [];
-
-      for (const line of writtenLines) {
-        const payload = line.payload;
-        const lineRecord = { id: line.lineId };
-        const item = itemsById.get(payload.itemId);
-
-        // Lines billed from a Job Receipt do not affect inventory.
-        // The Job Receipt already received the physical stock.
-        // However, the document rows (`billItemBatch`) still need to be written,
-        // so we process the batches with `post: false` to skip ledger postings.
-        const shouldPost = mustPost && !payload.jobReceiptId;
-
-        if (item?.trackInventory && item.inventoryTracking !== 'none') {
-          for (const b of batchesToReceive(item, payload, shouldPost)) {
-            const received = await receiveBillBatch(tx, {
-              organizationId: orgId,
-              userId: userId || null,
-              itemId: item.id,
-              billId: id,
-              lineId: lineRecord.id,
-              locationId: effectiveLocationId,
-              value: batchValue(payload, b.quantity),
-              batch: b,
-              post: shouldPost,
-            });
-            for (const unitId of received.unitIds) usedUnitIds.add(unitId);
-            postings.push(...received.postings);
-          }
-          // Posting-only, for the same reason as on create: an item tracked at
-          // neither level has no detail to remember.
-        } else if (shouldPost && item?.trackInventory && item.inventoryTracking === 'none') {
-          postings.push(
-            await untrackedPosting(tx, {
-              organizationId: orgId,
-              billId: id,
-              itemId: item.id,
-              lineId: lineRecord.id,
-              locationId: effectiveLocationId,
-              payload,
-              userId: userId || null,
-            }),
-          );
-        }
-      }
-
-      // Before retiring packages: a package being taken back must still be live
-      // for `postMovement` to post against it.
-      if (mustPost) {
-        await reconcileBillPostings(tx, {
-          organizationId: orgId,
-          billId: id,
-          billNumber: existing.billNumber,
-          oldDate: existing.billDate,
-          newDate: effectiveBillDate,
-          userId: userId || null,
-          postings,
-        });
-      }
-
-      /* 🔴 LAST, once every package this save uses is known. A taka the user
-         deleted from a DRAFT moves no stock, so nothing reverses it — but its
-         `batch_units` row still has to go, or the tag stays reserved and the
-         picker keeps offering a roll the bill no longer claims. */
-      await retireBillUnits(tx, {
+    /**
+     * 🔴 THE DOCUMENT ROWS ARE REWRITTEN WHENEVER THE LINES ARE — draft or open,
+     * and independently of whether anything posts. That is what lets a draft be
+     * edited over and over and still read back exactly what was typed.
+     */
+    if (rewritingLines) {
+      await writeBillLines(tx, {
         organizationId: orgId,
         billId: id,
-        keepUnitIds: usedUnitIds,
+        billNumber: existing.billNumber,
+        locationId: effectiveLocationId,
+        oldDate: existing.billDate,
+        newDate: effectiveBillDate,
         userId: userId || null,
+        lines: writtenLines,
+        post: mustPost,
+        // G10, judged against the bill as this edit leaves it (§4).
+        assertMayChangeStock: async () => {
+          const edited = await tx.bill.findFirstOrThrow({ where: { id } });
+          await assertMayChangeOpenBill(
+            orgId,
+            edited as unknown as Record<string, unknown>,
+            userId || null,
+            G10_REFUSAL,
+          );
+        },
       });
     }
+    // Refused here, inside the edit, so a draft that could never open keeps its old form.
+    if (goingOpen) await assertOpenable(tx, orgId, id);
 
     return await tx.bill.findFirst({ where: { id } });
   });
 
-  if (updatedBill) {
-    // Trigger approval workflow evaluation asynchronously post-commit
-    approvalTriggerService
-      .trigger({
-        organizationId: orgId,
-        moduleId: 'bills',
-        recordId: updatedBill.id,
-        recordTitle: `Bill #${updatedBill.billNumber}`,
-        triggerType: 'EDIT',
-        record: updatedBill as unknown as Record<string, unknown>,
-        actorUserId: userId,
-      })
-      .catch((err) => console.error('[ApprovalTrigger] Error in update bill:', err));
+  if (updatedBill && goingOpen) {
+    await requestOpen(orgId, id, userId || null);
+    return runAsTenant(orgId, (tx) => tx.bill.findFirst({ where: { id } }));
   }
 
   return updatedBill;
@@ -1872,6 +2164,16 @@ export async function deleteBill(orgId: string, id: string, userId: string | nul
       where: { id, organizationId: orgId, isDeleted: false },
     });
     if (!existing) throw ApiError.notFound('Bill not found');
+    await assertNotAwaitingApproval(tx, orgId, existing);
+    // G10: deleting an Open bill un-posts its stock, so it is held to the same rule as an edit.
+    if (isOpen(existing.status)) {
+      await assertMayChangeOpenBill(
+        orgId,
+        existing as unknown as Record<string, unknown>,
+        userId,
+        'This bill is open and covered by an approval process. Ask a process admin to delete it.',
+      );
+    }
 
     await reverseBillPostings(tx, {
       organizationId: orgId,
@@ -1881,29 +2183,7 @@ export async function deleteBill(orgId: string, id: string, userId: string | nul
       userId,
     });
 
-    /* 🔴 THE DOCUMENT'S OWN ROWS GO FIRST, and the order is load-bearing:
-       `retireBillUnits` reads this table to decide which packages are still
-       claimed by a live line. Leave these standing and every one of them looks
-       spoken for, so nothing is retired. */
-    await tx.billItemBatch.updateMany({
-      where: { organizationId: orgId, billItem: { billId: id } },
-      data: { isDeleted: true, updatedBy: userId },
-    });
-
-    // Nothing is kept: the bill is going away, so every package it created goes
-    // with it — unless another document has moved one, which keeps its row so the
-    // ledger rows naming it stay interpretable.
-    await retireBillUnits(tx, {
-      organizationId: orgId,
-      billId: id,
-      keepUnitIds: new Set(),
-      userId,
-    });
-
-    await tx.bill.update({
-      where: { id },
-      data: { isDeleted: true, updatedBy: userId },
-    });
+    await softDeleteBill(tx, orgId, id, userId);
   });
 }
 
