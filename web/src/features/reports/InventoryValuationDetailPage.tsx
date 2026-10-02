@@ -63,6 +63,8 @@ export function InventoryValuationDetailPage() {
         return `/organizations/${orgId}/purchases/purchase-orders/${row.sourceDocId}/edit`;
       case 'item_opening_stock':
         return `/organizations/${orgId}/items/${itemId}/opening-stock`;
+      case 'inventory_adjustment':
+        return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
       default:
         return null;
     }

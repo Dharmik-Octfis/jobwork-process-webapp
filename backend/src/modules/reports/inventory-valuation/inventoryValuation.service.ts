@@ -175,13 +175,19 @@ const DOC_LABELS: Record<string, string> = {
   job_issue: 'Job Issue',
   job_order_step: 'Job Order Write-off',
   item_assembly: 'Assembly',
+  inventory_adjustment: 'Stock Adjustment',
   purchase_order: 'Purchase Order',
 };
 
 // Documents whose cancel posts its reversals on the cancel date, so a group made
 // only of reversals is the cancellation. Bills are absent: an edit's reversal
 // carries the bill's own date and lands in the posting's group instead.
-const CANCELLED_BY_REVERSAL = new Set(['job_issue', 'job_receipt', 'item_assembly']);
+const CANCELLED_BY_REVERSAL = new Set([
+  'job_issue',
+  'job_receipt',
+  'item_assembly',
+  'inventory_adjustment',
+]);
 
 /**
  * One row per document per place per posting moment, at the value the ledger
@@ -308,6 +314,22 @@ export async function getItemLedger(
         select: { id: true, assemblyNumber: true },
       });
       docs.forEach((d) => docNumbers.set(d.id, d.assemblyNumber));
+    }
+    // Read off the draws as well: stock an adjustment ADDED is what a later row draws on.
+    const adjustmentIds = [
+      ...new Set([
+        ...idsOf('inventory_adjustment'),
+        ...draws
+          .filter((d) => d.inDocType === 'inventory_adjustment' && d.inDocId)
+          .map((d) => d.inDocId!),
+      ]),
+    ];
+    if (adjustmentIds.length > 0) {
+      const docs = await tx.stockAdjustment.findMany({
+        where: { organizationId, id: { in: adjustmentIds } },
+        select: { id: true, adjustmentNumber: true },
+      });
+      docs.forEach((d) => docNumbers.set(d.id, d.adjustmentNumber));
     }
     const poIds = [
       ...new Set(

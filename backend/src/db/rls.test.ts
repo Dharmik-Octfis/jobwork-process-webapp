@@ -142,6 +142,10 @@ const TENANT_TABLES = [
   'approval_request_approvers',
   'approval_history',
   'approval_action_executions',
+  // Stock adjustments, added in 20261002051832_add_stock_adjustments. Both carry
+  // their own `organization_id` (direct form).
+  'stock_adjustments',
+  'stock_adjustment_batches',
 ] as const;
 
 /**

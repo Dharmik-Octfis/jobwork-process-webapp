@@ -355,5 +355,20 @@ async function describeParties(
       info.set(d.id, { number: d.assemblyNumber, partyName: null, partyId: null, partyType: null }),
     );
   }
+  const adjustmentIds = idsOf('inventory_adjustment');
+  if (adjustmentIds.length) {
+    const docs = await tx.stockAdjustment.findMany({
+      where: { id: { in: adjustmentIds } },
+      select: { id: true, adjustmentNumber: true },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, {
+        number: d.adjustmentNumber,
+        partyName: null,
+        partyId: null,
+        partyType: null,
+      }),
+    );
+  }
   return info;
 }

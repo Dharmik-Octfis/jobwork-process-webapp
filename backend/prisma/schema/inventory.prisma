@@ -173,6 +173,8 @@ model Batch {
   assembliesAsComposite ItemAssembly[]     @relation("ItemAssemblyCompositeBatch")
   assemblyLines         ItemAssemblyLine[] @relation("ItemAssemblyLineBatch")
 
+  adjustmentBatches StockAdjustmentBatch[] @relation("StockAdjustmentBatchBatch")
+
   @@unique([organizationId, batchNumber])
   @@index([organizationId, itemId])
   /// The expiry report's index — the whole point of promoting the column out of
@@ -285,6 +287,8 @@ model BatchUnit {
   /// life, and PARTIAL: an assembly cuts what it needs off a roll rather than
   /// taking the whole thing, unlike a job issue.
   assemblyLines ItemAssemblyLine[] @relation("ItemAssemblyLineBatchUnit")
+
+  adjustmentBatches StockAdjustmentBatch[] @relation("StockAdjustmentBatchUnit")
 
   @@unique([batchId, seq])
   @@index([organizationId, batchId])

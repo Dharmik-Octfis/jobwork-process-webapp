@@ -477,6 +477,15 @@ export async function describeDocuments(
       label.set(row.id, `assembly ${row.assemblyNumber}`);
     }
   }
+  const adjustmentIds = idsOf('inventory_adjustment');
+  if (adjustmentIds.length) {
+    for (const row of await tx.stockAdjustment.findMany({
+      where: { organizationId, id: { in: adjustmentIds } },
+      select: { id: true, adjustmentNumber: true },
+    })) {
+      label.set(row.id, `stock adjustment ${row.adjustmentNumber}`);
+    }
+  }
   const stepIds = idsOf('job_order_step');
   if (stepIds.length) {
     for (const row of await tx.jobOrderStep.findMany({

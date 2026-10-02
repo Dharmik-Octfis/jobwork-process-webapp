@@ -189,6 +189,10 @@ model User {
   updatedItemAssemblyComments         ItemAssemblyComment[]         @relation("ItemAssemblyCommentUpdatedBy")
   createdItemAssemblyActivities       ItemAssemblyActivity[]        @relation("ItemAssemblyActivityCreatedBy")
   updatedItemAssemblyActivities       ItemAssemblyActivity[]        @relation("ItemAssemblyActivityUpdatedBy")
+  createdStockAdjustments             StockAdjustment[]             @relation("StockAdjustmentCreatedBy")
+  updatedStockAdjustments             StockAdjustment[]             @relation("StockAdjustmentUpdatedBy")
+  createdStockAdjustmentBatches       StockAdjustmentBatch[]        @relation("StockAdjustmentBatchCreatedBy")
+  updatedStockAdjustmentBatches       StockAdjustmentBatch[]        @relation("StockAdjustmentBatchUpdatedBy")
   createdItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowCreatedBy")
   updatedItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowUpdatedBy")
   
@@ -411,6 +415,8 @@ model Organization {
   itemAssemblyLines            ItemAssemblyLine[]
   itemAssemblyComments         ItemAssemblyComment[]
   itemAssemblyActivities       ItemAssemblyActivity[]
+  stockAdjustments             StockAdjustment[]
+  stockAdjustmentBatches       StockAdjustmentBatch[]
   itemOpeningStockRows         ItemOpeningStockRow[]
   settings                     Json                          @default("{}") @map("settings")
 
@@ -790,6 +796,7 @@ model Location {
   jobIssueLinesFrom        JobIssueLine[]           @relation("JobIssueLineSource")
   jobReceipts              JobReceipt[]             @relation("JobReceiptLocation")
   itemAssemblies           ItemAssembly[]           @relation("ItemAssemblyLocation")
+  stockAdjustments         StockAdjustment[]        @relation("StockAdjustmentLocation")
   itemOpeningStockRows     ItemOpeningStockRow[]
   jobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchLocation")
 

@@ -51,6 +51,7 @@ import { itemsApi } from '../../features/items/items.api';
 import { approvalsApi } from '../../features/approvals/approvals.api';
 import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
 import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
+import { fetchAdjustments } from '../../features/inventory/adjustments/adjustments.api';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 /**
@@ -73,6 +74,7 @@ const ROUTE_MAP: Record<string, string> = {
   COMPOSITE_ITEMS: '/composite-items',
   INVENTORY_MANAGEMENT: '/inventory',
   ASSEMBLY: '/inventory/assembly',
+  STOCK_ADJUSTMENTS: '/inventory/adjustments',
   JOBWORK: '/jobwork',
   // No PROCESSES/ROUTES — both masters live under Settings since 2026-08-10 and
   // are reached from SettingsLayout's nav, not this one.
@@ -192,6 +194,17 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
         subtitle: i.sku ? `SKU: ${i.sku}` : undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/items?id=${id}`,
+  },
+  {
+    match: '/inventory/adjustments',
+    label: 'Adjustments',
+    fetch: async (orgId, term) =>
+      (await fetchAdjustments(orgId, { search: term, perPage: 6 })).results.map((a) => ({
+        id: a.id,
+        title: a.adjustmentNumber,
+        subtitle: a.item.name,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/inventory/adjustments?id=${id}`,
   },
   {
     // No Processes entry: that list moved under Settings, which renders outside
@@ -603,7 +616,11 @@ export function AppLayout() {
             <NavLink
               to={`/organizations/${effectiveOrgId}/approvals`}
               className="sidebar-nav-link"
-              title={pendingApprovalsCount > 0 ? `Approvals (${pendingApprovalsCount} pending)` : 'Approvals'}
+              title={
+                pendingApprovalsCount > 0
+                  ? `Approvals (${pendingApprovalsCount} pending)`
+                  : 'Approvals'
+              }
               style={({ isActive }) => ({
                 display: 'flex',
                 flexDirection: isSidebarCollapsed ? 'column' : 'row',
@@ -641,9 +658,7 @@ export function AppLayout() {
                   </span>
                 )}
               </div>
-              <span style={{ fontSize: isSidebarCollapsed ? 10 : 13, flex: 1 }}>
-                Approvals
-              </span>
+              <span style={{ fontSize: isSidebarCollapsed ? 10 : 13, flex: 1 }}>Approvals</span>
               {!isSidebarCollapsed && pendingApprovalsCount > 0 && (
                 <span
                   style={{
@@ -782,7 +797,10 @@ export function AppLayout() {
   );
 }
 
-const ToteBagIcon = ({ size = 24, ...props }: SVGProps<SVGSVGElement> & { size?: number | string }) => (
+const ToteBagIcon = ({
+  size = 24,
+  ...props
+}: SVGProps<SVGSVGElement> & { size?: number | string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width={size}
@@ -813,7 +831,12 @@ function ModuleNavGroup({
   onToggle?: (id: string) => void;
   isSidebarCollapsed?: boolean;
 }) {
-  const Icon = module.code === 'INVENTORY' ? ToteBagIcon : (module.icon && ICON_MAP[module.icon] ? ICON_MAP[module.icon] : FileText);
+  const Icon =
+    module.code === 'INVENTORY'
+      ? ToteBagIcon
+      : module.icon && ICON_MAP[module.icon]
+        ? ICON_MAP[module.icon]
+        : FileText;
   const { orgId } = useParams<{ orgId: string }>();
   const effectiveOrgId = orgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
   const to = navPath(module.code, effectiveOrgId);

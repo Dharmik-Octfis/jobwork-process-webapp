@@ -93,7 +93,16 @@ const MODULE_GROUPS: readonly {
   {
     key: 'inventory_management',
     label: 'Inventory',
-    resources: [{ resource: 'assembly', label: 'Assembly' }],
+    resources: [
+      { resource: 'assembly', label: 'Assembly' },
+      // Its own resource, and no `update`: this is the one module that can create
+      // stock from nothing, and a posted adjustment is never edited — only cancelled.
+      {
+        resource: 'stock_adjustment',
+        label: 'Stock Adjustments',
+        actions: ['read', 'create', 'delete'],
+      },
+    ],
   },
   {
     key: 'purchases',
@@ -107,7 +116,10 @@ const MODULE_GROUPS: readonly {
   {
     key: 'sales',
     label: 'Sales',
-    resources: [{ resource: 'customer', label: 'Customers' }, { resource: 'sales_order', label: 'Sales Orders' }],
+    resources: [
+      { resource: 'customer', label: 'Customers' },
+      { resource: 'sales_order', label: 'Sales Orders' },
+    ],
   },
   {
     /**
@@ -176,9 +188,7 @@ const MODULE_GROUPS: readonly {
   {
     key: 'reports',
     label: 'Reports',
-    resources: [
-      { resource: 'reports', label: 'Reports', actions: ['read'] },
-    ],
+    resources: [{ resource: 'reports', label: 'Reports', actions: ['read'] }],
   },
 ];
 

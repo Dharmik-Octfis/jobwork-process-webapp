@@ -31,7 +31,15 @@ export async function getStockMovementReport(
       quantity: string | number | bigint;
     };
 
-    const { itemId, locationId, fromDate, toDate, movementType = 'all', page = 1, perPage = 25 } = query;
+    const {
+      itemId,
+      locationId,
+      fromDate,
+      toDate,
+      movementType = 'all',
+      page = 1,
+      perPage = 25,
+    } = query;
 
     const fromDateFilter = fromDate
       ? Prisma.sql`l.posted_at::date >= ${new Date(fromDate)}::timestamptz::date`
@@ -51,7 +59,9 @@ export async function getStockMovementReport(
     }
 
     const itemFilter = itemId ? Prisma.sql`l.item_id = ${itemId}::uuid` : Prisma.sql`true`;
-    const locationFilter = locationId ? Prisma.sql`l.location_id = ${locationId}::uuid` : Prisma.sql`true`;
+    const locationFilter = locationId
+      ? Prisma.sql`l.location_id = ${locationId}::uuid`
+      : Prisma.sql`true`;
 
     // One row per document, item and location, netted: an edit posts a reversal
     // and a re-post rather than rewriting its rows, so the raw ledger lists a bill
@@ -102,6 +112,7 @@ export async function getStockMovementReport(
             WHEN n.source_doc_type = 'job_receipt' THEN (SELECT receipt_number FROM job_receipts WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'job_issue' THEN (SELECT challan_number FROM job_issues WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'purchase_order' THEN (SELECT po_number FROM purchase_orders WHERE id = n.source_doc_id)
+            WHEN n.source_doc_type = 'inventory_adjustment' THEN (SELECT adjustment_number FROM stock_adjustments WHERE id = n.source_doc_id)
             ELSE n.source_doc_id::text
           END,
           '-'

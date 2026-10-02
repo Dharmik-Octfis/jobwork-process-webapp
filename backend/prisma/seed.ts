@@ -186,6 +186,18 @@ async function main() {
     },
   });
 
+  await prisma.appModule.upsert({
+    where: { code: 'STOCK_ADJUSTMENTS' },
+    update: { parentId: inventoryManagement.id, name: 'Adjustments', sortIndex: 2 },
+    create: {
+      code: 'STOCK_ADJUSTMENTS',
+      name: 'Adjustments',
+      parentId: inventoryManagement.id,
+      sortIndex: 2,
+      icon: 'ClipboardList',
+    },
+  });
+
   // Jobwork.
   //
   // sortIndex 5 puts it after Purchases — the sidebar order is Home, Item, Sales,
