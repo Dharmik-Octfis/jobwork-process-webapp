@@ -51,20 +51,32 @@ const adjustmentBatchSchema = z.object({
   units: z.array(adjustmentBatchUnitSchema).optional(),
 });
 
-export const createAdjustmentSchema = z.object({
+const adjustmentLineSchema = z.object({
   itemId: z.string().uuid(),
-  locationId: z.string().uuid(),
-  adjustmentDate: z.string().datetime({ offset: true }).or(z.string().min(1)),
   /** Signed: positive adds stock, negative removes it. The server never takes a
-   * "new quantity on hand" — it re-reads the balance itself. */
+   * "new quantity on hand" — it re-reads the balance itself when it posts. */
   quantityAdjusted: z.coerce.number().refine((value) => value !== 0, 'Enter a quantity to adjust.'),
   /** Increase only; ignored on a decrease, which FIFO costs. */
   costPrice: z.coerce.number().min(0, 'Cost price cannot be negative.').optional().nullable(),
-  reason: z.enum(ADJUSTMENT_REASONS),
-  referenceNumber: z.string().trim().max(100).optional().nullable(),
-  description: z.string().trim().optional().nullable(),
   batches: z.array(adjustmentBatchSchema).max(100).optional(),
 });
 
-export type CreateAdjustmentDto = z.infer<typeof createAdjustmentSchema>;
+export const saveAdjustmentSchema = z.object({
+  locationId: z.string().uuid(),
+  adjustmentDate: z.string().datetime({ offset: true }).or(z.string().min(1)),
+  reason: z.enum(ADJUSTMENT_REASONS),
+  referenceNumber: z.string().trim().max(100).optional().nullable(),
+  description: z.string().trim().max(500).optional().nullable(),
+  lines: z.array(adjustmentLineSchema).min(1, 'Add at least one item.').max(200),
+  /**
+   * `draft` only saves. `adjust` saves and then posts the stock — or, when an
+   * approval process applies, sends it for approval instead.
+   */
+  saveAs: z.enum(['draft', 'adjust']).default('adjust'),
+});
+
+export type SaveAdjustmentDto = z.infer<typeof saveAdjustmentSchema>;
+/** What a caller passes: `saveAs` may be left to its default. */
+export type SaveAdjustmentInput = z.input<typeof saveAdjustmentSchema>;
+export type AdjustmentLineDto = z.infer<typeof adjustmentLineSchema>;
 export type AdjustmentBatchDto = z.infer<typeof adjustmentBatchSchema>;

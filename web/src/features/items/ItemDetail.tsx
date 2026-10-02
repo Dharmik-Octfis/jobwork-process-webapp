@@ -25,7 +25,7 @@ import { patchListRow, releaseListRow } from '../../hooks/useListRowRetention';
 import { RecordApprovalBanner } from '../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../approvals/components/RecordApprovalHistoryTimeline';
 import { useRecordApproval } from '../approvals/useRecordApproval';
-import { AdjustStockModal } from '../inventory/adjustments/AdjustStockModal';
+import { AdjustStockPanel } from '../inventory/adjustments/AdjustStockPanel';
 
 interface ItemDetailProps {
   itemId: string;
@@ -45,6 +45,16 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAdjustStock, setShowAdjustStock] = useState(false);
+  // Closing the Adjust Stock panel puts focus back on the button that opened it.
+  const adjustStockButtonRef = useRef<HTMLButtonElement>(null);
+  const wasAdjustingStock = useRef(false);
+  useEffect(() => {
+    if (showAdjustStock) wasAdjustingStock.current = true;
+    else if (wasAdjustingStock.current) {
+      wasAdjustingStock.current = false;
+      adjustStockButtonRef.current?.focus();
+    }
+  }, [showAdjustStock]);
   const [activeTab, setActiveTab] = useState('Overview');
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
@@ -219,6 +229,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     );
   }
 
+  // In place of the overview, not over it: the item list stays beside it.
+  if (showAdjustStock && orgId && item.id) {
+    return (
+      <AdjustStockPanel
+        orgId={orgId}
+        item={{ ...item, id: item.id }}
+        onClose={() => setShowAdjustStock(false)}
+      />
+    );
+  }
+
   return (
     <div
       style={{
@@ -319,6 +340,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           {isInventoryTracked && item.itemType !== 'service' && (
             <button
               type="button"
+              ref={adjustStockButtonRef}
               onClick={() => setShowAdjustStock(true)}
               style={{
                 padding: '6px 12px',
@@ -1045,14 +1067,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           </div>
         )}
       </div>
-
-      {showAdjustStock && orgId && item.id && (
-        <AdjustStockModal
-          orgId={orgId}
-          item={{ ...item, id: item.id }}
-          onClose={() => setShowAdjustStock(false)}
-        />
-      )}
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

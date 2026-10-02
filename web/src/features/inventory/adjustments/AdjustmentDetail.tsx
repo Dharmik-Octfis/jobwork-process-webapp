@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { X } from 'lucide-react';
@@ -6,9 +7,21 @@ import { toApiErrorMessage } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../../../lib/formatDate';
 import { useBatchUnitLabel, useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas';
-import { cancelAdjustment, fetchAdjustment } from './adjustments.api';
-import { ADJUSTMENT_STATUS_META, adjustmentReasonLabel } from './adjustments.schemas';
+import { adjustAdjustment, fetchAdjustment, removeAdjustment } from './adjustments.api';
+import {
+  ADJUSTMENT_APPROVAL_MODULE,
+  adjustmentReasonLabel,
+  adjustmentStatusMeta,
+  isUnposted,
+  type StockAdjustmentDetail,
+  type StockAdjustmentDetailLine,
+} from './adjustments.schemas';
+import { headerButton } from './adjustmentButtons';
+import { announceOutcome, refreshAfterAdjustment } from './adjustmentSave';
 
 interface AdjustmentDetailProps {
   orgId: string;
@@ -16,7 +29,12 @@ interface AdjustmentDetailProps {
   onClose: () => void;
 }
 
-const cellStyle: React.CSSProperties = { padding: '10px 12px', fontSize: 13, color: '#334155' };
+const cellStyle: React.CSSProperties = {
+  padding: '10px 12px',
+  fontSize: 13,
+  color: '#334155',
+  verticalAlign: 'top',
+};
 const headStyle: React.CSSProperties = {
   ...cellStyle,
   fontSize: 11,
@@ -24,7 +42,9 @@ const headStyle: React.CSSProperties = {
   color: '#64748b',
   textTransform: 'uppercase',
   textAlign: 'left',
+  whiteSpace: 'nowrap',
 };
+const rightCell: React.CSSProperties = { ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' };
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -35,42 +55,73 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+/** What a line's batches read as — the real rows once posted, the form's until then. */
+function batchNames(
+  line: StockAdjustmentDetailLine,
+  labels: StockAdjustmentDetail['draftLabels'],
+  showUnits: boolean,
+): string[] {
+  if (line.batches.length > 0) {
+    return line.batches
+      .filter((row) => row.batch.supplierBatchRef)
+      .map(
+        (row) =>
+          `${row.batch.supplierBatchRef}${
+            showUnits && row.batchUnit ? ` / ${row.batchUnit.label}` : ''
+          } · ${formatQty(row.qty)}`,
+      );
+  }
+  return (line.draftBatches ?? []).map((row) => {
+    const name = row.supplierBatchRef || (row.batchId ? labels.batches[row.batchId] : '') || '-';
+    const unit = showUnits && row.batchUnitId ? labels.units[row.batchUnitId] : '';
+    return `${name}${unit ? ` / ${unit}` : ''} · ${formatQty(row.quantity)}`;
+  });
+}
+
 /**
- * One posted adjustment. Read-only by design — an adjustment is never edited;
- * the only action is Cancel, which reverses its stock movements and leaves the
- * record here as cancelled.
+ * One adjustment. What can be done to it depends on where it is:
+ *
+ *   draft / rejected / approved — edit, Adjust, delete (it holds no stock);
+ *   pending approval — the shared approval banner decides;
+ *   adjusted — Cancel, which reverses the stock and keeps the record.
  */
 export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDetailProps) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const tracking = useTrackingLabel();
   const unitLabel = useBatchUnitLabel();
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirming, setConfirming] = useState<'cancel' | 'delete' | null>(null);
 
   const { data: adjustment, isLoading } = useQuery({
     queryKey: ['stockAdjustment', orgId, adjustmentId],
     queryFn: () => fetchAdjustment(orgId, adjustmentId),
   });
+  // Rendered only when an approval request exists — an organization with no
+  // approval process for adjustments sees none of it.
+  const approval = useRecordApproval(orgId, ADJUSTMENT_APPROVAL_MODULE, adjustmentId);
 
-  const cancelMutation = useMutation({
-    mutationFn: () => cancelAdjustment(orgId, adjustmentId),
-    onSuccess: (cancelled) => {
-      toast.success(`${cancelled.adjustmentNumber} cancelled.`);
-      setConfirmCancel(false);
-      // The stock it moved has moved back — every cached figure for the item is stale.
-      void queryClient.invalidateQueries({
-        predicate: ({ queryKey }) =>
-          queryKey.includes(cancelled.itemId) ||
-          [
-            'items',
-            'availableBatches',
-            'available-batches',
-            'stockAdjustments',
-            'stockAdjustment',
-          ].includes(String(queryKey[0])),
-      });
+  const itemIds = adjustment?.lines.map((line) => line.itemId) ?? [];
+  const refresh = () => refreshAfterAdjustment(queryClient, itemIds);
+
+  const adjustMutation = useMutation({
+    mutationFn: () => adjustAdjustment(orgId, adjustmentId),
+    onSuccess: (result) => {
+      announceOutcome(result);
+      refresh();
+    },
+    onError: (error) => toast.error(toApiErrorMessage(error)),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: () => removeAdjustment(orgId, adjustmentId),
+    onSuccess: (result) => {
+      setConfirming(null);
+      toast.success(`${result.adjustmentNumber} ${result.deleted ? 'deleted' : 'cancelled'}.`);
+      refresh();
+      if (result.deleted) onClose();
     },
     onError: (error) => {
-      setConfirmCancel(false);
+      setConfirming(null);
       toast.error(toApiErrorMessage(error));
     },
   });
@@ -86,16 +137,14 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
     );
   }
 
-  const quantity = toNumber(adjustment.quantityAdjusted);
-  const before = toNumber(adjustment.quantityBefore);
-  const isIncrease = quantity > 0;
-  const status = ADJUSTMENT_STATUS_META[adjustment.status] ?? {
-    label: adjustment.status,
-    color: '#475569',
-    bg: '#f1f5f9',
-  };
-  const isBatchTracked = adjustment.batches.some((row) => row.batch.supplierBatchRef);
-  const showUnits = unitLabel.enabled && adjustment.batches.some((row) => row.batchUnit);
+  const status = adjustmentStatusMeta(adjustment.status);
+  const posted = adjustment.status === 'adjusted' || adjustment.status === 'cancelled';
+  const editable = isUnposted(adjustment.status);
+  const showUnits = unitLabel.enabled;
+  const anyBatches = adjustment.lines.some(
+    (line) => batchNames(line, adjustment.draftLabels, showUnits).length > 0,
+  );
+  const busy = adjustMutation.isPending || removeMutation.isPending;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
@@ -115,27 +164,50 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
               fontWeight: 500,
               background: status.bg,
               color: status.color,
+              whiteSpace: 'nowrap',
             }}
           >
             {status.label}
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {editable && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => adjustMutation.mutate()}
+                style={headerButton('primary', busy)}
+              >
+                {adjustMutation.isPending ? 'Adjusting…' : 'Adjust'}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  navigate(`/organizations/${orgId}/inventory/adjustments/${adjustmentId}/edit`)
+                }
+                style={headerButton('plain', busy)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirming('delete')}
+                style={headerButton('danger', busy)}
+              >
+                Delete
+              </button>
+            </>
+          )}
           {adjustment.status === 'adjusted' && (
             <button
               type="button"
-              onClick={() => setConfirmCancel(true)}
-              style={{
-                minHeight: 32,
-                padding: '6px 12px',
-                border: '1px solid #fecaca',
-                background: '#fff',
-                color: '#dc2626',
-                borderRadius: 4,
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
+              disabled={busy}
+              onClick={() => setConfirming('cancel')}
+              style={headerButton('danger', busy)}
             >
               Cancel Adjustment
             </button>
@@ -159,6 +231,29 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
       </div>
 
       <div className="detail-page-content" style={{ padding: 24, overflow: 'auto', minWidth: 0 }}>
+        <RecordApprovalBanner
+          organizationId={orgId}
+          moduleId={ADJUSTMENT_APPROVAL_MODULE}
+          recordId={adjustmentId}
+          onActionComplete={refresh}
+        />
+
+        {adjustment.status === 'approved' && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 12px',
+              border: '1px solid #bfdbfe',
+              background: '#eff6ff',
+              borderRadius: 4,
+              fontSize: 13,
+              color: '#1e3a8a',
+            }}
+          >
+            Approved, but the stock has not been adjusted yet. Press Adjust to see why.
+          </div>
+        )}
+
         <div
           style={{
             display: 'grid',
@@ -167,24 +262,11 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
           }}
         >
           <Fact label="Date">{formatDate(adjustment.adjustmentDate)}</Fact>
-          <Fact label="Item">
-            {adjustment.item.name}
-            {adjustment.item.sku ? ` (${adjustment.item.sku})` : ''}
-          </Fact>
           <Fact label="Location">{adjustment.location.name}</Fact>
           <Fact label="Reason">{adjustmentReasonLabel(adjustment.reason)}</Fact>
-          <Fact label="Quantity Before">{formatQty(before)}</Fact>
-          <Fact label="Quantity Adjusted">
-            <span style={{ color: isIncrease ? '#166534' : '#b91c1c', fontWeight: 500 }}>
-              {isIncrease ? '+' : '−'}
-              {formatQty(Math.abs(quantity))}
-            </span>
-          </Fact>
-          <Fact label="Quantity After">{formatQty(before + quantity)}</Fact>
-          {isIncrease && <Fact label="Cost Price">{formatMoney(adjustment.costPrice)}</Fact>}
-          <Fact label="Value">{formatMoney(adjustment.value)}</Fact>
           <Fact label="Reference Number">{adjustment.referenceNumber || '-'}</Fact>
-          <Fact label="Adjusted By">{adjustment.createdByUser?.fullName || '-'}</Fact>
+          {posted && <Fact label="Value">{formatMoney(adjustment.value)}</Fact>}
+          <Fact label="Created By">{adjustment.createdByUser?.fullName || '-'}</Fact>
         </div>
 
         {adjustment.description && (
@@ -193,49 +275,94 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
           </div>
         )}
 
-        {/* An untracked item's batches are plumbing the user never sees. */}
-        {isBatchTracked && (
-          <div style={{ marginTop: 24 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
-              {tracking.plural}
-            </div>
-            <div className="responsive-table-wrapper">
-              <table style={{ width: '100%', minWidth: 360, borderCollapse: 'collapse' }}>
-                <thead style={{ background: '#f8fafc' }}>
-                  <tr>
-                    <th style={headStyle}>{tracking.singular} Reference</th>
-                    {showUnits && <th style={headStyle}>{unitLabel.singular}</th>}
-                    <th style={{ ...headStyle, textAlign: 'right' }}>
-                      Quantity {isIncrease ? 'In' : 'Out'}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adjustment.batches.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                      <td style={cellStyle}>{row.batch.supplierBatchRef || '-'}</td>
-                      {showUnits && <td style={cellStyle}>{row.batchUnit?.label || '-'}</td>}
-                      <td style={{ ...cellStyle, textAlign: 'right' }}>{formatQty(row.qty)}</td>
+        <div style={{ marginTop: 24 }}>
+          <div className="responsive-table-wrapper">
+            <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f8fafc' }}>
+                <tr>
+                  <th style={headStyle}>Item</th>
+                  {/* A balance exists only once it posts; a draft has no honest "before". */}
+                  {posted && <th style={{ ...headStyle, textAlign: 'right' }}>Before</th>}
+                  <th style={{ ...headStyle, textAlign: 'right' }}>Adjusted</th>
+                  {posted && <th style={{ ...headStyle, textAlign: 'right' }}>After</th>}
+                  <th style={{ ...headStyle, textAlign: 'right' }}>Cost Price</th>
+                  {posted && <th style={{ ...headStyle, textAlign: 'right' }}>Value</th>}
+                  {anyBatches && <th style={headStyle}>{tracking.plural}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {adjustment.lines.map((line) => {
+                  const quantity = toNumber(line.quantityAdjusted);
+                  const before = toNumber(line.quantityBefore);
+                  return (
+                    <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                      <td style={cellStyle}>
+                        {line.item.name}
+                        {line.item.sku && (
+                          <div style={{ fontSize: 11, color: '#64748b' }}>SKU: {line.item.sku}</div>
+                        )}
+                      </td>
+                      {posted && <td style={rightCell}>{formatQty(before)}</td>}
+                      <td
+                        style={{
+                          ...rightCell,
+                          color: quantity > 0 ? '#166534' : '#b91c1c',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {quantity > 0 ? '+' : '−'}
+                        {formatQty(Math.abs(quantity))}
+                      </td>
+                      {posted && <td style={rightCell}>{formatQty(before + quantity)}</td>}
+                      <td style={rightCell}>
+                        {line.costPrice === null ? '-' : formatMoney(line.costPrice)}
+                      </td>
+                      {posted && <td style={rightCell}>{formatMoney(line.value)}</td>}
+                      {anyBatches && (
+                        <td style={cellStyle}>
+                          {batchNames(line, adjustment.draftLabels, showUnits).map((name) => (
+                            <div key={name}>{name}</div>
+                          ))}
+                        </td>
+                      )}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {approval.allRequests.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <RecordApprovalHistoryTimeline
+              organizationId={orgId}
+              moduleId={ADJUSTMENT_APPROVAL_MODULE}
+              recordId={adjustmentId}
+            />
           </div>
         )}
       </div>
 
       <ConfirmDialog
-        isOpen={confirmCancel}
+        isOpen={confirming === 'cancel'}
         title="Cancel Adjustment"
-        message={`${adjustment.adjustmentNumber} will be reversed: the stock it ${
-          isIncrease ? 'added is taken back' : 'removed is put back'
-        }. The adjustment stays in the list as cancelled.`}
+        message={`${adjustment.adjustmentNumber} will be reversed: the stock it added is taken back and the stock it removed is put back. The adjustment stays in the list as cancelled.`}
         confirmText="Cancel Adjustment"
         cancelText="Keep"
-        onConfirm={() => cancelMutation.mutate()}
-        onCancel={() => setConfirmCancel(false)}
-        isConfirming={cancelMutation.isPending}
+        onConfirm={() => removeMutation.mutate()}
+        onCancel={() => setConfirming(null)}
+        isConfirming={removeMutation.isPending}
+      />
+      <ConfirmDialog
+        isOpen={confirming === 'delete'}
+        title="Delete Adjustment"
+        message={`${adjustment.adjustmentNumber} has not adjusted any stock. Deleting it removes it from the list.`}
+        confirmText="Delete"
+        cancelText="Keep"
+        onConfirm={() => removeMutation.mutate()}
+        onCancel={() => setConfirming(null)}
+        isConfirming={removeMutation.isPending}
       />
     </div>
   );

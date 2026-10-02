@@ -1,6 +1,6 @@
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Plus } from 'lucide-react';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { useListCount } from '../../../hooks/useListCount';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -9,8 +9,8 @@ import { formatQty, toNumber } from '../../jobwork/jobwork.schemas';
 import { AdjustmentDetail } from './AdjustmentDetail';
 import { fetchAdjustmentCount, fetchAdjustments } from './adjustments.api';
 import {
-  ADJUSTMENT_STATUS_META,
   adjustmentReasonLabel,
+  adjustmentStatusMeta,
   type StockAdjustmentRow,
 } from './adjustments.schemas';
 
@@ -26,7 +26,7 @@ const headerStyle: React.CSSProperties = {
 const cellStyle: React.CSSProperties = { padding: '12px 16px', fontSize: 13, color: '#333' };
 
 function StatusPill({ status }: { status: string }) {
-  const meta = ADJUSTMENT_STATUS_META[status] ?? { label: status, color: '#475569', bg: '#f1f5f9' };
+  const meta = adjustmentStatusMeta(status);
   return (
     <span
       style={{
@@ -37,6 +37,7 @@ function StatusPill({ status }: { status: string }) {
         fontWeight: 500,
         background: meta.bg,
         color: meta.color,
+        whiteSpace: 'nowrap',
       }}
     >
       {meta.label}
@@ -44,8 +45,18 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function SignedQty({ row }: { row: StockAdjustmentRow }) {
-  const quantity = toNumber(row.quantityAdjusted);
+/** "Grey Fabric", or "Grey Fabric +2 more" — the row is one document, however many items. */
+function itemsOf(row: StockAdjustmentRow): string {
+  const [first, ...rest] = row.lines;
+  if (!first) return '-';
+  return rest.length > 0 ? `${first.item.name} +${rest.length} more` : first.item.name;
+}
+
+/** A single item's signed quantity; several items have no one quantity to show. */
+function QuantityCell({ row }: { row: StockAdjustmentRow }) {
+  if (row.lines.length !== 1)
+    return <span style={{ color: '#64748b' }}>{row.lines.length} items</span>;
+  const quantity = toNumber(row.lines[0]!.quantityAdjusted);
   return (
     <span style={{ color: quantity > 0 ? '#166534' : '#b91c1c', fontWeight: 500 }}>
       {quantity > 0 ? '+' : '−'}
@@ -55,12 +66,13 @@ function SignedQty({ row }: { row: StockAdjustmentRow }) {
 }
 
 /**
- * Inventory → Adjustments. A record of every stock adjustment, cancelled ones
- * included. There is no "New" here: an adjustment is made from the item it
- * adjusts (the Adjust Stock button on the item's page).
+ * Inventory → Adjustments: every stock adjustment, drafts and cancelled ones
+ * included. New opens the full form; the Adjust Stock button on an item's page
+ * is the one-item shortcut to the same document.
  */
 export function AdjustmentsList() {
   const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
   const { search, perPage, setPerPage, page, setPage } = useListSearch();
@@ -102,7 +114,7 @@ export function AdjustmentsList() {
       </div>
       {!search && (
         <div style={{ fontSize: 13, marginTop: 4 }}>
-          Open an item and use Adjust Stock to record one.
+          Use New to adjust the stock of one or more items.
         </div>
       )}
     </div>
@@ -135,15 +147,40 @@ export function AdjustmentsList() {
         >
           <header
             style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
               padding: '16px 24px',
               background: '#fff',
               borderBottom: '1px solid #eef0f3',
-              fontSize: 16,
-              fontWeight: 600,
-              color: '#111',
             }}
           >
-            Stock Adjustments
+            <span style={{ fontSize: 16, fontWeight: 600, color: '#111', minWidth: 0 }}>
+              Stock Adjustments
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate(`/organizations/${orgId}/inventory/adjustments/new`)}
+              className="action-btn"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 12px',
+                background: '#0062ff',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <Plus size={16} />
+              <span className="action-btn-text">New</span>
+            </button>
           </header>
 
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -183,7 +220,7 @@ export function AdjustmentsList() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {row.item.name}
+                    {itemsOf(row)}
                   </div>
                   <div
                     style={{
@@ -214,7 +251,7 @@ export function AdjustmentsList() {
                     <tr>
                       <th style={headerStyle}>Date</th>
                       <th style={headerStyle}>Adjustment#</th>
-                      <th style={headerStyle}>Item</th>
+                      <th style={headerStyle}>Items</th>
                       <th style={headerStyle}>Location</th>
                       <th style={{ ...headerStyle, textAlign: 'right' }}>Quantity Adjusted</th>
                       <th style={headerStyle}>Reason</th>
@@ -250,10 +287,10 @@ export function AdjustmentsList() {
                             {row.adjustmentNumber}
                           </button>
                         </td>
-                        <td style={cellStyle}>{row.item.name}</td>
+                        <td style={cellStyle}>{itemsOf(row)}</td>
                         <td style={cellStyle}>{row.location.name}</td>
                         <td style={{ ...cellStyle, textAlign: 'right' }}>
-                          <SignedQty row={row} />
+                          <QuantityCell row={row} />
                         </td>
                         <td style={cellStyle}>{adjustmentReasonLabel(row.reason)}</td>
                         <td style={cellStyle}>

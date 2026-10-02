@@ -193,6 +193,8 @@ model User {
   updatedStockAdjustments             StockAdjustment[]             @relation("StockAdjustmentUpdatedBy")
   createdStockAdjustmentBatches       StockAdjustmentBatch[]        @relation("StockAdjustmentBatchCreatedBy")
   updatedStockAdjustmentBatches       StockAdjustmentBatch[]        @relation("StockAdjustmentBatchUpdatedBy")
+  createdStockAdjustmentLines         StockAdjustmentLine[]         @relation("StockAdjustmentLineCreatedBy")
+  updatedStockAdjustmentLines         StockAdjustmentLine[]         @relation("StockAdjustmentLineUpdatedBy")
   createdItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowCreatedBy")
   updatedItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowUpdatedBy")
   
@@ -417,6 +419,7 @@ model Organization {
   itemAssemblyActivities       ItemAssemblyActivity[]
   stockAdjustments             StockAdjustment[]
   stockAdjustmentBatches       StockAdjustmentBatch[]
+  stockAdjustmentLines         StockAdjustmentLine[]
   itemOpeningStockRows         ItemOpeningStockRow[]
   settings                     Json                          @default("{}") @map("settings")
 

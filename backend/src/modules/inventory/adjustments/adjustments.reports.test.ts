@@ -69,25 +69,35 @@ beforeAll(async () => {
 
   const add = (date: string, costPrice: number) =>
     adjustmentsService.createAdjustment(orgId, userId, {
-      itemId,
       locationId: godownId,
       adjustmentDate: date,
-      quantityAdjusted: 5,
-      costPrice,
       reason: 'found',
-      batches: [{ supplierBatchRef: `B-${unique()}`, quantity: 5 }],
+      saveAs: 'adjust',
+      lines: [
+        {
+          itemId,
+          quantityAdjusted: 5,
+          costPrice,
+          batches: [{ supplierBatchRef: `B-${unique()}`, quantity: 5 }],
+        },
+      ],
     });
   older = await add(daysAgo(5), 100);
   newer = await add(daysAgo(1), 120);
   // Out of the NEWER batch — so FIFO pays for it from the OLDER adjustment's layer
   // while that adjustment's own batch stays physically whole.
   removal = await adjustmentsService.createAdjustment(orgId, userId, {
-    itemId,
     locationId: godownId,
     adjustmentDate: new Date().toISOString(),
-    quantityAdjusted: -2,
     reason: 'damaged',
-    batches: [{ batchId: newer.batches[0]!.batchId, quantity: 2 }],
+    saveAs: 'adjust',
+    lines: [
+      {
+        itemId,
+        quantityAdjusted: -2,
+        batches: [{ batchId: newer.lines[0]!.batches[0]!.batchId, quantity: 2 }],
+      },
+    ],
   });
 }, 60_000);
 
@@ -95,6 +105,7 @@ afterAll(async () => {
   if (orgId) {
     await runAsTenant(orgId, async (tx) => {
       await tx.stockAdjustmentBatch.deleteMany({ where: { organizationId: orgId } });
+      await tx.stockAdjustmentLine.deleteMany({ where: { organizationId: orgId } });
       await tx.stockAdjustment.deleteMany({ where: { organizationId: orgId } });
       await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgId } });
       await tx.batch.deleteMany({ where: { organizationId: orgId } });
@@ -153,7 +164,7 @@ describe('stock adjustments — as other screens name them', { timeout: 60_000 }
   it('a refusal names the adjustment that used the stock', async () => {
     // The older batch still holds its 5, so the quantity guard passes and it is
     // the cost check that refuses — naming the document that drew on the layer.
-    await expect(adjustmentsService.cancelAdjustment(orgId, older.id, userId)).rejects.toThrow(
+    await expect(adjustmentsService.removeAdjustment(orgId, older.id, userId)).rejects.toThrow(
       `stock adjustment ${removal.adjustmentNumber}`,
     );
   });
@@ -162,15 +173,20 @@ describe('stock adjustments — as other screens name them', { timeout: 60_000 }
     // Something else in between: the ledger folds a document's consecutive rows
     // together, so a cancel straight after the posting is not a row of its own.
     await adjustmentsService.createAdjustment(orgId, userId, {
-      itemId,
       locationId: godownId,
       adjustmentDate: new Date().toISOString(),
-      quantityAdjusted: 1,
-      costPrice: 50,
       reason: 'found',
-      batches: [{ supplierBatchRef: `B-${unique()}`, quantity: 1 }],
+      saveAs: 'adjust',
+      lines: [
+        {
+          itemId,
+          quantityAdjusted: 1,
+          costPrice: 50,
+          batches: [{ supplierBatchRef: `B-${unique()}`, quantity: 1 }],
+        },
+      ],
     });
-    await adjustmentsService.cancelAdjustment(orgId, removal.id, userId);
+    await adjustmentsService.removeAdjustment(orgId, removal.id, userId);
 
     const ledger = await getItemLedger(orgId, itemId, {});
     const cancellation = ledger.rows.find((row) => row.isCancellation);

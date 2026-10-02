@@ -3,12 +3,14 @@ import { authenticate } from '../../../middlewares/authenticate.js';
 import { tenantContext } from '../../../middlewares/tenantContext.js';
 import { requirePermission } from '../../../middlewares/authorize.js';
 import { validateBody } from '../../../middlewares/validate.js';
-import { createAdjustmentSchema } from './adjustments.schemas.js';
+import { saveAdjustmentSchema } from './adjustments.schemas.js';
 import {
-  cancelAdjustment,
+  adjustAdjustment,
   createAdjustment,
   getAdjustmentById,
   getAdjustments,
+  removeAdjustment,
+  updateAdjustment,
 } from './adjustments.controller.js';
 
 const router = Router({ mergeParams: true });
@@ -20,11 +22,20 @@ router.get('/:id', requirePermission('stock_adjustment:read'), getAdjustmentById
 router.post(
   '/',
   requirePermission('stock_adjustment:create'),
-  validateBody(createAdjustmentSchema),
+  validateBody(saveAdjustmentSchema),
   createAdjustment,
 );
-// No PATCH: a posted adjustment is never edited. DELETE cancels it — the rows
-// are reversed and the document stays listed as cancelled.
-router.delete('/:id', requirePermission('stock_adjustment:delete'), cancelAdjustment);
+// Only an adjustment that has not posted can be replaced; a posted one is
+// never edited.
+router.put(
+  '/:id',
+  requirePermission('stock_adjustment:update'),
+  validateBody(saveAdjustmentSchema),
+  updateAdjustment,
+);
+// Posting is what `create` grants, whether it happens on save or later.
+router.post('/:id/adjust', requirePermission('stock_adjustment:create'), adjustAdjustment);
+// Cancels a posted adjustment (reversed, stays listed) or deletes an unposted one.
+router.delete('/:id', requirePermission('stock_adjustment:delete'), removeAdjustment);
 
 export const adjustmentsRouter = router;

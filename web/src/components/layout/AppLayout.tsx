@@ -202,7 +202,7 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
       (await fetchAdjustments(orgId, { search: term, perPage: 6 })).results.map((a) => ({
         id: a.id,
         title: a.adjustmentNumber,
-        subtitle: a.item.name,
+        subtitle: a.lines[0]?.item.name,
       })),
     to: (orgId, id) => `/organizations/${orgId}/inventory/adjustments?id=${id}`,
   },

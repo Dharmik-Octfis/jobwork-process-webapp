@@ -24,7 +24,7 @@ let godownId: string;
 const userIds: string[] = [];
 
 /** Bearer tokens, by what the holder may do in org A. */
-const token = { owner: '', none: '', readOnly: '', createOnly: '', outsider: '' };
+const token = { owner: '', none: '', readOnly: '', createOnly: '', updateOnly: '', outsider: '' };
 
 async function makeUser(label: string) {
   const user = await prisma.user.create({
@@ -72,12 +72,10 @@ async function join(
 }
 
 const body = (extra: Record<string, unknown> = {}) => ({
-  itemId,
   locationId: godownId,
   adjustmentDate: new Date().toISOString(),
-  quantityAdjusted: 5,
-  costPrice: 100,
   reason: 'found',
+  lines: [{ itemId, quantityAdjusted: 5, costPrice: 100 }],
   ...extra,
 });
 
@@ -86,6 +84,11 @@ const as = (bearer: string) => ({
   post: (path: string, payload: unknown) =>
     request(createApp())
       .post(path)
+      .set('Authorization', `Bearer ${bearer}`)
+      .send(payload as object),
+  put: (path: string, payload: unknown) =>
+    request(createApp())
+      .put(path)
       .set('Authorization', `Bearer ${bearer}`)
       .send(payload as object),
   delete: (path: string) =>
@@ -106,6 +109,9 @@ beforeAll(async () => {
   });
   token.createOnly = await join(await makeUser('create'), orgA, {
     permissions: ['stock_adjustment:create'],
+  });
+  token.updateOnly = await join(await makeUser('update'), orgA, {
+    permissions: ['stock_adjustment:update'],
   });
   // A real member — and owner — of ANOTHER organization.
   token.outsider = await join(await makeUser('outsider'), orgB, { isOwner: true });
@@ -143,6 +149,7 @@ afterAll(async () => {
   if (orgA) {
     await runAsTenant(orgA, async (tx) => {
       await tx.stockAdjustmentBatch.deleteMany({ where: { organizationId: orgA } });
+      await tx.stockAdjustmentLine.deleteMany({ where: { organizationId: orgA } });
       await tx.stockAdjustment.deleteMany({ where: { organizationId: orgA } });
       await tx.stockLedgerEntry.deleteMany({ where: { organizationId: orgA } });
       await tx.batch.deleteMany({ where: { organizationId: orgA } });
@@ -188,19 +195,21 @@ describe('stock adjustments — HTTP', { timeout: 60_000 }, () => {
 
     const one = await as(token.owner).get(url(orgA, adjustmentId));
     expect(one.status).toBe(200);
-    expect(one.body.data.batches).toHaveLength(1);
+    expect(one.body.data.status).toBe('adjusted');
+    expect(one.body.data.lines).toHaveLength(1);
+    expect(one.body.data.lines[0].batches).toHaveLength(1);
   });
 
   it('a bad body is a 400 with field details, and posts nothing', async () => {
     const before = await countIn(orgA);
     const res = await as(token.owner).post(
       url(orgA),
-      body({ quantityAdjusted: 0, reason: 'nope' }),
+      body({ reason: 'nope', lines: [{ itemId, quantityAdjusted: 0 }] }),
     );
     expect(res.status).toBe(400);
     expect(res.body.data).toBeNull();
     expect(Object.keys(res.body.details)).toEqual(
-      expect.arrayContaining(['quantityAdjusted', 'reason']),
+      expect.arrayContaining(['lines.0.quantityAdjusted', 'reason']),
     );
     expect(await countIn(orgA)).toBe(before);
   });
@@ -268,6 +277,45 @@ describe('stock adjustments — HTTP', { timeout: 60_000 }, () => {
       const still = await as(token.owner).get(url(orgA, adjustmentId));
       expect(still.body.data.status).toBe('adjusted');
     });
+  });
+
+  it('a draft is saved, edited, adjusted and deleted over HTTP', async () => {
+    const before = await countIn(orgA);
+    const draft = await as(token.owner).post(url(orgA), body({ saveAs: 'draft' }));
+    expect(draft.status).toBe(201);
+    expect(draft.body).toMatchObject({ message: 'Draft saved.' });
+    expect(draft.body.data.status).toBe('draft');
+    const draftId = draft.body.data.id;
+
+    // Editing is its own permission: create alone does not grant it, and
+    // neither does update grant posting.
+    const edit = body({ saveAs: 'draft', lines: [{ itemId, quantityAdjusted: 7, costPrice: 1 }] });
+    expect((await as(token.createOnly).put(url(orgA, draftId), edit)).status).toBe(403);
+    expect((await as(token.readOnly).put(url(orgA, draftId), edit)).status).toBe(403);
+    expect((await as(token.updateOnly).post(`${url(orgA, draftId)}/adjust`, {})).status).toBe(403);
+    expect((await as(token.outsider).put(url(orgA, draftId), edit)).status).toBe(403);
+    expect((await as(token.outsider).put(url(orgB, draftId), edit)).status).toBe(404);
+
+    const edited = await as(token.updateOnly).put(url(orgA, draftId), edit);
+    expect(edited.status).toBe(200);
+    expect(edited.body.data.lines[0].quantityAdjusted).toBe('7');
+
+    const posted = await as(token.createOnly).post(`${url(orgA, draftId)}/adjust`, {});
+    expect(posted.status).toBe(200);
+    expect(posted.body).toMatchObject({ message: 'Stock adjusted.' });
+    expect(posted.body.data.status).toBe('adjusted');
+    // Once adjusted it is no longer anybody's to edit.
+    expect((await as(token.owner).put(url(orgA, draftId), edit)).status).toBe(409);
+
+    const second = await as(token.owner).post(url(orgA), body({ saveAs: 'draft' }));
+    const removed = await as(token.owner).delete(url(orgA, second.body.data.id));
+    expect(removed.body).toMatchObject({ message: 'Adjustment deleted.' });
+    expect((await as(token.owner).get(url(orgA, second.body.data.id))).status).toBe(404);
+    // One more live adjustment than before: the posted one. The deleted draft
+    // is still a row, but no longer a document.
+    const live = await as(token.owner).get(`${url(orgA)}?count=true`);
+    expect(live.body.data.count).toBe(2);
+    expect(await countIn(orgA)).toBe(before + 2);
   });
 
   it('an owner cancels it, and it stays listed as cancelled', async () => {

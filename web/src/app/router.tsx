@@ -308,6 +308,10 @@ const AdjustmentsList = lazyPage(
   () => import('../features/inventory/adjustments/AdjustmentsList'),
   'AdjustmentsList',
 );
+const AdjustmentFormPage = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentFormPage'),
+  'AdjustmentFormPage',
+);
 const CreateAssemblyPage = lazyPage(
   () => import('../features/inventory/assembly/CreateAssemblyPage'),
   'CreateAssemblyPage',
@@ -571,6 +575,14 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/inventory/adjustments',
                     element: <AdjustmentsList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/new',
+                    element: <AdjustmentFormPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/:id/edit',
+                    element: <AdjustmentFormPage />,
                   },
                   { path: '/organizations/:orgId/approvals', element: <ApprovalsListPage /> },
                   { path: '/organizations/:orgId/approvals/:id', element: <ApprovalDetailPage /> },

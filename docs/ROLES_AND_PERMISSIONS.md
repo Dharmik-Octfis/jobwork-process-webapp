@@ -249,8 +249,7 @@ the point. (Orgs created _after_ you ship it get them in their seeded "Full acce
 which are computed from the catalog.)
 
 A resource may expose **fewer** than four actions — `{ resource: 'organization', …, actions: ['read',
-'update'] }` — and the grid renders "—" for the rest. `stock_adjustment` is `['read', 'create',
-'delete']`: a posted adjustment is never edited, and `delete` is what cancels one. Use it only when an action genuinely cannot
+'update'] }` — and the grid renders "—" for the rest. Use it only when an action genuinely cannot
 exist: a key the catalog defines and no route checks is worse than a missing column, because someone
 ticks it and believes they granted something.
 

@@ -95,13 +95,10 @@ const MODULE_GROUPS: readonly {
     label: 'Inventory',
     resources: [
       { resource: 'assembly', label: 'Assembly' },
-      // Its own resource, and no `update`: this is the one module that can create
-      // stock from nothing, and a posted adjustment is never edited — only cancelled.
-      {
-        resource: 'stock_adjustment',
-        label: 'Stock Adjustments',
-        actions: ['read', 'create', 'delete'],
-      },
+      // Its own resource: this is the one module that can create stock from
+      // nothing. `update` edits an adjustment that has not posted yet — a posted
+      // one is never edited, only cancelled (`delete`).
+      { resource: 'stock_adjustment', label: 'Stock Adjustments' },
     ],
   },
   {

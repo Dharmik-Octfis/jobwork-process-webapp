@@ -84,7 +84,7 @@ model Item {
   usedInComposites      CompositeItemComponent[] @relation("CompositeUsage")
   assembliesAsComposite ItemAssembly[]           @relation("ItemAssemblyComposite")
   assemblyLines         ItemAssemblyLine[]       @relation("ItemAssemblyLineItem")
-  stockAdjustments      StockAdjustment[]        @relation("StockAdjustmentItem")
+  stockAdjustmentLines  StockAdjustmentLine[]    @relation("StockAdjustmentLineItem")
 
   activities         ItemActivity[]
   openingStockRows   ItemOpeningStockRow[]

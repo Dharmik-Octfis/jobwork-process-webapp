@@ -1,0 +1,483 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { X } from 'lucide-react';
+import { Select } from '../../../components/ui/Select';
+import { DateInput } from '../../../components/ui/DateInput';
+import { blurOnWheel } from '../../../components/ui/blurOnWheel';
+import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+} from '../../configuration/locations/locations.api';
+import { itemsApi } from '../../items/items.api';
+import { stockOnHandOf } from '../../items/stockFigures';
+import { formatQty } from '../../jobwork/jobwork.schemas';
+import { createAdjustment } from './adjustments.api';
+import { ADJUSTMENT_REASON_OPTIONS, type SaveAdjustmentPayload } from './adjustments.schemas';
+import {
+  QTY_EPSILON,
+  adjustedOf,
+  batchSummary,
+  boxTexts,
+  emptyLine,
+  isBatchTracked,
+  lineProblem,
+  toLinePayload,
+  uomOf,
+  withQuantity,
+  withoutBatches,
+  type AdjustableItem,
+  type LineDraft,
+} from './adjustmentLine';
+import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
+import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
+import { LineBatchPicker } from './LineBatchPicker';
+
+interface AdjustStockPanelProps {
+  orgId: string;
+  item: AdjustableItem;
+  onClose: () => void;
+}
+
+type Field = 'adjustmentDate' | 'locationId' | 'quantity' | 'costPrice' | 'batches' | 'reason';
+
+const rowStyle: React.CSSProperties = {
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 260px)',
+  padding: '10px 12px',
+  borderBottom: '1px solid #eef0f3',
+};
+
+const labelStyle: React.CSSProperties = { fontSize: 13, color: '#334155' };
+const requiredStyle: React.CSSProperties = { ...labelStyle, color: '#dc2626' };
+
+const inputStyle = (hasError: boolean, readOnly = false): React.CSSProperties => ({
+  width: '100%',
+  minWidth: 0,
+  boxSizing: 'border-box',
+  height: 36,
+  padding: '0 10px',
+  border: `1px solid ${hasError ? '#dc2626' : '#d5dae1'}`,
+  borderRadius: 4,
+  fontSize: 13,
+  textAlign: 'right',
+  color: '#111',
+  background: readOnly ? '#f8fafc' : '#fff',
+});
+
+/**
+ * Adjust Stock, from the item's own page — ONE line of the same document the
+ * Inventory → New Adjustment page writes many of, through the same API.
+ *
+ * "New quantity on hand" and "Quantity adjusted" are one number seen two ways:
+ * typing either rewrites the other from the quantity available. Only the
+ * DIFFERENCE is sent — the server re-reads the balance itself when it posts.
+ *
+ * A PANEL, not a dialog: it takes the place of the item's overview in the
+ * detail pane, with the item list still beside it, and closing it puts the
+ * overview back.
+ */
+export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps) {
+  const queryClient = useQueryClient();
+  const tracking = useTrackingLabel();
+  // The button that opened this is gone (the overview it sat on is replaced), so
+  // focus would fall back to the top of the page and Tab would start in the sidebar.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
+  const uomLabel = uomOf(item);
+
+  const [adjustmentDate, setAdjustmentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [referenceNumber, setReferenceNumber] = useState('');
+  const [chosenLocationId, setChosenLocationId] = useState<string | null>(null);
+  const [line, setLine] = useState<LineDraft>(() => emptyLine(item));
+  const [reason, setReason] = useState('');
+  const [description, setDescription] = useState('');
+  const [isPicking, setIsPicking] = useState(false);
+  const [invalid, setInvalid] = useState<ReadonlySet<Field>>(new Set());
+
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations', orgId],
+    queryFn: () => fetchLocations(orgId),
+  });
+  const { data: stockRows = [] } = useQuery({
+    queryKey: ['itemOpeningStock', orgId, item.id],
+    queryFn: () => itemsApi.getOpeningStock(orgId, item.id),
+  });
+
+  // Our own premises only — stock at a job worker is adjusted by closing the challan.
+  const ownLocations = useMemo(() => locations.filter(isOwnLocation), [locations]);
+  const locationId =
+    chosenLocationId ??
+    ownLocations.find((location: Location) => location.isPrimary)?.id ??
+    (ownLocations.length === 1 ? ownLocations[0]!.id : '');
+  const locationName = ownLocations.find((location) => location.id === locationId)?.name ?? null;
+
+  const available = useMemo(() => {
+    const row = stockRows.find((one) => one.locationId === locationId);
+    return row ? stockOnHandOf(row) : 0;
+  }, [stockRows, locationId]);
+
+  const adjusted = adjustedOf(line, available);
+  const magnitude = Math.abs(adjusted);
+  const isIncrease = adjusted > 0;
+  const texts = boxTexts(line, available);
+  const picked = batchSummary(line, adjusted);
+
+  const clear = (...fields: Field[]) =>
+    setInvalid((prev) => {
+      const next = new Set(prev);
+      for (const field of fields) next.delete(field);
+      return next.size === prev.size ? prev : next;
+    });
+
+  const setQuantity = (box: 'adjusted' | 'new', text: string) => {
+    setLine((prev) => withQuantity(prev, box, text, available));
+    clear('quantity', 'batches');
+  };
+
+  const mutation = useMutation({
+    mutationFn: (payload: SaveAdjustmentPayload) => createAdjustment(orgId, payload),
+    onSuccess: (adjustment) => {
+      announceOutcome(adjustment);
+      refreshAfterAdjustment(queryClient, [item.id]);
+      onClose();
+    },
+    onError: (error) => {
+      const fields = reportSaveError(error);
+      // The server files a line's problems under `lines`; here that is the quantity row.
+      setInvalid(
+        new Set(fields.map((field) => (field.startsWith('lines') ? 'quantity' : field)) as Field[]),
+      );
+    },
+  });
+
+  const handleSave = (saveAs: 'draft' | 'adjust') => {
+    const problems: [Field, string][] = [];
+    if (!adjustmentDate) problems.push(['adjustmentDate', 'Enter the date.']);
+    if (!locationId) problems.push(['locationId', 'Select a location.']);
+    if (magnitude < QTY_EPSILON) problems.push(['quantity', 'Enter a quantity to adjust.']);
+    else if (saveAs === 'adjust') {
+      // A draft may be incomplete; Adjust is where it has to be right.
+      const problem = lineProblem(line, item, available, {
+        batches: tracking.plural.toLowerCase(),
+      });
+      if (problem) problems.push([problem.field, problem.message]);
+    }
+    if (!reason) problems.push(['reason', 'Select a reason.']);
+
+    if (problems.length > 0) {
+      setInvalid(new Set(problems.map(([field]) => field)));
+      toast.error(problems[0]![1]);
+      return;
+    }
+
+    mutation.mutate({
+      locationId,
+      adjustmentDate,
+      reason,
+      referenceNumber: referenceNumber.trim() || null,
+      description: description.trim() || null,
+      lines: [toLinePayload(line, item, available)],
+      saveAs,
+    });
+  };
+
+  const busy = mutation.isPending;
+
+  return (
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minWidth: 0,
+        background: '#fff',
+        borderLeft: '1px solid #eef0f3',
+        outline: 'none',
+      }}
+    >
+      <div className="detail-page-header">
+        <h2
+          className="detail-title"
+          style={{ fontWeight: 400, fontSize: 24, color: '#222222', margin: 0, minWidth: 0 }}
+        >
+          Adjust Stock - {item.name}
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            padding: 6,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="detail-page-content" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+        <div style={{ maxWidth: 680, minWidth: 0 }}>
+          <div
+            className="form-field-grid"
+            style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <label
+                htmlFor="adjust-date"
+                style={{ ...requiredStyle, display: 'block', marginBottom: 6 }}
+              >
+                Date*
+              </label>
+              <DateInput
+                id="adjust-date"
+                value={adjustmentDate}
+                onChange={(value) => {
+                  setAdjustmentDate(value);
+                  clear('adjustmentDate');
+                }}
+                hasError={invalid.has('adjustmentDate')}
+                portal
+              />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <label
+                htmlFor="adjust-reference"
+                style={{ ...labelStyle, display: 'block', marginBottom: 6 }}
+              >
+                Reference Number
+              </label>
+              <input
+                id="adjust-reference"
+                value={referenceNumber}
+                maxLength={100}
+                onChange={(event) => setReferenceNumber(event.target.value)}
+                style={{ ...inputStyle(false), textAlign: 'left' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #eef0f3', borderRadius: 4, marginTop: 16 }}>
+            <div className="form-field-grid" style={rowStyle}>
+              <span style={requiredStyle}>Location*</span>
+              <Select
+                value={locationId}
+                onChange={(value) => {
+                  // The batch rows belong to one godown.
+                  if (value !== locationId) setLine((prev) => withoutBatches(prev));
+                  setChosenLocationId(value);
+                  clear('locationId');
+                }}
+                options={ownLocations.map((location) => ({
+                  value: location.id,
+                  label: location.name,
+                }))}
+                placeholder="Select a location…"
+                hasError={invalid.has('locationId')}
+                ariaLabel="Location"
+                portal
+              />
+            </div>
+
+            <div className="form-field-grid" style={rowStyle}>
+              <label htmlFor="adjust-available" style={labelStyle}>
+                Quantity Available{uomLabel ? ` (${uomLabel})` : ''}
+              </label>
+              <input
+                id="adjust-available"
+                value={formatQty(available)}
+                readOnly
+                tabIndex={-1}
+                style={inputStyle(false, true)}
+              />
+            </div>
+
+            <div className="form-field-grid" style={rowStyle}>
+              <label htmlFor="adjust-new" style={labelStyle}>
+                New Quantity on hand
+              </label>
+              <input
+                id="adjust-new"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={texts.newQty}
+                onChange={(event) => {
+                  if (/^\d*\.?\d{0,4}$/.test(event.target.value)) {
+                    setQuantity('new', event.target.value);
+                  }
+                }}
+                style={inputStyle(invalid.has('quantity'))}
+              />
+            </div>
+
+            <div className="form-field-grid" style={rowStyle}>
+              <label htmlFor="adjust-quantity" style={requiredStyle}>
+                Quantity Adjusted*
+              </label>
+              <input
+                id="adjust-quantity"
+                inputMode="decimal"
+                placeholder="Eg. +10, -10"
+                value={texts.adjusted}
+                onChange={(event) => {
+                  // A sign, digits and one point — "+5" and "-15" are how this is typed.
+                  if (/^[+-]?\d*\.?\d{0,4}$/.test(event.target.value)) {
+                    setQuantity('adjusted', event.target.value);
+                  }
+                }}
+                style={inputStyle(invalid.has('quantity'))}
+              />
+            </div>
+
+            {/* A decrease states no cost — FIFO decides what stock leaving is worth. */}
+            {isIncrease && (
+              <div className="form-field-grid" style={rowStyle}>
+                <label htmlFor="adjust-cost" style={requiredStyle}>
+                  Cost Price*
+                </label>
+                <input
+                  id="adjust-cost"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min={0}
+                  value={line.costPrice}
+                  onWheel={blurOnWheel}
+                  onChange={(event) => {
+                    setLine((prev) => ({ ...prev, costPrice: event.target.value }));
+                    clear('costPrice');
+                  }}
+                  style={inputStyle(invalid.has('costPrice'))}
+                />
+              </div>
+            )}
+
+            {isBatchTracked(item) && magnitude >= QTY_EPSILON && (
+              <div className="form-field-grid" style={{ ...rowStyle, borderBottom: 'none' }}>
+                <span style={requiredStyle}>{tracking.singular} Details*</span>
+                <button
+                  type="button"
+                  disabled={!locationId}
+                  onClick={() => {
+                    setIsPicking(true);
+                    clear('batches');
+                  }}
+                  style={{
+                    minHeight: 36,
+                    padding: '0 10px',
+                    background: '#fff',
+                    border: `1px solid ${invalid.has('batches') ? '#dc2626' : '#d5dae1'}`,
+                    borderRadius: 4,
+                    color: '#2563eb',
+                    fontSize: 13,
+                    textAlign: 'right',
+                    cursor: locationId ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {picked.count > 0
+                    ? `${picked.count} ${picked.count === 1 ? tracking.singular : tracking.plural} · ${formatQty(picked.total)} ${uomLabel}`
+                    : `${isIncrease ? 'Add' : 'Select'} ${tracking.plural}`}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <span style={{ ...requiredStyle, display: 'block', marginBottom: 6 }}>Reason*</span>
+            <Select
+              value={reason}
+              onChange={(value) => {
+                setReason(value);
+                clear('reason');
+              }}
+              options={ADJUSTMENT_REASON_OPTIONS}
+              placeholder="Select a reason…"
+              hasError={invalid.has('reason')}
+              ariaLabel="Reason"
+              portal
+            />
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <label
+              htmlFor="adjust-description"
+              style={{ ...labelStyle, display: 'block', marginBottom: 6 }}
+            >
+              Description
+            </label>
+            <textarea
+              id="adjust-description"
+              value={description}
+              rows={3}
+              maxLength={500}
+              onChange={(event) => setDescription(event.target.value)}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '8px 10px',
+                border: '1px solid #d5dae1',
+                borderRadius: 4,
+                fontSize: 13,
+                fontFamily: 'inherit',
+                resize: 'vertical',
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="form-actions-footer page-footer">
+        <button
+          type="button"
+          onClick={() => handleSave('adjust')}
+          disabled={busy}
+          style={formPrimaryButton(busy)}
+        >
+          {busy ? 'Saving…' : 'Adjust'}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSave('draft')}
+          disabled={busy}
+          style={formSecondaryButton(busy)}
+        >
+          Save as Draft
+        </button>
+        <button type="button" onClick={onClose} disabled={busy} style={formSecondaryButton(busy)}>
+          Cancel
+        </button>
+      </div>
+
+      {isPicking && (
+        <LineBatchPicker
+          orgId={orgId}
+          item={item}
+          locationId={locationId}
+          locationName={locationName}
+          line={line}
+          adjusted={adjusted}
+          onClose={() => setIsPicking(false)}
+          onSave={(next, overwriteAdjusted) => {
+            setLine(
+              overwriteAdjusted === null
+                ? next
+                : { ...next, typed: { box: 'adjusted', text: String(overwriteAdjusted) } },
+            );
+            setIsPicking(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}

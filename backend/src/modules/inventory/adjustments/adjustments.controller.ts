@@ -12,6 +12,14 @@ function adjustmentId(req: Request): string {
   return parsed.data;
 }
 
+/** What a save or an Adjust ended as, in the words the person needs. */
+function outcomeMessage(status: string): string {
+  if (status === 'adjusted') return 'Stock adjusted.';
+  if (status === 'pending_approval')
+    return 'Sent for approval. Stock will be adjusted once approved.';
+  return 'Draft saved.';
+}
+
 export const getAdjustments = async (req: Request, res: Response) => {
   const itemId = z.string().uuid().optional().safeParse(req.query.itemId);
   if (!itemId.success) throw ApiError.badRequest('That is not a valid item.');
@@ -34,14 +42,37 @@ export const createAdjustment = async (req: Request, res: Response) => {
     req.user!.id,
     req.body,
   );
-  sendSuccess(res, adjustment, 'Stock adjusted.', 201);
+  sendSuccess(res, adjustment, outcomeMessage(adjustment.status), 201);
 };
 
-export const cancelAdjustment = async (req: Request, res: Response) => {
-  const adjustment = await adjustmentsService.cancelAdjustment(
+export const updateAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.updateAdjustment(
+    req.tenantId!,
+    adjustmentId(req),
+    req.user!.id,
+    req.body,
+  );
+  sendSuccess(res, adjustment, outcomeMessage(adjustment.status));
+};
+
+export const adjustAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.adjustAdjustment(
     req.tenantId!,
     adjustmentId(req),
     req.user!.id,
   );
-  sendSuccess(res, adjustment, 'Adjustment cancelled.');
+  sendSuccess(res, adjustment, outcomeMessage(adjustment.status));
+};
+
+export const removeAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.removeAdjustment(
+    req.tenantId!,
+    adjustmentId(req),
+    req.user!.id,
+  );
+  sendSuccess(
+    res,
+    adjustment,
+    adjustment.deleted ? 'Adjustment deleted.' : 'Adjustment cancelled.',
+  );
 };

@@ -4,9 +4,7 @@ import { paginatedSchema, type PageParams, type Paginated } from '../../../lib/p
 import {
   stockAdjustmentDetailSchema,
   stockAdjustmentRowSchema,
-  stockAdjustmentSchema,
-  type CreateAdjustmentPayload,
-  type StockAdjustment,
+  type SaveAdjustmentPayload,
   type StockAdjustmentDetail,
   type StockAdjustmentRow,
 } from './adjustments.schemas';
@@ -38,16 +36,33 @@ export async function fetchAdjustment(orgId: string, id: string): Promise<StockA
   return stockAdjustmentDetailSchema.parse(response.data);
 }
 
+/** Create — as a draft, or adjusted in the same request (`saveAs`). */
 export async function createAdjustment(
   orgId: string,
-  payload: CreateAdjustmentPayload,
-): Promise<StockAdjustment> {
+  payload: SaveAdjustmentPayload,
+): Promise<StockAdjustmentDetail> {
   const response = await apiClient.post(endpoints.inventory.adjustments(orgId), payload);
-  return stockAdjustmentSchema.parse(response.data);
+  return stockAdjustmentDetailSchema.parse(response.data);
 }
 
-/** Cancel: the stock movements are reversed and the adjustment stays listed. */
-export async function cancelAdjustment(orgId: string, id: string): Promise<StockAdjustmentDetail> {
+/** Replace an adjustment that has not posted yet. */
+export async function updateAdjustment(
+  orgId: string,
+  id: string,
+  payload: SaveAdjustmentPayload,
+): Promise<StockAdjustmentDetail> {
+  const response = await apiClient.put(`${endpoints.inventory.adjustments(orgId)}/${id}`, payload);
+  return stockAdjustmentDetailSchema.parse(response.data);
+}
+
+/** Adjust an unposted adjustment as it stands — posts it, or sends it for approval. */
+export async function adjustAdjustment(orgId: string, id: string): Promise<StockAdjustmentDetail> {
+  const response = await apiClient.post(`${endpoints.inventory.adjustments(orgId)}/${id}/adjust`);
+  return stockAdjustmentDetailSchema.parse(response.data);
+}
+
+/** Cancels a posted adjustment (reversed, stays listed) or deletes an unposted one. */
+export async function removeAdjustment(orgId: string, id: string): Promise<StockAdjustmentDetail> {
   const response = await apiClient.delete(`${endpoints.inventory.adjustments(orgId)}/${id}`);
   return stockAdjustmentDetailSchema.parse(response.data);
 }

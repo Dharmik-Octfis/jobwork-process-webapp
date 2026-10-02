@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { formatQty, toNumber } from '../../jobwork/jobwork.schemas';
 import { fetchAdjustments } from './adjustments.api';
-import { ADJUSTMENT_STATUS_META, adjustmentReasonLabel } from './adjustments.schemas';
+import { adjustmentReasonLabel, adjustmentStatusMeta } from './adjustments.schemas';
 
 const th: React.CSSProperties = {
   padding: '12px 24px',
@@ -64,12 +64,11 @@ export function ItemAdjustmentsTable({ orgId, itemId }: { orgId: string; itemId:
             </tr>
           ) : (
             rows.map((row) => {
-              const quantity = toNumber(row.quantityAdjusted);
-              const status = ADJUSTMENT_STATUS_META[row.status] ?? {
-                label: row.status,
-                color: '#475569',
-                bg: '#f1f5f9',
-              };
+              // An adjustment may cover several items; this tab is about one of them.
+              const quantity = toNumber(
+                row.lines.find((line) => line.itemId === itemId)?.quantityAdjusted,
+              );
+              const status = adjustmentStatusMeta(row.status);
               return (
                 <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                   <td style={td}>{format(new Date(row.adjustmentDate), 'dd/MM/yyyy')}</td>

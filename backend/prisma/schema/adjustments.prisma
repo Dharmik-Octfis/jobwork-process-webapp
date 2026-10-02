@@ -1,40 +1,37 @@
-/// Stock adjustment — docs/STOCK_ADJUSTMENT_PLAN.md. Quantity only.
+/// Stock adjustment — docs/STOCK_ADJUSTMENT_PLAN.md and STOCK_ADJUSTMENT_ROUND2_PLAN.md.
+/// Quantity only.
 ///
-/// One item, one location, one direction per document. Posted on create and
-/// never edited: a mistake is corrected by cancelling, which reverses the
-/// ledger rows, and entering a new one.
+/// A header, one LINE per item, and the batches each line touched. One location
+/// per document; lines may go in different directions. Never edited once
+/// adjusted: a mistake is corrected by cancelling, which reverses the ledger rows.
 model StockAdjustment {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
 
-  /// ADJ-00001. Allocated from `number_sequences` on save.
+  /// ADJ-00001. Allocated from `number_sequences` on the first save, draft or not.
   adjustmentNumber String @map("adjustment_number") @db.VarChar(50)
 
   /// When it HAPPENED — passed to every ledger row's `postedAt`.
   adjustmentDate DateTime @map("adjustment_date") @db.Timestamptz(6)
 
-  itemId     String @map("item_id") @db.Uuid
   locationId String @map("location_id") @db.Uuid
 
-  /// SIGNED here, positive = increase. The ledger rows stay unsigned
-  /// (`qtyIn` / `qtyOut`); the sign lives only on the document.
-  quantityAdjusted Decimal @map("quantity_adjusted") @db.Decimal(18, 4)
-  /// The balance the SERVER read at post time, never the form's figure.
-  quantityBefore   Decimal @map("quantity_before") @db.Decimal(18, 4)
-
-  /// Increase only. A decrease is costed by FIFO, so it has none to state.
-  costPrice Decimal? @map("cost_price") @db.Decimal(18, 4)
-  /// Snapshot of what the ledger rows carried, read back from the rows written.
-  value     Decimal  @default(0) @db.Decimal(18, 4)
+  /// Snapshot of what the ledger rows carried, summed over the lines. Zero
+  /// until the adjustment posts.
+  value Decimal @default(0) @db.Decimal(18, 4)
 
   /// damaged | lost | found | count_correction | other
   reason          String  @db.VarChar(40)
   referenceNumber String? @map("reference_number") @db.VarChar(100)
   description     String?
 
-  /// adjusted | cancelled — a cancelled adjustment stays listed (`isDeleted`
-  /// stays false): who created or removed stock is the record this table keeps.
-  status String @default("adjusted") @db.VarChar(20)
+  /// draft | pending_approval | approved | rejected | adjusted | cancelled
+  ///
+  /// 🔴 Only `adjusted` (and a `cancelled` that was once adjusted) ever moved
+  /// stock. The four before it hold none. A cancelled adjustment stays listed
+  /// (`isDeleted` stays false): who created or removed stock is the record this
+  /// table keeps. `isDeleted` is for a draft thrown away before it posted.
+  status String @default("draft") @db.VarChar(20)
 
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
@@ -44,36 +41,47 @@ model StockAdjustment {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  item          Item         @relation("StockAdjustmentItem", fields: [itemId], references: [id])
   location      Location     @relation("StockAdjustmentLocation", fields: [locationId], references: [id])
   createdByUser User?        @relation("StockAdjustmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser User?        @relation("StockAdjustmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
+  lines   StockAdjustmentLine[]
   batches StockAdjustmentBatch[]
 
   @@unique([organizationId, adjustmentNumber])
-  @@index([organizationId, itemId, adjustmentDate])
   @@index([organizationId, locationId, adjustmentDate])
   @@map("stock_adjustments")
 }
 
-/// One batch (and package) the adjustment touched. Its id is the ledger rows'
-/// `sourceDocLineId`.
-model StockAdjustmentBatch {
+/// One item on an adjustment.
+model StockAdjustmentLine {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  /// Denormalised from the header so this table carries its OWN policy, like
-  /// `bill_item_batches`.
+  /// Denormalised from the header so this table carries its OWN policy.
   organizationId String @map("organization_id") @db.Uuid
   adjustmentId   String @map("adjustment_id") @db.Uuid
+  seq            Int    @default(0)
 
-  batchId     String  @map("batch_id") @db.Uuid
-  /// Null = no package named: an org with no unit level, or the untagged
-  /// remainder of a batch that has one.
-  batchUnitId String? @map("batch_unit_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
 
-  /// Always positive; the direction is the header's sign.
-  qty Decimal @db.Decimal(18, 4)
+  /// SIGNED here, positive = increase. The ledger rows stay unsigned
+  /// (`qtyIn` / `qtyOut`); the sign lives only on the document.
+  quantityAdjusted Decimal  @map("quantity_adjusted") @db.Decimal(18, 4)
+  /// The balance the SERVER read at POST time. Null until then — a draft has no
+  /// honest answer, the stock keeps moving under it.
+  quantityBefore   Decimal? @map("quantity_before") @db.Decimal(18, 4)
+
+  /// Increase only. A decrease is costed by FIFO, so it has none to state.
+  costPrice Decimal? @map("cost_price") @db.Decimal(18, 4)
+  /// Snapshot of what this line's ledger rows carried. Zero until posted.
+  value     Decimal  @default(0) @db.Decimal(18, 4)
+
+  /// 🔴 THE BATCHES WHILE UNPOSTED — exactly what the form sent, and nothing
+  /// else. No batch, package or ledger row exists for a draft, so it cannot
+  /// appear in a picker or a balance and there is nothing to clean up when it
+  /// is edited or thrown away. Posting writes `stock_adjustment_batches` and
+  /// clears this.
+  draftBatches Json? @map("draft_batches")
 
   customFields Json     @default("{}") @map("custom_fields")
   isDeleted    Boolean  @default(false) @map("is_deleted")
@@ -84,12 +92,53 @@ model StockAdjustmentBatch {
 
   organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   adjustment    StockAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
-  batch         Batch           @relation("StockAdjustmentBatchBatch", fields: [batchId], references: [id])
-  batchUnit     BatchUnit?      @relation("StockAdjustmentBatchUnit", fields: [batchUnitId], references: [id])
-  createdByUser User?           @relation("StockAdjustmentBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser User?           @relation("StockAdjustmentBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  item          Item            @relation("StockAdjustmentLineItem", fields: [itemId], references: [id])
+  createdByUser User?           @relation("StockAdjustmentLineCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?           @relation("StockAdjustmentLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  batches StockAdjustmentBatch[]
 
   @@index([organizationId, adjustmentId])
+  @@index([organizationId, itemId])
+  @@map("stock_adjustment_lines")
+}
+
+/// One batch (and package) a POSTED line touched. Its id is the ledger rows'
+/// `sourceDocLineId`.
+model StockAdjustmentBatch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  /// Denormalised from the header so this table carries its OWN policy, like
+  /// `bill_item_batches`.
+  organizationId String @map("organization_id") @db.Uuid
+  adjustmentId   String @map("adjustment_id") @db.Uuid
+  lineId         String @map("line_id") @db.Uuid
+
+  batchId     String  @map("batch_id") @db.Uuid
+  /// Null = no package named: an org with no unit level, or the untagged
+  /// remainder of a batch that has one.
+  batchUnitId String? @map("batch_unit_id") @db.Uuid
+
+  /// Always positive; the direction is the line's sign.
+  qty Decimal @db.Decimal(18, 4)
+
+  customFields Json     @default("{}") @map("custom_fields")
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdBy    String?  @map("created_by") @db.Uuid
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  adjustment    StockAdjustment     @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  line          StockAdjustmentLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  batch         Batch               @relation("StockAdjustmentBatchBatch", fields: [batchId], references: [id])
+  batchUnit     BatchUnit?          @relation("StockAdjustmentBatchUnit", fields: [batchUnitId], references: [id])
+  createdByUser User?               @relation("StockAdjustmentBatchCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?               @relation("StockAdjustmentBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, adjustmentId])
+  @@index([organizationId, lineId])
   @@index([organizationId, batchId])
   @@map("stock_adjustment_batches")
 }

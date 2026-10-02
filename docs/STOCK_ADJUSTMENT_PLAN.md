@@ -1,6 +1,11 @@
 # Stock Adjustment — quantity only, the Zoho Books flow
 
-**Status: planned and BUILT 2026-10-02 (all seven steps of §7). Not committed, not deployed.**
+**Status: planned and BUILT 2026-10-02 (all seven steps of §7).**
+
+🔴 **Superseded in part the same day by `STOCK_ADJUSTMENT_ROUND2_PLAN.md`** — an adjustment now has
+many item lines, can be saved as a draft, and waits for approval when a process is configured.
+Where this file says "one item per document", "posted on create" or "no edit", read that file.
+The posting rules (A2–A12, A14–A15), the reports (§5a) and the batch dialogs are unchanged.
 
 Still owed before it can be called finished:
 
@@ -180,7 +185,8 @@ still holds what the adjustment added.
 `web/src/features/inventory/adjustments/` — `adjustments.api.ts`, `adjustments.schemas.ts`,
 components. Query keys include `orgId`.
 
-**Adjust Stock form** — opened by the **Adjust Stock** button beside **Edit** on the item overview page.
+**Adjust Stock form** — opened by the **Adjust Stock** button beside **Edit** on the item overview
+page, as a panel that takes the overview's place (it was first built as a dialog).
 
 | Field                | Behaviour                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------- |
