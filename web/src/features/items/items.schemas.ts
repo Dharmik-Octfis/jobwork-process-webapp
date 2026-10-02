@@ -59,6 +59,8 @@ export const itemSchema = z.object({
   updatedBy: z.string().nullable().optional(),
   isActive: z.boolean().default(true),
   isDeleted: z.boolean().optional(),
+  isPendingApproval: z.boolean().optional(),
+  approvalStatus: z.string().nullable().optional(),
 });
 
 export const itemFormSchema = z

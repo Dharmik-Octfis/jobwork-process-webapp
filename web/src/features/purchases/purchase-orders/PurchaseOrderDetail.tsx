@@ -49,6 +49,8 @@ import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
 import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
 import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
 function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -160,6 +162,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
+
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'purchase_order');
 
   const handleDownloadPdf = () => {
     setIsPdfMenuOpen(false);
@@ -1064,6 +1068,31 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                 </div>
               </div>
 
+              {/* Custom Fields Section */}
+              {customFieldDefs.length > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '20px',
+                    marginBottom: '28px',
+                    background: '#fafafa',
+                    padding: '16px 20px',
+                    borderRadius: '6px',
+                    border: '1px solid #f1f5f9',
+                  }}
+                >
+                  {customFieldDefs.map((def) => (
+                    <div key={def.id}>
+                      <div style={labelStyle}>{def.label?.toUpperCase()}</div>
+                      <div style={valueStyle}>
+                        {formatCustomFieldValue(po.customFields?.[def.key], def) || '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Line Items Table */}
               <div className="responsive-table-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
@@ -1499,6 +1528,33 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
                       </td>
                     </tr>
+                    {customFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = customFieldDefs[i * 2];
+                        const def2 = customFieldDefs[i * 2 + 1];
+                        return (
+                          <tr key={i} style={{ borderTop: '1px solid #000' }}>
+                            <td
+                              style={{
+                                width: '50%',
+                                padding: '6px 10px',
+                                borderRight: '1px solid #000',
+                              }}
+                            >
+                              <strong>{def1.label}</strong> :{' '}
+                              {formatCustomFieldValue(po.customFields?.[def1.key], def1) || '-'}
+                            </td>
+                            <td style={{ width: '50%', padding: '6px 10px' }}>
+                              {def2 ? (
+                                <>
+                                  <strong>{def2.label}</strong> :{' '}
+                                  {formatCustomFieldValue(po.customFields?.[def2.key], def2) || '-'}
+                                </>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>

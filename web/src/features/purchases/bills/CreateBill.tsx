@@ -49,6 +49,8 @@ import {
   storedLineDiscount,
 } from '../../../lib/lineDiscount';
 import { firstErrorMessage } from '../../../lib/formErrors';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
@@ -607,6 +609,9 @@ export function CreateBill() {
   const watchPaymentTerms = watch('paymentTerms');
   const watchStatus = watch('status');
 
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'bill');
+  const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
+
   const hasJobReceiptLines = watchItems?.some((item) => !!item.jobReceiptId);
 
   useEffect(() => {
@@ -738,6 +743,31 @@ export function CreateBill() {
   });
 
   const onSubmit = (data: CreateBillData) => {
+    let hasErrors = false;
+    const newLocalCustomFieldErrors: Record<string, string> = {};
+
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = data.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newLocalCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setLocalCustomFieldErrors(newLocalCustomFieldErrors);
+
+    if (hasErrors) {
+      toast.error('Please fill all required custom fields.');
+      return;
+    }
+
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
@@ -1076,6 +1106,18 @@ export function CreateBill() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Custom Fields Section */}
+          <div style={{ marginBottom: '32px' }}>
+            <CustomFieldsSection
+              orgId={orgId!}
+              entityType="bill"
+              values={(watch('customFields') as Record<string, unknown>) ?? {}}
+              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+              errors={localCustomFieldErrors}
+              applyDefaults={!isEdit && !isFromPo && !isFromJobReceipt}
+            />
           </div>
 
           {/* Items Table Section */}

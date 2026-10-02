@@ -67,6 +67,8 @@ export const vendorSchema = z.object({
   shippingPinCode: z.string().nullable(),
   shippingPhone: z.string().nullable(),
   status: z.string().default('active'),
+  isPendingApproval: z.boolean().optional(),
+  approvalStatus: z.string().nullable().optional(),
 
   createdAt: z.string(),
   updatedAt: z.string(),

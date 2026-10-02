@@ -48,6 +48,14 @@ import { approvalsInboxRouter } from '../modules/automation/approval-processes/a
 import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummary.routes.ts';
 import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
 import { jobOrderLossRouter } from '../modules/reports/job-order-loss/jobOrderLoss.routes.ts';
+import { batchReportRouter } from '../modules/reports/batch/batchReport.routes.ts';
+import { takaReportRouter } from '../modules/reports/taka/takaReport.routes.ts';
+import { jobworkChallansRouter } from '../modules/reports/jobwork-challans/jobworkChallans.routes.ts';
+import { jobworkReceiptsRouter } from '../modules/reports/jobwork-receipts/jobworkReceipts.routes.ts';
+import { jobOrdersReportRouter } from '../modules/reports/job-orders/jobOrdersReport.routes.ts';
+import { customersReportRouter } from '../modules/reports/customers/customersReport.routes.ts';
+import { vendorsReportRouter } from '../modules/reports/vendors/vendorsReport.routes.ts';
+import { purchaseOrdersReportRouter } from '../modules/reports/purchase-orders/purchaseOrdersReport.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { env } from '../config/env.ts';
 
@@ -130,6 +138,14 @@ apiRouter.use('/organizations/:orgId/approvals', approvalsInboxRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-summary', stockSummaryRouter);
 apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRouter);
 apiRouter.use('/organizations/:orgId/reports/job-order-loss', jobOrderLossRouter);
+apiRouter.use('/organizations/:orgId/reports/batch', batchReportRouter);
+apiRouter.use('/organizations/:orgId/reports/taka', takaReportRouter);
+apiRouter.use('/organizations/:orgId/reports/jobwork-challans', jobworkChallansRouter);
+apiRouter.use('/organizations/:orgId/reports/jobwork-receipts', jobworkReceiptsRouter);
+apiRouter.use('/organizations/:orgId/reports/job-orders', jobOrdersReportRouter);
+apiRouter.use('/organizations/:orgId/reports/customers', customersReportRouter);
+apiRouter.use('/organizations/:orgId/reports/vendors', vendorsReportRouter);
+apiRouter.use('/organizations/:orgId/reports/purchase-orders', purchaseOrdersReportRouter);
 // The Reports Center list + per-user visit/favourite — after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);

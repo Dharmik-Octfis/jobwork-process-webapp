@@ -1718,9 +1718,18 @@ export async function createBill(orgId: string, userId: string, data: CreateBill
 
     if (seq) {
       if (billData.billNumber.startsWith(seq.prefix)) {
+        const suffixPart = billData.billNumber.slice(seq.prefix.length);
+        const match = suffixPart.match(/^0*(\d+)/);
+        let newNextNumber = seq.nextNumber + 1;
+        if (match) {
+          const extracted = parseInt(match[1], 10);
+          if (!isNaN(extracted) && extracted >= seq.nextNumber) {
+            newNextNumber = extracted + 1;
+          }
+        }
         await tx.numberSequence.update({
           where: { id: seq.id },
-          data: { nextNumber: seq.nextNumber + 1 },
+          data: { nextNumber: newNextNumber },
         });
       }
     }

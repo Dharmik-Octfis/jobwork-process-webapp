@@ -154,6 +154,38 @@ const JobOrderLossReportPage = lazyPage(
   () => import('../features/reports/JobOrderLossReportPage'),
   'JobOrderLossReportPage',
 );
+const BatchReportPage = lazyPage(
+  () => import('../features/reports/BatchReportPage'),
+  'BatchReportPage',
+);
+const TakaReportPage = lazyPage(
+  () => import('../features/reports/TakaReportPage'),
+  'TakaReportPage',
+);
+const JobworkChallansRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkChallansRegisterPage'),
+  'JobworkChallansRegisterPage',
+);
+const JobworkReceiptsRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkReceiptsRegisterPage'),
+  'JobworkReceiptsRegisterPage',
+);
+const JobOrdersReportPage = lazyPage(
+  () => import('../features/reports/JobOrdersReportPage'),
+  'JobOrdersReportPage',
+);
+const CustomersReportPage = lazyPage(
+  () => import('../features/reports/CustomersReportPage'),
+  'CustomersReportPage',
+);
+const VendorsReportPage = lazyPage(
+  () => import('../features/reports/VendorsReportPage'),
+  'VendorsReportPage',
+);
+const PurchaseOrdersReportPage = lazyPage(
+  () => import('../features/reports/PurchaseOrdersReportPage'),
+  'PurchaseOrdersReportPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -450,6 +482,38 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/reports/job-order-loss',
                     element: <JobOrderLossReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/batch',
+                    element: <BatchReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/taka',
+                    element: <TakaReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-challans',
+                    element: <JobworkChallansRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-receipts',
+                    element: <JobworkReceiptsRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/job-orders',
+                    element: <JobOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/customers',
+                    element: <CustomersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/vendors',
+                    element: <VendorsReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/purchase-orders',
+                    element: <PurchaseOrdersReportPage />,
                   },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },

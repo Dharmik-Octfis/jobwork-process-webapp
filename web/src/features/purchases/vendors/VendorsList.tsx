@@ -378,7 +378,7 @@ export function VendorsList() {
                             {vendor.companyName || vendor.email || 'No email'}
                           </div>
                         </div>
-                        {(vendor as any).isPendingApproval ? (
+                        {vendor.isPendingApproval ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
                             <div
                               style={{

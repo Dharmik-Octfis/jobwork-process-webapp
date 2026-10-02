@@ -59,7 +59,7 @@ export function SearchableSelect({
   renderValue,
   footerAction,
   dropdownWidth,
-  portal = false,
+  portal = true,
   keepOpenOnSelect = false,
   showIndicator = false,
 }: SearchableSelectProps) {

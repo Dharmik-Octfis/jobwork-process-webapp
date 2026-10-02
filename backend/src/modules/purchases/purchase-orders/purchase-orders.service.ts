@@ -117,9 +117,18 @@ export async function createPurchaseOrder(
 
     if (seq) {
       if (poData.poNumber.startsWith(seq.prefix)) {
+        const suffixPart = poData.poNumber.slice(seq.prefix.length);
+        const match = suffixPart.match(/^0*(\d+)/);
+        let newNextNumber = seq.nextNumber + 1;
+        if (match) {
+          const extracted = parseInt(match[1], 10);
+          if (!isNaN(extracted) && extracted >= seq.nextNumber) {
+            newNextNumber = extracted + 1;
+          }
+        }
         await tx.numberSequence.update({
           where: { id: seq.id },
-          data: { nextNumber: seq.nextNumber + 1 },
+          data: { nextNumber: newNextNumber },
         });
       }
     }

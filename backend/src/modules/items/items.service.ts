@@ -770,14 +770,14 @@ export class ItemsService {
       let pendingApprovalItemIds = new Set<string>();
       if (itemIds.length > 0) {
         try {
-          const activeReqs = await tx.$queryRaw<Array<{ record_id: string }>>`
-            SELECT "record_id" FROM "approval_requests"
+          const activeReqs = await tx.$queryRaw<Array<{ recordId: string }>>`
+            SELECT "record_id" AS "recordId" FROM "approval_requests"
             WHERE "organization_id" = ${organizationId}::uuid
               AND "module_id" = ANY(ARRAY['items', 'item']::text[])
               AND "record_id" = ANY(${itemIds}::text[])
               AND "status" IN ('PENDING', 'IN_PROGRESS')
           `;
-          pendingApprovalItemIds = new Set(activeReqs.map((a) => a.record_id));
+          pendingApprovalItemIds = new Set(activeReqs.map((a) => a.recordId));
         } catch (_e) {
           // ignore if table does not exist
         }
