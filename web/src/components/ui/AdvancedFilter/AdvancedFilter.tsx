@@ -285,6 +285,9 @@ export function AdvancedFilter({
                             e.stopPropagation();
                             const newConditions = localConditions.filter((c) => c.field !== field.key);
                             setLocalConditions(newConditions);
+                            if (liveUpdate) {
+                              onChange(newConditions.filter(hasValidValue));
+                            }
                           }}
                           title="Remove filter"
                         >

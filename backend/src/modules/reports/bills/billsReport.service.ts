@@ -1,19 +1,23 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
 
-export async function getPurchaseOrdersReport(
+export async function getBillsReport(
   organizationId: string,
   params: {
     page?: number;
     pageSize?: number;
     vendorId?: string;
     status?: string;
-    deliveryType?: string;
     fromDate?: string;
     toDate?: string;
-    poNumber?: string;
+    billNumber?: string;
     vendorName?: string;
-    purchaseOrderCustomFields?: Record<string, unknown>;
+    locationName?: string;
+    paymentTerms?: string;
+    fromDeliveryDate?: string;
+    toDeliveryDate?: string;
+    total?: string;
+    billCustomFields?: Record<string, unknown>;
   }
 ) {
   const {
@@ -21,18 +25,22 @@ export async function getPurchaseOrdersReport(
     pageSize = 20,
     vendorId,
     status,
-    deliveryType,
     fromDate,
     toDate,
-    poNumber,
+    billNumber,
     vendorName,
-    purchaseOrderCustomFields,
+    locationName,
+    paymentTerms,
+    fromDeliveryDate,
+    toDeliveryDate,
+    total,
+    billCustomFields,
   } = params;
   
   const skip = (page - 1) * pageSize;
 
   return runAsTenant(organizationId, async (tx) => {
-    const where: Prisma.PurchaseOrderWhereInput = {
+    const where: Prisma.BillWhereInput = {
       organizationId,
       isDeleted: false,
     };
@@ -43,17 +51,14 @@ export async function getPurchaseOrdersReport(
     if (status) {
       where.status = status;
     }
-    if (deliveryType) {
-      where.deliveryType = deliveryType;
-    }
     if (fromDate || toDate) {
-      where.date = {};
-      if (fromDate) where.date.gte = new Date(fromDate);
-      if (toDate) where.date.lte = new Date(toDate);
+      where.billDate = {};
+      if (fromDate) where.billDate.gte = new Date(fromDate);
+      if (toDate) where.billDate.lte = new Date(toDate);
     }
     
-    if (poNumber) {
-      where.poNumber = { contains: poNumber, mode: 'insensitive' };
+    if (billNumber) {
+      where.billNumber = { contains: billNumber, mode: 'insensitive' };
     }
     
     if (vendorName) {
@@ -66,9 +71,29 @@ export async function getPurchaseOrdersReport(
       };
     }
     
-    if (purchaseOrderCustomFields) {
-      const customFieldsWhere: Prisma.PurchaseOrderWhereInput[] = [];
-      Object.entries(purchaseOrderCustomFields).forEach(([cfKey, value]) => {
+    if (locationName) {
+      where.location = {
+        name: { contains: locationName, mode: 'insensitive' },
+      };
+    }
+    
+    if (paymentTerms) {
+      where.paymentTerms = { contains: paymentTerms, mode: 'insensitive' };
+    }
+    
+    if (total) {
+      where.totalAmount = Number(total);
+    }
+    
+    if (fromDeliveryDate || toDeliveryDate) {
+      where.dueDate = {};
+      if (fromDeliveryDate) where.dueDate.gte = new Date(fromDeliveryDate);
+      if (toDeliveryDate) where.dueDate.lte = new Date(toDeliveryDate);
+    }
+    
+    if (billCustomFields) {
+      const customFieldsWhere: Prisma.BillWhereInput[] = [];
+      Object.entries(billCustomFields).forEach(([cfKey, value]) => {
         if (value !== undefined && value !== null && value !== '') {
           if (Array.isArray(value)) {
             customFieldsWhere.push({
@@ -92,19 +117,17 @@ export async function getPurchaseOrdersReport(
     }
 
     const [items, totalCount] = await Promise.all([
-      tx.purchaseOrder.findMany({
+      tx.bill.findMany({
         where,
         skip,
         take: pageSize,
-        orderBy: { date: 'desc' },
+        orderBy: { billDate: 'desc' },
         include: {
           vendor: { select: { contactName: true, companyName: true, paymentTerms: true } },
-          deliveryLocation: true,
-          deliveryCustomer: true,
-          location: true, // For issue location if needed
+          location: true,
         }
       }),
-      tx.purchaseOrder.count({ where }),
+      tx.bill.count({ where }),
     ]);
 
     if (items.length === 0) {
@@ -114,32 +137,22 @@ export async function getPurchaseOrdersReport(
       };
     }
 
-    const formattedItems = items.map((po) => {
-      let deliveryAddress = '-';
-      let locationName = po.location?.name;
-      if (po.deliveryType === 'Location' && po.deliveryLocation) {
-        deliveryAddress = po.deliveryLocation.addressString || [po.deliveryLocation.street1, po.deliveryLocation.city, po.deliveryLocation.state, po.deliveryLocation.country].filter(Boolean).join(', ') || '-';
-        locationName = locationName || po.deliveryLocation.name;
-      } else if (po.deliveryType === 'Customer' && po.deliveryCustomer) {
-        deliveryAddress = po.deliveryCustomer.companyName || po.deliveryCustomer.contactName || '-';
-      }
+    const formattedItems = items.map((bill) => {
+      let locationName = bill.location?.name;
 
       return {
-        id: po.id,
-        poNumber: po.poNumber,
-        vendorName: po.vendor?.contactName || po.vendor?.companyName || '-',
+        id: bill.id,
+        billNumber: bill.billNumber,
+        vendorName: bill.vendor?.contactName || bill.vendor?.companyName || '-',
         locationName: locationName || '-',
-        deliveryType: po.deliveryType,
-        deliveryAddress,
-        date: po.date,
-        deliveryDate: po.deliveryDate,
+        date: bill.billDate,
+        deliveryDate: bill.dueDate,
         paymentTerms: (() => {
-          console.log(`PO: ${po.poNumber}, paymentTerms: ${po.paymentTerms}, vendor.paymentTerms: ${po.vendor?.paymentTerms}`);
-          return po.paymentTerms || po.vendor?.paymentTerms || '-';
+          return bill.paymentTerms || bill.vendor?.paymentTerms || '-';
         })(),
-        total: Number(po.totalAmount),
-        status: po.status,
-        customFields: po.customFields,
+        total: Number(bill.totalAmount),
+        status: bill.status,
+        customFields: bill.customFields,
       };
     });
 

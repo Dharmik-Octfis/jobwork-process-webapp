@@ -10,22 +10,21 @@ import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
-import { reportsApi, type PurchaseOrdersReportQuery, type PurchaseOrdersReportRow } from './reports.api';
+import { reportsApi, type BillsReportQuery, type BillsReportRow } from './reports.api';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { fetchPaymentTerms, type PaymentTerm } from '../purchases/purchase-orders/payment-terms.api';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
+import { fetchLocations } from '../configuration/locations/locations.api';
 
 const COLUMN_CATALOG = [
-  { key: 'poNumber', label: 'PO NUMBER', locked: true, defaultVisible: true },
+  { key: 'billNumber', label: 'BILL NUMBER', locked: true, defaultVisible: true },
   { key: 'vendorName', label: 'VENDOR NAME', defaultVisible: true },
   { key: 'locationName', label: 'LOCATION', defaultVisible: true },
-  { key: 'deliveryAddress', label: 'DELIVERY ADDRESS', defaultVisible: true },
   { key: 'date', label: 'DATE', defaultVisible: true },
-  { key: 'deliveryDate', label: 'DELIVERY DATE', defaultVisible: true },
   { key: 'paymentTerms', label: 'PAYMENT TERMS', defaultVisible: true },
+  { key: 'deliveryDate', label: 'DELIVERY DATE', defaultVisible: true },
   { key: 'total', label: 'TOTAL', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
-  { key: 'deliveryType', label: 'DELIVERY TYPE', defaultVisible: false },
 ];
 
 const RIGHT_ALIGNED = new Set<string>(['total']);
@@ -34,13 +33,13 @@ interface Applied {
   conditions: FilterCondition[];
 }
 
-export function PurchaseOrdersReportPage() {
+export function BillsReportPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
-  useRecordReportVisit(orgId, 'purchase_order_report');
+  useRecordReportVisit(orgId, 'bill_report');
 
-  const storageKey = `PurchaseOrdersReportState_${orgId}`;
+  const storageKey = `BillsReportState_${orgId}`;
   const initialState = useMemo(() => {
     try {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
@@ -70,7 +69,7 @@ export function PurchaseOrdersReportPage() {
     COLUMN_CATALOG.filter((col) => col.defaultVisible).map((col) => col.key)
   );
 
-  const { data: customFields = [] } = useActiveCustomFields(orgId, 'purchase_order');
+  const { data: customFields = [] } = useActiveCustomFields(orgId, 'bill');
 
   const customColumns = useMemo(() => {
     return customFields.map((cf) => ({
@@ -100,6 +99,18 @@ export function PurchaseOrdersReportPage() {
     enabled: Boolean(orgId),
   });
   const vendors = useMemo(() => vendorsPage?.results || [], [vendorsPage?.results]);
+
+  const { data: paymentTermsData = [] } = useQuery({
+    queryKey: ['paymentTerms', orgId],
+    queryFn: () => fetchPaymentTerms(orgId!),
+    enabled: Boolean(orgId),
+  });
+
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations', orgId],
+    queryFn: () => fetchLocations(orgId!),
+    enabled: Boolean(orgId),
+  });
 
   const customFilterFields = useMemo(() => {
     return customFields.map((cf) => {
@@ -136,24 +147,25 @@ export function PurchaseOrdersReportPage() {
       { label: 'Rejected', value: 'Rejected' },
       { label: 'Billed', value: 'Billed' },
     ];
-    const deliveryTypeOptions = [
-      { label: 'Location', value: 'Location' },
-      { label: 'Customer', value: 'Customer' },
-    ];
+    const ptOptions = paymentTermsData.map((pt) => ({ label: pt.termName, value: pt.termName }));
+    const locOptions = locations.map((loc) => ({ label: loc.name, value: loc.name }));
 
     return [
-      { key: 'poNumber', label: 'PO Number', dataType: 'string', group: 'Report' },
+      { key: 'billNumber', label: 'Bill Number', dataType: 'string', group: 'Report' },
       { key: 'vendorName', label: 'Vendor Name', dataType: 'select', options: vendorOptions, group: 'Report' },
-      { key: 'status', label: 'Status', dataType: 'select', options: statusOptions, group: 'Report' },
-      { key: 'deliveryType', label: 'Delivery Type', dataType: 'select', options: deliveryTypeOptions, group: 'Report' },
+      { key: 'locationName', label: 'Location', dataType: 'select', options: locOptions, group: 'Report' },
       { key: 'date', label: 'Date', dataType: 'date', group: 'Report' },
+      { key: 'paymentTerms', label: 'Payment Terms', dataType: 'select', options: ptOptions, group: 'Report' },
+      { key: 'deliveryDate', label: 'Delivery Date', dataType: 'date', group: 'Report' },
+      { key: 'total', label: 'Total', dataType: 'number', group: 'Report' },
+      { key: 'status', label: 'Status', dataType: 'select', options: statusOptions, group: 'Report' },
       ...customFilterFields,
     ];
-  }, [customFilterFields, vendors]);
+  }, [customFilterFields, vendors, paymentTermsData, locations]);
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const query = useMemo<PurchaseOrdersReportQuery>(() => {
+  const query = useMemo<BillsReportQuery>(() => {
     const valueOf = (field: string) => {
       const value = applied.conditions.find((c) => c.field === field)?.value;
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -178,15 +190,19 @@ export function PurchaseOrdersReportPage() {
       return undefined;
     };
 
-    const q: PurchaseOrdersReportQuery = {
+    const q: BillsReportQuery = {
       page,
       perPage,
       status: valueOf('status'),
-      deliveryType: valueOf('deliveryType'),
-      poNumber: valueOf('poNumber'),
+      billNumber: valueOf('billNumber'),
       vendorName: valueOf('vendorName'),
+      locationName: valueOf('locationName'),
+      paymentTerms: valueOf('paymentTerms'),
+      total: valueOf('total'),
       fromDate: dateOf('date', 'from'),
       toDate: dateOf('date', 'to'),
+      fromDeliveryDate: dateOf('deliveryDate', 'from'),
+      toDeliveryDate: dateOf('deliveryDate', 'to'),
     };
     
     // Process custom fields
@@ -198,35 +214,29 @@ export function PurchaseOrdersReportPage() {
       }
     });
     if (Object.keys(customFields).length > 0) {
-      q.purchaseOrderCustomFields = customFields;
+      q.billCustomFields = customFields;
     }
 
     return q;
   }, [applied, page, perPage]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports', 'purchaseOrders', orgId, query],
-    queryFn: () => reportsApi.getPurchaseOrdersReport(orgId!, query),
-    enabled: Boolean(orgId),
-  });
-
-  const { data: paymentTermsData = [] } = useQuery({
-    queryKey: ['paymentTerms', orgId],
-    queryFn: () => fetchPaymentTerms(orgId!),
+    queryKey: ['reports', 'bills', orgId, query],
+    queryFn: () => reportsApi.getBillsReport(orgId!, query),
     enabled: Boolean(orgId),
   });
 
   const rows = useMemo(() => data?.items || [], [data?.items]);
   const total = data?.pagination.totalCount || 0;
 
-  const cell = (row: PurchaseOrdersReportRow, key: string) => {
-    if (key === 'poNumber') {
+  const cell = (row: BillsReportRow, key: string) => {
+    if (key === 'billNumber') {
       return (
         <Link
-          to={`/organizations/${orgId}/purchases/purchase-orders/${row.id}`}
+          to={`/organizations/${orgId}/purchases/bills/${row.id}`}
           className="text-blue-600 hover:underline"
         >
-          {row[key as keyof PurchaseOrdersReportRow] as string}
+          {row[key as keyof BillsReportRow] as string}
         </Link>
       );
     }
@@ -249,11 +259,11 @@ export function PurchaseOrdersReportPage() {
       return `₹${Number(row.total || 0).toFixed(2)}`;
     }
     if (key === 'date' || key === 'deliveryDate') {
-      const val = row[key as keyof PurchaseOrdersReportRow];
+      const val = row[key as keyof BillsReportRow];
       return val ? formatDate(val as string) : '-';
     }
     
-    const val = row[key as keyof PurchaseOrdersReportRow];
+    const val = row[key as keyof BillsReportRow];
     if (val === null || val === undefined || val === '') return '-';
     return String(val);
   };
@@ -283,7 +293,7 @@ export function PurchaseOrdersReportPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Purchases</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
-            Purchase Order Report
+            Bill Report
           </div>
         </div>
 
@@ -438,7 +448,7 @@ export function PurchaseOrdersReportPage() {
               {organizationName}
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
-              Purchase Order Report
+              Bill Report
             </h2>
           </div>
 
@@ -457,7 +467,7 @@ export function PurchaseOrdersReportPage() {
                 {isLoading || isError || rows.length === 0 ? (
                   <tr>
                     <td colSpan={visibleColumns.length} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
-                      {isLoading ? 'Loading...' : isError ? 'Could not load the report.' : 'No Purchase Orders found'}
+                      {isLoading ? 'Loading...' : isError ? 'Could not load the report.' : 'No Bills found'}
                     </td>
                   </tr>
                 ) : (

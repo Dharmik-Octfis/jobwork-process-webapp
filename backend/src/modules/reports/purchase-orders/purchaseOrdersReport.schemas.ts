@@ -7,4 +7,7 @@ export const purchaseOrdersReportQuerySchema = listQuerySchema.extend({
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
   deliveryType: z.string().optional(),
+  poNumber: z.string().optional(),
+  vendorName: z.string().optional(),
+  purchaseOrderCustomFields: z.record(z.unknown()).optional(),
 });

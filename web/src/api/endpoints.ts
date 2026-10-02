@@ -182,6 +182,7 @@ export const endpoints = {
     jobworkReceipts: (orgId: string) => `/organizations/${orgId}/reports/jobwork-receipts`,
     jobOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/job-orders`,
     purchaseOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/purchase-orders`,
+    billsReport: (orgId: string) => `/organizations/${orgId}/reports/bills`,
   },
   automation: {
     approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,
