@@ -12,7 +12,7 @@ import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type BillsReportQuery, type BillsReportRow } from './reports.api';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
-import { fetchPaymentTerms, type PaymentTerm } from '../purchases/purchase-orders/payment-terms.api';
+import { fetchPaymentTerms } from '../purchases/purchase-orders/payment-terms.api';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
 

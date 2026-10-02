@@ -345,15 +345,15 @@ export interface JobworkReceiptRow {
   process: string;
   jobOrderNumber: string;
   jobOrderId: string;
-  items: string;
-  issuedQty: number;
-  receivedQty: number;
-  acceptedQty: number;
-  reworkQty: number;
-  scrapQty: number;
-  returnedQty: number;
+  lines: {
+    id: string;
+    items: string;
+    plannedQty: number;
+    receivedQty: number;
+    toBeReceivedQty: number;
+  }[];
   status: string;
-  processChargeTotal: number;
+  processChargeTotal?: number;
 }
 
 export interface PaginatedJobworkReceiptsResponse {

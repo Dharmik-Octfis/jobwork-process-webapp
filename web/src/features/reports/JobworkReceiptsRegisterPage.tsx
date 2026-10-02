@@ -23,9 +23,9 @@ const COLUMN_CATALOG = [
   { key: 'process', label: 'PROCESS', defaultVisible: true },
   { key: 'jobOrderNumber', label: 'JOB ORDER#', defaultVisible: true },
   { key: 'items', label: 'ITEMS', defaultVisible: true },
-  { key: 'plannedQty', label: 'PLANNED', defaultVisible: true },
-  { key: 'receivedQty', label: 'RECEIVE', defaultVisible: true },
-  { key: 'toBeReceivedQty', label: 'TO BE RECEIVE', defaultVisible: true },
+  { key: 'plannedQty', label: 'PLANNED QTY', defaultVisible: true },
+  { key: 'receivedQty', label: 'RECEIVE QTY', defaultVisible: true },
+  { key: 'toBeReceivedQty', label: 'TO BE RECEIVED QTY', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
 ];
 
@@ -208,11 +208,11 @@ export function JobworkReceiptsRegisterPage() {
       case 'items':
         return line.items;
       case 'plannedQty':
-        return line.plannedQty.toFixed(2);
+        return line.plannedQty?.toFixed(2) || '0.00';
       case 'receivedQty':
-        return line.receivedQty.toFixed(2);
+        return line.receivedQty?.toFixed(2) || '0.00';
       case 'toBeReceivedQty':
-        return line.toBeReceivedQty.toFixed(2);
+        return line.toBeReceivedQty?.toFixed(2) || '0.00';
       case 'status':
         return RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label || row.status;
       default:
@@ -456,10 +456,10 @@ export function JobworkReceiptsRegisterPage() {
                 ) : (
                   rows.map((row) => (
                     <React.Fragment key={row.id}>
-                      {row.lines.map((line, lineIndex) => (
+                      {row.lines?.map((line, lineIndex) => (
                         <tr key={line.id}>
                           {visibleColumns.map((key) => {
-                            const isLineCol = ['items', 'plannedQty', 'receivedQty', 'toBeReceivedQty', 'status'].includes(key);
+                            const isLineCol = ['items', 'plannedQty', 'receivedQty', 'toBeReceivedQty'].includes(key);
                             if (!isLineCol && lineIndex > 0) return null;
                             
                             return (
