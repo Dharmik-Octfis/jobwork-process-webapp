@@ -608,6 +608,21 @@ export function JobOrderForm({
             </div>
           </section>
 
+          {customFieldDefs.length > 0 && (
+            <section style={{ maxWidth: 900, marginBottom: 32 }}>
+              <h2 style={sectionHeading}>Custom Fields</h2>
+              <CustomFieldsSection
+                orgId={orgId!}
+                entityType="job_order"
+                values={customFields}
+                onChange={setCustomFields}
+                errors={fieldErrors}
+                applyDefaults={!isEdit}
+                layout="rows"
+              />
+            </section>
+          )}
+
           <section style={{ marginBottom: 32 }}>
             <h2 style={sectionHeading}>Steps</h2>
 
@@ -631,22 +646,7 @@ export function JobOrderForm({
             />
           </section>
 
-          {customFieldDefs.length > 0 && (
-            <section style={{ maxWidth: 900, marginBottom: 32 }}>
-              <h2 style={sectionHeading}>Custom Fields</h2>
-              {/* Same wrapping grid as the Order section above, so custom fields read
-              as more fields on this form rather than a panel bolted to the end. */}
-              <CustomFieldsSection
-                orgId={orgId!}
-                entityType="job_order"
-                values={customFields}
-                onChange={setCustomFields}
-                errors={fieldErrors}
-                applyDefaults={!isEdit}
-                layout="grid"
-              />
-            </section>
-          )}
+
 
           {isNumberConfigOpen && (
             <JobOrderNumberConfigModal

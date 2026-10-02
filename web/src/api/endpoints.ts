@@ -181,6 +181,7 @@ export const endpoints = {
     jobworkChallans: (orgId: string) => `/organizations/${orgId}/reports/jobwork-challans`,
     jobworkReceipts: (orgId: string) => `/organizations/${orgId}/reports/jobwork-receipts`,
     jobOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/job-orders`,
+    purchaseOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/purchase-orders`,
   },
   automation: {
     approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,

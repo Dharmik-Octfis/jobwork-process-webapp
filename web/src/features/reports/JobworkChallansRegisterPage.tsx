@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
@@ -14,6 +14,7 @@ import type { Item } from '../items/items.schemas';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type JobworkChallansQuery, type JobworkChallanRow } from './reports.api';
+import { ISSUE_STATUS_META } from '../jobwork/jobwork.schemas';
 
 const COLUMN_CATALOG = [
   { key: 'issueDate', label: 'DATE', locked: true, defaultVisible: true },
@@ -22,20 +23,14 @@ const COLUMN_CATALOG = [
   { key: 'process', label: 'PROCESS', defaultVisible: true },
   { key: 'jobOrderNumber', label: 'JOB ORDER#', defaultVisible: true },
   { key: 'items', label: 'ITEMS', defaultVisible: true },
-  { key: 'issuedQty', label: 'ISSUED QTY', defaultVisible: true },
-  { key: 'receivedQty', label: 'RECEIVED QTY', defaultVisible: true },
-  { key: 'acceptedQty', label: 'ACCEPTED', defaultVisible: false },
-  { key: 'reworkQty', label: 'REWORK', defaultVisible: false },
-  { key: 'scrapQty', label: 'SCRAP', defaultVisible: false },
-  { key: 'returnedQty', label: 'RETURNED', defaultVisible: false },
-  { key: 'pendingQty', label: 'PENDING QTY', locked: true, defaultVisible: true },
+  { key: 'plannedQty', label: 'PLANNED', defaultVisible: true },
+  { key: 'issuedQty', label: 'ISSUE', defaultVisible: true },
+  { key: 'toBeIssuedQty', label: 'TO BE ISSUE', defaultVisible: true },
   { key: 'daysOutstanding', label: 'DAYS OUTSTANDING', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
-  { key: 'processCharge', label: 'PROCESS CHARGE', defaultVisible: false },
-  { key: 'transporter', label: 'TRANSPORTER', defaultVisible: false },
 ];
 
-const RIGHT_ALIGNED = new Set(['issuedQty', 'receivedQty', 'acceptedQty', 'reworkQty', 'scrapQty', 'returnedQty', 'pendingQty', 'daysOutstanding', 'processCharge']);
+const RIGHT_ALIGNED = new Set(['plannedQty', 'issuedQty', 'toBeIssuedQty', 'daysOutstanding']);
 
 const firstOfMonth = () => startOfMonth(new Date());
 
@@ -159,7 +154,7 @@ export function JobworkChallansRegisterPage() {
   const formattedFromDate = format(applied.fromDate, 'dd-MM-yyyy');
   const formattedToDate = format(applied.toDate, 'dd-MM-yyyy');
 
-  const cell = (row: JobworkChallanRow, key: string) => {
+  const cell = (row: JobworkChallanRow, line: JobworkChallanRow['lines'][number], key: string) => {
     switch (key) {
       case 'issueDate':
         return format(new Date(row.issueDate), 'dd-MM-yyyy');
@@ -188,29 +183,17 @@ export function JobworkChallansRegisterPage() {
           </Link>
         );
       case 'items':
-        return row.items;
+        return line.items;
+      case 'plannedQty':
+        return line.plannedQty.toFixed(2);
       case 'issuedQty':
-        return row.issuedQty.toFixed(2);
-      case 'receivedQty':
-        return row.receivedQty.toFixed(2);
-      case 'acceptedQty':
-        return row.acceptedQty.toFixed(2);
-      case 'reworkQty':
-        return row.reworkQty.toFixed(2);
-      case 'scrapQty':
-        return row.scrapQty.toFixed(2);
-      case 'returnedQty':
-        return row.returnedQty.toFixed(2);
-      case 'pendingQty':
-        return row.pendingQty.toFixed(2);
+        return line.issuedQty.toFixed(2);
+      case 'toBeIssuedQty':
+        return line.toBeIssuedQty.toFixed(2);
       case 'daysOutstanding':
         return row.daysOutstanding ?? '-';
       case 'status':
-        return row.status;
-      case 'processCharge':
-        return row.processCharge.toFixed(2);
-      case 'transporter':
-        return row.transporter || '-';
+        return ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status;
       default:
         return null;
     }
@@ -451,25 +434,33 @@ export function JobworkChallansRegisterPage() {
                   </tr>
                 ) : (
                   rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="table-row-hover"
-                      style={{ borderTop: '1px solid #f9fafb' }}
-                    >
-                      {visibleColumns.map((key) => (
-                        <td
-                          key={key}
-                          style={{
-                            ...tdStyle,
-                            ...(RIGHT_ALIGNED.has(key)
-                              ? { textAlign: 'right', fontWeight: 600 }
-                              : {}),
-                          }}
+                    <React.Fragment key={row.id}>
+                      {row.lines.map((line, lineIndex) => (
+                        <tr
+                          key={line.id}
                         >
-                          {cell(row, key)}
-                        </td>
+                          {visibleColumns.map((key) => {
+                            const isLineCol = ['items', 'plannedQty', 'issuedQty', 'toBeIssuedQty', 'daysOutstanding', 'status'].includes(key);
+                            if (!isLineCol && lineIndex > 0) return null;
+                            
+                            return (
+                              <td
+                                key={key}
+                                rowSpan={!isLineCol ? row.lines.length : 1}
+                                style={{
+                                  ...tdStyle,
+                                  ...(RIGHT_ALIGNED.has(key)
+                                    ? { textAlign: 'right', fontWeight: 600 }
+                                    : {}),
+                                }}
+                              >
+                                {cell(row, line, key)}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       ))}
-                    </tr>
+                    </React.Fragment>
                   ))
                 )}
               </tbody>
@@ -516,6 +507,7 @@ const thStyle = {
   textTransform: 'uppercase' as const,
   background: '#f9fafb',
   letterSpacing: '0.5px',
+  border: '1px solid #eeeeee',
   whiteSpace: 'nowrap' as const,
 };
 
@@ -523,6 +515,7 @@ const tdStyle = {
   padding: '12px 24px',
   fontSize: '13px',
   color: '#111827',
-  borderBottom: '1px solid #f3f4f6',
+  verticalAlign: 'top' as const,
+  border: '1px solid #eeeeee',
   whiteSpace: 'nowrap' as const,
 };

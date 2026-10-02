@@ -90,7 +90,7 @@ export async function getJobworkReceipts(
     const receipts = await tx.jobReceipt.findMany({
       where,
       include: {
-        step: { include: { process: { select: { name: true } } } },
+        step: { include: { process: { select: { name: true } }, outputs: true } },
         jobOrder: { select: { jobOrderNumber: true } },
         outputs: {
           include: {
@@ -103,17 +103,53 @@ export async function getJobworkReceipts(
       take: perPage,
     });
 
-    const results: JobworkReceiptRow[] = receipts.map((receipt) => {
-      const itemSet = new Set<string>();
+    const stepIds = Array.from(new Set(receipts.map((r) => r.jobOrderStepId)));
 
-      for (const output of receipt.outputs) {
-        itemSet.add(output.item.name + (output.item.unit ? ` (${output.item.unit})` : ''));
+    const allReceipts = await tx.jobReceipt.findMany({
+      where: {
+        organizationId,
+        jobOrderStepId: { in: stepIds },
+        status: POSTED_DOC_STATUS,
+        isDeleted: false,
+      },
+      select: {
+        jobOrderStepId: true,
+        outputs: { select: { itemId: true, receivedQty: true } },
+      },
+    });
+
+    const receivedMap = new Map<string, number>();
+    for (const rec of allReceipts) {
+      for (const out of rec.outputs) {
+        const key = `${rec.jobOrderStepId}_${out.itemId}`;
+        receivedMap.set(key, (receivedMap.get(key) || 0) + Number(out.receivedQty || 0));
       }
+    }
 
+    const results: JobworkReceiptRow[] = receipts.map((receipt) => {
       const pName = receipt.processorNameSnapshot || '';
-      const itemsArr = Array.from(itemSet);
-      const itemsText = itemsArr.length === 1 ? itemsArr[0] : `${itemsArr.length} items`;
       
+      const lines = receipt.outputs.map((output) => {
+        const itemNameWithUom = output.item.name + (output.item.unit ? ` (${output.item.unit})` : '');
+        const plannedOutput = receipt.step?.outputs.find((o) => o.itemId === output.itemId);
+        const plannedQty = plannedOutput?.expectedQty ? Number(plannedOutput.expectedQty) : 0;
+        
+        const receivedQty = Number(output.receivedQty || 0);
+        
+        const key = `${receipt.jobOrderStepId}_${output.itemId}`;
+        const totalReceived = receivedMap.get(key) || 0;
+        
+        const toBeReceivedQty = Math.max(0, plannedQty - totalReceived);
+        
+        return {
+          id: output.id,
+          items: itemNameWithUom,
+          plannedQty,
+          receivedQty,
+          toBeReceivedQty,
+        };
+      });
+
       return {
         id: receipt.id,
         receiptNumber: receipt.receiptNumber,
@@ -122,15 +158,8 @@ export async function getJobworkReceipts(
         process: receipt.step?.process?.name || '',
         jobOrderNumber: receipt.jobOrder?.jobOrderNumber || '',
         jobOrderId: receipt.jobOrderId || '',
-        items: itemsText || '',
-        issuedQty: Number(receipt.totalIssuedQty),
-        receivedQty: Number(receipt.totalReceivedQty),
-        acceptedQty: Number(receipt.totalAcceptedQty),
-        reworkQty: Number(receipt.totalReworkQty),
-        scrapQty: Number(receipt.totalScrapQty),
-        returnedQty: Number(receipt.totalReturnedQty),
+        lines,
         status: receipt.status,
-        processChargeTotal: Number(receipt.processChargeTotal),
       };
     });
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
@@ -14,6 +14,7 @@ import type { Item } from '../items/items.schemas';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type JobworkReceiptsQuery, type JobworkReceiptRow } from './reports.api';
+import { RECEIPT_STATUS_META } from '../jobwork/jobwork.schemas';
 
 const COLUMN_CATALOG = [
   { key: 'receiptDate', label: 'DATE', locked: true, defaultVisible: true },
@@ -22,17 +23,13 @@ const COLUMN_CATALOG = [
   { key: 'process', label: 'PROCESS', defaultVisible: true },
   { key: 'jobOrderNumber', label: 'JOB ORDER#', defaultVisible: true },
   { key: 'items', label: 'ITEMS', defaultVisible: true },
-  { key: 'issuedQty', label: 'ISSUED QTY', defaultVisible: true },
-  { key: 'receivedQty', label: 'RECEIVED QTY', defaultVisible: true },
-  { key: 'acceptedQty', label: 'ACCEPTED', defaultVisible: false },
-  { key: 'reworkQty', label: 'REWORK', defaultVisible: false },
-  { key: 'scrapQty', label: 'SCRAP', defaultVisible: false },
-  { key: 'returnedQty', label: 'RETURNED', defaultVisible: false },
+  { key: 'plannedQty', label: 'PLANNED', defaultVisible: true },
+  { key: 'receivedQty', label: 'RECEIVE', defaultVisible: true },
+  { key: 'toBeReceivedQty', label: 'TO BE RECEIVE', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
-  { key: 'processChargeTotal', label: 'PROCESS CHARGE', defaultVisible: true },
 ];
 
-const RIGHT_ALIGNED = new Set(['issuedQty', 'receivedQty', 'acceptedQty', 'reworkQty', 'scrapQty', 'returnedQty', 'processChargeTotal']);
+const RIGHT_ALIGNED = new Set(['plannedQty', 'receivedQty', 'toBeReceivedQty']);
 
 const firstOfMonth = () => startOfMonth(new Date());
 
@@ -180,7 +177,7 @@ export function JobworkReceiptsRegisterPage() {
   const formattedFromDate = format(applied.fromDate, 'dd-MM-yyyy');
   const formattedToDate = format(applied.toDate, 'dd-MM-yyyy');
 
-  const cell = (row: JobworkReceiptRow, key: string) => {
+  const cell = (row: JobworkReceiptRow, line: JobworkReceiptRow['lines'][number], key: string) => {
     switch (key) {
       case 'receiptDate':
         return format(new Date(row.receiptDate), 'dd-MM-yyyy');
@@ -209,23 +206,15 @@ export function JobworkReceiptsRegisterPage() {
           </Link>
         );
       case 'items':
-        return row.items;
-      case 'issuedQty':
-        return row.issuedQty.toFixed(2);
+        return line.items;
+      case 'plannedQty':
+        return line.plannedQty.toFixed(2);
       case 'receivedQty':
-        return row.receivedQty.toFixed(2);
-      case 'acceptedQty':
-        return row.acceptedQty.toFixed(2);
-      case 'reworkQty':
-        return row.reworkQty.toFixed(2);
-      case 'scrapQty':
-        return row.scrapQty.toFixed(2);
-      case 'returnedQty':
-        return row.returnedQty.toFixed(2);
+        return line.receivedQty.toFixed(2);
+      case 'toBeReceivedQty':
+        return line.toBeReceivedQty.toFixed(2);
       case 'status':
-        return row.status;
-      case 'processChargeTotal':
-        return row.processChargeTotal.toFixed(2);
+        return RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label || row.status;
       default:
         return null;
     }
@@ -466,25 +455,31 @@ export function JobworkReceiptsRegisterPage() {
                   </tr>
                 ) : (
                   rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="table-row-hover"
-                      style={{ borderTop: '1px solid #f9fafb' }}
-                    >
-                      {visibleColumns.map((key) => (
-                        <td
-                          key={key}
-                          style={{
-                            ...tdStyle,
-                            ...(RIGHT_ALIGNED.has(key)
-                              ? { textAlign: 'right', fontWeight: 600 }
-                              : {}),
-                          }}
-                        >
-                          {cell(row, key)}
-                        </td>
+                    <React.Fragment key={row.id}>
+                      {row.lines.map((line, lineIndex) => (
+                        <tr key={line.id}>
+                          {visibleColumns.map((key) => {
+                            const isLineCol = ['items', 'plannedQty', 'receivedQty', 'toBeReceivedQty', 'status'].includes(key);
+                            if (!isLineCol && lineIndex > 0) return null;
+                            
+                            return (
+                              <td
+                                key={key}
+                                rowSpan={!isLineCol ? row.lines.length : 1}
+                                style={{
+                                  ...tdStyle,
+                                  ...(RIGHT_ALIGNED.has(key)
+                                    ? { textAlign: 'right', fontWeight: 600 }
+                                    : {}),
+                                }}
+                              >
+                                {cell(row, line, key)}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       ))}
-                    </tr>
+                    </React.Fragment>
                   ))
                 )}
               </tbody>
@@ -531,6 +526,7 @@ const thStyle = {
   textTransform: 'uppercase' as const,
   background: '#f9fafb',
   letterSpacing: '0.5px',
+  border: '1px solid #eeeeee',
   whiteSpace: 'nowrap' as const,
 };
 
@@ -538,6 +534,7 @@ const tdStyle = {
   padding: '12px 24px',
   fontSize: '13px',
   color: '#111827',
-  borderBottom: '1px solid #f3f4f6',
+  verticalAlign: 'top' as const,
+  border: '1px solid #eeeeee',
   whiteSpace: 'nowrap' as const,
 };

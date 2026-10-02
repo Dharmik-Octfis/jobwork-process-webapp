@@ -30,17 +30,14 @@ export type JobworkReceiptRow = {
   process: string;
   jobOrderNumber: string;
   jobOrderId: string;
-  items: string; // single item + UOM, or "N items"
-  issuedQty: number;
-  receivedQty: number;
-  acceptedQty: number;
-  reworkQty: number;
-  scrapQty: number;
-  returnedQty: number;
+  lines: {
+    id: string;
+    items: string;
+    plannedQty: number;
+    receivedQty: number;
+    toBeReceivedQty: number;
+  }[];
   status: string;
-  
-  // hidden columns
-  processChargeTotal: number;
 };
 
 export type PaginatedJobworkReceiptsResponse = {

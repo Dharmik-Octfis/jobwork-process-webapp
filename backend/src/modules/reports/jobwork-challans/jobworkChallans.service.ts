@@ -60,12 +60,15 @@ export async function getJobworkChallans(
     // We do NOT override status here for openOnly. 'closed' status doesn't exist,
     // and overwriting would remove POSTED_DOC_STATUS (allowing drafts/cancelled).
 
-    // If openOnly is true, we must calculate pendingQty for all matching records first
-    // before we can paginate, because pendingQty is derived from receipts/ledger.
     const issues = await tx.jobIssue.findMany({
       where,
       include: {
-        step: { include: { process: { select: { name: true } } } },
+        step: { 
+          include: { 
+            process: { select: { name: true } },
+            inputs: { select: { itemId: true, plannedQty: true } }
+          } 
+        },
         jobOrder: { select: { jobOrderNumber: true } },
         destination: { select: { name: true } },
         lines: {
@@ -76,73 +79,78 @@ export async function getJobworkChallans(
         },
       },
       orderBy: { issueDate: 'desc' },
-      ...(openOnly ? {} : { skip: (page - 1) * perPage, take: perPage }),
+      skip: (page - 1) * perPage,
+      take: perPage,
     });
 
-    const allLineIds = issues.flatMap((issue) => issue.lines.map((l) => l.id));
-    const closedMap = await closedQtyByIssueLine(tx, organizationId, allLineIds);
+    const stepIds = Array.from(new Set(issues.map((i) => i.jobOrderStepId)));
+    
+    // Fetch all lines for these steps to calculate total issued so far
+    const stepIssues = await tx.jobIssue.findMany({
+      where: {
+        jobOrderStepId: { in: stepIds },
+        status: POSTED_DOC_STATUS,
+        isDeleted: false,
+      },
+      select: {
+        jobOrderStepId: true,
+        lines: {
+          where: { isDeleted: false },
+          select: { itemId: true, qty: true },
+        },
+      },
+    });
 
-    let results: JobworkChallanRow[] = issues.map((issue) => {
-      let pendingQty = 0;
-      let issuedQty = 0;
-      
-      const processSet = new Set<string>();
-      const itemSet = new Set<string>();
-
-      for (const line of issue.lines) {
-        const iq = Number(line.qty);
-        issuedQty += iq;
-        
-        const closed = Number(closedMap.get(line.id) || 0);
-        pendingQty += Math.max(0, iq - closed);
-
-        if (issue.step?.process?.name) {
-          processSet.add(issue.step.process.name);
-        }
-        itemSet.add(line.item.name + (line.item.unit ? ` (${line.item.unit})` : ''));
+    const issuedMap = new Map<string, number>();
+    for (const si of stepIssues) {
+      for (const line of si.lines) {
+        const key = `${si.jobOrderStepId}_${line.itemId}`;
+        issuedMap.set(key, (issuedMap.get(key) || 0) + Number(line.qty));
       }
+    }
 
+    const results: JobworkChallanRow[] = issues.map((issue) => {
       const pName = issue.processorNameSnapshot || issue.destination?.name || '';
-      
-      const itemsArr = Array.from(itemSet);
-      const itemsText = itemsArr.length === 1 ? itemsArr[0] : `${itemsArr.length} items`;
-      
-      const daysOutstanding = pendingQty > 0
-        ? Math.floor((Date.now() - issue.issueDate.getTime()) / (1000 * 60 * 60 * 24))
-        : null;
+      const processName = issue.step?.process?.name || '';
+
+      const lines = issue.lines.map((line) => {
+        const itemNameWithUom = line.item.name + (line.item.unit ? ` (${line.item.unit})` : '');
+        const plannedInput = issue.step?.inputs.find((i) => i.itemId === line.itemId);
+        const plannedQty = plannedInput?.plannedQty ? Number(plannedInput.plannedQty) : 0;
+        
+        const issuedQty = Number(line.qty);
+        
+        const key = `${issue.jobOrderStepId}_${line.itemId}`;
+        const totalIssued = issuedMap.get(key) || 0;
+        
+        const toBeIssuedQty = Math.max(0, plannedQty - totalIssued);
+
+        return {
+          id: line.id,
+          items: itemNameWithUom,
+          plannedQty,
+          issuedQty,
+          toBeIssuedQty,
+        };
+      });
+
+      const daysOutstanding = Math.floor((Date.now() - issue.issueDate.getTime()) / (1000 * 60 * 60 * 24));
 
       return {
         id: issue.id,
         challanNumber: issue.challanNumber,
         issueDate: issue.issueDate,
         processorName: pName,
-        process: Array.from(processSet).join(', '),
+        process: processName,
         jobOrderNumber: issue.jobOrder?.jobOrderNumber || '',
         jobOrderId: issue.jobOrderId || '',
-        items: itemsText || '',
-        issuedQty,
-        receivedQty: issuedQty - pendingQty, // approximate for now
-        acceptedQty: 0,
-        reworkQty: 0,
-        scrapQty: 0,
-        returnedQty: 0,
-        pendingQty,
+        lines,
         daysOutstanding,
         status: issue.status,
-        processCharge: 0,
-        attempt: null,
-        reason: null,
-        transporter: null,
       };
     });
 
-    let finalTotal = await tx.jobIssue.count({ where });
-
-    if (openOnly) {
-      results = results.filter((r) => r.pendingQty > 0);
-      finalTotal = results.length;
-      results = results.slice((page - 1) * perPage, page * perPage);
-    }
+    const finalTotal = await tx.jobIssue.count({ where });
 
     return {
       results,

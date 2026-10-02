@@ -14,7 +14,7 @@ describe('jobworkChallans.service', () => {
     await deleteTestOrganization(orgId);
   });
 
-  it('calculates pending quantity correctly', async () => {
+  it('calculates planned and to be issued quantity correctly', async () => {
 
     await runAsTenant(orgId, async (tx) => {
       const location = await tx.location.create({
@@ -47,6 +47,16 @@ describe('jobworkChallans.service', () => {
         }
       });
       
+      const stepInput = await tx.jobOrderStepInput.create({
+        data: {
+          organizationId: orgId,
+          jobOrderStepId: step.id,
+          itemId: item.id,
+          seq: 1,
+          plannedQty: 150,
+        }
+      });
+      
       const issue = await tx.jobIssue.create({
         data: {
           organizationId: orgId,
@@ -63,7 +73,6 @@ describe('jobworkChallans.service', () => {
         }
       });
 
-      
       const batch = await tx.batch.create({
         data: {
           organizationId: orgId,
@@ -82,32 +91,6 @@ describe('jobworkChallans.service', () => {
           qty: 100,
         }
       });
-
-      // Partially close it with a receipt
-      const receipt = await tx.jobReceipt.create({
-        data: {
-          organizationId: orgId,
-          receiptNumber: 'RC-001',
-          processorId: vendor.id,
-          processorType: 'vendor',
-          processorNameSnapshot: vendor.companyName,
-          jobOrderId: jobOrder.id,
-          jobOrderStepId: step.id,
-          locationId: location.id,
-          receiptDate: new Date('2026-09-02T10:00:00Z'),
-          status: 'posted',
-        }
-      });
-      
-      await tx.jobReceiptLine.create({
-        data: {
-          organizationId: orgId,
-          jobReceiptId: receipt.id,
-          jobIssueLineId: line.id,
-          receivedQty: 40,
-          issuedQty: 40,
-        }
-      });
     });
     
     const res = await getJobworkChallans(orgId, { page: 1, perPage: 100, openOnly: false });
@@ -116,10 +99,14 @@ describe('jobworkChallans.service', () => {
     
     const challanRow = res.results[0]!;
     expect(challanRow.challanNumber).toBe('CH-001');
-    expect(challanRow.issuedQty).toBe(100);
-    expect(challanRow.pendingQty).toBe(60); // 100 - 40
     expect(challanRow.processorName).toBe('Test Processor');
     expect(challanRow.process).toBe('Dyeing');
-    expect(challanRow.items).toBe('Raw Material (kg)');
+    
+    expect(challanRow.lines.length).toBe(1);
+    const line = challanRow.lines[0]!;
+    expect(line.issuedQty).toBe(100);
+    expect(line.plannedQty).toBe(150);
+    expect(line.toBeIssuedQty).toBe(50); // 150 - 100
+    expect(line.items).toBe('Raw Material (kg)');
   });
 });

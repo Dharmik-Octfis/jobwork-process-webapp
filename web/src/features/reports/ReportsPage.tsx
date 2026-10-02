@@ -9,6 +9,7 @@ import {
   type ReportKey,
   type ReportListEntry,
 } from './reports.api';
+import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 
 function formatLastVisited(iso: string | null): string {
   return iso ? format(new Date(iso), 'dd-MM-yyyy hh:mm a') : '—';
@@ -18,6 +19,8 @@ export function ReportsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
+  const trackingLabel = useTrackingLabel();
+  const batchUnitLabel = useBatchUnitLabel();
   // By default, nothing is selected
   const [activeCategory, setActiveCategory] = useState('');
 
@@ -329,6 +332,12 @@ export function ReportsPage() {
                     sortedReports.map((report) => {
                       const isFav = report.isFavorite;
                       const reportUrl = `/organizations/${orgId}/reports/${report.path}`;
+                      let reportName = report.name;
+                      if (report.key === 'batch_report') {
+                        reportName = `${trackingLabel.singular} Report`;
+                      } else if (report.key === 'taka_report') {
+                        reportName = `${batchUnitLabel.singular} Report`;
+                      }
                       return (
                         // The whole row is a mouse/touch convenience; the name <Link> is the keyboard path.
                         <tr
@@ -352,8 +361,8 @@ export function ReportsPage() {
                                 aria-pressed={isFav}
                                 aria-label={
                                   isFav
-                                    ? `Remove ${report.name} from favorites`
-                                    : `Add ${report.name} to favorites`
+                                    ? `Remove ${reportName} from favorites`
+                                    : `Add ${reportName} to favorites`
                                 }
                                 title={isFav ? 'Remove from favorites' : 'Add to favorites'}
                                 // 14px padding cancelled by -14px margin: a 44px touch target around a 16px icon, layout unchanged.
@@ -380,7 +389,7 @@ export function ReportsPage() {
                                 onClick={(e) => e.stopPropagation()}
                                 style={{ color: '#0062ff', fontWeight: 500 }}
                               >
-                                {report.name}
+                                {reportName}
                               </Link>
                             </div>
                           </td>

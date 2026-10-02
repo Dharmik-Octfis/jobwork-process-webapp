@@ -133,11 +133,7 @@ export async function getJobOrdersReport(
             workCentre: { select: { name: true } },
             issues: {
               where: { isDeleted: false, status: POSTED_DOC_STATUS },
-              select: { totalQty: true, processorNameSnapshot: true },
-            },
-            receipts: {
-              where: { isDeleted: false, status: POSTED_DOC_STATUS },
-              select: { totalReceivedQty: true },
+              select: { processorNameSnapshot: true },
             },
           },
         },
@@ -149,7 +145,7 @@ export async function getJobOrdersReport(
     }
 
     const results = jobOrders.map((jo) => {
-      const stepPairs: { process: string; doneBy: string; processorName: string; totalIssued: number; totalReceived: number }[] = [];
+      const stepPairs: { process: string; doneBy: string; processorName: string }[] = [];
 
       for (const step of jo.steps) {
         const processName = step.process?.name || '-';
@@ -167,16 +163,8 @@ export async function getJobOrdersReport(
 
         let existingPair = stepPairs.find(p => p.process === processName && p.processorName === processorName);
         if (!existingPair) {
-           existingPair = { process: processName, doneBy: doneBy, processorName: processorName, totalIssued: 0, totalReceived: 0 };
+           existingPair = { process: processName, doneBy: doneBy, processorName: processorName };
            stepPairs.push(existingPair);
-        }
-        
-        for (const issue of step.issues) {
-          existingPair.totalIssued += Number(issue.totalQty || 0);
-        }
-        
-        for (const receipt of step.receipts) {
-          existingPair.totalReceived += Number(receipt.totalReceivedQty || 0);
         }
       }
 
@@ -191,9 +179,6 @@ export async function getJobOrdersReport(
         process: stepPairs.map(p => p.process),
         doneBy: stepPairs.map(p => p.doneBy),
         processorName: stepPairs.map(p => p.processorName),
-        totalIssued: stepPairs.map(p => p.totalIssued),
-        totalReceived: stepPairs.map(p => p.totalReceived),
-        pendingQty: stepPairs.map(p => Math.max(0, p.totalIssued - p.totalReceived)),
       };
     });
 

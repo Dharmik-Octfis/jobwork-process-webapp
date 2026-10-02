@@ -60,7 +60,7 @@ export function ItemComboBox({
   onOpenMultiSelect,
   footerAction,
   filter = 'active',
-  portal = false,
+  portal = true,
 }: ItemComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });

@@ -241,7 +241,8 @@ export type ReportKey =
   | 'taka_report'
   | 'jobwork_challan_register'
   | 'jobwork_receipt_register'
-  | 'job_order_report';
+  | 'job_order_report'
+  | 'customer_report';
 
 export interface JobOrdersReportQuery {
   page?: number;
@@ -271,9 +272,6 @@ export interface JobOrdersReportRow {
   process: string[];
   doneBy: string[];
   processorName: string[];
-  totalIssued: number[];
-  totalReceived: number[];
-  pendingQty: number[];
 }
 
 export interface PaginatedJobOrdersReportResponse {
@@ -304,20 +302,15 @@ export interface JobworkChallanRow {
   process: string;
   jobOrderNumber: string;
   jobOrderId: string;
-  items: string;
-  issuedQty: number;
-  receivedQty: number;
-  acceptedQty: number;
-  reworkQty: number;
-  scrapQty: number;
-  returnedQty: number;
-  pendingQty: number;
+  lines: {
+    id: string;
+    items: string;
+    plannedQty: number;
+    issuedQty: number;
+    toBeIssuedQty: number;
+  }[];
   daysOutstanding: number | null;
   status: string;
-  processCharge: number;
-  attempt: string | null;
-  reason: string | null;
-  transporter: string | null;
 }
 
 export interface PaginatedJobworkChallansResponse {
@@ -446,6 +439,73 @@ export interface PaginatedTakaReportResponse {
   grandTotalValue: number;
 }
 
+export interface CustomersReportQuery {
+  page?: number;
+  perPage?: number;
+  contactNumber?: string;
+  companyName?: string;
+  status?: string;
+  customerType?: string;
+}
+
+export interface CustomersReportRow {
+  id: string;
+  contactNumber: string;
+  customerType: string | null;
+  companyName: string | null;
+  contactName: string;
+  primaryContact: string | null;
+  email: string | null;
+  phone: string | null;
+  currency: string | null;
+  paymentTerms: string | null;
+  notes: string | null;
+  [key: string]: unknown;
+}
+
+export interface PaginatedCustomersReportResponse {
+  items: CustomersReportRow[];
+  pagination: {
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
+
+export interface VendorsReportQuery {
+  page?: number;
+  perPage?: number;
+  contactNumber?: string;
+  companyName?: string;
+  status?: string;
+  vendorType?: string;
+}
+
+export interface VendorsReportRow {
+  id: string;
+  contactNumber: string;
+  companyName: string | null;
+  contactName: string;
+  primaryContact: string | null;
+  email: string | null;
+  phone: string | null;
+  currency: string | null;
+  paymentTerms: string | null;
+  notes: string | null;
+  [key: string]: unknown;
+}
+
+export interface PaginatedVendorsReportResponse {
+  items: VendorsReportRow[];
+  pagination: {
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
+
 export interface ReportListEntry {
   key: ReportKey;
   name: string;
@@ -557,4 +617,60 @@ export const reportsApi = {
     const response = await apiClient.get(endpoints.reports.jobOrdersReport(orgId), { params });
     return response.data as PaginatedJobOrdersReportResponse;
   },
+  getCustomersReport: async (
+    orgId: string,
+    params: CustomersReportQuery = {},
+  ): Promise<PaginatedCustomersReportResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/customers`, { params });
+    return response.data as PaginatedCustomersReportResponse;
+  },
+  getVendorsReport: async (
+    orgId: string,
+    params: VendorsReportQuery = {},
+  ): Promise<PaginatedVendorsReportResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/vendors`, { params });
+    return response.data as PaginatedVendorsReportResponse;
+  },
+  getPurchaseOrdersReport: async (
+    orgId: string,
+    params: PurchaseOrdersReportQuery = {},
+  ): Promise<PaginatedPurchaseOrdersReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.purchaseOrdersReport(orgId), { params });
+    return response.data as PaginatedPurchaseOrdersReportResponse;
+  },
 };
+
+export interface PurchaseOrdersReportQuery {
+  vendorId?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  deliveryType?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface PurchaseOrdersReportRow {
+  id: string;
+  poNumber: string;
+  vendorName: string;
+  locationName: string;
+  deliveryType: string;
+  deliveryAddress: string;
+  date: string;
+  deliveryDate: string | null;
+  paymentTerms: string | null;
+  total: number;
+  status: string;
+  customFields: Record<string, unknown>;
+}
+
+export interface PaginatedPurchaseOrdersReportResponse {
+  items: PurchaseOrdersReportRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}

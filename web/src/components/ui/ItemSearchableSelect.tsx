@@ -38,7 +38,7 @@ export function ItemSearchableSelect({
   triggerStyle,
   className,
   dropdownWidth,
-  portal = false,
+  portal = true,
   filter = 'active',
   renderValue,
   keepOpenOnSelect = false,
@@ -88,13 +88,13 @@ export function ItemSearchableSelect({
   });
 
   const fetchedOptions = useMemo(() => {
-    let options = itemsData?.pages.flatMap((page) => page.results) || [];
+    const options = itemsData?.pages.flatMap((page) => page.results) || [];
     // Only active items should be available in dropdowns
     return options.filter(
       (opt) =>
         opt.isActive !== false &&
-        !(opt as any).isPendingApproval &&
-        (opt as any).approvalStatus !== 'Pending Approval',
+        !(opt as { isPendingApproval?: boolean }).isPendingApproval &&
+        (opt as { approvalStatus?: string }).approvalStatus !== 'Pending Approval',
     );
   }, [itemsData]);
 

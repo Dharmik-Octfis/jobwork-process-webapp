@@ -10,6 +10,7 @@ import { Pagination } from '../../components/ui/Pagination';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
+import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import type { Item } from '../items/items.schemas';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type TakaReportQuery, type TakaReportRow } from './reports.api';
@@ -44,7 +45,17 @@ export function TakaReportPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
+  const trackingLabel = useTrackingLabel();
+  const batchUnitLabel = useBatchUnitLabel();
   useRecordReportVisit(orgId, 'taka_report');
+
+  const catalog = useMemo(() => {
+    return COLUMN_CATALOG.map((col) => {
+      if (col.key === 'label') return { ...col, label: `${batchUnitLabel.singular.toUpperCase()} NO` };
+      if (col.key === 'batch') return { ...col, label: trackingLabel.singular.toUpperCase() };
+      return col;
+    });
+  }, [trackingLabel.singular, batchUnitLabel.singular]);
 
   const storageKey = `takaReportState_${orgId}`;
   const initialState = useMemo(() => {
@@ -116,11 +127,11 @@ export function TakaReportPage() {
         group: 'Report',
         options: locations?.map((l) => ({ label: l.name, value: l.name })) || [],
       },
-      { key: 'batchText', label: 'Batch', dataType: 'string', group: 'Report' },
+      { key: 'batchText', label: trackingLabel.singular, dataType: 'string', group: 'Report' },
       { key: 'minAgeDays', label: 'Min Age (Days)', dataType: 'number', group: 'Report' },
       { key: 'asOnDate', label: 'As On Date', dataType: 'date', group: 'Report' },
     ],
-    [orgId, locations],
+    [orgId, locations, trackingLabel.singular],
   );
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
@@ -206,7 +217,7 @@ export function TakaReportPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Inventory</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
-            Taka Report
+            {batchUnitLabel.singular} Report
             <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
               • As on {asOnText}
             </span>
@@ -361,7 +372,7 @@ export function TakaReportPage() {
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
-              Taka Report
+              {batchUnitLabel.singular} Report
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
               As on {asOnText}
@@ -378,7 +389,7 @@ export function TakaReportPage() {
                       key={key}
                       style={{ ...thStyle, textAlign: 'center' }}
                     >
-                      {COLUMN_CATALOG.find((col) => col.key === key)?.label}
+                      {catalog.find((col) => col.key === key)?.label}
                     </th>
                   ))}
                 </tr>
@@ -394,7 +405,7 @@ export function TakaReportPage() {
                         ? 'Loading...'
                         : isError
                           ? 'Could not load the report.'
-                          : 'No takas found'}
+                          : `No ${batchUnitLabel.plural.toLowerCase()} found`}
                     </td>
                   </tr>
                 ) : (
@@ -463,7 +474,7 @@ export function TakaReportPage() {
         <CustomizeColumnsModal
           isOpen={showColumnsModal}
           onClose={() => setShowColumnsModal(false)}
-          catalog={COLUMN_CATALOG}
+          catalog={catalog}
           visible={visibleColumns}
           onSave={(next) => {
             setVisibleColumns(next);

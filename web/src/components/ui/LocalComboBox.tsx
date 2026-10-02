@@ -42,7 +42,7 @@ export function LocalComboBox({
   inputStyle,
   onBlur,
   name,
-  portal = false,
+  portal = true,
   actionItem,
 }: LocalComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);

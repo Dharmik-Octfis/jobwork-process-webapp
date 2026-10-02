@@ -25,22 +25,15 @@ export type JobworkChallanRow = {
   process: string;
   jobOrderNumber: string;
   jobOrderId: string;
-  items: string; // single item + UOM, or "N items"
-  issuedQty: number;
-  receivedQty: number;
-  acceptedQty: number;
-  reworkQty: number;
-  scrapQty: number;
-  returnedQty: number;
-  pendingQty: number;
+  lines: {
+    id: string;
+    items: string; // single item + UOM
+    plannedQty: number;
+    issuedQty: number;
+    toBeIssuedQty: number;
+  }[];
   daysOutstanding: number | null;
   status: string;
-  
-  // hidden columns
-  processCharge: number;
-  attempt: string | null;
-  reason: string | null;
-  transporter: string | null;
 };
 
 export type PaginatedJobworkChallansResponse = {

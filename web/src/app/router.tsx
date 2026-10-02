@@ -174,6 +174,18 @@ const JobOrdersReportPage = lazyPage(
   () => import('../features/reports/JobOrdersReportPage'),
   'JobOrdersReportPage',
 );
+const CustomersReportPage = lazyPage(
+  () => import('../features/reports/CustomersReportPage'),
+  'CustomersReportPage',
+);
+const VendorsReportPage = lazyPage(
+  () => import('../features/reports/VendorsReportPage'),
+  'VendorsReportPage',
+);
+const PurchaseOrdersReportPage = lazyPage(
+  () => import('../features/reports/PurchaseOrdersReportPage'),
+  'PurchaseOrdersReportPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -476,6 +488,18 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/reports/job-orders',
                     element: <JobOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/customers',
+                    element: <CustomersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/vendors',
+                    element: <VendorsReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/purchase-orders',
+                    element: <PurchaseOrdersReportPage />,
                   },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
