@@ -8,5 +8,10 @@ export const jobOrdersReportQuerySchema = listQuerySchema.extend({
   status: z.string().optional(),
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
+  targetDateFrom: z.string().optional(),
+  targetDateTo: z.string().optional(),
+  routeName: z.string().optional(),
+  ownership: z.string().optional(),
+  processorType: z.string().optional(),
   jobOrderCustomFields: z.record(z.string(), z.unknown()).optional(),
 });

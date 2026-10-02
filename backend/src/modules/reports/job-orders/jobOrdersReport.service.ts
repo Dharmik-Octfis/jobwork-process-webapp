@@ -14,6 +14,11 @@ export async function getJobOrdersReport(
     fromDate?: string;
     toDate?: string;
     jobOrderCustomFields?: Record<string, unknown>;
+    targetDateFrom?: string;
+    targetDateTo?: string;
+    routeName?: string;
+    ownership?: string;
+    processorType?: string;
   }
 ) {
   const {
@@ -25,6 +30,11 @@ export async function getJobOrdersReport(
     status,
     fromDate,
     toDate,
+    targetDateFrom,
+    targetDateTo,
+    routeName,
+    ownership,
+    processorType,
     jobOrderCustomFields,
   } = params;
   const skip = (page - 1) * pageSize;
@@ -43,6 +53,20 @@ export async function getJobOrdersReport(
       where.orderDate = {};
       if (fromDate) where.orderDate.gte = new Date(fromDate);
       if (toDate) where.orderDate.lte = new Date(toDate);
+    }
+
+    if (targetDateFrom || targetDateTo) {
+      where.targetDate = {};
+      if (targetDateFrom) where.targetDate.gte = new Date(targetDateFrom);
+      if (targetDateTo) where.targetDate.lte = new Date(targetDateTo);
+    }
+
+    if (routeName) {
+      where.routeNameSnapshot = { contains: routeName, mode: 'insensitive' };
+    }
+
+    if (ownership) {
+      where.ownership = ownership;
     }
 
     if (jobOrderCustomFields) {
@@ -74,7 +98,7 @@ export async function getJobOrdersReport(
       where.jobOrderNumber = { contains: jobOrderNumber, mode: 'insensitive' };
     }
 
-    if (processorName || processName) {
+    if (processorName || processName || processorType) {
       where.steps = {
         some: {
           isDeleted: false,
@@ -87,6 +111,10 @@ export async function getJobOrdersReport(
       
       if (processName) {
         where.steps.some!.process = { name: { contains: processName, mode: 'insensitive' } };
+      }
+      
+      if (processorType) {
+        where.steps.some!.processorType = processorType;
       }
     }
 
@@ -121,10 +149,11 @@ export async function getJobOrdersReport(
     }
 
     const results = jobOrders.map((jo) => {
-      const stepPairs: { process: string; processorName: string; totalIssued: number; totalReceived: number }[] = [];
+      const stepPairs: { process: string; doneBy: string; processorName: string; totalIssued: number; totalReceived: number }[] = [];
 
       for (const step of jo.steps) {
         const processName = step.process?.name || '-';
+        const doneBy = step.processorType === 'in_house' ? 'In-house' : 'Vendor';
         
         let pName = step.processorNameSnapshot;
         if (!pName && step.processorType === 'in_house' && step.workCentre?.name) {
@@ -138,7 +167,7 @@ export async function getJobOrdersReport(
 
         let existingPair = stepPairs.find(p => p.process === processName && p.processorName === processorName);
         if (!existingPair) {
-           existingPair = { process: processName, processorName: processorName, totalIssued: 0, totalReceived: 0 };
+           existingPair = { process: processName, doneBy: doneBy, processorName: processorName, totalIssued: 0, totalReceived: 0 };
            stepPairs.push(existingPair);
         }
         
@@ -155,8 +184,12 @@ export async function getJobOrdersReport(
         id: jo.id,
         jobOrderNumber: jo.jobOrderNumber,
         orderDate: jo.orderDate,
+        targetDate: jo.targetDate,
+        route: jo.routeNameSnapshot || '-',
+        materialBelongsTo: jo.ownership === 'customer' ? 'Customer’s' : 'Ours',
         status: jo.status,
         process: stepPairs.map(p => p.process),
+        doneBy: stepPairs.map(p => p.doneBy),
         processorName: stepPairs.map(p => p.processorName),
         totalIssued: stepPairs.map(p => p.totalIssued),
         totalReceived: stepPairs.map(p => p.totalReceived),

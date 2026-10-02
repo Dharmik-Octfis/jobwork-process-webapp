@@ -15,12 +15,17 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { JOB_ORDER_STATUS_META } from '../jobwork/jobwork.schemas';
 import { fetchProcesses } from '../jobwork/processes/processes.api';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
+import { fetchRoutes } from '../jobwork/process-routes/processRoutes.api';
 
 const COLUMN_CATALOG = [
   { key: 'jobOrderNumber', label: 'JOB ORDER#', locked: true, defaultVisible: true },
   { key: 'orderDate', label: 'DATE', locked: true, defaultVisible: true },
+  { key: 'targetDate', label: 'TARGET DATE', defaultVisible: true },
+  { key: 'route', label: 'ROUTE', defaultVisible: true },
+  { key: 'materialBelongsTo', label: 'MATERIAL BELONGS TO', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
   { key: 'process', label: 'PROCESS', defaultVisible: true },
+  { key: 'doneBy', label: 'DONE BY', defaultVisible: true },
   { key: 'processorName', label: 'PROCESSOR', defaultVisible: true },
   { key: 'totalIssued', label: 'TOTAL ISSUED', defaultVisible: true },
   { key: 'totalReceived', label: 'TOTAL RECEIVED', defaultVisible: true },
@@ -85,6 +90,13 @@ export function JobOrdersReportPage() {
   });
   const processors = useMemo(() => vendorsPage?.results || [], [vendorsPage?.results]);
 
+  const { data: routesPage } = useQuery({
+    queryKey: ['routes', orgId],
+    queryFn: () => fetchRoutes(orgId!, { perPage: 500 }),
+    enabled: Boolean(orgId),
+  });
+  const availableRoutes = useMemo(() => routesPage?.results || [], [routesPage?.results]);
+
   const customFilterFields = useMemo(() => {
     return customFields.map((cf) => {
       let dataType: FilterField['dataType'] = 'string';
@@ -113,16 +125,21 @@ export function JobOrdersReportPage() {
     
     const processOptions = processes.map((p) => ({ label: p.name, value: p.name }));
     const processorOptions = processors.map((v) => ({ label: v.contactName, value: v.contactName }));
+    const routeOptions = availableRoutes.map((r) => ({ label: r.name, value: r.name }));
 
     return [
       { key: 'jobOrderNumber', label: 'Job Order#', dataType: 'string', group: 'Report' },
       { key: 'orderDate', label: 'Order Date', dataType: 'date', group: 'Report' },
+      { key: 'targetDate', label: 'Target Date', dataType: 'date', group: 'Report' },
+      { key: 'routeName', label: 'Route', dataType: 'select', options: routeOptions, group: 'Report' },
+      { key: 'ownership', label: 'Material Belongs To', dataType: 'select', options: [{label: 'Ours', value: 'own'}, {label: 'Customer’s', value: 'customer'}], group: 'Report' },
       { key: 'status', label: 'Status', dataType: 'select', options: statusOptions, group: 'Report' },
       { key: 'processName', label: 'Process', dataType: 'select', options: processOptions, group: 'Report' },
+      { key: 'processorType', label: 'Done By', dataType: 'select', options: [{label: 'In-house', value: 'in_house'}, {label: 'Vendor', value: 'vendor'}], group: 'Report' },
       { key: 'processorName', label: 'Processor', dataType: 'select', options: processorOptions, group: 'Report' },
       ...customFilterFields,
     ];
-  }, [customFilterFields, processes, processors]);
+  }, [customFilterFields, processes, processors, availableRoutes]);
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
@@ -132,9 +149,23 @@ export function JobOrdersReportPage() {
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
     
-    const dateOf = (field: string, suffix: '_from' | '_to') => {
-      const value = applied.conditions.find((c) => c.field === field + suffix)?.value;
-      return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    const dateOf = (field: string, target: 'from' | 'to') => {
+      const condition = applied.conditions.find((c) => c.field === field);
+      if (!condition) return undefined;
+
+      if (condition.operator === 'between') {
+        const val = condition.value as { from?: string; to?: string };
+        const res = target === 'from' ? val?.from : val?.to;
+        return typeof res === 'string' && res.trim() ? res.trim() : undefined;
+      }
+
+      const valStr = typeof condition.value === 'string' && condition.value.trim() ? condition.value.trim() : undefined;
+      
+      if (['before', 'on_or_before', 'lt', 'lte'].includes(condition.operator) && target === 'to') return valStr;
+      if (['after', 'on_or_after', 'gt', 'gte'].includes(condition.operator) && target === 'from') return valStr;
+      if (['equals', 'contains'].includes(condition.operator)) return valStr;
+
+      return undefined;
     };
     
     const customFieldKeys = new Set(customFields.map((cf) => cf.key));
@@ -152,8 +183,13 @@ export function JobOrdersReportPage() {
       processorName: valueOf('processorName'),
       processName: valueOf('processName'),
       status: valueOf('status'),
-      fromDate: dateOf('orderDate', '_from'),
-      toDate: dateOf('orderDate', '_to'),
+      fromDate: dateOf('orderDate', 'from'),
+      toDate: dateOf('orderDate', 'to'),
+      targetDateFrom: dateOf('targetDate', 'from'),
+      targetDateTo: dateOf('targetDate', 'to'),
+      routeName: valueOf('routeName'),
+      ownership: valueOf('ownership'),
+      processorType: valueOf('processorType'),
       page,
       perPage,
     };
@@ -188,10 +224,18 @@ export function JobOrdersReportPage() {
         );
       case 'orderDate':
         return format(new Date(row.orderDate), 'dd-MM-yyyy');
+      case 'targetDate':
+        return row.targetDate ? format(new Date(row.targetDate), 'dd-MM-yyyy') : '-';
+      case 'route':
+        return row.route || '-';
+      case 'materialBelongsTo':
+        return row.materialBelongsTo || '-';
       case 'status':
         return row.status;
       case 'process':
         return row.process[rowIndex] || '-';
+      case 'doneBy':
+        return row.doneBy[rowIndex] || '-';
       case 'processorName':
         return row.processorName[rowIndex] || '-';
       case 'totalIssued':
@@ -432,6 +476,7 @@ export function JobOrdersReportPage() {
                         {visibleColumns.map((key) => {
                           const isGroupedColumn = ![
                             'process',
+                            'doneBy',
                             'processorName',
                             'totalIssued',
                             'totalReceived',

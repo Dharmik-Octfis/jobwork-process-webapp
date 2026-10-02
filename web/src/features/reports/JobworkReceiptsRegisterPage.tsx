@@ -29,7 +29,7 @@ const COLUMN_CATALOG = [
   { key: 'scrapQty', label: 'SCRAP', defaultVisible: false },
   { key: 'returnedQty', label: 'RETURNED', defaultVisible: false },
   { key: 'status', label: 'STATUS', defaultVisible: true },
-  { key: 'processChargeTotal', label: 'PROCESS CHARGE', defaultVisible: false },
+  { key: 'processChargeTotal', label: 'PROCESS CHARGE', defaultVisible: true },
 ];
 
 const RIGHT_ALIGNED = new Set(['issuedQty', 'receivedQty', 'acceptedQty', 'reworkQty', 'scrapQty', 'returnedQty', 'processChargeTotal']);

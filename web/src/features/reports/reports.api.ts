@@ -252,6 +252,11 @@ export interface JobOrdersReportQuery {
   status?: string;
   fromDate?: string;
   toDate?: string;
+  targetDateFrom?: string;
+  targetDateTo?: string;
+  routeName?: string;
+  ownership?: string;
+  processorType?: string;
   jobOrderCustomFields?: Record<string, unknown>;
 }
 
@@ -259,8 +264,12 @@ export interface JobOrdersReportRow {
   id: string;
   jobOrderNumber: string;
   orderDate: string;
+  targetDate: string | null;
+  route: string;
+  materialBelongsTo: string;
   status: string;
   process: string[];
+  doneBy: string[];
   processorName: string[];
   totalIssued: number[];
   totalReceived: number[];
