@@ -939,7 +939,7 @@ export function MultiSelectItemModal({
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: '#64748b' }}>
                   {shownItems.length > 0 ? (page - 1) * 50 + 1 : 0} -{' '}
-                  {Math.min(page * 50, shownItems.length)} of {shownItems.length}
+                  {(page - 1) * 50 + shownItems.length}
                 </span>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
@@ -958,11 +958,11 @@ export function MultiSelectItemModal({
                     <ChevronLeft size={16} />
                   </button>
                   <button
-                    disabled={page * 50 >= shownItems.length}
+                    disabled={!itemsPage?.pageContext?.hasMore}
                     onClick={() => setPage((p) => p + 1)}
                     style={{
-                      cursor: page * 50 >= shownItems.length ? 'not-allowed' : 'pointer',
-                      opacity: page * 50 >= shownItems.length ? 0.5 : 1,
+                      cursor: !itemsPage?.pageContext?.hasMore ? 'not-allowed' : 'pointer',
+                      opacity: !itemsPage?.pageContext?.hasMore ? 0.5 : 1,
                       background: 'none',
                       border: 'none',
                       padding: '2px',
