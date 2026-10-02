@@ -18,7 +18,7 @@ Still owed before it can be called finished:
 - **Cancelling an increase has its own quantity guard** (§4), which the plan did not foresee.
 - **The list endpoint takes `?count=true`** for the opt-in total, as assemblies do.
 - **The list page is plain**: no New button, column customisation, filters or bulk cancel.
-- **The item's Transactions tab does not show adjustments** (§5a) — left as a separate decision.
+- **The item's Transactions tab lists adjustments** (§5a) — added after the plan, on request.
 - §9's four defaults were all built as written.
 
 The missing half of "Opening Stock & Stock Adjustment" from `JOBWORK_DOMAIN_AND_MODULE_MAP.md`
@@ -231,9 +231,10 @@ Every place that turns a ledger row's `sourceDocType` into words needed to learn
 
 Guarded by `adjustments.reports.test.ts`.
 
-**Not done: the item page's Transactions tab.** It lists Bills, Issues and Receives from three
-dedicated endpoints and has no Adjustments (or Assemblies) view. Adding one is a new filter on that
-tab plus an item filter on the list endpoint — left as a separate decision.
+**The item page's Transactions tab** has an "Adjustments" option beside Bills, Issues and Receives:
+date, number (a link to the adjustment), location, reason, signed quantity and status. It reads the
+same list endpoint with `?itemId=`, and is its own small table (`ItemAdjustmentsTable.tsx`) rather
+than more branches in the shared one.
 
 **After save or cancel**, invalidate the stock queries — figures are cached client-side for 30
 seconds and a stale one reads as "the adjustment did nothing".

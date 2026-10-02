@@ -244,17 +244,24 @@ const DETAIL_INCLUDE = {
   },
 } as const satisfies Prisma.StockAdjustmentInclude;
 
+/** The shared list query, plus one item — the item page's Transactions tab. */
+export type AdjustmentListQuery = ListQuery & { itemId?: string };
+
 export const adjustmentsService = {
-  listWhere: (organizationId: string, opts: ListQuery): Prisma.StockAdjustmentWhereInput => ({
+  listWhere: (
+    organizationId: string,
+    opts: AdjustmentListQuery,
+  ): Prisma.StockAdjustmentWhereInput => ({
     organizationId,
     isDeleted: false,
+    ...(opts.itemId ? { itemId: opts.itemId } : {}),
     ...searchWhere<Prisma.StockAdjustmentWhereInput>(opts.search, [
       'adjustmentNumber',
       'referenceNumber',
     ]),
   }),
 
-  findManyAdjustments: (orgId: string, opts: ListQuery) =>
+  findManyAdjustments: (orgId: string, opts: AdjustmentListQuery) =>
     runAsTenant(orgId, async (tx) => {
       const records = await tx.stockAdjustment.findMany({
         where: adjustmentsService.listWhere(orgId, opts),
@@ -269,7 +276,7 @@ export const adjustmentsService = {
       return pageSlice(records, opts.page, opts.perPage);
     }),
 
-  countAdjustments: (orgId: string, opts: ListQuery) =>
+  countAdjustments: (orgId: string, opts: AdjustmentListQuery) =>
     runAsTenant(orgId, (tx) =>
       tx.stockAdjustment.count({ where: adjustmentsService.listWhere(orgId, opts) }),
     ),

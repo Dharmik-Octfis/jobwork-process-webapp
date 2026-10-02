@@ -15,7 +15,8 @@ const pageSchema = paginatedSchema(stockAdjustmentRowSchema);
 
 export async function fetchAdjustments(
   orgId: string,
-  params: PageParams = {},
+  /** `itemId` narrows the list to one item — the item page's Transactions tab. */
+  params: PageParams & { itemId?: string } = {},
 ): Promise<Paginated<StockAdjustmentRow>> {
   const response = await apiClient.get(endpoints.inventory.adjustments(orgId), { params });
   return pageSchema.parse(response.data);

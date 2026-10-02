@@ -13,7 +13,9 @@ function adjustmentId(req: Request): string {
 }
 
 export const getAdjustments = async (req: Request, res: Response) => {
-  const opts = listQuerySchema.parse(req.query);
+  const itemId = z.string().uuid().optional().safeParse(req.query.itemId);
+  if (!itemId.success) throw ApiError.badRequest('That is not a valid item.');
+  const opts = { ...listQuerySchema.parse(req.query), itemId: itemId.data };
   // Counting is opt-in (`?count=true`) — the "Total count: view" link.
   const [results, count] = await Promise.all([
     adjustmentsService.findManyAdjustments(req.tenantId!, opts),

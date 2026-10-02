@@ -179,6 +179,11 @@ describe('stock adjustments — HTTP', { timeout: 60_000 }, () => {
     expect(list.body.data.results.map((row: { id: string }) => row.id)).toContain(adjustmentId);
     expect(list.body.data.pageContext).toBeDefined();
     expect(list.body.data.count).toBeUndefined();
+    const forItem = await as(token.owner).get(`${url(orgA)}?itemId=${itemId}`);
+    expect(forItem.body.data.results).toHaveLength(1);
+    const forOther = await as(token.owner).get(`${url(orgA)}?itemId=${orgA}`);
+    expect(forOther.body.data.results).toEqual([]);
+    expect((await as(token.owner).get(`${url(orgA)}?itemId=nope`)).status).toBe(400);
     expect((await as(token.owner).get(`${url(orgA)}?count=true`)).body.data.count).toBe(1);
 
     const one = await as(token.owner).get(url(orgA, adjustmentId));
