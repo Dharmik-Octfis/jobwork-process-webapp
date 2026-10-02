@@ -90,6 +90,12 @@ export const REPORTS = [
     category: 'Purchases',
     path: 'purchase-orders',
   },
+  {
+    key: 'bill_report',
+    name: 'Bill Report',
+    category: 'Purchases',
+    path: 'bills',
+  },
 ] as const satisfies readonly ReportDef[];
 
 export type ReportKey = (typeof REPORTS)[number]['key'];

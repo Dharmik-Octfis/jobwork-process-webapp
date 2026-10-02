@@ -242,7 +242,10 @@ export type ReportKey =
   | 'jobwork_challan_register'
   | 'jobwork_receipt_register'
   | 'job_order_report'
-  | 'customer_report';
+  | 'customer_report'
+  | 'vendor_report'
+  | 'purchase_order_report'
+  | 'bill_report';
 
 export interface JobOrdersReportQuery {
   page?: number;
@@ -638,6 +641,13 @@ export const reportsApi = {
     const response = await apiClient.get(endpoints.reports.purchaseOrdersReport(orgId), { params });
     return response.data as PaginatedPurchaseOrdersReportResponse;
   },
+  getBillsReport: async (
+    orgId: string,
+    params: BillsReportQuery = {},
+  ): Promise<PaginatedBillsReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.billsReport(orgId), { params });
+    return response.data as PaginatedBillsReportResponse;
+  },
 };
 
 export interface PurchaseOrdersReportQuery {
@@ -646,6 +656,9 @@ export interface PurchaseOrdersReportQuery {
   fromDate?: string;
   toDate?: string;
   deliveryType?: string;
+  poNumber?: string;
+  vendorName?: string;
+  purchaseOrderCustomFields?: Record<string, unknown>;
   page?: number;
   perPage?: number;
 }
@@ -667,6 +680,46 @@ export interface PurchaseOrdersReportRow {
 
 export interface PaginatedPurchaseOrdersReportResponse {
   items: PurchaseOrdersReportRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
+export interface BillsReportQuery {
+  vendorId?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  billNumber?: string;
+  vendorName?: string;
+  locationName?: string;
+  paymentTerms?: string;
+  fromDeliveryDate?: string;
+  toDeliveryDate?: string;
+  total?: string;
+  billCustomFields?: Record<string, unknown>;
+  page?: number;
+  perPage?: number;
+}
+
+export interface BillsReportRow {
+  id: string;
+  billNumber: string;
+  vendorName: string;
+  locationName: string;
+  date: string;
+  deliveryDate: string | null;
+  paymentTerms: string | null;
+  total: number;
+  status: string;
+  customFields: Record<string, unknown>;
+}
+
+export interface PaginatedBillsReportResponse {
+  items: BillsReportRow[];
   pagination: {
     page: number;
     pageSize: number;

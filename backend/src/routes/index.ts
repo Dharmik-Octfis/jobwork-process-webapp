@@ -56,6 +56,7 @@ import { jobOrdersReportRouter } from '../modules/reports/job-orders/jobOrdersRe
 import { customersReportRouter } from '../modules/reports/customers/customersReport.routes.ts';
 import { vendorsReportRouter } from '../modules/reports/vendors/vendorsReport.routes.ts';
 import { purchaseOrdersReportRouter } from '../modules/reports/purchase-orders/purchaseOrdersReport.routes.ts';
+import { billsReportRouter } from '../modules/reports/bills/billsReport.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { env } from '../config/env.ts';
 
@@ -146,6 +147,7 @@ apiRouter.use('/organizations/:orgId/reports/job-orders', jobOrdersReportRouter)
 apiRouter.use('/organizations/:orgId/reports/customers', customersReportRouter);
 apiRouter.use('/organizations/:orgId/reports/vendors', vendorsReportRouter);
 apiRouter.use('/organizations/:orgId/reports/purchase-orders', purchaseOrdersReportRouter);
+apiRouter.use('/organizations/:orgId/reports/bills', billsReportRouter);
 // The Reports Center list + per-user visit/favourite — after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
