@@ -197,7 +197,7 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
   },
   {
     match: '/inventory/adjustments',
-    label: 'Adjustments',
+    label: 'Inventory Adjustments',
     fetch: async (orgId, term) =>
       (await fetchAdjustments(orgId, { search: term, perPage: 6 })).results.map((a) => ({
         id: a.id,

@@ -396,6 +396,10 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 - Tenant pages live at `/organizations/:orgId/...` — the org comes from `useParams`, never localStorage.
   Query keys must include `orgId` or switching org serves the previous tenant's cache.
 - No UI library; hand-built controls. See `docs/UI_UX_PRINCIPLES.md`.
+- **A list page's create button is `components/ui/NewButton.tsx`** — green (`--color-create`),
+  `+ New`, never blue and never hand-rolled. The page header, the sidebar module name
+  (`prisma/seed.ts` → `app_modules.name`) and the global-search label say the full module name
+  ("Inventory Adjustments", not "Adjustments"). See `docs/UI_UX_PRINCIPLES.md` §3.1.
 - **Placeholders say "Select", never "Pick" or "Choose"** — `Select a batch…`, `Select a customer…`,
   `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
   default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose

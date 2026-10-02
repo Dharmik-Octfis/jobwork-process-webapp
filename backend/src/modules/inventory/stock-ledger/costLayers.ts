@@ -202,6 +202,40 @@ export async function drawLayers(
   return { draws, value: draws.reduce((sum, draw) => sum.plus(draw.value), ZERO) };
 }
 
+/**
+ * What a plain-FIFO draw of `qty` would cost right now, without taking or locking
+ * anything — the same layers in the same order `drawLayers` walks for `{ kind: 'fifo' }`,
+ * so the form's preview is the posting unless another document draws first.
+ */
+export async function previewFifoDraw(
+  tx: TenantClient,
+  key: QueueKey,
+  qty: Prisma.Decimal,
+): Promise<{ qty: Prisma.Decimal; value: Prisma.Decimal }> {
+  const layers = await tx.$queryRaw<LockedLayer[]>`
+    SELECT l.id, l.remaining_qty AS "remainingQty", l.remaining_value AS "remainingValue", l.in_date AS "inDate"
+    FROM stock_cost_layers l
+    WHERE l.organization_id = ${key.organizationId}::uuid
+      AND l.item_id = ${key.itemId}::uuid
+      AND l.location_id = ${key.locationId}::uuid
+      AND l.remaining_qty > 0 AND ${scopeCondition({ kind: 'fifo' })}
+    ORDER BY ${scopeOrder({ kind: 'fifo' })}`;
+
+  let need = qty;
+  let value = ZERO;
+  for (const layer of layers) {
+    if (!need.greaterThan(0)) break;
+    const take = Prisma.Decimal.min(need, layer.remainingQty);
+    value = value.plus(
+      take.equals(layer.remainingQty)
+        ? layer.remainingValue
+        : layer.remainingValue.times(take).dividedBy(layer.remainingQty).toDecimalPlaces(4),
+    );
+    need = need.minus(take);
+  }
+  return { qty: qty.minus(Prisma.Decimal.max(need, ZERO)), value };
+}
+
 export async function recordDraws(
   tx: TenantClient,
   organizationId: string,

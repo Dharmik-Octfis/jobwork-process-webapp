@@ -3,7 +3,7 @@ import { toast } from 'react-hot-toast';
 import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, Building2, HelpCircle, SlidersHorizontal } from 'lucide-react';
+import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemLocations } from './components/ItemLocations';
@@ -344,21 +344,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               onClick={() => setShowAdjustStock(true)}
               style={{
                 padding: '6px 12px',
-                border: '1px solid var(--color-border)',
-                background: '#f8fafc',
-                color: 'var(--color-text)',
+                border: 'none',
+                background: '#186337',
+                color: 'white',
                 borderRadius: 4,
+                fontWeight: 500,
                 fontSize: 13,
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
+                whiteSpace: 'nowrap',
               }}
-              className="action-btn"
-              title="Adjust Stock"
             >
-              <SlidersHorizontal size={14} />
-              <span className="action-btn-text">Adjust Stock</span>
+              Adjust Stock
             </button>
           )}
 

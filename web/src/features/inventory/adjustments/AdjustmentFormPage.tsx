@@ -42,6 +42,7 @@ import {
 import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
 import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
 import { LineBatchPicker } from './LineBatchPicker';
+import { FifoCostField } from './FifoCostField';
 
 interface Row {
   key: string;
@@ -451,8 +452,27 @@ function AdjustmentForm({
                           </div>
                         )}
                       </td>
-                      <td style={{ ...td, textAlign: 'right', fontSize: 13, paddingTop: 16 }}>
-                        {row.item ? `${formatQty(available)} ${uomOf(row.item)}` : '-'}
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        {row.item ? (
+                          <>
+                            <input
+                              aria-label={`Quantity available, ${itemName}`}
+                              value={formatQty(available)}
+                              disabled
+                              className="locked-value"
+                              style={numberCell('available')}
+                            />
+                            {uomOf(row.item) && (
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                                {uomOf(row.item)}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
+                            -
+                          </span>
+                        )}
                       </td>
                       <td style={{ ...td, textAlign: 'right' }}>
                         <input
@@ -497,8 +517,17 @@ function AdjustmentForm({
                         />
                       </td>
                       <td style={{ ...td, textAlign: 'right' }}>
-                        {/* A decrease states no cost — FIFO decides what leaving stock is worth. */}
-                        {adjusted > 0 ? (
+                        {/* A decrease states no cost — FIFO decides what leaving stock is worth, shown read-only. */}
+                        {row.item && adjusted <= -QTY_EPSILON ? (
+                          <FifoCostField
+                            orgId={orgId}
+                            itemId={row.item.id}
+                            locationId={locationId}
+                            quantity={Math.abs(adjusted)}
+                            ariaLabel={`Cost price, ${itemName}`}
+                            style={numberCell('costPrice')}
+                          />
+                        ) : row.item ? (
                           <input
                             type="number"
                             inputMode="decimal"
@@ -536,12 +565,10 @@ function AdjustmentForm({
                             style={{
                               minHeight: 36,
                               padding: '0 10px',
-                              background: '#fff',
-                              border: `1px solid ${
-                                invalid.has(`${row.key}:batches`) ? '#dc2626' : '#d5dae1'
-                              }`,
+                              background: 'none',
+                              border: 'none',
                               borderRadius: 4,
-                              color: '#2563eb',
+                              color: invalid.has(`${row.key}:batches`) ? '#dc2626' : '#2563eb',
                               fontSize: 13,
                               whiteSpace: 'nowrap',
                               cursor: locationId ? 'pointer' : 'not-allowed',

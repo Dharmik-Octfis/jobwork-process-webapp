@@ -15,6 +15,7 @@ import { itemsApi } from '../../items/items.api';
 import { stockOnHandOf } from '../../items/stockFigures';
 import { formatQty } from '../../jobwork/jobwork.schemas';
 import { createAdjustment } from './adjustments.api';
+import { FifoCostField } from './FifoCostField';
 import { ADJUSTMENT_REASON_OPTIONS, type SaveAdjustmentPayload } from './adjustments.schemas';
 import {
   QTY_EPSILON,
@@ -125,6 +126,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
   const isIncrease = adjusted > 0;
   const texts = boxTexts(line, available);
   const picked = batchSummary(line, adjusted);
+  const isDecrease = adjusted < 0 && magnitude >= QTY_EPSILON;
 
   const clear = (...fields: Field[]) =>
     setInvalid((prev) => {
@@ -292,15 +294,22 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
 
             <div className="form-field-grid" style={rowStyle}>
               <label htmlFor="adjust-available" style={labelStyle}>
-                Quantity Available{uomLabel ? ` (${uomLabel})` : ''}
+                Quantity Available
               </label>
-              <input
-                id="adjust-available"
-                value={formatQty(available)}
-                readOnly
-                tabIndex={-1}
-                style={inputStyle(false, true)}
-              />
+              <div style={{ minWidth: 0 }}>
+                <input
+                  id="adjust-available"
+                  value={formatQty(available)}
+                  disabled
+                  className="locked-value"
+                  style={inputStyle(false)}
+                />
+                {uomLabel && (
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, textAlign: 'right' }}>
+                    {uomLabel}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="form-field-grid" style={rowStyle}>
@@ -340,12 +349,21 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
               />
             </div>
 
-            {/* A decrease states no cost — FIFO decides what stock leaving is worth. */}
-            {isIncrease && (
-              <div className="form-field-grid" style={rowStyle}>
-                <label htmlFor="adjust-cost" style={requiredStyle}>
-                  Cost Price*
-                </label>
+            <div className="form-field-grid" style={rowStyle}>
+              <label htmlFor="adjust-cost" style={isDecrease ? labelStyle : requiredStyle}>
+                {isDecrease ? 'Cost Price' : 'Cost Price*'}
+              </label>
+              {/* A decrease states no cost — FIFO decides what stock leaving is worth, shown read-only. */}
+              {isDecrease ? (
+                <FifoCostField
+                  id="adjust-cost"
+                  orgId={orgId}
+                  itemId={item.id}
+                  locationId={locationId}
+                  quantity={magnitude}
+                  style={inputStyle(false, true)}
+                />
+              ) : (
                 <input
                   id="adjust-cost"
                   type="number"
@@ -360,8 +378,8 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
                   }}
                   style={inputStyle(invalid.has('costPrice'))}
                 />
-              </div>
-            )}
+              )}
+            </div>
 
             {isBatchTracked(item) && magnitude >= QTY_EPSILON && (
               <div className="form-field-grid" style={{ ...rowStyle, borderBottom: 'none' }}>
@@ -376,10 +394,10 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
                   style={{
                     minHeight: 36,
                     padding: '0 10px',
-                    background: '#fff',
-                    border: `1px solid ${invalid.has('batches') ? '#dc2626' : '#d5dae1'}`,
+                    background: 'none',
+                    border: 'none',
                     borderRadius: 4,
-                    color: '#2563eb',
+                    color: invalid.has('batches') ? '#dc2626' : '#2563eb',
                     fontSize: 13,
                     textAlign: 'right',
                     cursor: locationId ? 'pointer' : 'not-allowed',

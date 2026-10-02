@@ -32,6 +32,18 @@ export const getAdjustments = async (req: Request, res: Response) => {
   sendSuccess(res, { ...results, count });
 };
 
+const fifoCostQuerySchema = z.object({
+  itemId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  quantity: z.coerce.number().positive(),
+});
+
+export const getFifoCost = async (req: Request, res: Response) => {
+  const query = fifoCostQuerySchema.safeParse(req.query);
+  if (!query.success) throw ApiError.badRequest('Select an item, a location and a quantity.');
+  sendSuccess(res, await adjustmentsService.previewDecreaseCost(req.tenantId!, query.data));
+};
+
 export const getAdjustmentById = async (req: Request, res: Response) => {
   sendSuccess(res, await adjustmentsService.getAdjustment(req.tenantId!, adjustmentId(req)));
 };

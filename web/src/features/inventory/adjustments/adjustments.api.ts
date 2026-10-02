@@ -36,6 +36,24 @@ export async function fetchAdjustment(orgId: string, id: string): Promise<StockA
   return stockAdjustmentDetailSchema.parse(response.data);
 }
 
+export interface FifoCost {
+  quantity: string;
+  value: string;
+  /** Null when the location holds no costed stock of the item. */
+  unitCost: string | null;
+}
+
+/** What removing `quantity` would cost by FIFO right now — a decrease's cost price. */
+export async function fetchFifoCost(
+  orgId: string,
+  params: { itemId: string; locationId: string; quantity: number },
+): Promise<FifoCost> {
+  const response = await apiClient.get(`${endpoints.inventory.adjustments(orgId)}/fifo-cost`, {
+    params,
+  });
+  return response.data as FifoCost;
+}
+
 /** Create — as a draft, or adjusted in the same request (`saveAs`). */
 export async function createAdjustment(
   orgId: string,

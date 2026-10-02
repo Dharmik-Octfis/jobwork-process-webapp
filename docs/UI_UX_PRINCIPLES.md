@@ -23,6 +23,24 @@
 - Follow platform conventions; don't reinvent standard patterns.
 - Reuse a shared component library rather than one-off designs.
 
+### 3.1 List pages — the module's title and its "+ New" button
+
+Every list page (Items, Vendors, Bills, Job Orders, Inventory Adjustments, …) has the same header:
+the module's name on the left, a green **+ New** on the right.
+
+- **The create button is `components/ui/NewButton.tsx`** — `<NewButton onClick={…} />`. It is green
+  (`--color-create`, `#186337`), with a `+` icon and the word "New". Never hand-roll it, and never
+  make it blue (`--color-primary`) — a blue "New" is how Inventory Adjustments shipped once, and it
+  was the only list in the app that looked different.
+- Other buttons that start an action from a record page (e.g. **Adjust Stock** on an item) use the
+  same green, **text only, no icon**.
+- **Name the page and its sidebar entry with the full module name**, not a shortened one:
+  "Inventory Adjustments", not "Adjustments". The sidebar label comes from the module row in
+  `backend/prisma/seed.ts` (`app_modules.name`) — the page header, the global-search label in
+  `AppLayout.tsx`, and that seed entry must all say the same thing.
+- Older list pages still inline the same green style; move them to `NewButton` when you next touch
+  them.
+
 ## 4. Spacing & Layout
 
 - Use an **8-point grid** (4, 8, 16, 24, 32, 48) for consistent rhythm.

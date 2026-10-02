@@ -16,7 +16,7 @@ interface ItemTransactionsProps {
   itemId: string;
 }
 
-type TransactionFilter = 'Bills' | 'Issues' | 'Receives' | 'Adjustments';
+type TransactionFilter = 'Bills' | 'Issues' | 'Receives' | 'Inventory Adjustments';
 
 interface TransactionRow {
   id: string;
@@ -159,7 +159,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                 overflow: 'hidden',
               }}
             >
-              {['Bills', 'Issues', 'Receives', 'Adjustments'].map((option) => (
+              {['Bills', 'Issues', 'Receives', 'Inventory Adjustments'].map((option) => (
                 <button
                   key={option}
                   onClick={() => {
@@ -177,6 +177,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                     color: filterBy === option ? '#2563eb' : '#1e293b',
                     cursor: 'pointer',
                     fontWeight: filterBy === option ? 500 : 400,
+                    whiteSpace: 'nowrap',
                   }}
                   onMouseEnter={(e) => {
                     if (filterBy !== option) e.currentTarget.style.background = '#f1f5f9';
@@ -212,7 +213,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
 
       {/* Table */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {filterBy === 'Adjustments' ? (
+        {filterBy === 'Inventory Adjustments' ? (
           <ItemAdjustmentsTable orgId={orgId} itemId={itemId} />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

@@ -16,7 +16,7 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = { padding: '12px 24px', fontSize: '13px', color: '#1e293b' };
 
 /**
- * One item's stock adjustments — the "Adjustments" view of the item page's
+ * One item's stock adjustments — the "Inventory Adjustments" view of the item page's
  * Transactions tab. Its own table rather than more branches in the shared one:
  * an adjustment has no vendor, no price and a signed quantity.
  */

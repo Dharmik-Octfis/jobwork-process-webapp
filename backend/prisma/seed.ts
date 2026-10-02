@@ -188,10 +188,10 @@ async function main() {
 
   await prisma.appModule.upsert({
     where: { code: 'STOCK_ADJUSTMENTS' },
-    update: { parentId: inventoryManagement.id, name: 'Adjustments', sortIndex: 2 },
+    update: { parentId: inventoryManagement.id, name: 'Inventory Adjustments', sortIndex: 2 },
     create: {
       code: 'STOCK_ADJUSTMENTS',
-      name: 'Adjustments',
+      name: 'Inventory Adjustments',
       parentId: inventoryManagement.id,
       sortIndex: 2,
       icon: 'ClipboardList',

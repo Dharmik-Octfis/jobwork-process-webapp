@@ -17,6 +17,7 @@ import {
   type ResolvedBatches,
 } from '../stock-ledger/stockLedger.service.js';
 import { allocateOutward } from '../stock-ledger/allocateOutward.js';
+import { previewFifoDraw } from '../stock-ledger/costLayers.ts';
 import { approvalExecutionService } from '../../automation/approval-processes/approvalExecution.service.ts';
 import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
 import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
@@ -997,6 +998,24 @@ export const adjustmentsService = {
 
   getAdjustment: (orgId: string, id: string) =>
     runAsTenant(orgId, (tx) => readDetail(tx, orgId, id)),
+
+  /** What removing `quantity` would cost by FIFO now — the decrease's read-only cost price. */
+  previewDecreaseCost: (
+    orgId: string,
+    query: { itemId: string; locationId: string; quantity: number },
+  ) =>
+    runAsTenant(orgId, async (tx) => {
+      const { qty, value } = await previewFifoDraw(
+        tx,
+        { organizationId: orgId, itemId: query.itemId, locationId: query.locationId },
+        decimal(query.quantity),
+      );
+      return {
+        quantity: qty.toString(),
+        value: value.toString(),
+        unitCost: qty.greaterThan(0) ? value.dividedBy(qty).toDecimalPlaces(4).toString() : null,
+      };
+    }),
 
   /** Create, as a draft or adjusted in the same request. */
   createAdjustment: async (orgId: string, userId: string | null, data: SaveAdjustmentDto) => {
