@@ -1,7 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
 import { POSTED_DOC_STATUS } from '../../jobwork/jobwork.types.ts';
-import { closedQtyByIssueLine } from '../../jobwork/jobwork.posting.ts';
+
 import type {
   JobworkChallansQuery,
   JobworkChallanRow,
@@ -12,7 +12,7 @@ export async function getJobworkChallans(
   organizationId: string,
   query: JobworkChallansQuery,
 ): Promise<PaginatedJobworkChallansResponse> {
-  const { processorName, processName, jobOrderNumber, itemName, fromDate, toDate, openOnly, minAgeDays, page, perPage } = query;
+  const { processorName, processName, jobOrderNumber, itemName, fromDate, toDate, minAgeDays, page, perPage } = query;
 
   return runAsTenant(organizationId, async (tx) => {
     // We start with a base where clause for job_issues.

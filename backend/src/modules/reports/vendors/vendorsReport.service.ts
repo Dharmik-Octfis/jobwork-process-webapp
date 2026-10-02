@@ -39,7 +39,7 @@ export async function getVendorsReport(
       where.status = status;
     }
     if (vendorType) {
-      where.vendorType = vendorType;
+      where.vendorTypes = { has: vendorType };
     }
 
     const [items, totalCount] = await Promise.all([

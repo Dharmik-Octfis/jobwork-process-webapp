@@ -164,7 +164,7 @@ export async function createNewVendor(organizationId: string, data: VendorInput,
         const suffixPart = vendorData.contactNumber.slice(seq.prefix.length);
         const match = suffixPart.match(/^0*(\d+)/);
         let newNextNumber = seq.nextNumber + 1;
-        if (match) {
+        if (match && match[1]) {
           const extracted = parseInt(match[1], 10);
           if (!isNaN(extracted) && extracted >= seq.nextNumber) {
             newNextNumber = extracted + 1;

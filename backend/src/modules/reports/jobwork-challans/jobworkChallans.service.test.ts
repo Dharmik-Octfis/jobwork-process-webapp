@@ -47,7 +47,7 @@ describe('jobworkChallans.service', () => {
         }
       });
       
-      const stepInput = await tx.jobOrderStepInput.create({
+      await tx.jobOrderStepInput.create({
         data: {
           organizationId: orgId,
           jobOrderStepId: step.id,
@@ -81,7 +81,7 @@ describe('jobworkChallans.service', () => {
           state: 'open',
         }
       });
-      const line = await tx.jobIssueLine.create({
+      await tx.jobIssueLine.create({
         data: {
           organizationId: orgId,
           jobIssueId: issue.id,

@@ -13,5 +13,5 @@ export const billsReportQuerySchema = listQuerySchema.extend({
   fromDeliveryDate: z.string().optional(),
   toDeliveryDate: z.string().optional(),
   total: z.string().optional(),
-  billCustomFields: z.record(z.unknown()).optional(),
+  billCustomFields: z.record(z.string(), z.unknown()).optional(),
 });
