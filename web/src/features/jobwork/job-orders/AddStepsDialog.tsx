@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { Modal } from '../../../components/ui/Modal';
 import { StepsGrid } from '../StepsGrid';
 import { emptyStep, emptyStepItem, toNumber } from '../jobwork.schemas';
@@ -126,7 +126,7 @@ export function AddStepsDialog({
       }),
     onSuccess: (saved) => {
       const planWarning = unissuablePlanMessage(saved);
-      if (planWarning) toast(planWarning, { icon: '⚠️', duration: 8000 });
+      if (planWarning) notify.warning(planWarning);
       onAdded();
       onClose();
     },
@@ -140,14 +140,14 @@ export function AddStepsDialog({
   const submit = () => {
     const missing = rows.findIndex((row) => !row.processId);
     if (missing >= 0) {
-      toast.error(`Step ${startSeq + missing} needs a process.`);
+      notify.error(`Step ${startSeq + missing} needs a process.`);
       return;
     }
     // A step that consumes nothing has nothing to issue, and the failure would
     // otherwise surface days later as an Issue dialog with no sections in it.
     const empty = rows.findIndex((row) => (row.inputs ?? []).length === 0);
     if (empty >= 0) {
-      toast.error(`Step ${startSeq + empty} consumes nothing. Add at least one item to it.`);
+      notify.error(`Step ${startSeq + empty} consumes nothing. Add at least one item to it.`);
       return;
     }
     setFieldErrors({});

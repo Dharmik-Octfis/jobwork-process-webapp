@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import {
   CheckCircle2,
   ChevronDown,
@@ -433,7 +433,11 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     enabled: Boolean(orgId && id),
   });
 
-  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'job_orders', id);
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'job_orders',
+    id,
+  );
   const isRejected = Boolean(
     isApprovalRejected ||
     data?.jobOrder?.status === 'REJECTED' ||
@@ -765,7 +769,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             organizationId={orgId}
             moduleId="job_orders"
             recordId={id}
-            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })}
+            onActionComplete={() =>
+              queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
+            }
           />
         </div>
       )}
@@ -1032,7 +1038,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           if (!completeStepTarget) return;
           if (completeNeedsReason && !completeReason.trim()) {
             setCompleteReasonMissing(true);
-            toast.error('Say why this step is being completed.');
+            notify.error('Say why this step is being completed.');
             return;
           }
           completeStep.mutate(completeStepTarget.id);

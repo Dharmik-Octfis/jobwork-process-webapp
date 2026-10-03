@@ -111,7 +111,7 @@ export function refreshAccessToken(): Promise<string | null> {
   return refreshInFlight;
 }
 
-import { toast } from 'react-hot-toast';
+import { notify } from '../lib/notify';
 
 apiClient.interceptors.response.use(
   (response) => {
@@ -126,13 +126,13 @@ apiClient.interceptors.response.use(
     if (isApiEnvelope(response.data)) {
       const message = response.data.message;
       const method = response.config.method?.toLowerCase();
-      // Show toast if it's a mutation and the message is not just the generic 'Success'
+      // A screen that toasts its own success replaces this one — see lib/notify.ts.
       if (
         ['post', 'put', 'patch', 'delete'].includes(method || '') &&
         message &&
         message !== 'Success'
       ) {
-        toast.success(message);
+        notify.success(message);
       }
     }
     return { ...response, data: unwrapEnvelope(response.data, response.config.url ?? 'the API') };

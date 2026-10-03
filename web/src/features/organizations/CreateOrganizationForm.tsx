@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
@@ -15,12 +15,18 @@ import './CreateOrganizationForm.css';
 
 type MasterData = {
   industries: { id: string; code: string; name: string }[];
-  states: { code: string; name: string; countryCode: string; cities: { id: string; name: string }[] }[];
+  states: {
+    code: string;
+    name: string;
+    countryCode: string;
+    cities: { id: string; name: string }[];
+  }[];
   countries: { id: string; name: string; code: string; isoCode: string; dialCode: string }[];
 };
 
 export function CreateOrganizationForm() {
-  const navigate = useNavigate();  const logoutMutation = useLogout();
+  const navigate = useNavigate();
+  const logoutMutation = useLogout();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -92,7 +98,10 @@ export function CreateOrganizationForm() {
   const selectedStateCode = watch('address.stateCode');
 
   // Filter states by selected country
-  const availableStates = masterData?.states.filter((s) => !selectedCountryCode || s.countryCode === selectedCountryCode) || [];
+  const availableStates =
+    masterData?.states.filter(
+      (s) => !selectedCountryCode || s.countryCode === selectedCountryCode,
+    ) || [];
 
   const [isInitializing, setIsInitializing] = useState(true);
   useEffect(() => {
@@ -119,7 +128,8 @@ export function CreateOrganizationForm() {
       setServerError(null);
       const submitData = data;
       const createdOrg = await organizationsApi.createOrganization(submitData);
-      const targetOrgId = createdOrg.organizationId || (createdOrg as unknown as { id?: string }).id;
+      const targetOrgId =
+        createdOrg.organizationId || (createdOrg as unknown as { id?: string }).id;
 
       if (logoFile && targetOrgId) {
         await organizationsApi.uploadLogo(targetOrgId, logoFile);
@@ -136,7 +146,7 @@ export function CreateOrganizationForm() {
       } else {
         navigate('/');
       }
-      toast.success('Organization created successfully');
+      notify.success('Organization created successfully');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     }
@@ -184,11 +194,28 @@ export function CreateOrganizationForm() {
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
               ) : (
-                <span style={{ fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center', padding: 4 }}>No Logo</span>
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--color-text-muted)',
+                    textAlign: 'center',
+                    padding: 4,
+                  }}
+                >
+                  No Logo
+                </span>
               )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--color-text)',
+                  marginBottom: 4,
+                }}
+              >
                 Organization Logo
               </label>
               <label
@@ -215,7 +242,10 @@ export function CreateOrganizationForm() {
               {logoPreview && (
                 <button
                   type="button"
-                  onClick={() => { setLogoFile(null); setLogoPreview(null); }}
+                  onClick={() => {
+                    setLogoFile(null);
+                    setLogoPreview(null);
+                  }}
                   style={{
                     marginLeft: 8,
                     padding: '6px 12px',
@@ -256,7 +286,10 @@ export function CreateOrganizationForm() {
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
-                    options={masterData?.industries.map(ind => ({ label: ind.name, value: ind.code })) || []}
+                    options={
+                      masterData?.industries.map((ind) => ({ label: ind.name, value: ind.code })) ||
+                      []
+                    }
                     value={field.value}
                     onChange={field.onChange}
                     placeholder="Select Industry"
@@ -286,7 +319,9 @@ export function CreateOrganizationForm() {
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
-                    options={masterData?.countries.map(c => ({ label: c.name, value: c.code })) || []}
+                    options={
+                      masterData?.countries.map((c) => ({ label: c.name, value: c.code })) || []
+                    }
                     value={field.value}
                     onChange={field.onChange}
                     disabled={!masterData}
@@ -303,7 +338,7 @@ export function CreateOrganizationForm() {
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
-                    options={availableStates.map(s => ({ label: s.name, value: s.code }))}
+                    options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
                     value={field.value}
                     onChange={field.onChange}
                     disabled={!selectedCountryCode}
@@ -320,7 +355,7 @@ export function CreateOrganizationForm() {
                 control={control}
                 render={({ field }) => (
                   <SearchableSelect
-                    options={availableCities.map(c => ({ label: c.name, value: c.id }))}
+                    options={availableCities.map((c) => ({ label: c.name, value: c.id }))}
                     value={field.value}
                     onChange={field.onChange}
                     disabled={!selectedStateCode}
@@ -341,7 +376,9 @@ export function CreateOrganizationForm() {
                   e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
                 }}
               />
-              {errors.address?.zip && <span className="org-form-error-text">{errors.address.zip.message}</span>}
+              {errors.address?.zip && (
+                <span className="org-form-error-text">{errors.address.zip.message}</span>
+              )}
             </div>
           </div>
 
@@ -354,9 +391,7 @@ export function CreateOrganizationForm() {
                 className={`org-form-input ${errors.email ? 'has-error' : ''}`}
                 placeholder="company@example.com"
               />
-              {errors.email && (
-                <span className="org-form-error-text">{errors.email.message}</span>
-              )}
+              {errors.email && <span className="org-form-error-text">{errors.email.message}</span>}
             </div>
 
             <div className="org-form-field">
@@ -369,7 +404,14 @@ export function CreateOrganizationForm() {
                   control={control}
                   render={({ field }) => (
                     <SearchableSelect
-                      options={masterData?.countries ? masterData.countries.map(c => ({ label: `${c.isoCode} ${c.dialCode}`, value: c.dialCode })) : [{ label: 'IND 91', value: '91' }]}
+                      options={
+                        masterData?.countries
+                          ? masterData.countries.map((c) => ({
+                              label: `${c.isoCode} ${c.dialCode}`,
+                              value: c.dialCode,
+                            }))
+                          : [{ label: 'IND 91', value: '91' }]
+                      }
                       value={field.value}
                       onChange={field.onChange}
                       style={{ width: '130px', flexShrink: 0 }}

@@ -1,7 +1,7 @@
 import { QueryClient, MutationCache } from '@tanstack/react-query';
 import axios from 'axios';
-import { toast } from 'react-hot-toast';
 import { toApiErrorMessage } from '../api/client';
+import { notify } from '../lib/notify';
 
 /**
  * The one error toast a failed mutation gets. A screen's own `onError` highlights
@@ -46,8 +46,7 @@ export const queryClient = new QueryClient({
     onError: (error, _variables, _context, mutation) => {
       // Allow specific mutations to opt out of global toasts via meta
       if (mutation.meta?.suppressToast) return;
-      const message = mutationErrorMessage(error);
-      toast.error(message, { id: message });
+      notify.error(mutationErrorMessage(error));
     },
   }),
 });

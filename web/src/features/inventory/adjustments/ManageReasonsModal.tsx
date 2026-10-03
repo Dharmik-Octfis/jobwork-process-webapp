@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
 import { Trash2 } from 'lucide-react';
 import { Modal } from '../../../components/ui/Modal';
-import { toApiErrorMessage } from '../../../api/client';
+import { notify } from '../../../lib/notify';
 import { createReason, deleteReason, fetchReasons, setReasonActive } from './adjustments.api';
 import { reasonsQueryKey, type AdjustmentReason } from './adjustments.schemas';
 import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
@@ -59,10 +58,8 @@ export function ManageReasonsModal({ orgId, isOpen, onClose, onSelect }: ManageR
       setName('');
       onSelect(reason.id);
     },
-    onError: (error) => {
-      setNameInvalid(true);
-      toast.error(toApiErrorMessage(error));
-    },
+    // Highlight only — the global mutation handler shows the one toast (app/queryClient.ts).
+    onError: () => setNameInvalid(true),
   });
 
   const toggle = useMutation({
@@ -70,7 +67,6 @@ export function ManageReasonsModal({ orgId, isOpen, onClose, onSelect }: ManageR
     onSuccess: () => {
       void refresh();
     },
-    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const remove = useMutation({
@@ -79,10 +75,9 @@ export function ManageReasonsModal({ orgId, isOpen, onClose, onSelect }: ManageR
       setConfirmingDelete(null);
       void refresh();
     },
-    onError: (error) => {
+    onError: () => {
       setConfirmingDelete(null);
       void refresh();
-      toast.error(toApiErrorMessage(error));
     },
   });
 
@@ -90,7 +85,7 @@ export function ManageReasonsModal({ orgId, isOpen, onClose, onSelect }: ManageR
     const trimmed = name.trim();
     if (!trimmed) {
       setNameInvalid(true);
-      toast.error('Enter a reason.');
+      notify.error('Enter a reason.');
       return;
     }
     create.mutate(trimmed);

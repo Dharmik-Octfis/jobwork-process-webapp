@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { DateInput } from '../../components/ui/DateInput';
 import { Select } from '../../components/ui/Select';
 import { Trash2, Plus, X } from 'lucide-react';
@@ -7,7 +7,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import { itemsApi } from './items.api';
-import { toApiErrorMessage } from '../../api/client';
 import { useTrackingLabel, useBatchUnitLabel } from '../../hooks/useTrackingLabel';
 import { BatchUnitsModal, BatchUnitsTrigger } from '../../components/inventory/BatchUnitsModal';
 import {
@@ -212,8 +211,7 @@ export function OpeningStockPage() {
       invalidateStockQueries(queryClient, orgId);
       navigate(`/organizations/${orgId}/items?id=${itemId}`);
     },
-    // The server refuses edits to stock that has already moved — say why, by name.
-    onError: (error) => toast.error(toApiErrorMessage(error)),
+    // No onError: the global mutation handler toasts the server's refusal (app/queryClient.ts).
   });
 
   const isSaving = saveOpeningStockMutation.isPending;
@@ -482,7 +480,7 @@ export function OpeningStockPage() {
     try {
       for (const loc of locationRows) {
         if (!loc.locationId) {
-          toast.error('Please select a location.');
+          notify.error('Please select a location.');
           return;
         }
 
@@ -498,18 +496,18 @@ export function OpeningStockPage() {
           );
 
           if (batchSum > 0 && declared === 0) {
-            toast.error(`Please enter the Opening Stock for "${locName}".`);
+            notify.error(`Please enter the Opening Stock for "${locName}".`);
             return;
           }
 
           if (declared > 0 && batchSum > declared) {
-            toast.error(
+            notify.error(
               `Total ${singular.toLowerCase()} quantity (${batchSum}) cannot exceed location opening stock (${declared}) for "${locName}". Please adjust ${plural.toLowerCase()} quantities.`,
             );
             return;
           }
           if (declared > 0 && loc.batches.length === 0) {
-            toast.error(
+            notify.error(
               `Opening stock is declared for "${locName}", but no ${singular.toLowerCase()} details were entered.`,
             );
             return;
@@ -533,7 +531,7 @@ export function OpeningStockPage() {
                 plural: unitLabel.plural,
               });
               if (problem) {
-                toast.error(problem);
+                notify.error(problem);
                 return;
               }
             }
@@ -541,7 +539,7 @@ export function OpeningStockPage() {
         }
 
         if (declared > 0 && valuePerUnit <= 0) {
-          toast.error(`Please enter a valid Per Unit Value for "${locName}".`);
+          notify.error(`Please enter a valid Per Unit Value for "${locName}".`);
           return;
         }
       }

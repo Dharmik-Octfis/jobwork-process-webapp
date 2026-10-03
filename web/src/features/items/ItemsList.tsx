@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api.ts';
 import { Plus, Package, SlidersHorizontal, ShoppingBag } from 'lucide-react';
@@ -145,10 +145,7 @@ export function ItemsList() {
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setItemToDelete(null);
     },
-    onError: (error) => {
-      toast.error(toApiErrorMessage(error));
-      setItemToDelete(null);
-    },
+    onError: () => setItemToDelete(null),
   });
 
   const headerStyle = {
@@ -616,7 +613,7 @@ export function ItemsList() {
             const refused = results.filter((r) => r.status === 'rejected');
             if (refused.length > 0) {
               const first = (refused[0] as PromiseRejectedResult).reason;
-              toast.error(
+              notify.error(
                 refused.length === 1
                   ? toApiErrorMessage(first)
                   : `${refused.length} items were not deleted. ${toApiErrorMessage(first)}`,

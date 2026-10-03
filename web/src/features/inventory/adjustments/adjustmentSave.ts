@@ -1,16 +1,15 @@
 import axios from 'axios';
 import type { QueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
+import { notify } from '../../../lib/notify';
 import type { StockAdjustmentDetail } from './adjustments.schemas';
 
 /** Say what a save or an Adjust actually ended as — it is not always "adjusted". */
 export function announceOutcome(adjustment: StockAdjustmentDetail): void {
   const number = adjustment.adjustmentNumber;
-  if (adjustment.status === 'adjusted') toast.success(`Stock adjusted — ${number}.`);
+  if (adjustment.status === 'adjusted') notify.success(`Stock adjusted — ${number}.`);
   else if (adjustment.status === 'pending_approval') {
-    toast.success(`${number} sent for approval. Stock moves once it is approved.`);
-  } else toast.success(`Draft saved — ${number}.`);
+    notify.success(`${number} sent for approval. Stock moves once it is approved.`);
+  } else notify.success(`Draft saved — ${number}.`);
 }
 
 /**
@@ -37,9 +36,8 @@ export function refreshAfterAdjustment(queryClient: QueryClient, itemIds: readon
   });
 }
 
-/** Toast the server's refusal and return the fields it named, for red borders. */
+/** The fields the server's refusal named, for red borders. The toast is app/queryClient.ts's. */
 export function reportSaveError(error: unknown): string[] {
-  toast.error(toApiErrorMessage(error));
   if (!axios.isAxiosError(error)) return [];
   const details = (error.response?.data as { details?: Record<string, unknown> })?.details;
   return details ? Object.keys(details) : [];
