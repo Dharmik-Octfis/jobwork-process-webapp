@@ -1,0 +1,1 @@
+export const ORGANIZATION_MAX_USERS_LIMIT = 12;

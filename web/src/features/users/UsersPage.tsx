@@ -16,6 +16,7 @@ import { ListFilterDropdown } from '../../components/ui/ListFilterDropdown';
 import { CUSTOM_FIELD_PREFIX } from '../list-views/listViews.api';
 import { UserDetailPanel } from './UserDetailPanel';
 import { NewUserModal } from './NewUserModal';
+import { ORGANIZATION_MAX_USERS_LIMIT } from '../../constants/organization';
 import './Users.css';
 
 /**
@@ -216,7 +217,7 @@ export function UsersPage() {
     queryFn: () => membersApi.count(orgId!, { filter: 'all_users' }),
     enabled: Boolean(orgId),
   });
-  const maxUsersLimit = activeOrg?.maxUsersLimit ?? 10;
+  const maxUsersLimit = activeOrg?.maxUsersLimit ?? ORGANIZATION_MAX_USERS_LIMIT;
   const isLimitReached = (absoluteTotal ?? 0) >= maxUsersLimit;
 
   const { data: me } = useQuery({
