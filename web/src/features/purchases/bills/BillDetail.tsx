@@ -249,7 +249,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const isRejected = Boolean(
     isApprovalRejected ||
     po?.status?.toLowerCase() === 'rejected' ||
-    (po as any)?.approvalStatus?.toUpperCase() === 'REJECTED',
+    (po as { approvalStatus?: string } | undefined)?.approvalStatus?.toUpperCase() === 'REJECTED',
   );
 
   const { data: orgs } = useQuery({

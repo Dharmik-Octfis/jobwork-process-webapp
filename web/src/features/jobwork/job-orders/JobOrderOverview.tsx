@@ -437,7 +437,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const isRejected = Boolean(
     isApprovalRejected ||
     data?.jobOrder?.status === 'REJECTED' ||
-    (data?.jobOrder as any)?.approvalStatus === 'REJECTED',
+    (data?.jobOrder as { approvalStatus?: string } | undefined)?.approvalStatus === 'REJECTED',
   );
   const isActionBlocked = isUnderApproval || isRejected;
 

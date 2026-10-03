@@ -241,7 +241,12 @@ export async function createInvitation(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
 
-  // Enforce organization user limit with a row-level lock and create invitation
+  // Enforce organization user limit with a row-level lock (FOR UPDATE).
+  // The limit is configurable per organization (`maxUsersLimit`), defaulting to 10 if not set.
+  // We calculate the total by adding:
+  // 1. Currently active members (`isDeleted: false`)
+  // 2. Pending invitations that haven't expired yet
+  // This ensures an organization cannot exceed their user quota by sending out mass invitations.
   const invite = await prisma.$transaction(async (tx) => {
     const org = await tx.$queryRaw<{ maxUsersLimit: number }[]>`
       SELECT max_users_limit as "maxUsersLimit" FROM organizations WHERE id = ${organizationId}::uuid FOR UPDATE
