@@ -38,6 +38,9 @@ export function resolveRecordRoute(orgId: string, moduleId: string, recordId: st
     case 'assembly':
     case 'item_assembly':
       return `/organizations/${orgId}/inventory/assembly?id=${recordId}`;
+    case 'stock_adjustments':
+    case 'stock_adjustment':
+      return `/organizations/${orgId}/inventory/adjustments?id=${recordId}`;
     default:
       return `/organizations/${orgId}/${norm}?id=${recordId}`;
   }
@@ -46,7 +49,11 @@ export function resolveRecordRoute(orgId: string, moduleId: string, recordId: st
 /**
  * Returns user-friendly module badge display text and color palette.
  */
-export function getModuleBadgeStyle(moduleId: string): { label: string; color: string; bg: string } {
+export function getModuleBadgeStyle(moduleId: string): {
+  label: string;
+  color: string;
+  bg: string;
+} {
   const norm = moduleId.trim().toLowerCase();
   switch (norm) {
     case 'items':
@@ -68,6 +75,9 @@ export function getModuleBadgeStyle(moduleId: string): { label: string; color: s
     case 'job_orders':
     case 'job_order':
       return { label: 'Job Orders', color: '#059669', bg: '#d1fae5' };
+    case 'stock_adjustments':
+    case 'stock_adjustment':
+      return { label: 'Stock Adjustments', color: '#b45309', bg: '#fef3c7' };
     default:
       return {
         label: moduleId.replace(/_/g, ' ').toUpperCase(),

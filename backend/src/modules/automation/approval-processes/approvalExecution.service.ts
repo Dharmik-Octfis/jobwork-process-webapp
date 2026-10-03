@@ -1,4 +1,9 @@
-import { runAsTenant, prisma } from '../../../db/prisma.ts';
+/* eslint-disable @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any --
+   This file predates the lint gate: its raw-SQL row types are snake_case because
+   the columns are, and its JSON columns are typed `any`. 124 findings, none of
+   them touched by the change that added this line (the approval outcome hook).
+   Remove this once the row types are cleaned up — do not add to the debt under it. */
+import { runAsTenant, prisma, type TenantClient } from '../../../db/prisma.ts';
 import { criteriaEvaluatorService } from './criteriaEvaluator.service.ts';
 import { approverResolverService } from './approverResolver.service.ts';
 import { approvalActionService } from './approvalAction.service.ts';
@@ -6,8 +11,10 @@ import { moduleMetadataService } from './moduleMetadata.service.ts';
 import type {
   ApprovalRequestDetails,
   ApprovalActionInput,
+  FieldMetadata,
 } from './approvalProcess.types.ts';
 import { ApiError } from '../../../lib/apiError.ts';
+import { approvalOutcomeHandlerFor } from './approvalOutcome.registry.ts';
 
 /** Maps known module codes / table names to canonical table names for record status updates */
 const MODULE_TABLE_MAP: Record<string, string> = {
@@ -28,12 +35,46 @@ const MODULE_TABLE_MAP: Record<string, string> = {
   sales_order: 'sales_orders',
   invoices: 'invoices',
   invoice: 'invoices',
+  stock_adjustments: 'stock_adjustments',
+  stock_adjustment: 'stock_adjustments',
 };
 
 /** Status values to set on underlying records at each approval lifecycle event */
 const APPROVAL_STATUS_PENDING = 'Pending Approval';
 const APPROVAL_STATUS_APPROVED = 'Approved';
 const APPROVAL_STATUS_REJECTED = 'Rejected';
+
+interface ActiveProcess {
+  id: string;
+  name: string;
+  triggerType: string;
+  priority: number;
+  currentVersion: number;
+}
+
+interface MatchedRule {
+  id: string;
+  name: string;
+  ruleOrder: number;
+  criteria: unknown;
+  criteriaPattern: string;
+}
+
+interface MatchedStage {
+  id: string;
+  name: string;
+  stageOrder: number;
+  approverType: string;
+  approverConfig: unknown;
+  approvalMode: string;
+  assignTaskForApprovers: boolean;
+  recordModificationConfig: unknown;
+}
+
+type ProcessMatch =
+  | { kind: 'none' }
+  | { kind: 'admin' }
+  | { kind: 'match'; proc: ActiveProcess; rule: MatchedRule; stages: MatchedStage[] };
 
 export interface ApprovalRequestListItem {
   id: string;
@@ -161,6 +202,14 @@ export class ApprovalExecutionService {
       }
       if (!tableName) return;
 
+      // A module whose approval is a gate decides for itself what each outcome
+      // does — see approvalOutcome.registry.ts.
+      const handler = approvalOutcomeHandlerFor(tableName);
+      if (handler) {
+        await handler({ organizationId, recordId, status: newStatus });
+        return;
+      }
+
       await runAsTenant(organizationId, async (tx) => {
         if (tableName === 'items') {
           // Items table uses is_active (boolean). When approved => true; when rejected or pending => false
@@ -198,6 +247,143 @@ export class ApprovalExecutionService {
     }
   }
 
+  private async loadActiveProcesses(
+    tx: TenantClient,
+    organizationId: string,
+    moduleAliases: string[],
+  ): Promise<ActiveProcess[]> {
+    return tx.$queryRaw<ActiveProcess[]>`
+      SELECT "id", "name", "trigger_type" AS "triggerType", "priority",
+             "current_version" AS "currentVersion"
+      FROM "approval_processes"
+      WHERE "organization_id" = ${organizationId}::uuid
+        AND "module_id" = ANY(${moduleAliases}::text[])
+        AND "status" = 'ACTIVE'
+        AND "is_deleted" = false
+      ORDER BY "priority" ASC, "created_at" ASC
+    `;
+  }
+
+  /**
+   * Which process, rule and stages this record would go to — the matching half of
+   * `evaluateAndTriggerApproval`, writing nothing. `triggerType: null` matches a
+   * process whatever its trigger type.
+   */
+  private async matchProcess(
+    tx: TenantClient,
+    organizationId: string,
+    normalizedModule: string,
+    processes: ActiveProcess[],
+    record: Record<string, unknown>,
+    triggerType: 'CREATE' | 'EDIT' | null,
+    actorUserId?: string,
+    fieldMap?: Map<string, FieldMetadata>,
+  ): Promise<ProcessMatch> {
+    // Load field metadata map for criteria evaluation
+    if (!fieldMap) {
+      const fields = await moduleMetadataService.getModuleFields(organizationId, normalizedModule);
+      fieldMap = new Map(fields.map((f) => [f.id, f]));
+    }
+
+    for (const proc of processes) {
+      // If the user who created or updated the record is a Process Admin (Rule Admin),
+      // approval is not required for Jay, Dharmik, or any other approver.
+      if (actorUserId) {
+        const adminRows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "approval_process_admins"
+          WHERE "process_id" = ${proc.id}::uuid
+            AND "user_id" = ${actorUserId}::uuid
+        `;
+        if (adminRows.length > 0) return { kind: 'admin' };
+      }
+      // Match trigger type — DB stores CREATE_ONLY / EDIT_ONLY / CREATE_OR_EDIT
+      const pTrigger = proc.triggerType?.toUpperCase() || '';
+      // CREATE_OR_EDIT (or legacy BOTH) always matches
+      if (triggerType && pTrigger !== 'CREATE_OR_EDIT' && pTrigger !== 'BOTH') {
+        const isCreateOnly = pTrigger === 'CREATE_ONLY' || pTrigger === 'CREATE';
+        const isEditOnly = pTrigger === 'EDIT_ONLY' || pTrigger === 'EDIT';
+        if (triggerType === 'CREATE' && isEditOnly) continue;
+        if (triggerType === 'EDIT' && isCreateOnly) continue;
+      }
+
+      // Fetch rules for process ordered by rule_order ASC
+      const rules = await tx.$queryRaw<MatchedRule[]>`
+        SELECT "id", "name", "rule_order" AS "ruleOrder", "criteria",
+               "criteria_pattern" AS "criteriaPattern"
+        FROM "approval_process_rules"
+        WHERE "process_id" = ${proc.id}::uuid AND "is_deleted" = false
+        ORDER BY "rule_order" ASC
+      `;
+
+      for (const rule of rules) {
+        const criteriaObj = {
+          conditions:
+            typeof rule.criteria === 'string' ? JSON.parse(rule.criteria) : rule.criteria || [],
+          pattern: rule.criteriaPattern || '',
+        };
+
+        const matched = criteriaEvaluatorService.evaluateCriteria(record, criteriaObj, fieldMap);
+        if (!matched) continue;
+
+        // Matched! Load stages for this rule
+        const stages = await tx.$queryRaw<MatchedStage[]>`
+          SELECT "id", "name", "stage_order" AS "stageOrder", "approver_type" AS "approverType",
+                 "approver_config" AS "approverConfig", "approval_mode" AS "approvalMode",
+                 "assign_task_for_approvers" AS "assignTaskForApprovers",
+                 "record_modification_config" AS "recordModificationConfig"
+          FROM "approval_stages"
+          WHERE "rule_id" = ${rule.id}::uuid AND "is_deleted" = false
+          ORDER BY "stage_order" ASC
+        `;
+
+        if (stages.length === 0) continue;
+        return { kind: 'match', proc, rule, stages };
+      }
+    }
+    return { kind: 'none' };
+  }
+
+  /**
+   * Would this record need approval if `actorUserId` saved it as it stands? Asks
+   * the same question `evaluateAndTriggerApproval` does, raises nothing and writes
+   * nothing, and ignores the process's trigger type.
+   *
+   * A process admin is waved through before any criteria are read, exactly as on
+   * create, so `actorIsAdmin` means "nobody else's approval is needed".
+   */
+  async evaluateApprovalRequirement(
+    organizationId: string,
+    moduleId: string,
+    record: Record<string, unknown>,
+    actorUserId?: string,
+  ): Promise<{ applies: boolean; actorIsAdmin: boolean }> {
+    const moduleAliases = await this.resolveAllModuleAliases(moduleId);
+    const processes = await runAsTenant(organizationId, (tx) =>
+      this.loadActiveProcesses(tx, organizationId, moduleAliases),
+    );
+    if (processes.length === 0) return { applies: false, actorIsAdmin: false };
+
+    // Introspected outside any transaction: it is slow enough to outlive a
+    // transaction's 5s budget, and this one is called while a caller holds its own.
+    const normalizedModule = moduleId.toLowerCase();
+    const fields = await moduleMetadataService.getModuleFields(organizationId, normalizedModule);
+    const fieldMap = new Map(fields.map((f) => [f.id, f]));
+
+    const match = await runAsTenant(organizationId, (tx) =>
+      this.matchProcess(
+        tx,
+        organizationId,
+        normalizedModule,
+        processes,
+        record,
+        null,
+        actorUserId,
+        fieldMap,
+      ),
+    );
+    return { applies: match.kind !== 'none', actorIsAdmin: match.kind === 'admin' };
+  }
+
   /**
    * Evaluates records on Create/Edit and triggers an approval process if criteria match.
    */
@@ -217,23 +403,7 @@ export class ApprovalExecutionService {
       const normalizedModule = moduleId.toLowerCase();
 
       // Find active approval processes for this module using any of its aliases
-      const processes = await tx.$queryRaw<
-        Array<{
-          id: string;
-          name: string;
-          trigger_type: string;
-          priority: number;
-          current_version: number;
-        }>
-      >`
-        SELECT "id", "name", "trigger_type", "priority", "current_version"
-        FROM "approval_processes"
-        WHERE "organization_id" = ${organizationId}::uuid
-          AND "module_id" = ANY(${moduleAliases}::text[])
-          AND "status" = 'ACTIVE'
-          AND "is_deleted" = false
-        ORDER BY "priority" ASC, "created_at" ASC
-      `;
+      const processes = await this.loadActiveProcesses(tx, organizationId, moduleAliases);
 
       if (processes.length === 0) {
         return { triggered: false };
@@ -253,91 +423,37 @@ export class ApprovalExecutionService {
         return { triggered: false, requestId: activeRequests[0]!.id };
       }
 
-      // Load field metadata map for criteria evaluation
-      const fields = await moduleMetadataService.getModuleFields(organizationId, normalizedModule);
-      const fieldMap = new Map(fields.map((f) => [f.id, f]));
+      const match = await this.matchProcess(
+        tx,
+        organizationId,
+        normalizedModule,
+        processes,
+        record,
+        triggerType,
+        actorUserId,
+      );
+      if (match.kind === 'admin') {
+        await this.updateRecordStatus(
+          organizationId,
+          normalizedModule,
+          recordId,
+          APPROVAL_STATUS_APPROVED,
+        );
+        return { triggered: false };
+      }
 
-      for (const proc of processes) {
-        // If the user who created or updated the record is a Process Admin (Rule Admin),
-        // approval is not required for Jay, Dharmik, or any other approver.
-        if (actorUserId) {
-          const adminRows = await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT "id" FROM "approval_process_admins"
-            WHERE "process_id" = ${proc.id}::uuid
-              AND "user_id" = ${actorUserId}::uuid
-          `;
-          if (adminRows.length > 0) {
-            await this.updateRecordStatus(organizationId, normalizedModule, recordId, APPROVAL_STATUS_APPROVED);
-            return { triggered: false };
-          }
-        }
-        // Match trigger type — DB stores CREATE_ONLY / EDIT_ONLY / CREATE_OR_EDIT
-        const pTrigger = proc.trigger_type?.toUpperCase() || '';
-        // CREATE_OR_EDIT (or legacy BOTH) always matches
-        if (pTrigger !== 'CREATE_OR_EDIT' && pTrigger !== 'BOTH') {
-          const isCreateOnly = pTrigger === 'CREATE_ONLY' || pTrigger === 'CREATE';
-          const isEditOnly = pTrigger === 'EDIT_ONLY' || pTrigger === 'EDIT';
-          if (triggerType === 'CREATE' && isEditOnly) continue;
-          if (triggerType === 'EDIT' && isCreateOnly) continue;
-        }
-
-        // Fetch rules for process ordered by rule_order ASC
-        const rules = await tx.$queryRaw<
-          Array<{
-            id: string;
-            name: string;
-            rule_order: number;
-            criteria: any;
-            criteria_pattern: string;
-          }>
-        >`
-          SELECT "id", "name", "rule_order", "criteria", "criteria_pattern"
-          FROM "approval_process_rules"
-          WHERE "process_id" = ${proc.id}::uuid AND "is_deleted" = false
-          ORDER BY "rule_order" ASC
-        `;
-
-        for (const rule of rules) {
-          const criteriaObj = {
-            conditions: typeof rule.criteria === 'string' ? JSON.parse(rule.criteria) : rule.criteria || [],
-            pattern: rule.criteria_pattern || '',
-          };
-
-          const matched = criteriaEvaluatorService.evaluateCriteria(record, criteriaObj, fieldMap);
-          if (!matched) continue;
-
-          // Matched! Load stages for this rule
-          const stages = await tx.$queryRaw<
-            Array<{
-              id: string;
-              name: string;
-              stage_order: number;
-              approver_type: string;
-              approver_config: any;
-              approval_mode: string;
-              assign_task_for_approvers: boolean;
-              record_modification_config: any;
-            }>
-          >`
-            SELECT "id", "name", "stage_order", "approver_type", "approver_config",
-                   "approval_mode", "assign_task_for_approvers", "record_modification_config"
-            FROM "approval_stages"
-            WHERE "rule_id" = ${rule.id}::uuid AND "is_deleted" = false
-            ORDER BY "stage_order" ASC
-          `;
-
-          if (stages.length === 0) continue;
-
-          // Fetch latest version snapshot id
-          const versionRows = await tx.$queryRaw<Array<{ id: string }>>`
+      if (match.kind === 'none') return { triggered: false };
+      const { proc, rule, stages } = match;
+      // Fetch latest version snapshot id
+      const versionRows = await tx.$queryRaw<Array<{ id: string }>>`
             SELECT "id" FROM "approval_process_versions"
             WHERE "process_id" = ${proc.id}::uuid
             ORDER BY "version_number" DESC LIMIT 1
           `;
-          const versionId = versionRows[0]?.id || null;
+      const versionId = versionRows[0]?.id || null;
 
-          // Insert immutable approval request instance
-          const reqRows = await tx.$queryRaw<Array<{ id: string }>>`
+      // Insert immutable approval request instance
+      const reqRows = await tx.$queryRaw<Array<{ id: string }>>`
             INSERT INTO "approval_requests" (
               "organization_id", "process_id", "process_version_id", "rule_id",
               "module_id", "record_id", "record_title", "record_snapshot",
@@ -355,57 +471,57 @@ export class ApprovalExecutionService {
             RETURNING "id"
           `;
 
-          const requestId = reqRows[0]!.id;
+      const requestId = reqRows[0]!.id;
 
-          // Determine approval mode (ANYONE, EVERYONE, or SEQUENTIAL)
-          const firstMode = stages[0]?.approval_mode || 'ANYONE';
-          const isSequential = firstMode === 'SEQUENTIAL';
+      // Determine approval mode (ANYONE, EVERYONE, or SEQUENTIAL)
+      const firstMode = stages[0]?.approvalMode || 'ANYONE';
+      const isSequential = firstMode === 'SEQUENTIAL';
 
-          for (let i = 0; i < stages.length; i++) {
-            const stg = stages[i]!;
-            const stgRows = await tx.$queryRaw<Array<{ id: string }>>`
+      for (let i = 0; i < stages.length; i++) {
+        const stg = stages[i]!;
+        const stgRows = await tx.$queryRaw<Array<{ id: string }>>`
               INSERT INTO "approval_request_stages" (
                 "organization_id", "request_id", "stage_id", "stage_order",
                 "name", "status", "approval_mode", "started_at"
               ) VALUES (
                 ${organizationId}::uuid, ${requestId}::uuid, ${stg.id}::uuid,
-                ${stg.stage_order}, ${stg.name},
+                ${stg.stageOrder}, ${stg.name},
                 'PENDING',
-                ${stg.approval_mode}, ${new Date()}
+                ${stg.approvalMode}, ${new Date()}
               )
               RETURNING "id"
             `;
 
-            const stageInstanceId = stgRows[0]!.id;
+        const stageInstanceId = stgRows[0]!.id;
 
-            if (i === 0) {
-              // Set current stage on request
-              await tx.$executeRaw`
+        if (i === 0) {
+          // Set current stage on request
+          await tx.$executeRaw`
                 UPDATE "approval_requests"
                 SET "current_stage_id" = ${stg.id}::uuid
                 WHERE "id" = ${requestId}::uuid
               `;
-            }
+        }
 
-            // For ANYONE and EVERYONE (parallel), resolve approvers for ALL stages upfront.
-            // For SEQUENTIAL, only resolve approvers for Stage 1 upfront.
-            if (!isSequential || i === 0) {
-              const config =
-                typeof stg.approver_config === 'string'
-                  ? JSON.parse(stg.approver_config)
-                  : stg.approver_config || {};
+        // For ANYONE and EVERYONE (parallel), resolve approvers for ALL stages upfront.
+        // For SEQUENTIAL, only resolve approvers for Stage 1 upfront.
+        if (!isSequential || i === 0) {
+          const config =
+            typeof stg.approverConfig === 'string'
+              ? JSON.parse(stg.approverConfig)
+              : stg.approverConfig || {};
 
-              const resolvedApprovers = await approverResolverService.resolveApprovers(
-                tx,
-                organizationId,
-                stg.approver_type as any,
-                config,
-                record,
-                actorUserId,
-              );
+          const resolvedApprovers = await approverResolverService.resolveApprovers(
+            tx,
+            organizationId,
+            stg.approverType as any,
+            config,
+            record,
+            actorUserId,
+          );
 
-              for (const appr of resolvedApprovers) {
-                await tx.$executeRaw`
+          for (const appr of resolvedApprovers) {
+            await tx.$executeRaw`
                   INSERT INTO "approval_request_approvers" (
                     "organization_id", "request_stage_id", "user_id", "status"
                   ) VALUES (
@@ -413,12 +529,12 @@ export class ApprovalExecutionService {
                     ${appr.userId}::uuid, 'PENDING'
                   )
                 `;
-              }
-            }
           }
+        }
+      }
 
-          // Initial immutable audit history log
-          await tx.$executeRaw`
+      // Initial immutable audit history log
+      await tx.$executeRaw`
             INSERT INTO "approval_history" (
               "organization_id", "request_id", "event_type", "actor_id",
               "previous_status", "new_status", "comment", "metadata"
@@ -431,14 +547,15 @@ export class ApprovalExecutionService {
             )
           `;
 
-          // Update the underlying CRM record status to 'Pending Approval'
-          await this.updateRecordStatus(organizationId, normalizedModule, recordId, APPROVAL_STATUS_PENDING);
+      // Update the underlying CRM record status to 'Pending Approval'
+      await this.updateRecordStatus(
+        organizationId,
+        normalizedModule,
+        recordId,
+        APPROVAL_STATUS_PENDING,
+      );
 
-          return { triggered: true, requestId };
-        }
-      }
-
-      return { triggered: false };
+      return { triggered: true, requestId };
     });
   }
 
@@ -477,7 +594,11 @@ export class ApprovalExecutionService {
 
       const request = reqRows[0];
       if (!request) throw ApiError.notFound('Approval request not found.');
-      if (request.status !== 'IN_PROGRESS' && request.status !== 'PENDING' && request.status !== 'REJECTED') {
+      if (
+        request.status !== 'IN_PROGRESS' &&
+        request.status !== 'PENDING' &&
+        request.status !== 'REJECTED'
+      ) {
         throw new ApiError(400, `Cannot approve a request with status ${request.status}.`);
       }
 
@@ -511,7 +632,10 @@ export class ApprovalExecutionService {
         const isRuleAdmin = adminRow.length > 0;
 
         if (!isRejecter && !hasUnapprovedRecord && !isRuleAdmin) {
-          throw new ApiError(403, 'You have already approved this request. Reconsideration is only available for the rejecting approver or process admin.');
+          throw new ApiError(
+            403,
+            'You have already approved this request. Reconsideration is only available for the rejecting approver or process admin.',
+          );
         }
 
         // Mark request as FINAL_APPROVED
@@ -538,7 +662,12 @@ export class ApprovalExecutionService {
         `;
 
         // Update the underlying CRM record status to 'Approved'
-        await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+        await this.updateRecordStatus(
+          organizationId,
+          request.module_id,
+          request.record_id,
+          APPROVAL_STATUS_APPROVED,
+        );
 
         // Execute Final Actions
         const actions = await tx.$queryRaw<
@@ -700,7 +829,12 @@ export class ApprovalExecutionService {
         `;
 
         // Update underlying CRM record to 'Approved'
-        await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+        await this.updateRecordStatus(
+          organizationId,
+          request.module_id,
+          request.record_id,
+          APPROVAL_STATUS_APPROVED,
+        );
 
         // Execute Final Actions
         const actions = await tx.$queryRaw<
@@ -796,7 +930,12 @@ export class ApprovalExecutionService {
           WHERE "id" = ${requestId}::uuid
         `;
 
-        await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+        await this.updateRecordStatus(
+          organizationId,
+          request.module_id,
+          request.record_id,
+          APPROVAL_STATUS_APPROVED,
+        );
 
         // Execute Final Actions
         const actions = await tx.$queryRaw<
@@ -854,11 +993,15 @@ export class ApprovalExecutionService {
       // 3. "SEQUENTIAL" Mode: Approve stage-by-stage in sequence
       // ----------------------------------------------------------------------
       if (approvalMode === 'SEQUENTIAL') {
-        const currentStage = allStageRows.find((s) => s.stage_id === request.current_stage_id) || allStageRows[0]!;
+        const currentStage =
+          allStageRows.find((s) => s.stage_id === request.current_stage_id) || allStageRows[0]!;
 
         const isInCurrentStage = approverRows.some((a) => a.request_stage_id === currentStage.id);
         if (!isInCurrentStage && adminRow.length === 0 && !isOwner) {
-          throw new ApiError(403, `You are not authorized to approve Stage ${currentStage.stage_order} ("${currentStage.name}").`);
+          throw new ApiError(
+            403,
+            `You are not authorized to approve Stage ${currentStage.stage_order} ("${currentStage.name}").`,
+          );
         }
 
         // If an admin or owner is approving on behalf of this stage, mark its pending approver records approved
@@ -964,7 +1107,12 @@ export class ApprovalExecutionService {
             WHERE "id" = ${requestId}::uuid
           `;
 
-          await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_APPROVED);
+          await this.updateRecordStatus(
+            organizationId,
+            request.module_id,
+            request.record_id,
+            APPROVAL_STATUS_APPROVED,
+          );
 
           // Execute Final Actions
           const actions = await tx.$queryRaw<
@@ -1089,7 +1237,12 @@ export class ApprovalExecutionService {
       `;
 
       // Update the underlying CRM record status to 'Rejected'
-      await this.updateRecordStatus(organizationId, request.module_id, request.record_id, APPROVAL_STATUS_REJECTED);
+      await this.updateRecordStatus(
+        organizationId,
+        request.module_id,
+        request.record_id,
+        APPROVAL_STATUS_REJECTED,
+      );
 
       // Log history
       await tx.$executeRaw`
@@ -1125,9 +1278,7 @@ export class ApprovalExecutionService {
         triggerEvent: 'REJECTION',
         actionType: a.action_type as any,
         actionConfig:
-          typeof a.action_config === 'string'
-            ? JSON.parse(a.action_config)
-            : a.action_config || {},
+          typeof a.action_config === 'string' ? JSON.parse(a.action_config) : a.action_config || {},
       }));
 
       const recordData =
@@ -1161,9 +1312,7 @@ export class ApprovalExecutionService {
     reason?: string,
   ): Promise<{ success: boolean; requestStatus: string }> {
     return runAsTenant(organizationId, async (tx) => {
-      const reqRows = await tx.$queryRaw<
-        Array<{ id: string; status: string }>
-      >`
+      const reqRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
         SELECT "id", "status"
         FROM "approval_requests"
         WHERE "id" = ${requestId}::uuid AND "organization_id" = ${organizationId}::uuid
@@ -1200,7 +1349,10 @@ export class ApprovalExecutionService {
   /**
    * Fetch full request details, current stage, approver statuses, and execution history.
    */
-  async getRequestDetails(organizationId: string, requestId: string): Promise<ApprovalRequestDetails> {
+  async getRequestDetails(
+    organizationId: string,
+    requestId: string,
+  ): Promise<ApprovalRequestDetails> {
     return runAsTenant(organizationId, async (tx) => {
       const rows = await tx.$queryRaw<
         Array<{
@@ -1289,18 +1441,22 @@ export class ApprovalExecutionService {
       for (const stg of stages) {
         const existingApprovers = approversByStage.get(stg.id) || [];
         if (existingApprovers.length === 0 && stg.stage_id) {
-          const configRows = await tx.$queryRaw<Array<{ approver_type: string; approver_config: any }>>`
+          const configRows = await tx.$queryRaw<
+            Array<{ approver_type: string; approver_config: any }>
+          >`
             SELECT "approver_type", "approver_config"
             FROM "approval_stages"
             WHERE "id" = ${stg.stage_id}::uuid
           `;
           if (configRows.length > 0) {
-            const cfg = typeof configRows[0]!.approver_config === 'string'
-              ? JSON.parse(configRows[0]!.approver_config)
-              : configRows[0]!.approver_config || {};
-            const recordData = typeof req.record_snapshot === 'string'
-              ? JSON.parse(req.record_snapshot)
-              : req.record_snapshot || {};
+            const cfg =
+              typeof configRows[0]!.approver_config === 'string'
+                ? JSON.parse(configRows[0]!.approver_config)
+                : configRows[0]!.approver_config || {};
+            const recordData =
+              typeof req.record_snapshot === 'string'
+                ? JSON.parse(req.record_snapshot)
+                : req.record_snapshot || {};
             const resolved = await approverResolverService.resolveApprovers(
               tx,
               organizationId,
@@ -1688,7 +1844,10 @@ export class ApprovalExecutionService {
 
       // Batch load current stage approvers for the listed rows
       const requestIds = rows.map((r) => r.id);
-      let approverMap = new Map<string, Array<{ id: string; userId: string; fullName?: string; email: string; status: string }>>();
+      const approverMap = new Map<
+        string,
+        Array<{ id: string; userId: string; fullName?: string; email: string; status: string }>
+      >();
 
       if (requestIds.length > 0) {
         const approverRows = await tx.$queryRaw<

@@ -95,6 +95,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'dueDate', label: 'Due Date', defaultVisible: true },
     { key: 'total', label: 'Total', defaultVisible: true },
     { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'approvalStatus', label: 'Approval', defaultVisible: true },
   ],
   sales_order: [
     { key: 'soNumber', label: 'SO Number', locked: true },

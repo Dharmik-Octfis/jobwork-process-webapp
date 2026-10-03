@@ -50,6 +50,7 @@ export const NUMBER_SEQUENCE_DEFAULTS = {
   job_issue: { prefix: 'JI-', width: 5 },
   job_receipt: { prefix: 'JR-', width: 5 },
   assembly: { prefix: 'ASM-', width: 5 },
+  stock_adjustment: { prefix: 'ADJ-', width: 5 },
 } as const satisfies Record<string, { prefix: string; width: number }>;
 
 export type NumberedEntityType = keyof typeof NUMBER_SEQUENCE_DEFAULTS;

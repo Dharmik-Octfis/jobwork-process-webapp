@@ -28,7 +28,17 @@ import type { Bill } from './bills.schemas';
 import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer, Eye } from 'lucide-react';
+import {
+  X,
+  Edit,
+  ChevronDown,
+  FileText,
+  Paperclip,
+  Copy,
+  Trash2,
+  Printer,
+  Eye,
+} from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillComments } from './BillComments';
@@ -38,6 +48,7 @@ import { RecordApprovalHistoryTimeline } from '../../approvals/components/Record
 import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
+import { APPROVAL_COLOURS, APPROVAL_LABELS, announceOpenOutcome } from './billApproval';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
@@ -104,9 +115,7 @@ function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: 
 
   if (finalUrl) {
     return (
-      <div 
-        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <a
           href={finalUrl}
           target="_blank"
@@ -232,9 +241,14 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
       queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       // Patched, not invalidated: the Draft view would drop the bill just opened.
-      patchListRow<Bill>(queryClient, ['bills', orgId], poId, { status: updated.status });
-      // "Open Bill" posts the draft's stock.
+      patchListRow<Bill>(queryClient, ['bills', orgId], poId, {
+        status: updated.status,
+        approvalStatus: updated.approvalStatus,
+      });
+      // "Open Bill" posts the draft's stock — or sends it for approval.
       invalidateStockQueries(queryClient, orgId);
+      queryClient.invalidateQueries({ queryKey: ['record-approvals', orgId, 'bills', poId] });
+      announceOpenOutcome(updated);
     },
     onError: (error) => toast.error(toApiErrorMessage(error)),
   });
@@ -245,11 +259,17 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     enabled: Boolean(orgId && poId),
   });
 
-  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'bills', poId);
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'bills',
+    poId,
+  );
+  // `approval_status` is the gate's column; a bill rejected before the gate
+  // carries it in `status` instead.
   const isRejected = Boolean(
     isApprovalRejected ||
-    po?.status?.toLowerCase() === 'rejected' ||
-    (po as { approvalStatus?: string } | undefined)?.approvalStatus?.toUpperCase() === 'REJECTED',
+    po?.approvalStatus?.toLowerCase() === 'rejected' ||
+    po?.status?.toLowerCase() === 'rejected',
   );
 
   const { data: orgs } = useQuery({
@@ -325,10 +345,24 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           >
             {po.status || 'Draft'}
           </span>
+          {po.approvalStatus && APPROVAL_LABELS[po.approvalStatus] && (
+            <span
+              style={{
+                background: APPROVAL_COLOURS[po.approvalStatus],
+                color: 'white',
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontWeight: 500,
+              }}
+            >
+              {APPROVAL_LABELS[po.approvalStatus]}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {po.status?.toLowerCase() === 'draft' && (
+          {po.status?.toLowerCase() === 'draft' && !isUnderApproval && (
             <button
               onClick={() => setIsConfirmOpenBillVisible(true)}
               style={{
@@ -348,27 +382,30 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             </button>
           )}
 
-          <button
-            className="action-btn"
-            onClick={() =>
-              navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, {
-                state: { returnUrl: location.pathname + location.search },
-              })
-            }
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #d1d5db',
-              background: 'white',
-              borderRadius: '4px',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <Edit size={14} /> <span className="action-btn-text">Edit</span>
-          </button>
+          {/* A bill waiting on an approver cannot change under them (G6). */}
+          {!isUnderApproval && (
+            <button
+              className="action-btn"
+              onClick={() =>
+                navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, {
+                  state: { returnUrl: location.pathname + location.search },
+                })
+              }
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              <Edit size={14} /> <span className="action-btn-text">Edit</span>
+            </button>
+          )}
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
@@ -429,25 +466,27 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                     <Copy size={14} /> Clone
                   </div>
                 )}
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    setIsConfirmDeleteOpen(true);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#ef4444',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Trash2 size={14} /> Delete
-                </div>
+                {!isUnderApproval && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      setIsConfirmDeleteOpen(true);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#ef4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -568,7 +607,12 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
               organizationId={orgId}
               moduleId="bills"
               recordId={poId}
-              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] })}
+              onActionComplete={() => {
+                queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
+                queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+                // Approving opens the bill, which posts its stock.
+                invalidateStockQueries(queryClient, orgId);
+              }}
             />
           </div>
         )}
@@ -1935,7 +1979,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       <ConfirmDialog
         isOpen={isConfirmOpenBillVisible}
         title="Open Bill"
-        message="Are you sure you want to open this bill? Stock will be updated."
+        message="Open this bill? Its stock is posted now — or, if an approval process covers it, once it is approved."
         confirmText={updateMutation.isPending ? 'Opening...' : 'Open Bill'}
         onConfirm={() => {
           updateMutation.mutate({

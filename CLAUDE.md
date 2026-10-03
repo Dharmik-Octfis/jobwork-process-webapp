@@ -325,6 +325,12 @@ ephemeral token tables, no master-data reference tables):
   module has no gate, every member can do everything, and nothing warns you (same shape as a tenant
   table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
   Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
+- 🔴 **An approval that gates stock is not a label.** By default the approval engine writes
+  `Pending Approval` / `Approved` / `Rejected` straight into the record's `status`. A document that
+  posts stock registers an outcome handler (`approvalOutcome.registry.ts`), keeps approval in its own
+  column, and **awaits** `evaluateAndTriggerApproval` before posting — never the fire-and-forget
+  `approvalTriggerService.trigger`, which swallows errors. Copy `bills.service.ts` `requestOpen` or
+  `adjustments.service.ts` `adjust`.
 - 🔴 **A Role is NOT a permission set.** Since 2026-07-25 they are two independent things on a
   Membership: `roleId` → `roles` is a **job title that grants nothing** (no middleware reads it),
   and `permissionTemplateId` → `permission_templates` **is** the authorization. Same title with
@@ -390,6 +396,10 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 - Tenant pages live at `/organizations/:orgId/...` — the org comes from `useParams`, never localStorage.
   Query keys must include `orgId` or switching org serves the previous tenant's cache.
 - No UI library; hand-built controls. See `docs/UI_UX_PRINCIPLES.md`.
+- **A list page's create button is `components/ui/NewButton.tsx`** — green (`--color-create`),
+  `+ New`, never blue and never hand-rolled. The page header, the sidebar module name
+  (`prisma/seed.ts` → `app_modules.name`) and the global-search label say the full module name
+  ("Inventory Adjustments", not "Adjustments"). See `docs/UI_UX_PRINCIPLES.md` §3.1.
 - **Placeholders say "Select", never "Pick" or "Choose"** — `Select a batch…`, `Select a customer…`,
   `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
   default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose

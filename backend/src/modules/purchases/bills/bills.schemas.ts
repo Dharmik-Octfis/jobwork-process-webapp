@@ -16,6 +16,16 @@ const emptyToNullDate = z.preprocess(
   z.coerce.date().optional().nullable(),
 );
 
+/** Draft or Open and nothing else — approval has its own column (BILL_APPROVAL_GATE_PLAN.md G1). */
+const billStatus = z.preprocess(
+  (val) =>
+    typeof val === 'string'
+      ? (({ draft: 'Draft', open: 'Open' } as Record<string, string>)[val.trim().toLowerCase()] ??
+        val)
+      : val,
+  z.enum(['Draft', 'Open']),
+);
+
 export const billItemSchema = z.object({
   id: emptyToUndefinedUuid,
   itemId: z.string().uuid(),
@@ -108,7 +118,7 @@ const baseBillSchema = z.object({
   // No default here — see `createBillSchema`. Zod 4's `.partial()` keeps a default,
   // so every PATCH that omitted `status` used to arrive as "Draft" and withdraw the
   // bill's stock.
-  status: z.string(),
+  status: billStatus,
   customFields: z.record(z.string(), z.unknown()).optional(),
   lineItems: z.array(billItemSchema).min(1),
 });
@@ -123,7 +133,7 @@ const validateDueDate = (data: { billDate?: Date; dueDate?: Date | null }) => {
 };
 
 export const createBillSchema = baseBillSchema
-  .extend({ status: z.string().default('Draft') })
+  .extend({ status: billStatus.default('Draft') })
   .refine(validateDueDate, {
     message: 'Due date must be equal to or after Bill date',
     path: ['dueDate'],

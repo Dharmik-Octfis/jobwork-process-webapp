@@ -88,6 +88,8 @@
      --color-primary so "this is switched on" never reads as "this is the button
      to press", and from --color-success so a grant isn't mistaken for a result. */
   --color-check: #186337;
+  /* A list page's "+ New" and other create actions — components/ui/NewButton.tsx. */
+  --color-create: #186337;
   --color-check-soft: #edf6f0;
   --color-check-border: #c9e2d3;
 
@@ -245,6 +247,17 @@ a:hover {
 * {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
+}
+
+/* A disabled box whose value still reads like any other input's: browsers grey
+   disabled text (Safari via text-fill-color + opacity). !important beats the
+   inline input styles these sit on. */
+input.locked-value:disabled {
+  background: #f1f5f9 !important;
+  color: #111 !important;
+  -webkit-text-fill-color: #111;
+  opacity: 1;
+  cursor: not-allowed !important;
 }
 
 /* Hide spin buttons / arrows on number inputs globally */

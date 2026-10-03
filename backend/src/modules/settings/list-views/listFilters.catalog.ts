@@ -31,10 +31,12 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   ],
   bill: [
     { key: 'all', label: 'All Bills', where: {} },
-    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
-    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
-    { key: 'rejected', label: 'Rejected', where: { status: 'Rejected' } },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
+    { key: 'open', label: 'Open', where: { status: 'Open' } },
+    // Approval has its own column; `status` is only Draft | Open.
+    { key: 'pending_approval', label: 'Pending Approval', where: { approvalStatus: 'pending' } },
+    { key: 'approved', label: 'Approved', where: { approvalStatus: 'approved' } },
+    { key: 'rejected', label: 'Rejected', where: { approvalStatus: 'rejected' } },
   ],
   customer: [
     { key: 'all', label: 'All Customers', where: {} },

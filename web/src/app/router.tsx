@@ -251,9 +251,15 @@ const EditCustomer = lazyPage(
   () => import('../features/sales/customers/EditCustomer'),
   'EditCustomer',
 );
-const SalesOrdersList = lazyPage(() => import('../features/sales/sales-orders/SalesOrdersList'), 'SalesOrdersList');
-const CreateSalesOrder = lazyPage(() => import('../features/sales/sales-orders/CreateSalesOrder'), 'CreateSalesOrder');
-  const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
+const SalesOrdersList = lazyPage(
+  () => import('../features/sales/sales-orders/SalesOrdersList'),
+  'SalesOrdersList',
+);
+const CreateSalesOrder = lazyPage(
+  () => import('../features/sales/sales-orders/CreateSalesOrder'),
+  'CreateSalesOrder',
+);
+const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
   () => import('../features/jobwork/processes/ProcessesList'),
   'ProcessesList',
@@ -333,6 +339,14 @@ const EditCompositeItemPage = lazyPage(
 const AssemblyList = lazyPage(
   () => import('../features/inventory/assembly/AssemblyList'),
   'AssemblyList',
+);
+const AdjustmentsList = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentsList'),
+  'AdjustmentsList',
+);
+const AdjustmentFormPage = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentFormPage'),
+  'AdjustmentFormPage',
 );
 const CreateAssemblyPage = lazyPage(
   () => import('../features/inventory/assembly/CreateAssemblyPage'),
@@ -532,7 +546,10 @@ export const router = createBrowserRouter([
                     element: <CreatePurchaseOrder />,
                   },
                   { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
-                  { path: '/organizations/:orgId/sales/sales-orders', element: <SalesOrdersList /> },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders',
+                    element: <SalesOrdersList />,
+                  },
                   {
                     path: '/organizations/:orgId/sales/sales-orders/new',
                     element: <CreateSalesOrder />,
@@ -626,6 +643,18 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/inventory/assembly/new',
                     element: <CreateAssemblyPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments',
+                    element: <AdjustmentsList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/new',
+                    element: <AdjustmentFormPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/:id/edit',
+                    element: <AdjustmentFormPage />,
                   },
                   { path: '/organizations/:orgId/approvals', element: <ApprovalsListPage /> },
                   { path: '/organizations/:orgId/approvals/:id', element: <ApprovalDetailPage /> },

@@ -63,6 +63,8 @@ export function InventoryValuationDetailPage() {
         return `/organizations/${orgId}/purchases/purchase-orders/${row.sourceDocId}/edit`;
       case 'item_opening_stock':
         return `/organizations/${orgId}/items/${itemId}/opening-stock`;
+      case 'inventory_adjustment':
+        return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
       default:
         return null;
     }
@@ -342,13 +344,13 @@ export function InventoryValuationDetailPage() {
                             : ''}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                          {row.stockOnHand.toFixed(2)}
+                          {row.stockOnHand?.toFixed(2) ?? ''}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                          {row.inventoryAssetValue.toLocaleString('en-IN', {
+                          {row.inventoryAssetValue?.toLocaleString('en-IN', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
-                          })}
+                          }) ?? ''}
                         </td>
                       </tr>
                     );
