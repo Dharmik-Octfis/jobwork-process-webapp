@@ -199,7 +199,7 @@ export function TakaReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'zoho-puvi, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}

@@ -71,7 +71,7 @@ export function JobOrdersReportPage() {
     COLUMN_CATALOG.filter((col) => col.defaultVisible).map((col) => col.key),
   );
 
-  const { data: customFields = [] } = useActiveCustomFields(orgId, 'jobOrder');
+  const { data: customFields = [] } = useActiveCustomFields(orgId, 'job_order');
 
   const { data: processesPage } = useQuery({
     queryKey: ['processes', orgId],
@@ -247,7 +247,7 @@ export function JobOrdersReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'zoho-puvi, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
