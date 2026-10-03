@@ -77,8 +77,7 @@ export function InventoryValuationDetailPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily:
-          '"Open Sans", "WebFont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -299,7 +298,7 @@ export function InventoryValuationDetailPage() {
                           </td>
                         )}
                         {rowSpan > 0 && (
-                          <td style={{ ...tdStyle, verticalAlign: 'top' }} rowSpan={rowSpan}>
+                          <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }} rowSpan={rowSpan}>
                             {isSpecial ? (
                               <span style={{ color: '#059669', fontStyle: 'italic' }}>
                                 {row.transactionDetails}

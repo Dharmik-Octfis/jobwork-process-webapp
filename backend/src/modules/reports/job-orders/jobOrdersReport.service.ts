@@ -62,7 +62,11 @@ export async function getJobOrdersReport(
     }
 
     if (routeName) {
-      where.routeNameSnapshot = { contains: routeName, mode: 'insensitive' };
+      where.OR = [
+        ...(where.OR || []),
+        { routeNameSnapshot: { contains: routeName, mode: 'insensitive' } },
+        { route: { name: { contains: routeName, mode: 'insensitive' } } },
+      ];
     }
 
     if (ownership) {
@@ -126,6 +130,7 @@ export async function getJobOrdersReport(
       skip,
       take: pageSize,
       include: {
+        route: { select: { name: true } },
         steps: {
           where: { isDeleted: false },
           include: {
@@ -173,7 +178,7 @@ export async function getJobOrdersReport(
         jobOrderNumber: jo.jobOrderNumber,
         orderDate: jo.orderDate,
         targetDate: jo.targetDate,
-        route: jo.routeNameSnapshot || '-',
+        route: jo.routeNameSnapshot || jo.route?.name || '-',
         materialBelongsTo: jo.ownership === 'customer' ? 'Customer’s' : 'Ours',
         status: jo.status,
         process: stepPairs.map(p => p.process),

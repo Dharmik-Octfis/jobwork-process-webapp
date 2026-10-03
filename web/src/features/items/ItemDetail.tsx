@@ -334,7 +334,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             <Edit size={14} />
           </button>
 
-          {isInventoryTracked && item.itemType !== 'service' && (
+          {isInventoryTracked && item.itemType !== 'service' && item.itemStructure !== 'composite' && (
             <button
               type="button"
               ref={adjustStockButtonRef}
@@ -402,6 +402,24 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     Clone
+                  </div>
+                )}
+                {isInventoryTracked && item.itemType !== 'service' && item.itemStructure === 'composite' && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      setShowAdjustStock(true);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#1e293b',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    Adjust Stock
                   </div>
                 )}
                 {!isUnderApproval && !isRejected && (

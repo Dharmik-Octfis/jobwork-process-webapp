@@ -77,6 +77,8 @@ export function ReportsPage() {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
       }}
     >
       {/* Header */}
@@ -188,7 +190,8 @@ export function ReportsPage() {
             flex: 1,
             minWidth: 0,
             padding: '12px',
-            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
             background: '#f8fafc',
           }}
         >
@@ -198,6 +201,9 @@ export function ReportsPage() {
               borderRadius: '8px',
               border: '1px solid #eef0f3',
               boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
               overflow: 'hidden',
             }}
           >
@@ -254,9 +260,9 @@ export function ReportsPage() {
             </div>
 
             {/* Table — scrolls sideways on a phone instead of squashing */}
-            <div className="responsive-table-wrapper">
+            <div className="responsive-table-wrapper" style={{ flex: 1, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
+                <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
                   <tr style={{ borderBottom: '1px solid #eef0f3' }}>
                     <th
                       style={{

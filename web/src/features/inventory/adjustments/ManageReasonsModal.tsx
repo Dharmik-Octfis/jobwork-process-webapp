@@ -99,7 +99,7 @@ export function ManageReasonsModal({ orgId, isOpen, onClose, onSelect }: ManageR
   };
 
   return (
-    <Modal isOpen={isOpen} title="Manage Reasons" onClose={close} width={640}>
+    <Modal isOpen={isOpen} title="Manage Reasons" onClose={close} width={640} position="top">
       <div
         style={{
           background: '#f8fafc',

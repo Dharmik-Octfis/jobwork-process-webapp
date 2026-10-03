@@ -43,7 +43,7 @@ export function JobworkReceiptsRegisterPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
-  useRecordReportVisit(orgId, 'jobwork_receipt_register');
+  useRecordReportVisit(orgId, 'jobwork_receipt_report');
 
   const storageKey = `jobworkReceiptsState_${orgId}`;
   const initialState = useMemo(() => {
@@ -227,7 +227,7 @@ export function JobworkReceiptsRegisterPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
