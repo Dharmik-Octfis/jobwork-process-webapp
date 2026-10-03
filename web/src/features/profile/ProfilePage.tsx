@@ -1,5 +1,5 @@
 import { useAuth } from '../../providers/auth-context';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { Trash2, User, UploadCloud } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { useUpdateProfile } from '../auth/useUpdateProfile';
@@ -39,7 +39,7 @@ export function ProfilePage() {
           if (data.user.avatarUrl) {
             setLogoPreview(data.user.avatarUrl);
           }
-          toast.success('Profile picture updated');
+          notify.success('Profile picture updated');
         },
         onError: (err) => {
           setUploadError(toApiErrorMessage(err));
@@ -54,14 +54,16 @@ export function ProfilePage() {
       { firstName, lastName },
       {
         onSuccess: () => {
-          toast.success('Profile updated successfully');
+          notify.success('Profile updated successfully');
         },
       },
     );
   };
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+    <div
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}
+    >
       <header
         style={{
           padding: '0 32px',
@@ -88,205 +90,209 @@ export function ProfilePage() {
       <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
         <div style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Profile Info Card */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              marginBottom: 20,
-              paddingBottom: 16,
-              borderBottom: '1px solid #f1f5f9',
-            }}
-          >
+          <div>
             <div
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: '8px',
-                background: '#eff6ff',
-                color: '#2563eb',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                gap: 10,
+                marginBottom: 20,
+                paddingBottom: 16,
+                borderBottom: '1px solid #f1f5f9',
               }}
             >
-              <User size={18} />
-            </div>
-            <div>
-              <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#0f172a' }}>
-                Personal Profile
-              </h2>
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                Your avatar and basic account details
-              </span>
-            </div>
-          </div>
-
-          {/* Profile Picture Upload Section */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 20,
-              marginBottom: 24,
-              padding: '16px',
-              background: '#f8fafc',
-              borderRadius: '10px',
-              border: '1px solid #f1f5f9',
-            }}
-          >
-            <div
-              style={{
-                width: 68,
-                height: 68,
-                borderRadius: '50%',
-                border: '2px solid #ffffff',
-                background: '#e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-                flexShrink: 0,
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-              }}
-            >
-              {logoPreview ? (
-                <img
-                  src={logoPreview}
-                  alt="Profile Logo"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                <span style={{ fontSize: 22, fontWeight: 600, color: '#475569' }}>
-                  {(firstName?.charAt(0) || user?.firstName?.charAt(0) || 'U').toUpperCase()}
-                  {(lastName?.charAt(0) || user?.lastName?.charAt(0) || '').toUpperCase()}
-                </span>
-              )}
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <label
+              <div
                 style={{
-                  fontWeight: 600,
-                  fontSize: 13,
-                  color: '#0f172a',
-                  display: 'block',
-                  marginBottom: 4,
+                  width: 32,
+                  height: 32,
+                  borderRadius: '8px',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                Profile Picture
-              </label>
-              <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px 0', lineHeight: 1.4 }}>
-                PNG, JPG or WebP up to 2MB.
-              </p>
-              {uploadError && (
-                <p style={{ fontSize: 12, color: '#dc2626', margin: '0 0 8px 0', fontWeight: 500 }}>
-                  {uploadError}
-                </p>
-              )}
+                <User size={18} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#0f172a' }}>
+                  Personal Profile
+                </h2>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  Your avatar and basic account details
+                </span>
+              </div>
+            </div>
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept="image/*"
-                onChange={handleLogoChange}
-                style={{ display: 'none' }}
-              />
+            {/* Profile Picture Upload Section */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 20,
+                marginBottom: 24,
+                padding: '16px',
+                background: '#f8fafc',
+                borderRadius: '10px',
+                border: '1px solid #f1f5f9',
+              }}
+            >
+              <div
+                style={{
+                  width: 68,
+                  height: 68,
+                  borderRadius: '50%',
+                  border: '2px solid #ffffff',
+                  background: '#e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                }}
+              >
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt="Profile Logo"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 22, fontWeight: 600, color: '#475569' }}>
+                    {(firstName?.charAt(0) || user?.firstName?.charAt(0) || 'U').toUpperCase()}
+                    {(lastName?.charAt(0) || user?.lastName?.charAt(0) || '').toUpperCase()}
+                  </span>
+                )}
+              </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadAvatarMutation.isPending}
+              <div style={{ flex: 1 }}>
+                <label
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '7px 14px',
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    color: '#334155',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    cursor: uploadAvatarMutation.isPending ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
-                    transition: 'all 0.15s ease',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    color: '#0f172a',
+                    display: 'block',
+                    marginBottom: 4,
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#94a3b8')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#cbd5e1')}
                 >
-                  <UploadCloud size={14} color="#2563eb" />
-                  {uploadAvatarMutation.isPending ? 'Uploading...' : 'Upload Image'}
-                </button>
+                  Profile Picture
+                </label>
+                <p
+                  style={{ fontSize: 12, color: '#64748b', margin: '0 0 10px 0', lineHeight: 1.4 }}
+                >
+                  PNG, JPG or WebP up to 2MB.
+                </p>
+                {uploadError && (
+                  <p
+                    style={{ fontSize: 12, color: '#dc2626', margin: '0 0 8px 0', fontWeight: 500 }}
+                  >
+                    {uploadError}
+                  </p>
+                )}
 
-                {logoPreview && (
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  style={{ display: 'none' }}
+                />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      deleteAvatarMutation.mutate(undefined, {
-                        onSuccess: () => {
-                          setLogoPreview(null);
-                          toast.success('Profile picture removed');
-                        },
-                      });
-                    }}
-                    disabled={deleteAvatarMutation.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadAvatarMutation.isPending}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 4,
-                      background: 'none',
-                      border: 'none',
-                      color: deleteAvatarMutation.isPending ? '#94a3b8' : '#dc2626',
-                      cursor: deleteAvatarMutation.isPending ? 'not-allowed' : 'pointer',
+                      gap: 6,
+                      padding: '7px 14px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      color: '#334155',
                       fontSize: 12,
                       fontWeight: 500,
-                      padding: '6px 8px',
+                      cursor: uploadAvatarMutation.isPending ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+                      transition: 'all 0.15s ease',
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#94a3b8')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#cbd5e1')}
                   >
-                    <Trash2 size={14} /> {deleteAvatarMutation.isPending ? 'Removing...' : 'Remove'}
+                    <UploadCloud size={14} color="#2563eb" />
+                    {uploadAvatarMutation.isPending ? 'Uploading...' : 'Upload Image'}
                   </button>
-                )}
+
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteAvatarMutation.mutate(undefined, {
+                          onSuccess: () => {
+                            setLogoPreview(null);
+                            notify.success('Profile picture removed');
+                          },
+                        });
+                      }}
+                      disabled={deleteAvatarMutation.isPending}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'none',
+                        border: 'none',
+                        color: deleteAvatarMutation.isPending ? '#94a3b8' : '#dc2626',
+                        cursor: deleteAvatarMutation.isPending ? 'not-allowed' : 'pointer',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        padding: '6px 8px',
+                      }}
+                    >
+                      <Trash2 size={14} />{' '}
+                      {deleteAvatarMutation.isPending ? 'Removing...' : 'Remove'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
+
+            <form id="profile-form" onSubmit={handleSaveProfile}>
+              <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    label="First Name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                    required
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    label="Last Name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 24 }}>
+                <Input
+                  label="Email"
+                  type="email"
+                  value={user?.email || ''}
+                  disabled
+                  hint="Email is managed by organization admin."
+                />
+              </div>
+            </form>
           </div>
-
-          <form id="profile-form" onSubmit={handleSaveProfile}>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
-              <div style={{ flex: 1 }}>
-                <Input
-                  label="First Name"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="First name"
-                  required
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <Input
-                  label="Last Name"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Last name"
-                  required
-                />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <Input
-                label="Email"
-                type="email"
-                value={user?.email || ''}
-                disabled
-                hint="Email is managed by organization admin."
-              />
-            </div>
-
-          </form>
-        </div>
         </div>
       </main>
 

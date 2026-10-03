@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
+import { notify } from '../../../lib/notify';
+import { announceOpenOutcome } from './billApproval';
 import {
   Plus,
   Search,
@@ -48,6 +48,8 @@ import {
   storedLineDiscount,
 } from '../../../lib/lineDiscount';
 import { firstErrorMessage } from '../../../lib/formErrors';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
@@ -606,6 +608,9 @@ export function CreateBill() {
   const watchPaymentTerms = watch('paymentTerms');
   const watchStatus = watch('status');
 
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'bill');
+  const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
+
   const hasJobReceiptLines = watchItems?.some((item) => !!item.jobReceiptId);
 
   useEffect(() => {
@@ -723,17 +728,41 @@ export function CreateBill() {
       // an edited bill's number, status and amount show on its source PO too
       queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['record-approvals', orgId, 'bills'] });
+      // An Open bill being corrected was already open; only a first opening is news.
+      if (data && !isOpenBill) announceOpenOutcome(data);
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
-    // The server's refusal says exactly why ("…already been used by challan JI-…"),
-    // and until this toast it only reached the console.
-    onError: (error: AxiosError<{ message?: string }>) => {
-      toast.error(toApiErrorMessage(error));
-    },
+    // No onError: the global mutation handler toasts the server's refusal (app/queryClient.ts).
   });
 
   const onSubmit = (data: CreateBillData) => {
+    let hasErrors = false;
+    const newLocalCustomFieldErrors: Record<string, string> = {};
+
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = data.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newLocalCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setLocalCustomFieldErrors(newLocalCustomFieldErrors);
+
+    if (hasErrors) {
+      notify.error('Please fill all required custom fields.');
+      return;
+    }
+
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
@@ -844,7 +873,7 @@ export function CreateBill() {
         <form
           id="create-bill-form"
           onSubmit={handleSubmit(onSubmit, (errs) =>
-            toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+            notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
           )}
           noValidate
         >
@@ -1072,6 +1101,18 @@ export function CreateBill() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Custom Fields Section */}
+          <div style={{ marginBottom: '32px' }}>
+            <CustomFieldsSection
+              orgId={orgId!}
+              entityType="bill"
+              values={(watch('customFields') as Record<string, unknown>) ?? {}}
+              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+              errors={localCustomFieldErrors}
+              applyDefaults={!isEdit && !isFromPo && !isFromJobReceipt}
+            />
           </div>
 
           {/* Items Table Section */}

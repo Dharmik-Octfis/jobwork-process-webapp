@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { Settings } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
@@ -329,11 +329,11 @@ export function JobOrderForm({
 
     const missing = steps.findIndex((s) => !s.processId);
     if (missing >= 0) {
-      toast.error(`Step ${missing + 1} needs a process.`);
+      notify.error(`Step ${missing + 1} needs a process.`);
       return;
     }
     if (ownership === 'customer' && !ownerPartyId) {
-      toast.error('Customer-owned work needs the customer it belongs to.');
+      notify.error('Customer-owned work needs the customer it belongs to.');
       return;
     }
     // 🔴 At least one item, somewhere. A job order that consumes nothing has
@@ -341,13 +341,13 @@ export function JobOrderForm({
     // Issue dialog with no sections in it.
     const empty = steps.findIndex((s) => (s.inputs ?? []).length === 0);
     if (empty >= 0) {
-      toast.error(`Step ${empty + 1} consumes nothing. Add at least one item to it.`);
+      notify.error(`Step ${empty + 1} consumes nothing. Add at least one item to it.`);
       return;
     }
 
     const emptyOutput = steps.findIndex((s) => (s.outputs ?? []).length === 0);
     if (emptyOutput >= 0) {
-      toast.error(`Step ${emptyOutput + 1} produces nothing.`);
+      notify.error(`Step ${emptyOutput + 1} produces nothing.`);
       return;
     }
     setLocalError(null);
@@ -569,10 +569,12 @@ export function JobOrderForm({
                       onChange={(value) => setOwnerPartyId(value || null)}
                       options={[
                         { value: '', label: 'Select a customer…' },
-                        ...customers.filter(c => c.status !== 'inactive' || c.id === ownerPartyId).map((c) => ({
-                          value: c.id,
-                          label: c.companyName || c.contactName,
-                        })),
+                        ...customers
+                          .filter((c) => c.status !== 'inactive' || c.id === ownerPartyId)
+                          .map((c) => ({
+                            value: c.id,
+                            label: c.companyName || c.contactName,
+                          })),
                       ]}
                       ariaLabel="Owning customer"
                       fullWidth
@@ -608,6 +610,21 @@ export function JobOrderForm({
             </div>
           </section>
 
+          {customFieldDefs.length > 0 && (
+            <section style={{ maxWidth: 900, marginBottom: 32 }}>
+              <h2 style={sectionHeading}>Custom Fields</h2>
+              <CustomFieldsSection
+                orgId={orgId!}
+                entityType="job_order"
+                values={customFields}
+                onChange={setCustomFields}
+                errors={fieldErrors}
+                applyDefaults={!isEdit}
+                layout="rows"
+              />
+            </section>
+          )}
+
           <section style={{ marginBottom: 32 }}>
             <h2 style={sectionHeading}>Steps</h2>
 
@@ -630,23 +647,6 @@ export function JobOrderForm({
               unassignedProcessorLabel="Decide when issuing"
             />
           </section>
-
-          {customFieldDefs.length > 0 && (
-            <section style={{ maxWidth: 900, marginBottom: 32 }}>
-              <h2 style={sectionHeading}>Custom Fields</h2>
-              {/* Same wrapping grid as the Order section above, so custom fields read
-              as more fields on this form rather than a panel bolted to the end. */}
-              <CustomFieldsSection
-                orgId={orgId!}
-                entityType="job_order"
-                values={customFields}
-                onChange={setCustomFields}
-                errors={fieldErrors}
-                applyDefaults={!isEdit}
-                layout="grid"
-              />
-            </section>
-          )}
 
           {isNumberConfigOpen && (
             <JobOrderNumberConfigModal

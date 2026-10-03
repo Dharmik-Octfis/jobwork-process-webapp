@@ -8,7 +8,10 @@ import {
   drawLayers,
   recordDraws,
   restoreDraws,
+  revalueLayers,
+  unrevalueLayers,
   type LayerDraw,
+  type LayerRevaluation,
   type LayerScope,
 } from './costLayers.ts';
 
@@ -66,6 +69,8 @@ export const MOVEMENT_TYPES = [
    * pieces carry the true cost of the failures (§5.5). */
   'scrap',
   'adjustment',
+  /** Value only, no quantity: a value adjustment (`postRevaluation`). */
+  'revaluation',
   /** The opposite of an earlier row. The ONLY way to undo anything here. */
   'reversal',
 ] as const;
@@ -557,6 +562,132 @@ export async function postTransfer(
   const out = await postCosted(tx, outbound, batches);
   const into = await postCosted(tx, inbound, batches, { transferDraws: out.draws });
   return { out: out.entry, in: into.entry };
+}
+
+interface RevaluationMeta {
+  organizationId: string;
+  locationId: string;
+  sourceDocType: string;
+  sourceDocId: string;
+  sourceDocLineId?: string | null;
+  remarks?: string | null;
+  postedAt: Date;
+  userId?: string | null;
+}
+
+/**
+ * 🔴 CHANGE WHAT STOCK ON HAND IS WORTH — the only writer of value-only rows
+ * (docs/STOCK_ADJUSTMENT_VALUE_PLAN.md). `postMovement` keeps refusing a row with
+ * no quantity; this is the one deliberate exception, and it moves no stock.
+ *
+ * One row per layer changed, `stock_effect = 'accounting'` so quantity reports
+ * never see it, carrying the layer's batch and the package its inward row named.
+ */
+export async function postRevaluation(
+  tx: TenantClient,
+  input: RevaluationMeta & { itemId: string; change: Prisma.Decimal },
+): Promise<{ changes: LayerRevaluation[]; value: Prisma.Decimal }> {
+  const changes = await revalueLayers(
+    tx,
+    { organizationId: input.organizationId, itemId: input.itemId, locationId: input.locationId },
+    input.change,
+  );
+
+  const batches = await tx.batch.findMany({
+    where: {
+      id: { in: [...new Set(changes.map((row) => row.batchId))] },
+      organizationId: input.organizationId,
+    },
+    select: { id: true, itemId: true, uomId: true, ownership: true, ownerPartyId: true },
+  });
+  const batchOf = new Map(batches.map((row) => [row.id, row]));
+
+  let value = ZERO;
+  for (const row of changes) {
+    const batch = batchOf.get(row.batchId);
+    if (!batch || batch.ownership !== 'own') throw ApiError.notFound('Batch not found.');
+    const delta = row.valueAfter.minus(row.valueBefore);
+    const entry = await tx.stockLedgerEntry.create({
+      data: {
+        organizationId: input.organizationId,
+        itemId: batch.itemId,
+        batchId: batch.id,
+        batchUnitId: row.batchUnitId,
+        locationId: input.locationId,
+        ownership: batch.ownership,
+        ownerPartyId: batch.ownerPartyId,
+        uomId: batch.uomId,
+        qtyIn: ZERO,
+        qtyOut: ZERO,
+        valueIn: delta.isPositive() ? delta : ZERO,
+        valueOut: delta.isNegative() ? delta.abs() : ZERO,
+        movementType: 'revaluation',
+        stockEffect: 'accounting',
+        sourceDocType: input.sourceDocType,
+        sourceDocId: input.sourceDocId,
+        sourceDocLineId: input.sourceDocLineId ?? null,
+        remarks: input.remarks ?? null,
+        postedAt: input.postedAt,
+        createdBy: input.userId ?? null,
+      },
+      select: { id: true },
+    });
+    await tx.stockLayerRevaluation.create({
+      data: {
+        organizationId: input.organizationId,
+        layerId: row.layerId,
+        ledgerEntryId: entry.id,
+        qty: row.qty,
+        valueBefore: row.valueBefore,
+        valueAfter: row.valueAfter,
+        // The clock, like a draw's — see `recordDraws`.
+        createdAt: new Date(),
+      },
+    });
+    value = value.plus(delta);
+  }
+  return { changes, value };
+}
+
+/** Undo a value adjustment's rows: the layers get back exactly what they were given. */
+export async function reverseRevaluation(
+  tx: TenantClient,
+  organizationId: string,
+  ledgerEntryIds: readonly string[],
+  meta: Omit<RevaluationMeta, 'organizationId' | 'locationId' | 'sourceDocLineId'>,
+) {
+  const undone = await unrevalueLayers(tx, organizationId, ledgerEntryIds);
+  const rows = await tx.stockLedgerEntry.findMany({
+    where: { organizationId, id: { in: undone.map((row) => row.ledgerEntryId) } },
+  });
+  const rowOf = new Map(rows.map((row) => [row.id, row]));
+  for (const { ledgerEntryId, change } of undone) {
+    const row = rowOf.get(ledgerEntryId)!;
+    await tx.stockLedgerEntry.create({
+      data: {
+        organizationId,
+        itemId: row.itemId,
+        batchId: row.batchId,
+        batchUnitId: row.batchUnitId,
+        locationId: row.locationId,
+        ownership: row.ownership,
+        ownerPartyId: row.ownerPartyId,
+        uomId: row.uomId,
+        qtyIn: ZERO,
+        qtyOut: ZERO,
+        valueIn: change.isNegative() ? change.abs() : ZERO,
+        valueOut: change.isPositive() ? change : ZERO,
+        movementType: 'reversal',
+        stockEffect: 'accounting',
+        sourceDocType: meta.sourceDocType,
+        sourceDocId: meta.sourceDocId,
+        sourceDocLineId: row.sourceDocLineId,
+        remarks: meta.remarks ?? null,
+        postedAt: meta.postedAt,
+        createdBy: meta.userId ?? null,
+      },
+    });
+  }
 }
 
 /**

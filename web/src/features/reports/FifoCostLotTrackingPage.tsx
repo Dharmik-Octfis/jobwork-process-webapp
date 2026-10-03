@@ -181,7 +181,9 @@ export function FifoCostLotTrackingPage() {
   }
 
   const locationOptions =
-    locations?.filter((loc) => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })) || [];
+    locations
+      ?.filter((loc) => isOwnLocation(loc))
+      .map((loc) => ({ label: loc.name, value: loc.id })) || [];
 
   const locationName = locations?.find((loc) => loc.id === locationId)?.name;
 
@@ -306,6 +308,9 @@ export function FifoCostLotTrackingPage() {
       case 'job_receipt':
         url = `/organizations/${orgId}/jobwork/receipts?id=${docId}`;
         break;
+      case 'inventory_adjustment':
+        url = `/organizations/${orgId}/inventory/adjustments?id=${docId}`;
+        break;
       default:
         return <span style={{ color: '#2563eb' }}>{label}</span>;
     }
@@ -351,7 +356,7 @@ export function FifoCostLotTrackingPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -489,7 +494,6 @@ export function FifoCostLotTrackingPage() {
               )}
               triggerStyle={filterTriggerStyle}
               style={{ width: 'max-content', minWidth: '220px' }}
-              dropdownWidth={300}
             />
 
             <SearchableSelect

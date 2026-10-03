@@ -14,7 +14,7 @@ interface ModalProps {
    * scrolls off a long grid. */
   footer?: ReactNode;
   width?: number | string;
-  position?: 'center' | 'right' | 'fullScreen';
+  position?: 'center' | 'right' | 'fullScreen' | 'top';
 }
 
 /**
@@ -192,7 +192,7 @@ export function Modal({
         display: 'flex',
         alignItems: position === 'right' || position === 'center' ? 'center' : 'flex-start',
         justifyContent: position === 'right' ? 'flex-end' : 'center',
-        padding: position === 'right' ? '16px' : position === 'center' ? '24px 16px' : '0px',
+        padding: position === 'right' ? '16px' : position === 'center' ? '24px 16px' : position === 'top' ? '0 16px' : '0px',
         zIndex: 1100,
       }}
       // Clicking the backdrop closes; clicking inside must not bubble up to it.
@@ -208,7 +208,7 @@ export function Modal({
         tabIndex={-1}
         style={{
           background: '#fff',
-          borderRadius: position === 'fullScreen' ? 0 : position === 'right' ? 8 : '0 0 6px 6px',
+          borderRadius: position === 'fullScreen' ? 0 : position === 'right' ? 8 : position === 'top' ? '0 0 8px 8px' : 8,
           width: '100%',
           maxWidth: position === 'fullScreen' ? '100%' : width,
           boxShadow: position === 'fullScreen' ? 'none' : '0 12px 40px rgba(15, 23, 42, 0.25)',
@@ -217,7 +217,7 @@ export function Modal({
           maxHeight:
             position === 'right'
               ? 'calc(100vh - 32px)'
-              : position === 'center'
+              : position === 'center' || position === 'top'
                 ? 'calc(100vh - 48px)'
                 : '100vh',
           height:

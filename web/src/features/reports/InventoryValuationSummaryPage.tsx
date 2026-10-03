@@ -312,7 +312,7 @@ export function InventoryValuationSummaryPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -787,7 +787,7 @@ export function InventoryValuationSummaryPage() {
                         return (
                           <td
                             key={colKey}
-                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                           >
                             {totalQty.toFixed(2)}
                           </td>
@@ -800,7 +800,7 @@ export function InventoryValuationSummaryPage() {
                             style={{
                               ...tdStyle,
                               textAlign: 'right',
-                              fontWeight: 700,
+                              fontWeight: 600,
                               color: '#111827',
                             }}
                           >

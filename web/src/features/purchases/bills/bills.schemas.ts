@@ -73,6 +73,8 @@ export const billSchema = z.object({
   termsAndConditions: z.string().nullable().optional(),
   attachments: z.any().nullable().optional(),
   status: z.string().nullable().optional(),
+  // pending | approved | rejected — never in `status`, which is Draft | Open.
+  approvalStatus: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
   lineItems: z.array(billItemSchema).nullable().optional(),
   createdAt: z.string().nullable().optional(),

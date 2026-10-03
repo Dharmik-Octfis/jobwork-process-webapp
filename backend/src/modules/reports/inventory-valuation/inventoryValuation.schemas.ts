@@ -52,8 +52,10 @@ export interface ItemLedgerRow {
   quantity: number;
   unitCost: number | null;
   totalCost: number;
-  stockOnHand: number;
-  inventoryAssetValue: number;
+  /** Null on the first row of a value adjustment's pair: the running figures
+   * would otherwise show stock that was never there between the two rows. */
+  stockOnHand: number | null;
+  inventoryAssetValue: number | null;
   isOpeningStock?: boolean;
   isClosingStock?: boolean;
   sourceDocType?: string | null;

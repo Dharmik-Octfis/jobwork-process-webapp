@@ -106,9 +106,18 @@ export async function createSalesOrder(
 
     if (seq) {
       if (soData.soNumber.startsWith(seq.prefix)) {
+        const suffixPart = soData.soNumber.slice(seq.prefix.length);
+        const match = suffixPart.match(/^0*(\d+)/);
+        let newNextNumber = seq.nextNumber + 1;
+        if (match && match[1]) {
+          const extracted = parseInt(match[1], 10);
+          if (!isNaN(extracted) && extracted >= seq.nextNumber) {
+            newNextNumber = extracted + 1;
+          }
+        }
         await tx.numberSequence.update({
           where: { id: seq.id },
-          data: { nextNumber: seq.nextNumber + 1 },
+          data: { nextNumber: newNextNumber },
         });
       }
     }

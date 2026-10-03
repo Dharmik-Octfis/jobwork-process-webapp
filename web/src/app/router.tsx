@@ -154,6 +154,42 @@ const JobOrderLossReportPage = lazyPage(
   () => import('../features/reports/JobOrderLossReportPage'),
   'JobOrderLossReportPage',
 );
+const BatchReportPage = lazyPage(
+  () => import('../features/reports/BatchReportPage'),
+  'BatchReportPage',
+);
+const TakaReportPage = lazyPage(
+  () => import('../features/reports/TakaReportPage'),
+  'TakaReportPage',
+);
+const JobworkChallansRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkChallansRegisterPage'),
+  'JobworkChallansRegisterPage',
+);
+const JobworkReceiptsRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkReceiptsRegisterPage'),
+  'JobworkReceiptsRegisterPage',
+);
+const JobOrdersReportPage = lazyPage(
+  () => import('../features/reports/JobOrdersReportPage'),
+  'JobOrdersReportPage',
+);
+const CustomersReportPage = lazyPage(
+  () => import('../features/reports/CustomersReportPage'),
+  'CustomersReportPage',
+);
+const VendorsReportPage = lazyPage(
+  () => import('../features/reports/VendorsReportPage'),
+  'VendorsReportPage',
+);
+const PurchaseOrdersReportPage = lazyPage(
+  () => import('../features/reports/PurchaseOrdersReportPage'),
+  'PurchaseOrdersReportPage',
+);
+const BillsReportPage = lazyPage(
+  () => import('../features/reports/BillsReportPage'),
+  'BillsReportPage',
+);
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
   'PurchasesPage',
@@ -215,9 +251,15 @@ const EditCustomer = lazyPage(
   () => import('../features/sales/customers/EditCustomer'),
   'EditCustomer',
 );
-const SalesOrdersList = lazyPage(() => import('../features/sales/sales-orders/SalesOrdersList'), 'SalesOrdersList');
-const CreateSalesOrder = lazyPage(() => import('../features/sales/sales-orders/CreateSalesOrder'), 'CreateSalesOrder');
-  const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
+const SalesOrdersList = lazyPage(
+  () => import('../features/sales/sales-orders/SalesOrdersList'),
+  'SalesOrdersList',
+);
+const CreateSalesOrder = lazyPage(
+  () => import('../features/sales/sales-orders/CreateSalesOrder'),
+  'CreateSalesOrder',
+);
+const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
   () => import('../features/jobwork/processes/ProcessesList'),
   'ProcessesList',
@@ -297,6 +339,14 @@ const EditCompositeItemPage = lazyPage(
 const AssemblyList = lazyPage(
   () => import('../features/inventory/assembly/AssemblyList'),
   'AssemblyList',
+);
+const AdjustmentsList = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentsList'),
+  'AdjustmentsList',
+);
+const AdjustmentFormPage = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentFormPage'),
+  'AdjustmentFormPage',
 );
 const CreateAssemblyPage = lazyPage(
   () => import('../features/inventory/assembly/CreateAssemblyPage'),
@@ -451,6 +501,42 @@ export const router = createBrowserRouter([
                     path: '/organizations/:orgId/reports/job-order-loss',
                     element: <JobOrderLossReportPage />,
                   },
+                  {
+                    path: '/organizations/:orgId/reports/batch',
+                    element: <BatchReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/taka',
+                    element: <TakaReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-challans',
+                    element: <JobworkChallansRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-receipts',
+                    element: <JobworkReceiptsRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/job-orders',
+                    element: <JobOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/customers',
+                    element: <CustomersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/vendors',
+                    element: <VendorsReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/purchase-orders',
+                    element: <PurchaseOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/bills',
+                    element: <BillsReportPage />,
+                  },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {
@@ -474,7 +560,10 @@ export const router = createBrowserRouter([
                     element: <CreatePurchaseOrder />,
                   },
                   { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
-                  { path: '/organizations/:orgId/sales/sales-orders', element: <SalesOrdersList /> },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders',
+                    element: <SalesOrdersList />,
+                  },
                   {
                     path: '/organizations/:orgId/sales/sales-orders/new',
                     element: <CreateSalesOrder />,
@@ -568,6 +657,18 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/inventory/assembly/new',
                     element: <CreateAssemblyPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments',
+                    element: <AdjustmentsList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/new',
+                    element: <AdjustmentFormPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/:id/edit',
+                    element: <AdjustmentFormPage />,
                   },
                   { path: '/organizations/:orgId/approvals', element: <ApprovalsListPage /> },
                   { path: '/organizations/:orgId/approvals/:id', element: <ApprovalDetailPage /> },

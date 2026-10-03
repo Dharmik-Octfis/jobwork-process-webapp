@@ -63,6 +63,8 @@ export function InventoryValuationDetailPage() {
         return `/organizations/${orgId}/purchases/purchase-orders/${row.sourceDocId}/edit`;
       case 'item_opening_stock':
         return `/organizations/${orgId}/items/${itemId}/opening-stock`;
+      case 'inventory_adjustment':
+        return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
       default:
         return null;
     }
@@ -75,8 +77,7 @@ export function InventoryValuationDetailPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily:
-          '"Open Sans", "WebFont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -297,7 +298,7 @@ export function InventoryValuationDetailPage() {
                           </td>
                         )}
                         {rowSpan > 0 && (
-                          <td style={{ ...tdStyle, verticalAlign: 'top' }} rowSpan={rowSpan}>
+                          <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }} rowSpan={rowSpan}>
                             {isSpecial ? (
                               <span style={{ color: '#059669', fontStyle: 'italic' }}>
                                 {row.transactionDetails}
@@ -342,13 +343,13 @@ export function InventoryValuationDetailPage() {
                             : ''}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                          {row.stockOnHand.toFixed(2)}
+                          {row.stockOnHand?.toFixed(2) ?? ''}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
-                          {row.inventoryAssetValue.toLocaleString('en-IN', {
+                          {row.inventoryAssetValue?.toLocaleString('en-IN', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
-                          })}
+                          }) ?? ''}
                         </td>
                       </tr>
                     );

@@ -1,0 +1,105 @@
+import type { Request, Response } from 'express';
+import { z } from 'zod';
+import { ApiError } from '../../../lib/apiError.js';
+import { sendSuccess } from '../../../lib/apiResponse.js';
+import { listQuerySchema } from '../../../lib/pagination.js';
+import { adjustmentsService } from './adjustments.service.js';
+
+// A non-uuid would reach Postgres as a cast error and surface as a 500.
+function adjustmentId(req: Request): string {
+  const parsed = z.string().uuid().safeParse(req.params.id);
+  if (!parsed.success) throw ApiError.notFound('Stock adjustment not found.');
+  return parsed.data;
+}
+
+/** What a save or an Adjust ended as, in the words the person needs. */
+function outcomeMessage(status: string): string {
+  if (status === 'adjusted') return 'Stock adjusted.';
+  if (status === 'pending_approval')
+    return 'Sent for approval. Stock will be adjusted once approved.';
+  return 'Draft saved.';
+}
+
+export const getAdjustments = async (req: Request, res: Response) => {
+  const itemId = z.string().uuid().optional().safeParse(req.query.itemId);
+  if (!itemId.success) throw ApiError.badRequest('That is not a valid item.');
+  const opts = { ...listQuerySchema.parse(req.query), itemId: itemId.data };
+  // Counting is opt-in (`?count=true`) — the "Total count: view" link.
+  const [results, count] = await Promise.all([
+    adjustmentsService.findManyAdjustments(req.tenantId!, opts),
+    req.query.count ? adjustmentsService.countAdjustments(req.tenantId!, opts) : undefined,
+  ]);
+  sendSuccess(res, { ...results, count });
+};
+
+const fifoCostQuerySchema = z.object({
+  itemId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  quantity: z.coerce.number().positive(),
+});
+
+export const getFifoCost = async (req: Request, res: Response) => {
+  const query = fifoCostQuerySchema.safeParse(req.query);
+  if (!query.success) throw ApiError.badRequest('Select an item, a location and a quantity.');
+  sendSuccess(res, await adjustmentsService.previewDecreaseCost(req.tenantId!, query.data));
+};
+
+const currentValuesQuerySchema = z.object({
+  locationId: z.string().uuid(),
+  // `itemIds=a,b,c` — one request for every row on the form.
+  itemIds: z
+    .string()
+    .transform((value) => value.split(',').filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1).max(200)),
+});
+
+export const getCurrentValues = async (req: Request, res: Response) => {
+  const query = currentValuesQuerySchema.safeParse(req.query);
+  if (!query.success) throw ApiError.badRequest('Select a location and at least one item.');
+  sendSuccess(res, await adjustmentsService.currentValues(req.tenantId!, query.data));
+};
+
+export const getAdjustmentById = async (req: Request, res: Response) => {
+  sendSuccess(res, await adjustmentsService.getAdjustment(req.tenantId!, adjustmentId(req)));
+};
+
+export const createAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.createAdjustment(
+    req.tenantId!,
+    req.user!.id,
+    req.body,
+  );
+  sendSuccess(res, adjustment, outcomeMessage(adjustment.status), 201);
+};
+
+export const updateAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.updateAdjustment(
+    req.tenantId!,
+    adjustmentId(req),
+    req.user!.id,
+    req.body,
+  );
+  sendSuccess(res, adjustment, outcomeMessage(adjustment.status));
+};
+
+export const adjustAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.adjustAdjustment(
+    req.tenantId!,
+    adjustmentId(req),
+    req.user!.id,
+  );
+  sendSuccess(res, adjustment, outcomeMessage(adjustment.status));
+};
+
+export const removeAdjustment = async (req: Request, res: Response) => {
+  const adjustment = await adjustmentsService.removeAdjustment(
+    req.tenantId!,
+    adjustmentId(req),
+    req.user!.id,
+  );
+  sendSuccess(
+    res,
+    adjustment,
+    adjustment.deleted ? 'Adjustment deleted.' : 'Adjustment cancelled.',
+  );
+};

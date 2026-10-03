@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import {
   Plus,
   Trash2,
@@ -57,6 +57,8 @@ import {
   storedLineDiscount,
 } from '../../../lib/lineDiscount';
 import { firstErrorMessage } from '../../../lib/formErrors';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
@@ -253,6 +255,9 @@ export function CreatePurchaseOrder() {
     element: HTMLElement;
     stockRows: ItemOpeningStockLocationRowDto[];
   } | null>(null);
+
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'purchase_order');
+  const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['purchaseOrder', orgId, poIdToFetch],
@@ -561,6 +566,31 @@ export function CreatePurchaseOrder() {
   });
 
   const onSubmit = (data: CreatePurchaseOrderData) => {
+    let hasErrors = false;
+    const newLocalCustomFieldErrors: Record<string, string> = {};
+
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = data.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newLocalCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setLocalCustomFieldErrors(newLocalCustomFieldErrors);
+
+    if (hasErrors) {
+      notify.error('Please fill all required custom fields.');
+      return;
+    }
+
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
@@ -665,7 +695,7 @@ export function CreatePurchaseOrder() {
         <form
           id="create-po-form"
           onSubmit={handleSubmit(onSubmit, (errs) =>
-            toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+            notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
           )}
           noValidate
         >
@@ -1192,6 +1222,18 @@ export function CreatePurchaseOrder() {
                 style={searchableSelectStyle}
               />
             </div>
+          </div>
+
+          {/* Custom Fields Section */}
+          <div style={{ marginBottom: '32px' }}>
+            <CustomFieldsSection
+              orgId={orgId!}
+              entityType="purchase_order"
+              values={(watch('customFields') as Record<string, unknown>) ?? {}}
+              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+              errors={localCustomFieldErrors}
+              applyDefaults={!isEdit && !isClone}
+            />
           </div>
 
           {/* Items Table Section */}

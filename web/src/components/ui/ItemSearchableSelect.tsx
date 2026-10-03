@@ -38,7 +38,7 @@ export function ItemSearchableSelect({
   triggerStyle,
   className,
   dropdownWidth,
-  portal = false,
+  portal = true,
   filter = 'active',
   renderValue,
   keepOpenOnSelect = false,
@@ -76,7 +76,7 @@ export function ItemSearchableSelect({
     queryFn: ({ pageParam }) =>
       itemsApi.getItems(orgId, {
         search: debouncedSearch || undefined,
-        perPage: 15,
+        perPage: 10,
         page: pageParam,
         filter: filter || 'active',
       }),
@@ -88,13 +88,13 @@ export function ItemSearchableSelect({
   });
 
   const fetchedOptions = useMemo(() => {
-    let options = itemsData?.pages.flatMap((page) => page.results) || [];
+    const options = itemsData?.pages.flatMap((page) => page.results) || [];
     // Only active items should be available in dropdowns
     return options.filter(
       (opt) =>
         opt.isActive !== false &&
-        !(opt as any).isPendingApproval &&
-        (opt as any).approvalStatus !== 'Pending Approval',
+        !(opt as { isPendingApproval?: boolean }).isPendingApproval &&
+        (opt as { approvalStatus?: string }).approvalStatus !== 'Pending Approval',
     );
   }, [itemsData]);
 
@@ -377,7 +377,7 @@ export function ItemSearchableSelect({
                 borderRadius: 'var(--radius-md)',
                 boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
                 zIndex: 1000,
-                maxHeight: portal ? undefined : 300,
+                maxHeight: portal ? 'inherit' : 300,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',

@@ -1,6 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
 import { fetchBills, fetchBillCount, deleteBill } from './bills.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
@@ -19,6 +17,7 @@ import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { formatDate } from '../../../lib/formatDate';
 import type { Bill } from './bills.schemas';
+import { APPROVAL_LABELS } from './billApproval';
 
 function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []): string {
   if (key === 'paymentTerms') {
@@ -31,6 +30,9 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
   }
   if (key === 'vendor') {
     return po.vendor?.contactName || '-';
+  }
+  if (key === 'approvalStatus') {
+    return po.approvalStatus ? (APPROVAL_LABELS[po.approvalStatus] ?? po.approvalStatus) : '-';
   }
   if (key === 'totalAmount' || key === 'total') {
     return `₹${Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(2)}`;
@@ -98,11 +100,8 @@ export function BillsList() {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       setPoToDelete(null);
     },
-    // A bill whose stock was used is refused, naming the document — say so.
-    onError: (error) => {
-      setPoToDelete(null);
-      toast.error(toApiErrorMessage(error));
-    },
+    // The refusal (stock already used, naming the document) is toasted globally.
+    onError: () => setPoToDelete(null),
   });
 
   const handleDeleteSelected = async () => {
@@ -346,6 +345,7 @@ export function BillsList() {
                           </span>
                           <span style={{ fontSize: '12px', color: '#64748b' }}>
                             {renderBillCell(po, 'status', paymentTerms)}
+                            {po.approvalStatus && ` · ${renderBillCell(po, 'approvalStatus')}`}
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>

@@ -1,0 +1,33 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-bottom: 1px solid #eef0f3;
+  font-size: 13px;
+}
+
+.row:hover {
+  background: #f8fafc;
+}
+
+/* Revealed on hover, and on focus so Tab still reaches them. */
+.actions {
+  display: flex;
+  align-items: center;
+  visibility: hidden;
+}
+
+.row:hover .actions,
+.row:focus-within .actions,
+.actions.pinned {
+  visibility: visible;
+}
+
+/* A touch screen has no hover to reveal them with. */
+@media (hover: none) {
+  .actions {
+    visibility: visible;
+  }
+}

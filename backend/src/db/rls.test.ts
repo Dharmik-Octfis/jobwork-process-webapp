@@ -69,6 +69,8 @@ const TENANT_TABLES = [
   // would notice its policy going missing.
   'stock_cost_layers',
   'stock_layer_draws',
+  // What a value adjustment did to each layer, 20261002120013_value_adjustment.
+  'stock_layer_revaluations',
   // The optional level below a batch — a taka/roll/bale — added in
   // 20260901120700_add_batch_units. It carries its own `organization_id`
   // (denormalised from the parent batch) precisely so it can hold its own
@@ -142,6 +144,14 @@ const TENANT_TABLES = [
   'approval_request_approvers',
   'approval_history',
   'approval_action_executions',
+  // Stock adjustments, added in 20261002051832_add_stock_adjustments, and their
+  // lines in 20261002063459_stock_adjustment_lines. All three carry their own
+  // `organization_id` (direct form).
+  'stock_adjustments',
+  'stock_adjustment_lines',
+  'stock_adjustment_batches',
+  // 20261003050033_stock_adjustment_reasons — direct form.
+  'stock_adjustment_reasons',
   // Integrations (Zoho Books)
   'zoho_integrations',
 ] as const;

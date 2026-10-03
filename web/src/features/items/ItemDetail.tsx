@@ -1,6 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
@@ -25,6 +23,7 @@ import { patchListRow, releaseListRow } from '../../hooks/useListRowRetention';
 import { RecordApprovalBanner } from '../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../approvals/components/RecordApprovalHistoryTimeline';
 import { useRecordApproval } from '../approvals/useRecordApproval';
+import { AdjustStockPanel } from '../inventory/adjustments/AdjustStockPanel';
 
 interface ItemDetailProps {
   itemId: string;
@@ -36,9 +35,24 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'items', itemId);
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'items',
+    itemId,
+  );
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAdjustStock, setShowAdjustStock] = useState(false);
+  // Closing the Adjust Stock panel puts focus back on the button that opened it.
+  const adjustStockButtonRef = useRef<HTMLButtonElement>(null);
+  const wasAdjustingStock = useRef(false);
+  useEffect(() => {
+    if (showAdjustStock) wasAdjustingStock.current = true;
+    else if (wasAdjustingStock.current) {
+      wasAdjustingStock.current = false;
+      adjustStockButtonRef.current?.focus();
+    }
+  }, [showAdjustStock]);
   const [activeTab, setActiveTab] = useState('Overview');
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
@@ -58,10 +72,14 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
+  // Approval state rides on the item payload without being part of `Item`.
+  const approval = item as
+    (Item & { approvalStatus?: string; status?: string; isPendingApproval?: boolean }) | undefined;
+
   const isRejected = Boolean(
     isApprovalRejected ||
-    (item as any)?.approvalStatus === 'REJECTED' ||
-    (item as any)?.status?.toLowerCase() === 'rejected',
+    approval?.approvalStatus === 'REJECTED' ||
+    approval?.status?.toLowerCase() === 'rejected',
   );
 
   const isInventoryTracked = item?.trackInventory !== false;
@@ -162,7 +180,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       onClose();
     },
-    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const toggleActiveMutation = useMutation({
@@ -209,6 +226,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     );
   }
 
+  // In place of the overview, not over it: the item list stays beside it.
+  if (showAdjustStock && orgId && item.id) {
+    return (
+      <AdjustStockPanel
+        orgId={orgId}
+        item={{ ...item, id: item.id }}
+        onClose={() => setShowAdjustStock(false)}
+      />
+    );
+  }
+
   return (
     <div
       style={{
@@ -231,11 +259,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             </h2>
             <span
               style={{
-                background: isUnderApproval || (item as any)?.isPendingApproval
-                  ? '#f59e0b'
-                  : item.isActive !== false
-                  ? '#3b82f6'
-                  : '#94a3b8',
+                background:
+                  isUnderApproval || approval?.isPendingApproval
+                    ? '#f59e0b'
+                    : item.isActive !== false
+                      ? '#3b82f6'
+                      : '#94a3b8',
                 color: 'white',
                 fontSize: '11px',
                 padding: '2px 8px',
@@ -244,11 +273,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 marginTop: '4px',
               }}
             >
-              {isUnderApproval || (item as any)?.isPendingApproval
+              {isUnderApproval || approval?.isPendingApproval
                 ? 'Pending Approval'
                 : item.isActive !== false
-                ? 'Active'
-                : 'Inactive'}
+                  ? 'Active'
+                  : 'Inactive'}
             </span>
           </div>
         </div>
@@ -305,6 +334,27 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             <Edit size={14} />
           </button>
 
+          {isInventoryTracked && item.itemType !== 'service' && item.itemStructure !== 'composite' && (
+            <button
+              type="button"
+              ref={adjustStockButtonRef}
+              onClick={() => setShowAdjustStock(true)}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                background: '#186337',
+                color: 'white',
+                borderRadius: 4,
+                fontWeight: 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Adjust Stock
+            </button>
+          )}
+
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
               onClick={() => setIsMoreOpen(!isMoreOpen)}
@@ -352,6 +402,24 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     Clone
+                  </div>
+                )}
+                {isInventoryTracked && item.itemType !== 'service' && item.itemStructure === 'composite' && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      setShowAdjustStock(true);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#1e293b',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    Adjust Stock
                   </div>
                 )}
                 {!isUnderApproval && !isRejected && (
@@ -447,12 +515,18 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             organizationId={orgId}
             moduleId="items"
             recordId={itemId}
-            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] })}
+            onActionComplete={() =>
+              queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] })
+            }
           />
         )}
 
         {effectiveActiveTab === 'Approvals' ? (
-          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="items" recordId={itemId} />
+          <RecordApprovalHistoryTimeline
+            organizationId={orgId!}
+            moduleId="items"
+            recordId={itemId}
+          />
         ) : effectiveActiveTab === 'History' ? (
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
@@ -618,235 +692,235 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     gap: '20px',
                   }}
                 >
-                {/* Opening Stock Header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Building2 size={16} color="#0062ff" />
-                  <span style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>
-                    Opening Stock
-                  </span>
-                  <span
-                    title="Total opening stock"
-                    style={{ display: 'inline-flex', alignItems: 'center' }}
-                  >
-                    <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: '#0f172a',
-                      marginLeft: '2px',
-                    }}
-                  >
-                    : {totalOpeningStock.toFixed(2)}
-                  </span>
-                </div>
-
-                {/* Accounting Stock Section */}
-                <div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    <h3
-                      style={{
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        color: '#0f172a',
-                        margin: 0,
-                      }}
-                    >
-                      Accounting Stock
-                    </h3>
+                  {/* Opening Stock Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Building2 size={16} color="#0062ff" />
+                    <span style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>
+                      Opening Stock
+                    </span>
                     <span
-                      title="Accounting stock summary"
+                      title="Total opening stock"
                       style={{ display: 'inline-flex', alignItems: 'center' }}
                     >
                       <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                     </span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div
+                    <span
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
-                        }}
-                      >
-                        Stock on Hand
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
-                        {ownPremisesStock.onHand.toFixed(2)}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
-                        }}
-                      >
-                        Committed Stock
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.committed.toFixed(2)}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
-                        }}
-                      >
-                        Available for Sale
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.available.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Physical Stock Section */}
-                <div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    <h3
-                      style={{
-                        fontSize: '15px',
+                        fontSize: '14px',
                         fontWeight: 600,
                         color: '#0f172a',
-                        margin: 0,
+                        marginLeft: '2px',
                       }}
                     >
-                      Physical Stock
-                    </h3>
-                    <span
-                      title="Physical stock summary"
-                      style={{ display: 'inline-flex', alignItems: 'center' }}
-                    >
-                      <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
+                      : {totalOpeningStock.toFixed(2)}
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Accounting Stock Section */}
+                  <div>
                     <div
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
+                        display: 'flex',
                         alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '12px',
                       }}
                     >
-                      <span
+                      <h3
                         style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
+                          fontSize: '15px',
+                          fontWeight: 600,
+                          color: '#0f172a',
+                          margin: 0,
                         }}
                       >
-                        Stock on Hand
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.onHand.toFixed(2)}
+                        Accounting Stock
+                      </h3>
+                      <span
+                        title="Accounting stock summary"
+                        style={{ display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                       </span>
                     </div>
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div
                         style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
                         }}
                       >
-                        Committed Stock
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.committed.toFixed(2)}
-                      </span>
-                    </div>
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Stock on Hand
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                          {ownPremisesStock.onHand.toFixed(2)}
+                        </span>
+                      </div>
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
+                      <div
                         style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
                         }}
                       >
-                        Available for Sale
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.available.toFixed(2)}
-                      </span>
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Committed Stock
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.committed.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Available for Sale
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.available.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  {/* Physical Stock Section */}
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '12px',
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: '15px',
+                          fontWeight: 600,
+                          color: '#0f172a',
+                          margin: 0,
+                        }}
+                      >
+                        Physical Stock
+                      </h3>
+                      <span
+                        title="Physical stock summary"
+                        style={{ display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Stock on Hand
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.onHand.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Committed Stock
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.committed.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Available for Sale
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.available.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 

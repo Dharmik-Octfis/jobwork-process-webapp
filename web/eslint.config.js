@@ -73,6 +73,26 @@ export default defineConfig([
       ],
     },
   },
+  // A direct `toast` call stacks a second toast beside the API client's or the
+  // global mutation handler's — the double-toast bug, which recurred screen by screen.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/notify.ts', 'src/app/providers.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react-hot-toast',
+              message:
+                "Use `notify` from 'src/lib/notify' — it keeps one toast per kind on screen.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // MUST be last: turns OFF ESLint formatting rules that would fight Prettier.
   eslintConfigPrettier,
 ]);

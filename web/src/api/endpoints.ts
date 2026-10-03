@@ -143,6 +143,7 @@ export const endpoints = {
     /** Locations that actually hold an item, with balances. Also a ledger query:
      * offering a godown with no stock is how users get stuck. */
     stockLocations: (orgId: string) => `/organizations/${orgId}/inventory/batches/locations`,
+    adjustments: (orgId: string) => `/organizations/${orgId}/inventory/adjustments`,
   },
   sales: {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
@@ -176,19 +177,35 @@ export const endpoints = {
     fifoCostLotTracking: (orgId: string) =>
       `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
     jobOrderLoss: (orgId: string) => `/organizations/${orgId}/reports/job-order-loss`,
+    batchReport: (orgId: string) => `/organizations/${orgId}/reports/batch`,
+    takaReport: (orgId: string) => `/organizations/${orgId}/reports/taka`,
+    jobworkChallans: (orgId: string) => `/organizations/${orgId}/reports/jobwork-challans`,
+    jobworkReceipts: (orgId: string) => `/organizations/${orgId}/reports/jobwork-receipts`,
+    jobOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/job-orders`,
+    purchaseOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/purchase-orders`,
+    billsReport: (orgId: string) => `/organizations/${orgId}/reports/bills`,
   },
   automation: {
     approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,
-    approvalProcessById: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/${id}`,
-    reorderApprovalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes/reorder`,
-    activateApprovalProcess: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/${id}/activate`,
-    deactivateApprovalProcess: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/${id}/deactivate`,
-    duplicateApprovalProcess: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/${id}/duplicate`,
+    approvalProcessById: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}`,
+    reorderApprovalProcesses: (orgId: string) =>
+      `/organizations/${orgId}/automation/approval-processes/reorder`,
+    activateApprovalProcess: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}/activate`,
+    deactivateApprovalProcess: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}/deactivate`,
+    duplicateApprovalProcess: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}/duplicate`,
     modules: (orgId: string) => `/organizations/${orgId}/automation/approval-processes/modules`,
-    moduleFields: (orgId: string, moduleId: string) => `/organizations/${orgId}/automation/approval-processes/modules/${moduleId}/fields`,
+    moduleFields: (orgId: string, moduleId: string) =>
+      `/organizations/${orgId}/automation/approval-processes/modules/${moduleId}/fields`,
     requests: (orgId: string) => `/organizations/${orgId}/automation/approval-processes/requests`,
-    requestById: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/requests/${id}`,
-    approveRequest: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/requests/${id}/approve`,
-    rejectRequest: (orgId: string, id: string) => `/organizations/${orgId}/automation/approval-processes/requests/${id}/reject`,
+    requestById: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/requests/${id}`,
+    approveRequest: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/requests/${id}/approve`,
+    rejectRequest: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/requests/${id}/reject`,
   },
 } as const;

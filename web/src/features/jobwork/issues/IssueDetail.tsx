@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PackageCheck, Printer, X } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
@@ -643,7 +643,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
         onConfirm={() => {
           if (!cancelReason.trim()) {
             setCancelReasonMissing(true);
-            toast.error('Enter a reason for cancelling.');
+            notify.error('Enter a reason for cancelling.');
             return;
           }
           cancelMutation.mutate();

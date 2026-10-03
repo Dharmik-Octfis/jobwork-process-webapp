@@ -6,6 +6,7 @@ import { sendSuccess } from '../../../../lib/apiResponse.ts';
 import { createOrganizationSchema, updateOrganizationSchema } from './organizations.schemas.ts';
 import { seedSystemTemplates } from '../permission-templates/permission-templates.service.ts';
 import { seedSystemRoles } from '../roles/roles.service.ts';
+import { seedDefaultAdjustmentReasons } from '../../../inventory/adjustments/adjustmentReasons.service.ts';
 import { withOrgCodeRetry } from './orgCode.ts';
 import { composeFullName } from '../../../../lib/memberDirectory.ts';
 import { uploadFile, getFileUrl } from '../../../../lib/storage.ts';
@@ -148,6 +149,7 @@ export async function createOrganization(req: Request, res: Response, next: Next
         const [{ ownerTemplateId }, { ownerRoleId }] = await Promise.all([
           seedSystemTemplates(tx, orgId, userId),
           seedSystemRoles(tx, orgId, userId),
+          seedDefaultAdjustmentReasons(tx, orgId, userId),
           // Automatically create a default Currency based on country
           tx.currency.create({
             data: {

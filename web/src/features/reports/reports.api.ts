@@ -89,8 +89,9 @@ export interface ItemLedgerRow {
   quantity: number;
   unitCost: number | null;
   totalCost: number;
-  stockOnHand: number;
-  inventoryAssetValue: number;
+  /** Null on the first row of a value adjustment's out/in pair. */
+  stockOnHand: number | null;
+  inventoryAssetValue: number | null;
   isOpeningStock?: boolean;
   isClosingStock?: boolean;
   sourceDocType?: string | null;
@@ -233,7 +234,281 @@ export interface PaginatedJobOrderLossResponse {
 
 /** Stable report ids from the backend catalog (`reports.catalog.ts`) — never the label or path. */
 export type ReportKey =
-  'stock_summary' | 'inventory_valuation_summary' | 'fifo_cost_lot_tracking' | 'job_order_loss';
+  | 'stock_summary'
+  | 'inventory_valuation_summary'
+  | 'fifo_cost_lot_tracking'
+  | 'job_order_loss'
+  | 'batch_report'
+  | 'taka_report'
+  | 'jobwork_challan_report'
+  | 'jobwork_receipt_report'
+  | 'job_order_report'
+  | 'customer_report'
+  | 'vendor_report'
+  | 'purchase_order_report'
+  | 'bill_report';
+
+export interface JobOrdersReportQuery {
+  page?: number;
+  perPage?: number;
+  jobOrderNumber?: string;
+  processorName?: string;
+  processName?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  targetDateFrom?: string;
+  targetDateTo?: string;
+  routeName?: string;
+  ownership?: string;
+  processorType?: string;
+  jobOrderCustomFields?: Record<string, unknown>;
+}
+
+export interface JobOrdersReportRow {
+  id: string;
+  jobOrderNumber: string;
+  orderDate: string;
+  targetDate: string | null;
+  route: string;
+  materialBelongsTo: string;
+  status: string;
+  process: string[];
+  doneBy: string[];
+  processorName: string[];
+}
+
+export interface PaginatedJobOrdersReportResponse {
+  results: JobOrdersReportRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface JobworkChallansQuery {
+  page?: number;
+  perPage?: number;
+  processorName?: string;
+  processName?: string;
+  jobOrderNumber?: string;
+  itemName?: string;
+  fromDate?: string;
+  toDate?: string;
+  openOnly?: boolean;
+  minAgeDays?: number;
+}
+
+export interface JobworkChallanRow {
+  id: string;
+  challanNumber: string;
+  issueDate: string;
+  processorName: string;
+  process: string;
+  jobOrderNumber: string;
+  jobOrderId: string;
+  lines: {
+    id: string;
+    items: string;
+    plannedQty: number;
+    issuedQty: number;
+    toBeIssuedQty: number;
+  }[];
+  daysOutstanding: number | null;
+  status: string;
+}
+
+export interface PaginatedJobworkChallansResponse {
+  results: JobworkChallanRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue?: number;
+}
+
+export interface JobworkReceiptsQuery {
+  page?: number;
+  perPage?: number;
+  processorName?: string;
+  processName?: string;
+  jobOrderNumber?: string;
+  itemName?: string;
+  fromDate?: string;
+  toDate?: string;
+  minAgeDays?: number;
+}
+
+export interface JobworkReceiptRow {
+  id: string;
+  receiptNumber: string;
+  receiptDate: string;
+  processorName: string;
+  process: string;
+  jobOrderNumber: string;
+  jobOrderId: string;
+  lines: {
+    id: string;
+    items: string;
+    plannedQty: number;
+    receivedQty: number;
+    toBeReceivedQty: number;
+  }[];
+  status: string;
+  processChargeTotal?: number;
+}
+
+export interface PaginatedJobworkReceiptsResponse {
+  results: JobworkReceiptRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue?: number;
+}
+
+export interface BatchReportQuery {
+  page?: number;
+  perPage?: number;
+  itemName?: string;
+  locationName?: string;
+  batchText?: string;
+  state?: string;
+  asOnDate?: string;
+  minAgeDays?: number;
+}
+
+export interface BatchReportRow {
+  id: string;
+  batch: string | null;
+  itemName: string;
+  locationName: string;
+  qty: number;
+  takaCount: number | null;
+  untaggedQty: number | null;
+  receivedOn: string | null;
+  ageDays: number | null;
+  sourceDocType: string | null;
+  sourceDocNumber: string | null;
+  sourceDocId: string | null;
+  state: string;
+  batchNumber: string;
+  value: number;
+  avgRate: number;
+  parentBatches: string | null;
+}
+
+export interface PaginatedBatchReportResponse {
+  results: BatchReportRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue: number;
+}
+
+export interface TakaReportQuery {
+  page?: number;
+  perPage?: number;
+  itemName?: string;
+  locationName?: string;
+  batchText?: string;
+  onlyAtJobWorkers?: boolean;
+  asOnDate?: string;
+  minAgeDays?: number;
+}
+
+export interface TakaReportRow {
+  id: string;
+  label: string;
+  itemName: string;
+  batch: string;
+  locationName: string;
+  qty: number;
+  receivedOn: string | null;
+  daysAtLocation: number | null;
+  sourceDocType: string | null;
+  sourceDocNumber: string | null;
+  sourceDocId: string | null;
+  receivedQty: number | null;
+  challanNumber: string | null;
+  value: number;
+}
+
+export interface PaginatedTakaReportResponse {
+  results: TakaReportRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  grandTotalValue: number;
+}
+
+export interface CustomersReportQuery {
+  page?: number;
+  perPage?: number;
+  contactNumber?: string;
+  companyName?: string;
+  status?: string;
+  customerType?: string;
+}
+
+export interface CustomersReportRow {
+  id: string;
+  contactNumber: string;
+  customerType: string | null;
+  companyName: string | null;
+  contactName: string;
+  primaryContact: string | null;
+  email: string | null;
+  phone: string | null;
+  currency: string | null;
+  paymentTerms: string | null;
+  notes: string | null;
+  [key: string]: unknown;
+}
+
+export interface PaginatedCustomersReportResponse {
+  items: CustomersReportRow[];
+  pagination: {
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
+
+export interface VendorsReportQuery {
+  page?: number;
+  perPage?: number;
+  contactNumber?: string;
+  companyName?: string;
+  status?: string;
+  vendorType?: string;
+}
+
+export interface VendorsReportRow {
+  id: string;
+  contactNumber: string;
+  companyName: string | null;
+  contactName: string;
+  primaryContact: string | null;
+  email: string | null;
+  phone: string | null;
+  currency: string | null;
+  paymentTerms: string | null;
+  notes: string | null;
+  [key: string]: unknown;
+}
+
+export interface PaginatedVendorsReportResponse {
+  items: VendorsReportRow[];
+  pagination: {
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
 
 export interface ReportListEntry {
   key: ReportKey;
@@ -311,4 +586,145 @@ export const reportsApi = {
     });
     return response.data as PaginatedStockSummaryResponse;
   },
+  getBatchReport: async (
+    orgId: string,
+    params: BatchReportQuery = {},
+  ): Promise<PaginatedBatchReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.batchReport(orgId), { params });
+    return response.data as PaginatedBatchReportResponse;
+  },
+  getTakaReport: async (
+    orgId: string,
+    params: TakaReportQuery = {},
+  ): Promise<PaginatedTakaReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.takaReport(orgId), { params });
+    return response.data as PaginatedTakaReportResponse;
+  },
+  getJobworkChallans: async (
+    orgId: string,
+    params: JobworkChallansQuery = {},
+  ): Promise<PaginatedJobworkChallansResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobworkChallans(orgId), { params });
+    return response.data as PaginatedJobworkChallansResponse;
+  },
+  getJobworkReceipts: async (
+    orgId: string,
+    params: JobworkReceiptsQuery = {},
+  ): Promise<PaginatedJobworkReceiptsResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobworkReceipts(orgId), { params });
+    return response.data as PaginatedJobworkReceiptsResponse;
+  },
+  getJobOrdersReport: async (
+    orgId: string,
+    params: JobOrdersReportQuery = {},
+  ): Promise<PaginatedJobOrdersReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.jobOrdersReport(orgId), { params });
+    return response.data as PaginatedJobOrdersReportResponse;
+  },
+  getCustomersReport: async (
+    orgId: string,
+    params: CustomersReportQuery = {},
+  ): Promise<PaginatedCustomersReportResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/customers`, { params });
+    return response.data as PaginatedCustomersReportResponse;
+  },
+  getVendorsReport: async (
+    orgId: string,
+    params: VendorsReportQuery = {},
+  ): Promise<PaginatedVendorsReportResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/vendors`, { params });
+    return response.data as PaginatedVendorsReportResponse;
+  },
+  getPurchaseOrdersReport: async (
+    orgId: string,
+    params: PurchaseOrdersReportQuery = {},
+  ): Promise<PaginatedPurchaseOrdersReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.purchaseOrdersReport(orgId), { params });
+    return response.data as PaginatedPurchaseOrdersReportResponse;
+  },
+  getBillsReport: async (
+    orgId: string,
+    params: BillsReportQuery = {},
+  ): Promise<PaginatedBillsReportResponse> => {
+    const response = await apiClient.get(endpoints.reports.billsReport(orgId), { params });
+    return response.data as PaginatedBillsReportResponse;
+  },
 };
+
+export interface PurchaseOrdersReportQuery {
+  vendorId?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  deliveryType?: string;
+  poNumber?: string;
+  vendorName?: string;
+  purchaseOrderCustomFields?: Record<string, unknown>;
+  page?: number;
+  perPage?: number;
+}
+
+export interface PurchaseOrdersReportRow {
+  id: string;
+  poNumber: string;
+  vendorName: string;
+  locationName: string;
+  deliveryType: string;
+  deliveryAddress: string;
+  date: string;
+  deliveryDate: string | null;
+  paymentTerms: string | null;
+  total: number;
+  status: string;
+  customFields: Record<string, unknown>;
+}
+
+export interface PaginatedPurchaseOrdersReportResponse {
+  items: PurchaseOrdersReportRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
+export interface BillsReportQuery {
+  vendorId?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  billNumber?: string;
+  vendorName?: string;
+  locationName?: string;
+  paymentTerms?: string;
+  fromDeliveryDate?: string;
+  toDeliveryDate?: string;
+  total?: string;
+  billCustomFields?: Record<string, unknown>;
+  page?: number;
+  perPage?: number;
+}
+
+export interface BillsReportRow {
+  id: string;
+  billNumber: string;
+  vendorName: string;
+  locationName: string;
+  date: string;
+  deliveryDate: string | null;
+  paymentTerms: string | null;
+  total: number;
+  status: string;
+  customFields: Record<string, unknown>;
+}
+
+export interface PaginatedBillsReportResponse {
+  items: BillsReportRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}

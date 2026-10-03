@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { fetchJobOrderById, updateJobOrder } from './jobOrders.api';
@@ -51,7 +51,7 @@ export function EditJobOrder() {
     mutationFn: (data: UpdateJobOrderData) => updateJobOrder({ orgId: orgId!, id: id!, data }),
     onSuccess: (saved) => {
       const planWarning = unissuablePlanMessage(saved);
-      if (planWarning) toast(planWarning, { icon: '⚠️', duration: 8000 });
+      if (planWarning) notify.warning(planWarning);
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order', orgId, id] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });

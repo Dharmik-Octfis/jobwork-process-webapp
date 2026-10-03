@@ -162,9 +162,18 @@ export async function createNewCustomer(
       // Let's just compare without padding if it's not strictly padded, or assume it's directly from frontend.
       // Actually, if we just blindly increment, it might be safer, but only if they start with the prefix.
       if (customerData.contactNumber.startsWith(seq.prefix)) {
+        const suffixPart = customerData.contactNumber.slice(seq.prefix.length);
+        const match = suffixPart.match(/^0*(\d+)/);
+        let newNextNumber = seq.nextNumber + 1;
+        if (match && match[1]) {
+          const extracted = parseInt(match[1], 10);
+          if (!isNaN(extracted) && extracted >= seq.nextNumber) {
+            newNextNumber = extracted + 1;
+          }
+        }
         await tx.numberSequence.update({
           where: { id: seq.id },
-          data: { nextNumber: seq.nextNumber + 1 },
+          data: { nextNumber: newNextNumber },
         });
       }
     }

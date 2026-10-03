@@ -15,6 +15,7 @@ import type {
   AcceptInvitationResult,
   MyInvitation,
 } from './invitations.types.ts';
+import { ORGANIZATION_MAX_USERS_LIMIT } from '../../../../constants/organization.ts';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -241,12 +242,18 @@ export async function createInvitation(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
 
-  // Enforce organization user limit with a row-level lock and create invitation
+  // Enforce organization user limit with a row-level lock (FOR UPDATE).
+  // The limit is configurable per organization (`maxUsersLimit`), defaulting to ORGANIZATION_MAX_USERS_LIMIT if not set.
+  // We calculate the total by adding:
+  // 1. Currently active members (`isDeleted: false`)
+  // 2. Pending invitations that haven't expired yet
+  // This ensures an organization cannot exceed their user quota by sending out mass invitations.
   const invite = await prisma.$transaction(async (tx) => {
-    const org = await tx.$queryRaw<{ maxUsersLimit: number }[]>`
+    // Acquire a row-level lock on the organization to prevent concurrent race conditions
+    const org = await tx.$queryRaw<{ maxUsersLimit: number | null }[]>`
       SELECT max_users_limit as "maxUsersLimit" FROM organizations WHERE id = ${organizationId}::uuid FOR UPDATE
     `;
-    const maxLimit = org[0]?.maxUsersLimit || 10;
+    const maxLimit = org[0]?.maxUsersLimit ?? ORGANIZATION_MAX_USERS_LIMIT;
 
     const activeMembersCount = await tx.membership.count({
       where: { organizationId, isDeleted: false }

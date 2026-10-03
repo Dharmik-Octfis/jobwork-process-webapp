@@ -42,6 +42,60 @@ export const REPORTS = [
     category: 'Job Work',
     path: 'job-order-loss',
   },
+  {
+    key: 'batch_report',
+    name: 'Batch Report',
+    category: 'Inventory',
+    path: 'batch',
+  },
+  {
+    key: 'taka_report',
+    name: 'Taka Report',
+    category: 'Inventory',
+    path: 'taka',
+  },
+  {
+    key: 'jobwork_challan_report',
+    name: 'Jobwork Challan Report',
+    category: 'Job Work',
+    path: 'jobwork-challans',
+  },
+  {
+    key: 'jobwork_receipt_report',
+    name: 'Jobwork Receipt Report',
+    category: 'Job Work',
+    path: 'jobwork-receipts',
+  },
+  {
+    key: 'job_order_report',
+    name: 'Job Order Report (Ledger View)',
+    category: 'Job Work',
+    path: 'job-orders',
+  },
+  {
+    key: 'customer_report',
+    name: 'Customer Report',
+    category: 'Sales',
+    path: 'customers',
+  },
+  {
+    key: 'vendor_report',
+    name: 'Vendor Report',
+    category: 'Purchases',
+    path: 'vendors',
+  },
+  {
+    key: 'purchase_order_report',
+    name: 'Purchase Order Report',
+    category: 'Purchases',
+    path: 'purchase-orders',
+  },
+  {
+    key: 'bill_report',
+    name: 'Bill Report',
+    category: 'Purchases',
+    path: 'bills',
+  },
 ] as const satisfies readonly ReportDef[];
 
 export type ReportKey = (typeof REPORTS)[number]['key'];

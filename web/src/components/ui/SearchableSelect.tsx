@@ -59,7 +59,7 @@ export function SearchableSelect({
   renderValue,
   footerAction,
   dropdownWidth,
-  portal = false,
+  portal = true,
   keepOpenOnSelect = false,
   showIndicator = false,
 }: SearchableSelectProps) {
@@ -73,6 +73,7 @@ export function SearchableSelect({
   const triggerRef = useRef<HTMLDivElement>(null);
   const optionsContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const footerRef = useRef<HTMLButtonElement>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
 
@@ -168,6 +169,9 @@ export function SearchableSelect({
       return;
     }
 
+    // The footer button handles its own Enter/Space.
+    if (e.target === footerRef.current && e.key !== 'Escape' && e.key !== 'Tab') return;
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setFocusedIndex((prev) => {
@@ -197,6 +201,8 @@ export function SearchableSelect({
       e.preventDefault();
       setIsOpen(false);
     } else if (e.key === 'Tab') {
+      // Tab from the search box moves on to the footer button rather than closing.
+      if (footerAction && !e.shiftKey && e.target === searchInputRef.current) return;
       setIsOpen(false);
     }
   };
@@ -292,7 +298,7 @@ export function SearchableSelect({
           <ChevronDown size={16} color="var(--color-text-muted)" />
         )}
         {showIndicator && (
-          <span 
+          <span
             style={{
               position: 'absolute',
               top: '-4px',
@@ -471,7 +477,10 @@ export function SearchableSelect({
                 )}
               </div>
               {footerAction && (
-                <div
+                // A button, not a div: Tab has to be able to reach it.
+                <button
+                  ref={footerRef}
+                  type="button"
                   onClick={() => {
                     setIsOpen(false);
                     footerAction.onClick();
@@ -483,7 +492,11 @@ export function SearchableSelect({
                     e.currentTarget.style.backgroundColor = 'white';
                   }}
                   style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
                     backgroundColor: 'white',
+                    border: 'none',
                     borderTop: '1px solid var(--color-border)',
                     padding: '8px 12px',
                     cursor: 'pointer',
@@ -499,7 +512,7 @@ export function SearchableSelect({
                 >
                   {footerAction.icon}
                   {footerAction.text}
-                </div>
+                </button>
               )}
             </div>
           </div>,

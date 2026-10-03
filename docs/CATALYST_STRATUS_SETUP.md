@@ -36,9 +36,13 @@ It is **per account**, not per project and not per repo. In this project:
 `deploy/targets.json` is the source of truth for that mapping — check there rather than guessing
 from the email domain, which tells you nothing about the DC.
 
-> Note: `backend/.env.production` contains a `ZC_DATA_CENTER` key. Nothing reads it — it is not in
-> the `env.ts` schema, and Zod drops unknown keys. The DC lives in `deploy/targets.json` (`dc`) and
-> in which `accounts.zoho.*` host you exchange against. Don't rely on the env key.
+> **The SDK's own hosts are a separate setting, and nothing in this repo sets them.**
+> `zcatalyst-sdk-node` defaults to the US DC (`accounts.zoho.com`, `api.catalyst.zoho.com`,
+> `*.zohostratus.com`) and reads three overrides, each defaulting to `.com` independently:
+> `X_ZOHO_CATALYST_ACCOUNTS_URL`, `X_ZOHO_CATALYST_CONSOLE_URL`, `X_ZOHO_STRATUS_RESOURCE_SUFFIX`.
+> Production's credentials with the defaults fail with `invalid_client`; with all three set to
+> `.in` they work (checked 2026-09-30). Missing only the Stratus suffix gives `bucket_not_found`
+> while signing still succeeds.
 
 ---
 

@@ -4,7 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Settings, Info, Image as ImageIcon, Plus, Trash2, X } from 'lucide-react';
 import { useForm, Controller, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 
 import { DateInput } from '../../../components/ui/DateInput';
 import { Input } from '../../../components/ui/Input';
@@ -248,7 +248,7 @@ export function CreateAssemblyPage() {
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
-      toast.error(
+      notify.error(
         err.response?.data?.message ||
           (error instanceof Error ? error.message : 'Failed to create assembly'),
       );
@@ -306,7 +306,7 @@ export function CreateAssemblyPage() {
     const combinedLines = [...lines, ...validExtraItems, ...validServices];
 
     if (combinedLines.length === 0) {
-      toast.error('Composite item has no components and no additional items/services selected.');
+      notify.error('Composite item has no components and no additional items/services selected.');
       return;
     }
 
@@ -318,7 +318,7 @@ export function CreateAssemblyPage() {
 
   const onValidationError = (formErrors: FieldErrors<CreateAssemblyDto>) => {
     console.error('Form validation errors:', formErrors);
-    toast.error('Please check the highlighted mandatory fields.');
+    notify.error('Please check the highlighted mandatory fields.');
   };
 
   return (

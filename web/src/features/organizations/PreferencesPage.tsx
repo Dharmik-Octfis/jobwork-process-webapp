@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { z } from 'zod';
 import { organizationsApi } from './organizations.api';
 import { toApiErrorMessage } from '../../api/client';
@@ -114,7 +114,7 @@ export function PreferencesPage() {
       await organizationsApi.updateOrganization(id, data);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
     } catch (err: unknown) {
-      toast.error(toApiErrorMessage(err));
+      notify.error(toApiErrorMessage(err));
     }
   };
 
