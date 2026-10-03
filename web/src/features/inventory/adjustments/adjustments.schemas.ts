@@ -7,27 +7,19 @@ export const ADJUSTMENT_TYPE_OPTIONS: { value: AdjustmentType; label: string }[]
   { value: 'value', label: 'Value Adjustment' },
 ];
 
-/** The server's fixed lists (`QUANTITY_REASONS`, `VALUE_REASONS`), as named on screen. */
-export const ADJUSTMENT_REASON_OPTIONS = [
-  { value: 'damaged', label: 'Damaged goods' },
-  { value: 'lost', label: 'Lost or stolen' },
-  { value: 'found', label: 'Stock found' },
-  { value: 'count_correction', label: 'Stock count correction' },
-  { value: 'other', label: 'Other' },
-];
+/** One of the org's own reasons. `inUse`: an adjustment carries it, so it cannot be deleted. */
+export const adjustmentReasonSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  isActive: z.boolean(),
+  inUse: z.boolean(),
+});
+export const adjustmentReasonListSchema = z.array(adjustmentReasonSchema);
+export type AdjustmentReason = z.infer<typeof adjustmentReasonSchema>;
 
-export const VALUE_REASON_OPTIONS = [
-  { value: 'write_down', label: 'Write-down to realisable value' },
-  { value: 'cost_correction', label: 'Cost correction' },
-  { value: 'other', label: 'Other' },
-];
-
-export const reasonOptionsFor = (type: AdjustmentType) =>
-  type === 'value' ? VALUE_REASON_OPTIONS : ADJUSTMENT_REASON_OPTIONS;
-
-export const adjustmentReasonLabel = (reason: string) =>
-  [...ADJUSTMENT_REASON_OPTIONS, ...VALUE_REASON_OPTIONS].find((option) => option.value === reason)
-    ?.label ?? reason;
+/** Every query of the reason list shares this key, so a change made in Manage
+ * Reasons reaches both adjustment forms. */
+export const reasonsQueryKey = (orgId: string) => ['adjustment-reasons', orgId] as const;
 
 export const adjustmentTypeLabel = (type: string) => (type === 'value' ? 'Value' : 'Quantity');
 
@@ -87,7 +79,7 @@ export interface SaveAdjustmentPayload {
   locationId: string;
   /** `yyyy-MM-dd`, as every other document here sends its date. */
   adjustmentDate: string;
-  reason: string;
+  reasonId: string;
   referenceNumber?: string | null;
   description?: string | null;
   lines: AdjustmentLinePayload[];
@@ -109,7 +101,8 @@ const headerSchema = z.object({
   adjustmentDate: z.string(),
   locationId: z.string(),
   value: decimal,
-  reason: z.string(),
+  reasonId: z.string(),
+  reason: z.object({ id: z.string(), name: z.string() }),
   referenceNumber: z.string().nullable(),
   description: z.string().nullable(),
   status: z.string(),

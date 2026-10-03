@@ -141,8 +141,8 @@ valueBefore   Decimal? @map("value_before")   @db.Decimal(18, 4) // read by the 
 On a value line `quantity_adjusted` is `0`, `quantity_before` records stock on hand at Adjust, and
 `value` is the signed change actually posted. The header's `value` is the signed total.
 
-**Reasons** become per type. Quantity keeps `damaged | lost | found | count_correction | other`.
-Value: `write_down` ("Write-down to realisable value"), `cost_correction`, `other`.
+**Reasons** were per type at first. Since 2026-10-03 they are one org-managed list shared by both
+kinds — see A15 in `STOCK_ADJUSTMENT_PLAN.md`.
 
 **New table `stock_layer_revaluations`** — what one adjustment did to one layer. Bookkeeping owned
 by the ledger like `stock_layer_draws`: no soft delete, no `custom_fields`, no `updated_by`.

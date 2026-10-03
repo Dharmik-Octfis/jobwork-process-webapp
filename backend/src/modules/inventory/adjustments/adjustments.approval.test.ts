@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
+import { seedTestReasons } from './adjustmentReasons.testing.ts';
 import { createBatch, getBalance, postMovement } from '../stock-ledger/stockLedger.service.ts';
 import { approvalProcessService } from '../../automation/approval-processes/approvalProcess.service.ts';
 import { approvalExecutionService } from '../../automation/approval-processes/approvalExecution.service.ts';
@@ -117,7 +118,7 @@ const payload = (
 ): SaveAdjustmentDto => ({
   locationId: godownId,
   adjustmentDate: new Date().toISOString(),
-  reason: 'count_correction',
+  reasonId: reasons['Stock count correction'],
   lines: [{ itemId, quantityAdjusted, ...(quantityAdjusted > 0 ? { costPrice: 10 } : {}) }],
   saveAs,
 });
@@ -136,9 +137,12 @@ const requestFor = async (adjustmentId: string) => {
 
 const statusOf = async (id: string) => (await adjustmentsService.getAdjustment(orgId, id)).status;
 
+let reasons: Awaited<ReturnType<typeof seedTestReasons>>;
+
 beforeAll(async () => {
   await ensureApprovalTables();
   orgId = await createTestOrganization('stock-adjustment-approval');
+  reasons = await seedTestReasons(orgId);
   requesterId = await makeMember('requester');
   approverId = await makeMember('approver');
   processAdminId = await makeMember('admin');

@@ -2,8 +2,11 @@ import { apiClient } from '../../../api/client';
 import { endpoints } from '../../../api/endpoints';
 import { paginatedSchema, type PageParams, type Paginated } from '../../../lib/pagination';
 import {
+  adjustmentReasonListSchema,
+  adjustmentReasonSchema,
   stockAdjustmentDetailSchema,
   stockAdjustmentRowSchema,
+  type AdjustmentReason,
   type SaveAdjustmentPayload,
   type StockAdjustmentDetail,
   type StockAdjustmentRow,
@@ -100,4 +103,25 @@ export async function adjustAdjustment(orgId: string, id: string): Promise<Stock
 export async function removeAdjustment(orgId: string, id: string): Promise<StockAdjustmentDetail> {
   const response = await apiClient.delete(`${endpoints.inventory.adjustments(orgId)}/${id}`);
   return stockAdjustmentDetailSchema.parse(response.data);
+}
+
+export async function fetchReasons(orgId: string): Promise<AdjustmentReason[]> {
+  const response = await apiClient.get(`${endpoints.inventory.adjustments(orgId)}/reasons`);
+  return adjustmentReasonListSchema.parse(response.data);
+}
+
+export async function createReason(orgId: string, name: string): Promise<AdjustmentReason> {
+  const response = await apiClient.post(`${endpoints.inventory.adjustments(orgId)}/reasons`, {
+    name,
+  });
+  return adjustmentReasonSchema.parse(response.data);
+}
+
+export async function setReasonActive(orgId: string, id: string, isActive: boolean) {
+  await apiClient.patch(`${endpoints.inventory.adjustments(orgId)}/reasons/${id}`, { isActive });
+}
+
+/** Refused (409) for a reason any adjustment uses. */
+export async function deleteReason(orgId: string, id: string) {
+  await apiClient.delete(`${endpoints.inventory.adjustments(orgId)}/reasons/${id}`);
 }

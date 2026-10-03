@@ -195,32 +195,34 @@ model User {
   updatedStockAdjustmentBatches       StockAdjustmentBatch[]        @relation("StockAdjustmentBatchUpdatedBy")
   createdStockAdjustmentLines         StockAdjustmentLine[]         @relation("StockAdjustmentLineCreatedBy")
   updatedStockAdjustmentLines         StockAdjustmentLine[]         @relation("StockAdjustmentLineUpdatedBy")
+  createdStockAdjustmentReasons       StockAdjustmentReason[]       @relation("StockAdjustmentReasonCreatedBy")
+  updatedStockAdjustmentReasons       StockAdjustmentReason[]       @relation("StockAdjustmentReasonUpdatedBy")
   createdItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowCreatedBy")
   updatedItemOpeningStockRows         ItemOpeningStockRow[]         @relation("ItemOpeningStockRowUpdatedBy")
-  
-  createdSalesOrders                  SalesOrder[]                  @relation("SoCreatedBy")
-  updatedSalesOrders                  SalesOrder[]                  @relation("SoUpdatedBy")
-  createdSalesOrderItems              SalesOrderItem[]              @relation("SoItemCreatedBy")
-  updatedSalesOrderItems              SalesOrderItem[]              @relation("SoItemUpdatedBy")
-  createdSalesOrderActivities         SalesOrderActivity[]          @relation("SoActivityCreatedBy")
-  updatedSalesOrderActivities         SalesOrderActivity[]          @relation("SoActivityUpdatedBy")
-  createdSalesOrderComments           SalesOrderComment[]           @relation("SoCommentCreatedBy")
-  updatedSalesOrderComments           SalesOrderComment[]           @relation("SoCommentUpdatedBy")
+
+  createdSalesOrders          SalesOrder[]         @relation("SoCreatedBy")
+  updatedSalesOrders          SalesOrder[]         @relation("SoUpdatedBy")
+  createdSalesOrderItems      SalesOrderItem[]     @relation("SoItemCreatedBy")
+  updatedSalesOrderItems      SalesOrderItem[]     @relation("SoItemUpdatedBy")
+  createdSalesOrderActivities SalesOrderActivity[] @relation("SoActivityCreatedBy")
+  updatedSalesOrderActivities SalesOrderActivity[] @relation("SoActivityUpdatedBy")
+  createdSalesOrderComments   SalesOrderComment[]  @relation("SoCommentCreatedBy")
+  updatedSalesOrderComments   SalesOrderComment[]  @relation("SoCommentUpdatedBy")
 
   // Approval Processes relations
-  createdApprovalProcesses        ApprovalProcess[]        @relation("ApprovalProcessCreatedBy")
-  updatedApprovalProcesses        ApprovalProcess[]        @relation("ApprovalProcessUpdatedBy")
-  createdApprovalProcessVersions  ApprovalProcessVersion[] @relation("ApprovalProcessVersionCreatedBy")
-  createdApprovalProcessRules     ApprovalProcessRule[]    @relation("ApprovalProcessRuleCreatedBy")
-  updatedApprovalProcessRules     ApprovalProcessRule[]    @relation("ApprovalProcessRuleUpdatedBy")
-  createdApprovalStages           ApprovalStage[]          @relation("ApprovalStageCreatedBy")
-  updatedApprovalStages           ApprovalStage[]          @relation("ApprovalStageUpdatedBy")
-  createdApprovalActions          ApprovalAction[]         @relation("ApprovalActionCreatedBy")
-  updatedApprovalActions          ApprovalAction[]         @relation("ApprovalActionUpdatedBy")
-  approvalProcessAdmins           ApprovalProcessAdmin[]
-  requestedApprovals              ApprovalRequest[]        @relation("ApprovalRequestRequester")
-  assignedApprovals               ApprovalRequestApprover[]
-  approvalHistories               ApprovalHistory[]
+  createdApprovalProcesses       ApprovalProcess[]         @relation("ApprovalProcessCreatedBy")
+  updatedApprovalProcesses       ApprovalProcess[]         @relation("ApprovalProcessUpdatedBy")
+  createdApprovalProcessVersions ApprovalProcessVersion[]  @relation("ApprovalProcessVersionCreatedBy")
+  createdApprovalProcessRules    ApprovalProcessRule[]     @relation("ApprovalProcessRuleCreatedBy")
+  updatedApprovalProcessRules    ApprovalProcessRule[]     @relation("ApprovalProcessRuleUpdatedBy")
+  createdApprovalStages          ApprovalStage[]           @relation("ApprovalStageCreatedBy")
+  updatedApprovalStages          ApprovalStage[]           @relation("ApprovalStageUpdatedBy")
+  createdApprovalActions         ApprovalAction[]          @relation("ApprovalActionCreatedBy")
+  updatedApprovalActions         ApprovalAction[]          @relation("ApprovalActionUpdatedBy")
+  approvalProcessAdmins          ApprovalProcessAdmin[]
+  requestedApprovals             ApprovalRequest[]         @relation("ApprovalRequestRequester")
+  assignedApprovals              ApprovalRequestApprover[]
+  approvalHistories              ApprovalHistory[]
 
   @@map("users")
 }
@@ -390,7 +392,7 @@ model Organization {
   stockCostLayers        StockCostLayer[]
   stockLayerDraws        StockLayerDraw[]
   stockLayerRevaluations StockLayerRevaluation[]
-  routes                Route[]
+  routes                 Route[]
   routeSteps             RouteStep[]
   jobOrders              JobOrder[]
   jobOrderSteps          JobOrderStep[]
@@ -421,21 +423,22 @@ model Organization {
   stockAdjustments             StockAdjustment[]
   stockAdjustmentBatches       StockAdjustmentBatch[]
   stockAdjustmentLines         StockAdjustmentLine[]
+  stockAdjustmentReasons       StockAdjustmentReason[]
   itemOpeningStockRows         ItemOpeningStockRow[]
   settings                     Json                          @default("{}") @map("settings")
 
   // Approval Processes relations
-  approvalProcesses            ApprovalProcess[]
-  approvalProcessVersions      ApprovalProcessVersion[]
-  approvalProcessRules         ApprovalProcessRule[]
-  approvalStages               ApprovalStage[]
-  approvalActions              ApprovalAction[]
-  approvalProcessAdmins        ApprovalProcessAdmin[]
-  approvalRequests             ApprovalRequest[]
-  approvalRequestStages        ApprovalRequestStage[]
-  approvalRequestApprovers     ApprovalRequestApprover[]
-  approvalHistories            ApprovalHistory[]
-  approvalExecutedActions      ApprovalExecutedAction[]
+  approvalProcesses        ApprovalProcess[]
+  approvalProcessVersions  ApprovalProcessVersion[]
+  approvalProcessRules     ApprovalProcessRule[]
+  approvalStages           ApprovalStage[]
+  approvalActions          ApprovalAction[]
+  approvalProcessAdmins    ApprovalProcessAdmin[]
+  approvalRequests         ApprovalRequest[]
+  approvalRequestStages    ApprovalRequestStage[]
+  approvalRequestApprovers ApprovalRequestApprover[]
+  approvalHistories        ApprovalHistory[]
+  approvalExecutedActions  ApprovalExecutedAction[]
 
   @@map("organizations")
 }

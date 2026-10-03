@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
+import { seedTestReasons } from './adjustmentReasons.testing.ts';
 import {
   createBatch,
   createBatchUnits,
@@ -10,6 +11,7 @@ import {
 } from '../stock-ledger/stockLedger.service.ts';
 import { checkLayerInvariant } from '../stock-ledger/costLayers.ts';
 import { adjustmentsService } from './adjustments.service.ts';
+import { adjustmentReasonsService } from './adjustmentReasons.service.ts';
 import type { SaveAdjustmentDto } from './adjustments.schemas.ts';
 
 /**
@@ -100,7 +102,7 @@ function payload(lines: Line[], extra: Partial<SaveAdjustmentDto> = {}): SaveAdj
   return {
     locationId: godownId,
     adjustmentDate: new Date().toISOString(),
-    reason: 'count_correction',
+    reasonId: reasons['Stock count correction'],
     lines,
     saveAs: 'adjust',
     ...extra,
@@ -114,8 +116,11 @@ const save = (lines: Line[], extra: Partial<SaveAdjustmentDto> = {}) =>
 const adjust = (itemId: string, qty: number, extra: Partial<Line> = {}) =>
   save([line(itemId, qty, extra)]);
 
+let reasons: Awaited<ReturnType<typeof seedTestReasons>>;
+
 beforeAll(async () => {
   orgId = await createTestOrganization('stock-adjustment');
+  reasons = await seedTestReasons(orgId);
   userId = (
     await prisma.user.create({
       data: {
@@ -501,10 +506,13 @@ describe('stock adjustment — drafts', { timeout: 60_000 }, () => {
       orgId,
       draft.id,
       userId,
-      payload([line(second, 7, { costPrice: 10 })], { saveAs: 'draft', reason: 'found' }),
+      payload([line(second, 7, { costPrice: 10 })], {
+        saveAs: 'draft',
+        reasonId: reasons['Stock found'],
+      }),
     );
     expect(edited.adjustmentNumber).toBe(draft.adjustmentNumber);
-    expect(edited.reason).toBe('found');
+    expect(edited.reason.name).toBe('Stock found');
     expect(edited.lines.map((row) => row.itemId)).toEqual([second]);
 
     const posted = await adjustmentsService.adjustAdjustment(orgId, draft.id, userId);
@@ -629,5 +637,48 @@ describe('stock adjustment — cancel', { timeout: 60_000 }, () => {
     );
     expect((await itemBalance(itemId)).qty.toString()).toBe('13');
     await layersTie(itemId);
+  });
+});
+
+describe('adjustment reasons', { timeout: 60_000 }, () => {
+  it('a used reason cannot be deleted; an unused one can, and its name comes back on re-add', async () => {
+    const used = await adjustmentReasonsService.create(orgId, userId, `Used ${unique()}`);
+    await adjust(await makeItem('none'), 3);
+    await save([line(await makeItem('none'), 2)], { reasonId: used.id, saveAs: 'draft' });
+
+    const listed = await adjustmentReasonsService.list(orgId);
+    expect(listed.find((row) => row.id === used.id)?.inUse).toBe(true);
+    await expect(adjustmentReasonsService.remove(orgId, userId, used.id)).rejects.toThrow(
+      /Mark it inactive instead/,
+    );
+
+    const name = `Unused ${unique()}`;
+    const unused = await adjustmentReasonsService.create(orgId, userId, name);
+    await adjustmentReasonsService.remove(orgId, userId, unused.id);
+    expect((await adjustmentReasonsService.list(orgId)).some((row) => row.id === unused.id)).toBe(
+      false,
+    );
+    // Same row back, not a unique violation.
+    expect((await adjustmentReasonsService.create(orgId, userId, name)).id).toBe(unused.id);
+    await expect(
+      adjustmentReasonsService.create(orgId, userId, name.toUpperCase()),
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it('an inactive reason is refused on a new adjustment but kept on a draft that has it', async () => {
+    const reason = await adjustmentReasonsService.create(orgId, userId, `Retiring ${unique()}`);
+    const itemId = await makeItem('none');
+    const draft = await save([line(itemId, 4)], { reasonId: reason.id, saveAs: 'draft' });
+
+    await adjustmentReasonsService.setActive(orgId, userId, reason.id, false);
+    await expect(save([line(itemId, 1)], { reasonId: reason.id })).rejects.toThrow(/inactive/);
+
+    const edited = await adjustmentsService.updateAdjustment(
+      orgId,
+      draft.id,
+      userId,
+      payload([line(itemId, 5)], { reasonId: reason.id, saveAs: 'draft' }),
+    );
+    expect(edited.reason.id).toBe(reason.id);
   });
 });

@@ -3,16 +3,11 @@ import { z } from 'zod';
 export const ADJUSTMENT_TYPES = ['quantity', 'value'] as const;
 export type AdjustmentType = (typeof ADJUSTMENT_TYPES)[number];
 
-export const QUANTITY_REASONS = ['damaged', 'lost', 'found', 'count_correction', 'other'] as const;
-export const VALUE_REASONS = ['write_down', 'cost_correction', 'other'] as const;
-export const ADJUSTMENT_REASONS = [...new Set([...QUANTITY_REASONS, ...VALUE_REASONS])] as [
-  string,
-  ...string[],
-];
-const REASONS_BY_TYPE: Record<AdjustmentType, readonly string[]> = {
-  quantity: QUANTITY_REASONS,
-  value: VALUE_REASONS,
-};
+export const createReasonSchema = z.object({
+  name: z.string().trim().min(1, 'Enter a reason.').max(100),
+});
+
+export const setReasonActiveSchema = z.object({ isActive: z.boolean() });
 
 const emptyToUndefinedUuid = z.preprocess(
   (val) => (val === '' || val === null ? undefined : val),
@@ -91,7 +86,7 @@ export const saveAdjustmentSchema = z
     adjustmentType: z.enum(ADJUSTMENT_TYPES).default('quantity'),
     locationId: z.string().uuid(),
     adjustmentDate: z.string().datetime({ offset: true }).or(z.string().min(1)),
-    reason: z.enum(ADJUSTMENT_REASONS),
+    reasonId: z.string({ error: 'Select a reason.' }).uuid('Select a reason.'),
     referenceNumber: z.string().trim().max(100).optional().nullable(),
     description: z.string().trim().max(500).optional().nullable(),
     lines: z.array(adjustmentLineSchema).min(1, 'Add at least one item.').max(200),
@@ -102,9 +97,6 @@ export const saveAdjustmentSchema = z
     saveAs: z.enum(['draft', 'adjust']).default('adjust'),
   })
   .superRefine((data, ctx) => {
-    if (!REASONS_BY_TYPE[data.adjustmentType].includes(data.reason)) {
-      ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Select a reason.' });
-    }
     // One kind per document (value plan V1).
     for (const [index, line] of data.lines.entries()) {
       const isValue = data.adjustmentType === 'value';

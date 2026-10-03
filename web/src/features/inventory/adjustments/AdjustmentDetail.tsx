@@ -14,7 +14,6 @@ import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas'
 import { adjustAdjustment, fetchAdjustment, removeAdjustment } from './adjustments.api';
 import {
   ADJUSTMENT_APPROVAL_MODULE,
-  adjustmentReasonLabel,
   adjustmentTypeLabel,
   adjustmentStatusMeta,
   isUnposted,
@@ -267,7 +266,7 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
           <Fact label="Mode">{adjustmentTypeLabel(adjustment.adjustmentType)}</Fact>
           <Fact label="Date">{formatDate(adjustment.adjustmentDate)}</Fact>
           <Fact label="Location">{adjustment.location.name}</Fact>
-          <Fact label="Reason">{adjustmentReasonLabel(adjustment.reason)}</Fact>
+          <Fact label="Reason">{adjustment.reason.name}</Fact>
           <Fact label="Reference Number">{adjustment.referenceNumber || '-'}</Fact>
           {posted && <Fact label="Value">{formatMoney(adjustment.value)}</Fact>}
           <Fact label="Created By">{adjustment.createdByUser?.fullName || '-'}</Fact>

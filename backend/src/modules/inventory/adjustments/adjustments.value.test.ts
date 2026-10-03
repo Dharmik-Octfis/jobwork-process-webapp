@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
+import { seedTestReasons } from './adjustmentReasons.testing.ts';
 import {
   createBatch,
   createBatchUnits,
@@ -124,7 +125,7 @@ function payload(
     adjustmentType: 'value',
     locationId: godownId,
     adjustmentDate: new Date().toISOString(),
-    reason: 'write_down',
+    reasonId: reasons['Write-down to realisable value'],
     lines: [{ itemId, valueAdjusted }],
     saveAs: 'adjust',
     ...extra,
@@ -142,8 +143,11 @@ async function zohoItem() {
   return { itemId, old, bill };
 }
 
+let reasons: Awaited<ReturnType<typeof seedTestReasons>>;
+
 beforeAll(async () => {
   orgId = await createTestOrganization('value-adjustment');
+  reasons = await seedTestReasons(orgId);
   userId = (
     await prisma.user.create({
       data: {
@@ -232,7 +236,7 @@ describe('value adjustment — where the change lands', { timeout: 60_000 }, () 
 
   it('an increase lands wholly on the newest entry', async () => {
     const { itemId, old, bill } = await zohoItem();
-    await revalue(itemId, 500, { reason: 'cost_correction' });
+    await revalue(itemId, 500, { reasonId: reasons['Cost correction'] });
 
     expect((await balance({ itemId })).value.toString()).toBe('17500');
     expect((await balance({ batchId: old[0]!.batchId })).value.toString()).toBe('7000');
@@ -324,9 +328,8 @@ describe('value adjustment — refusals', { timeout: 60_000 }, () => {
     ).rejects.toThrow(/stock movements after this date/);
   });
 
-  it('the schema refuses a quantity reason, and a quantity on a value line', () => {
+  it('the schema refuses a quantity on a value line', () => {
     const base = payload(randomUUID(), -10);
-    expect(saveAdjustmentSchema.safeParse({ ...base, reason: 'damaged' }).success).toBe(false);
     expect(
       saveAdjustmentSchema.safeParse({
         ...base,

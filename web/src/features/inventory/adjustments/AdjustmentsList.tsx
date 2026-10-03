@@ -10,7 +10,6 @@ import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas'
 import { AdjustmentDetail } from './AdjustmentDetail';
 import { fetchAdjustmentCount, fetchAdjustments } from './adjustments.api';
 import {
-  adjustmentReasonLabel,
   adjustmentTypeLabel,
   adjustmentStatusMeta,
   type StockAdjustmentRow,
@@ -286,7 +285,7 @@ export function AdjustmentsList() {
                         <td style={{ ...cellStyle, textAlign: 'right' }}>
                           <QuantityCell row={row} />
                         </td>
-                        <td style={cellStyle}>{adjustmentReasonLabel(row.reason)}</td>
+                        <td style={cellStyle}>{row.reason.name}</td>
                         <td style={cellStyle}>
                           <StatusPill status={row.status} />
                         </td>

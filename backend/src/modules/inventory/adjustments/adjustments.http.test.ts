@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../../../app.ts';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
+import { seedTestReasons } from './adjustmentReasons.testing.ts';
 import { signAccessToken } from '../../../lib/jwt.ts';
 
 /**
@@ -74,7 +75,7 @@ async function join(
 const body = (extra: Record<string, unknown> = {}) => ({
   locationId: godownId,
   adjustmentDate: new Date().toISOString(),
-  reason: 'found',
+  reasonId: reasons['Stock found'],
   lines: [{ itemId, quantityAdjusted: 5, costPrice: 100 }],
   ...extra,
 });
@@ -98,8 +99,11 @@ const as = (bearer: string) => ({
 const countIn = (orgId: string) =>
   runAsTenant(orgId, (tx) => tx.stockAdjustment.count({ where: { organizationId: orgId } }));
 
+let reasons: Awaited<ReturnType<typeof seedTestReasons>>;
+
 beforeAll(async () => {
   orgA = await createTestOrganization('adj-http-a');
+  reasons = await seedTestReasons(orgA);
   orgB = await createTestOrganization('adj-http-b');
 
   token.owner = await join(await makeUser('owner'), orgA, { isOwner: true });
@@ -204,12 +208,12 @@ describe('stock adjustments — HTTP', { timeout: 60_000 }, () => {
     const before = await countIn(orgA);
     const res = await as(token.owner).post(
       url(orgA),
-      body({ reason: 'nope', lines: [{ itemId, quantityAdjusted: 0 }] }),
+      body({ reasonId: 'nope', lines: [{ itemId, quantityAdjusted: 0 }] }),
     );
     expect(res.status).toBe(400);
     expect(res.body.data).toBeNull();
     expect(Object.keys(res.body.details)).toEqual(
-      expect.arrayContaining(['lines.0.quantityAdjusted', 'reason']),
+      expect.arrayContaining(['lines.0.quantityAdjusted', 'reasonId']),
     );
     expect(await countIn(orgA)).toBe(before);
   });

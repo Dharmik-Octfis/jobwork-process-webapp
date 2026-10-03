@@ -150,6 +150,8 @@ const TENANT_TABLES = [
   'stock_adjustments',
   'stock_adjustment_lines',
   'stock_adjustment_batches',
+  // 20261003050033_stock_adjustment_reasons — direct form.
+  'stock_adjustment_reasons',
 ] as const;
 
 /**

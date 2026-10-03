@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
+import { seedTestReasons } from './adjustmentReasons.testing.ts';
 import { getItemLedger } from '../../reports/inventory-valuation/inventoryValuation.service.ts';
 import { getFifoCostLotTracking } from '../../reports/fifo-cost-lot-tracking/fifoCostLotTracking.service.ts';
 import { getStockMovementReport } from '../../reports/stock-movement/stockMovement.service.ts';
@@ -25,8 +26,11 @@ let older: Awaited<ReturnType<typeof adjustmentsService.createAdjustment>>;
 let newer: typeof older;
 let removal: typeof older;
 
+let reasons: Awaited<ReturnType<typeof seedTestReasons>>;
+
 beforeAll(async () => {
   orgId = await createTestOrganization('stock-adjustment-reports');
+  reasons = await seedTestReasons(orgId);
   userId = (
     await prisma.user.create({
       data: {
@@ -71,7 +75,7 @@ beforeAll(async () => {
     adjustmentsService.createAdjustment(orgId, userId, {
       locationId: godownId,
       adjustmentDate: date,
-      reason: 'found',
+      reasonId: reasons['Stock found'],
       saveAs: 'adjust',
       lines: [
         {
@@ -89,7 +93,7 @@ beforeAll(async () => {
   removal = await adjustmentsService.createAdjustment(orgId, userId, {
     locationId: godownId,
     adjustmentDate: new Date().toISOString(),
-    reason: 'damaged',
+    reasonId: reasons['Damaged goods'],
     saveAs: 'adjust',
     lines: [
       {
@@ -175,7 +179,7 @@ describe('stock adjustments — as other screens name them', { timeout: 60_000 }
     await adjustmentsService.createAdjustment(orgId, userId, {
       locationId: godownId,
       adjustmentDate: new Date().toISOString(),
-      reason: 'found',
+      reasonId: reasons['Stock found'],
       saveAs: 'adjust',
       lines: [
         {

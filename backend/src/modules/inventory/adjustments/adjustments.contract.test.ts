@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma, runAsTenant } from '../../../db/prisma.ts';
 import { createTestOrganization, deleteTestOrganization } from '../../../db/testTenant.ts';
+import { seedTestReasons } from './adjustmentReasons.testing.ts';
 import { createBatch, postMovement } from '../stock-ledger/stockLedger.service.ts';
 import { adjustmentsService } from './adjustments.service.ts';
 
@@ -49,9 +50,12 @@ let trackedId: string;
 let plainId: string;
 let existingBatchId: string;
 
+let reasons: Awaited<ReturnType<typeof seedTestReasons>>;
+
 beforeAll(async () => {
   client = (await import(CLIENT_SCHEMAS)) as ClientSchemas;
   orgId = await createTestOrganization('stock-adjustment-contract');
+  reasons = await seedTestReasons(orgId);
   userId = (
     await prisma.user.create({
       data: {
@@ -135,7 +139,7 @@ describe('stock adjustments — the shape the screens parse', { timeout: 60_000 
     adjustmentsService.createAdjustment(orgId, userId, {
       locationId: godownId,
       adjustmentDate: '2026-10-02',
-      reason: 'count_correction',
+      reasonId: reasons['Stock count correction'],
       referenceNumber: 'COUNT-7',
       description: 'Quarter-end count',
       saveAs,
@@ -185,7 +189,7 @@ describe('stock adjustments — the shape the screens parse', { timeout: 60_000 
         adjustmentType: 'value',
         locationId: godownId,
         adjustmentDate: new Date().toISOString(),
-        reason: 'write_down',
+        reasonId: reasons['Write-down to realisable value'],
         saveAs,
         lines: [{ itemId: trackedId, valueAdjusted: -1 }],
       });

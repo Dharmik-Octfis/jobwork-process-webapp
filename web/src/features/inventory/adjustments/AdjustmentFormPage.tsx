@@ -27,7 +27,6 @@ import {
 import {
   ADJUSTMENT_TYPE_OPTIONS,
   isUnposted,
-  reasonOptionsFor,
   type AdjustmentType,
   type SaveAdjustmentPayload,
   type StockAdjustmentDetail,
@@ -54,6 +53,7 @@ import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
 import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
 import { LineBatchPicker } from './LineBatchPicker';
 import { FifoCostField } from './FifoCostField';
+import { ReasonSelect } from './ReasonSelect';
 import { ValueCells } from './ValueAdjustmentCells';
 
 interface Row {
@@ -165,7 +165,7 @@ function AdjustmentForm({
     (existing?.adjustmentDate ?? new Date().toISOString()).slice(0, 10),
   );
   const [referenceNumber, setReferenceNumber] = useState(existing?.referenceNumber ?? '');
-  const [reason, setReason] = useState(existing?.reason ?? '');
+  const [reasonId, setReasonId] = useState(existing?.reasonId ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
   const [chosenLocationId, setChosenLocationId] = useState<string | null>(
     existing?.locationId ?? null,
@@ -233,8 +233,7 @@ function AdjustmentForm({
   const changeType = (next: AdjustmentType) => {
     if (next === adjustmentType) return;
     setAdjustmentType(next);
-    // The two kinds share no reason and no figure; the items stay.
-    if (!reasonOptionsFor(next).some((option) => option.value === reason)) setReason('');
+    // The two kinds share no figure; the items and the reason stay.
     setRows((prev) => prev.map((row) => ({ ...row, line: emptyLine(row.item) })));
     setInvalid(new Set());
   };
@@ -263,7 +262,7 @@ function AdjustmentForm({
   const handleSave = (saveAs: 'draft' | 'adjust') => {
     const problems: [string, string][] = [];
     if (!adjustmentDate) problems.push(['adjustmentDate', 'Enter the date.']);
-    if (!reason) problems.push(['reason', 'Select a reason.']);
+    if (!reasonId) problems.push(['reasonId', 'Select a reason.']);
     if (!locationId) problems.push(['locationId', 'Select a location.']);
 
     // A row nobody filled in is not a line; it is the empty row the form starts with.
@@ -316,7 +315,7 @@ function AdjustmentForm({
       adjustmentType,
       locationId,
       adjustmentDate,
-      reason,
+      reasonId,
       referenceNumber: referenceNumber.trim() || null,
       description: description.trim() || null,
       lines: filled.map((row) =>
@@ -401,16 +400,14 @@ function AdjustmentForm({
 
         <div className="form-field-grid" style={headerRow}>
           <span style={requiredLabel}>Reason*</span>
-          <Select
-            value={reason}
+          <ReasonSelect
+            orgId={orgId!}
+            value={reasonId}
             onChange={(value) => {
-              setReason(value);
-              clear('reason');
+              setReasonId(value);
+              clear('reasonId');
             }}
-            options={reasonOptionsFor(adjustmentType)}
-            placeholder="Select a reason…"
-            hasError={invalid.has('reason')}
-            ariaLabel="Reason"
+            hasError={invalid.has('reasonId')}
           />
         </div>
 

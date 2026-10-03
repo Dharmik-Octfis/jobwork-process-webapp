@@ -3,7 +3,17 @@ import { authenticate } from '../../../middlewares/authenticate.js';
 import { tenantContext } from '../../../middlewares/tenantContext.js';
 import { requirePermission } from '../../../middlewares/authorize.js';
 import { validateBody } from '../../../middlewares/validate.js';
-import { saveAdjustmentSchema } from './adjustments.schemas.js';
+import {
+  createReasonSchema,
+  saveAdjustmentSchema,
+  setReasonActiveSchema,
+} from './adjustments.schemas.js';
+import {
+  createReason,
+  deleteReason,
+  getReasons,
+  setReasonActive,
+} from './adjustmentReasons.controller.js';
 import {
   adjustAdjustment,
   createAdjustment,
@@ -23,6 +33,21 @@ router.get('/', requirePermission('stock_adjustment:read'), getAdjustments);
 // Before `/:id`, or "fifo-cost" is read as an adjustment id.
 router.get('/fifo-cost', requirePermission('stock_adjustment:read'), getFifoCost);
 router.get('/current-values', requirePermission('stock_adjustment:read'), getCurrentValues);
+// Managed from the adjustment form's reason dropdown, so gated by the same keys.
+router.get('/reasons', requirePermission('stock_adjustment:read'), getReasons);
+router.post(
+  '/reasons',
+  requirePermission('stock_adjustment:create'),
+  validateBody(createReasonSchema),
+  createReason,
+);
+router.patch(
+  '/reasons/:reasonId',
+  requirePermission('stock_adjustment:update'),
+  validateBody(setReasonActiveSchema),
+  setReasonActive,
+);
+router.delete('/reasons/:reasonId', requirePermission('stock_adjustment:delete'), deleteReason);
 router.get('/:id', requirePermission('stock_adjustment:read'), getAdjustmentById);
 router.post(
   '/',

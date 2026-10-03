@@ -24,6 +24,7 @@ import { approvalExecutionService } from '../../automation/approval-processes/ap
 import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
 import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
+import { assertUsableReason } from './adjustmentReasons.service.js';
 import type {
   AdjustmentBatchDto,
   AdjustmentLineDto,
@@ -333,6 +334,7 @@ const LINE_ITEM_SELECT = {
 
 const DETAIL_INCLUDE = {
   location: { select: { id: true, name: true } },
+  reason: { select: { id: true, name: true } },
   createdByUser: { select: { id: true, fullName: true } },
   lines: {
     where: { isDeleted: false },
@@ -470,12 +472,14 @@ async function writeDocument(
     }
   }
 
+  await assertUsableReason(tx, organizationId, data.reasonId, existingId);
+
   const isValue = data.adjustmentType === 'value';
   const header = {
     adjustmentType: data.adjustmentType ?? 'quantity',
     adjustmentDate,
     locationId: location.id,
-    reason: data.reason,
+    reasonId: data.reasonId,
     referenceNumber: data.referenceNumber || null,
     description: data.description || null,
     // An edit is a different document from the one that was approved or rejected.
@@ -543,7 +547,7 @@ async function loadForPosting(tx: TenantClient, organizationId: string, id: stri
       adjustmentNumber: true,
       adjustmentDate: true,
       locationId: true,
-      reason: true,
+      reason: { select: { name: true } },
       referenceNumber: true,
       description: true,
       createdBy: true,
@@ -891,7 +895,7 @@ async function adjust(organizationId: string, id: string, userId: string | null)
         adjustmentType: adjustment.adjustmentType,
         adjustmentDate: adjustment.adjustmentDate,
         locationId: adjustment.locationId,
-        reason: adjustment.reason,
+        reason: adjustment.reason.name,
         referenceNumber: adjustment.referenceNumber,
         description: adjustment.description,
         status: state.status,
@@ -1206,6 +1210,7 @@ export const adjustmentsService = {
         take: takeForPage(opts.perPage),
         include: {
           location: { select: { id: true, name: true } },
+          reason: { select: { id: true, name: true } },
           lines: {
             where: { isDeleted: false },
             orderBy: { seq: 'asc' },

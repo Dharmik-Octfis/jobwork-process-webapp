@@ -31,6 +31,8 @@ export function refreshAfterAdjustment(queryClient: QueryClient, itemIds: readon
         'adjustment-stock',
         'adjustment-values',
         'record-approvals',
+        // A reason an adjustment now carries can no longer be deleted.
+        'adjustment-reasons',
       ].includes(String(queryKey[0])),
   });
 }

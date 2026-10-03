@@ -20,7 +20,6 @@ import { createAdjustment, fetchCurrentValues } from './adjustments.api';
 import { FifoCostField } from './FifoCostField';
 import {
   ADJUSTMENT_TYPE_OPTIONS,
-  reasonOptionsFor,
   type AdjustmentType,
   type SaveAdjustmentPayload,
 } from './adjustments.schemas';
@@ -44,6 +43,7 @@ import {
 import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
 import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
 import { LineBatchPicker } from './LineBatchPicker';
+import { ReasonSelect } from './ReasonSelect';
 
 interface AdjustStockPanelProps {
   orgId: string;
@@ -52,7 +52,7 @@ interface AdjustStockPanelProps {
 }
 
 type Field =
-  'adjustmentDate' | 'locationId' | 'quantity' | 'costPrice' | 'batches' | 'reason' | 'value';
+  'adjustmentDate' | 'locationId' | 'quantity' | 'costPrice' | 'batches' | 'reasonId' | 'value';
 
 const rowStyle: React.CSSProperties = {
   gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 260px)',
@@ -106,7 +106,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
   const [referenceNumber, setReferenceNumber] = useState('');
   const [chosenLocationId, setChosenLocationId] = useState<string | null>(null);
   const [line, setLine] = useState<LineDraft>(() => emptyLine(item));
-  const [reason, setReason] = useState('');
+  const [reasonId, setReasonId] = useState('');
   const [description, setDescription] = useState('');
   const [isPicking, setIsPicking] = useState(false);
   const [invalid, setInvalid] = useState<ReadonlySet<Field>>(new Set());
@@ -148,7 +148,6 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
   const changeType = (next: AdjustmentType) => {
     if (next === adjustmentType) return;
     setAdjustmentType(next);
-    if (!reasonOptionsFor(next).some((option) => option.value === reason)) setReason('');
     setLine(emptyLine(item));
     setInvalid(new Set());
   };
@@ -216,7 +215,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
       });
       if (problem) problems.push([problem.field, problem.message]);
     }
-    if (!reason) problems.push(['reason', 'Select a reason.']);
+    if (!reasonId) problems.push(['reasonId', 'Select a reason.']);
 
     if (problems.length > 0) {
       setInvalid(new Set(problems.map(([field]) => field)));
@@ -228,7 +227,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
       adjustmentType,
       locationId,
       adjustmentDate,
-      reason,
+      reasonId,
       referenceNumber: referenceNumber.trim() || null,
       description: description.trim() || null,
       lines: [
@@ -538,17 +537,14 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
 
           <div style={{ marginTop: 16 }}>
             <span style={{ ...requiredStyle, display: 'block', marginBottom: 6 }}>Reason*</span>
-            <Select
-              value={reason}
+            <ReasonSelect
+              orgId={orgId}
+              value={reasonId}
               onChange={(value) => {
-                setReason(value);
-                clear('reason');
+                setReasonId(value);
+                clear('reasonId');
               }}
-              options={reasonOptionsFor(adjustmentType)}
-              placeholder="Select a reason…"
-              hasError={invalid.has('reason')}
-              ariaLabel="Reason"
-              portal
+              hasError={invalid.has('reasonId')}
             />
           </div>
 

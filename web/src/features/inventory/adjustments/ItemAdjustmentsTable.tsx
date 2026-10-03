@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas';
 import { fetchAdjustments } from './adjustments.api';
-import { adjustmentReasonLabel, adjustmentStatusMeta } from './adjustments.schemas';
+import { adjustmentStatusMeta } from './adjustments.schemas';
 
 const th: React.CSSProperties = {
   padding: '12px 24px',
@@ -81,7 +81,7 @@ export function ItemAdjustmentsTable({ orgId, itemId }: { orgId: string; itemId:
                     </Link>
                   </td>
                   <td style={td}>{row.location.name}</td>
-                  <td style={td}>{adjustmentReasonLabel(row.reason)}</td>
+                  <td style={td}>{row.reason.name}</td>
                   <td
                     style={{
                       ...td,

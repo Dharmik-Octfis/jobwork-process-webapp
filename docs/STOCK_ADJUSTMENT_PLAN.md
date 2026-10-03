@@ -91,8 +91,12 @@ posting; cancelling it reverses its rows.
 - **A13 — No edit.** A posted adjustment is corrected by cancelling it and entering a new one.
 - **A14 — Cancel reverses every row** with `reverseMovement`. Cancelling an increase is refused once
   anything has consumed that stock — the engine already refuses and names the consuming document.
-- **A15 — Reason is required**, from the fixed list: `damaged`, `lost`, `found`, `count_correction`,
-  `other`. Description is free text and optional.
+- **A15 — Reason is required**, from the org's own list (`stock_adjustment_reasons`, since
+  2026-10-03 — it was a fixed list in code before). One list for quantity and value adjustments,
+  managed from the dropdown's "Manage Reasons": add, mark inactive/active, and delete only while no
+  adjustment uses it. Never renamed. Every org starts with Damaged goods, Lost or stolen, Stock
+  found, Stock count correction, Write-down to realisable value, Cost correction, Other.
+  Description is free text and optional.
 
 ## 3. Schema
 
@@ -113,7 +117,7 @@ primary keys via `gen_random_uuid()`, `Timestamptz(6)`, varchar "enums", the fiv
 | `quantity_before`   | decimal(18,4)  | snapshot of the balance the server read at post time          |
 | `cost_price`        | decimal(18,4)? | increase only; null on a decrease                             |
 | `value`             | decimal(18,4)  | snapshot of what the ledger rows carried, read back from them |
-| `reason`            | varchar(40)    | `// damaged \| lost \| found \| count_correction \| other`    |
+| `reason_id`         | uuid           | → `stock_adjustment_reasons` (A15)                            |
 | `reference_number`  | varchar(100)?  |                                                               |
 | `description`       | text?          |                                                               |
 | `status`            | varchar(20)    | `// adjusted \| cancelled`                                    |
