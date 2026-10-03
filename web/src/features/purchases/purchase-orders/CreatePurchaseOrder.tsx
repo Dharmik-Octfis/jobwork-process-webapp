@@ -29,7 +29,7 @@ import { fetchPaymentTerms } from './payment-terms.api';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
 import { DateInput } from '../../../components/ui/DateInput';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
-import { Select } from '../../../components/ui/Select';
+import { Select, type SelectOption } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { formatDate } from '../../../lib/formatDate';
 import type { CreatePurchaseOrderData, PurchaseOrderItem } from './purchase-orders.schemas';
@@ -53,6 +53,34 @@ import { DeliveryAddressModal } from './DeliveryAddressModal';
 import { CreateVendorModal } from '../vendors/CreateVendorModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
 import './purchase-orders-v3.css';
+
+const ACCOUNT_OPTIONS: SelectOption[] = [
+  { value: 'Packaging', label: 'Packaging' },
+  { value: 'Cost of Goods Sold', label: 'Cost of Goods Sold' },
+  { value: 'Purchase Account', label: 'Purchase Account' },
+  { value: 'Raw Materials', label: 'Raw Materials' },
+  { value: 'Operating Expenses', label: 'Operating Expenses' },
+  { value: 'Office Supplies', label: 'Office Supplies' },
+  { value: 'Jobwork Expenses', label: 'Jobwork Expenses' },
+];
+
+const PO_STATUS_OPTIONS: SelectOption[] = [
+  { value: '', label: '-' },
+  { value: 'Open', label: 'Open' },
+  { value: 'Draft', label: 'Draft' },
+  { value: 'Issued', label: 'Issued' },
+  { value: 'Closed', label: 'Closed' },
+  { value: 'Billed', label: 'Billed' },
+  { value: 'Received', label: 'Received' },
+];
+
+const TAX_OPTIONS: SelectOption[] = [
+  { value: 'GST18', label: 'GST18 [18%]' },
+  { value: 'GST12', label: 'GST12 [12%]' },
+  { value: 'GST5', label: 'GST5 [5%]' },
+  { value: 'GST0', label: 'GST0 [0%]' },
+  { value: 'None', label: 'None' },
+];
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -2111,35 +2139,57 @@ export function CreatePurchaseOrder() {
 
                         {/* ACCOUNT */}
                         <td>
-                          <select
-                            {...register(`lineItems.${index}.account`)}
-                            defaultValue="Packaging"
-                            className="po-v3-cell-select"
-                          >
-                            <option value="Packaging">Packaging</option>
-                            <option value="Cost of Goods Sold">Cost of Goods Sold</option>
-                            <option value="Purchase Account">Purchase Account</option>
-                            <option value="Raw Materials">Raw Materials</option>
-                            <option value="Operating Expenses">Operating Expenses</option>
-                            <option value="Office Supplies">Office Supplies</option>
-                            <option value="Jobwork Expenses">Jobwork Expenses</option>
-                          </select>
+                          <Select
+                            portal={true}
+                            value={watchItems?.[index]?.account || 'Packaging'}
+                            onChange={(val) => {
+                              setValue(`lineItems.${index}.account`, val, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            options={ACCOUNT_OPTIONS}
+                            fullWidth={true}
+                            minWidth={110}
+                            buttonStyle={{
+                              height: 34,
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              color: '#334155',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px',
+                              background: '#f8fafc',
+                              padding: '0 8px',
+                            }}
+                          />
                         </td>
 
                         {/* PO STATUS */}
                         <td>
-                          <select
-                            {...register(`lineItems.${index}.itemPoStatus`)}
-                            className="po-v3-cell-select"
-                          >
-                            <option value="">-</option>
-                            <option value="Open">Open</option>
-                            <option value="Draft">Draft</option>
-                            <option value="Issued">Issued</option>
-                            <option value="Closed">Closed</option>
-                            <option value="Billed">Billed</option>
-                            <option value="Received">Received</option>
-                          </select>
+                          <Select
+                            portal={true}
+                            value={watchItems?.[index]?.itemPoStatus || ''}
+                            onChange={(val) => {
+                              setValue(`lineItems.${index}.itemPoStatus`, val, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            options={PO_STATUS_OPTIONS}
+                            placeholder="-"
+                            fullWidth={true}
+                            minWidth={85}
+                            buttonStyle={{
+                              height: 34,
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              color: '#334155',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px',
+                              background: '#f8fafc',
+                              padding: '0 8px',
+                            }}
+                          />
                         </td>
 
                         {/* PO (Linked Sales Order) */}
@@ -2318,17 +2368,29 @@ export function CreatePurchaseOrder() {
                           </td>
                         ) : (
                           <td>
-                            <select
-                              {...register(`lineItems.${index}.tax`)}
-                              defaultValue="GST18"
-                              className="po-v3-cell-select"
-                            >
-                              <option value="GST18">GST18 [18%]</option>
-                              <option value="GST12">GST12 [12%]</option>
-                              <option value="GST5">GST5 [5%]</option>
-                              <option value="GST0">GST0 [0%]</option>
-                              <option value="None">None</option>
-                            </select>
+                            <Select
+                              portal={true}
+                              value={watchItems?.[index]?.tax || 'GST18'}
+                              onChange={(val) => {
+                                setValue(`lineItems.${index}.tax`, val, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                });
+                              }}
+                              options={TAX_OPTIONS}
+                              fullWidth={true}
+                              minWidth={105}
+                              buttonStyle={{
+                                height: 34,
+                                fontSize: '12px',
+                                fontWeight: 500,
+                                color: '#334155',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '6px',
+                                background: '#f8fafc',
+                                padding: '0 8px',
+                              }}
+                            />
                           </td>
                         )}
 
@@ -2532,26 +2594,27 @@ export function CreatePurchaseOrder() {
                         background: '#ffffff',
                       }}
                     />
-                    <select
+                    <Select
+                      portal={true}
                       value={transactionDiscountType}
-                      onChange={(e) =>
-                        setTransactionDiscountType(e.target.value as 'percentage' | 'fixed')
-                      }
-                      style={{
-                        padding: '4px 6px',
+                      onChange={(val) => setTransactionDiscountType(val as 'percentage' | 'fixed')}
+                      options={[
+                        { value: 'percentage', label: '%' },
+                        { value: 'fixed', label: '₹' },
+                      ]}
+                      minWidth={44}
+                      fullWidth={false}
+                      buttonStyle={{
+                        height: 32,
+                        padding: '0 8px',
                         fontSize: '12px',
                         border: '1px solid #d1d5db',
                         borderRadius: '4px',
                         background: '#f8fafc',
                         fontWeight: 600,
                         color: '#475569',
-                        outline: 'none',
-                        cursor: 'pointer',
                       }}
-                    >
-                      <option value="percentage">%</option>
-                      <option value="fixed">₹</option>
-                    </select>
+                    />
                   </div>
                 </div>
               )}

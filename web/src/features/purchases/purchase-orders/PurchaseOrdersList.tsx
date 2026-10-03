@@ -18,6 +18,11 @@ import {
   Clock,
   Send,
   ShoppingCart,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -37,6 +42,27 @@ import type { PurchaseOrder } from './purchase-orders.schemas';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import './purchase-orders-v3.css';
+
+type SortField =
+  | 'poNumber'
+  | 'vendorName'
+  | 'date'
+  | 'deliveryDate'
+  | 'totalAmount'
+  | 'status'
+  | 'updatedAt'
+  | 'createdAt';
+
+const PO_SORT_OPTIONS: { key: SortField; label: string }[] = [
+  { key: 'poNumber', label: 'PO Number' },
+  { key: 'vendorName', label: 'Vendor Name' },
+  { key: 'date', label: 'Order Date' },
+  { key: 'deliveryDate', label: 'Delivery Date' },
+  { key: 'totalAmount', label: 'Total Amount' },
+  { key: 'status', label: 'Status' },
+  { key: 'updatedAt', label: 'Last Modified Time' },
+  { key: 'createdAt', label: 'Created Time' },
+];
 
 function formatDate(val: unknown): string {
   if (!val) return '-';
@@ -335,7 +361,126 @@ export function PurchaseOrdersList() {
 
   const results = data?.results;
   const pageContext = data?.pageContext;
-  const purchaseOrders = useMemo(() => results ?? [], [results]);
+
+  // In-table search and sorting states
+  const [tableSearch, setTableSearch] = useState('');
+  const [activeSubmenu, setActiveSubmenu] = useState<'sort' | null>(null);
+  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+  const handleSelectSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortField(field);
+      setSortAsc(field === 'poNumber' || field === 'vendorName' || field === 'status');
+    }
+    setIsMoreMenuOpen(false);
+    setActiveSubmenu(null);
+  };
+
+  const purchaseOrders = useMemo(() => {
+    let list = results ? [...results] : [];
+
+    // In-table real-time search filter
+    if (tableSearch.trim()) {
+      const q = tableSearch.toLowerCase().trim();
+      list = list.filter((po) => {
+        const poNum = (po.poNumber || '').toLowerCase();
+        const vendor = (
+          po.vendor?.companyName ||
+          po.vendor?.contactName ||
+          (po as Record<string, unknown>).vendorName ||
+          ''
+        ).toLowerCase();
+        const refNum = (po.referenceNumber || '').toLowerCase();
+        const status = (po.status || '').toLowerCase();
+        const amount = String((po as Record<string, unknown>).total || po.totalAmount || '');
+        return (
+          poNum.includes(q) ||
+          vendor.includes(q) ||
+          refNum.includes(q) ||
+          status.includes(q) ||
+          amount.includes(q)
+        );
+      });
+    }
+
+    // Sort order logic
+    list.sort((a, b) => {
+      let cmp: number;
+      switch (sortField) {
+        case 'date': {
+          const timeA = a.date ? new Date(a.date).getTime() : 0;
+          const timeB = b.date ? new Date(b.date).getTime() : 0;
+          cmp = timeA - timeB;
+          break;
+        }
+        case 'deliveryDate': {
+          const timeA = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0;
+          const timeB = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0;
+          cmp = timeA - timeB;
+          break;
+        }
+        case 'poNumber': {
+          cmp = (a.poNumber || '').localeCompare(b.poNumber || '', undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          });
+          break;
+        }
+        case 'vendorName': {
+          const vA =
+            a.vendor?.companyName ||
+            a.vendor?.contactName ||
+            (a as Record<string, unknown>).vendorName ||
+            '';
+          const vB =
+            b.vendor?.companyName ||
+            b.vendor?.contactName ||
+            (b as Record<string, unknown>).vendorName ||
+            '';
+          cmp = vA.localeCompare(vB, undefined, { sensitivity: 'base' });
+          break;
+        }
+        case 'totalAmount': {
+          const amtA = Number((a as Record<string, unknown>).total || a.totalAmount || 0);
+          const amtB = Number((b as Record<string, unknown>).total || b.totalAmount || 0);
+          cmp = amtA - amtB;
+          break;
+        }
+        case 'status': {
+          cmp = (a.status || '').localeCompare(b.status || '');
+          break;
+        }
+        case 'createdAt': {
+          const tA = (a as Record<string, unknown>).createdAt
+            ? new Date(String((a as Record<string, unknown>).createdAt)).getTime()
+            : 0;
+          const tB = (b as Record<string, unknown>).createdAt
+            ? new Date(String((b as Record<string, unknown>).createdAt)).getTime()
+            : 0;
+          cmp = tA - tB;
+          break;
+        }
+        case 'updatedAt': {
+          const tA = (a as Record<string, unknown>).updatedAt
+            ? new Date(String((a as Record<string, unknown>).updatedAt)).getTime()
+            : 0;
+          const tB = (b as Record<string, unknown>).updatedAt
+            ? new Date(String((b as Record<string, unknown>).updatedAt)).getTime()
+            : 0;
+          cmp = tA - tB;
+          break;
+        }
+        default:
+          cmp = 0;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+
+    return list;
+  }, [results, tableSearch, sortField, sortAsc]);
 
   const {
     total,
@@ -364,6 +509,7 @@ export function PurchaseOrdersList() {
     function handleClickOutside(event: MouseEvent) {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setIsMoreMenuOpen(false);
+        setActiveSubmenu(null);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -512,59 +658,6 @@ export function PurchaseOrdersList() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                {/* Search Bar on Header (Full view only) */}
-                {!selectedPoId && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 6,
-                      padding: '0 10px',
-                      height: 34,
-                      width: 200,
-                      transition: 'all 0.15s ease',
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = '#0284c7';
-                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(2, 132, 199, 0.15)';
-                      e.currentTarget.style.background = '#fff';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                      e.currentTarget.style.boxShadow = 'none';
-                      e.currentTarget.style.background = '#f8fafc';
-                    }}
-                  >
-                    <Search size={14} color="#94a3b8" />
-                    <input
-                      type="text"
-                      placeholder="Search orders..."
-                      defaultValue={search}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const timeout = setTimeout(() => {
-                          const params = new URLSearchParams(location.search);
-                          if (val.trim()) params.set('search', val.trim());
-                          else params.delete('search');
-                          navigate({ search: params.toString() }, { replace: true });
-                        }, 300);
-                        return () => clearTimeout(timeout);
-                      }}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        outline: 'none',
-                        fontSize: 12,
-                        paddingLeft: 8,
-                        width: '100%',
-                        color: '#1e293b',
-                      }}
-                    />
-                  </div>
-                )}
-
                 {/* + New Button */}
                 {!selectedPoId ? (
                   <button
@@ -686,32 +779,105 @@ export function PurchaseOrdersList() {
                         zIndex: 100,
                       }}
                     >
-                      {/* Customize Columns */}
+                      {/* 1. Sort by with flyout submenu */}
                       <div
-                        onClick={() => {
-                          setIsMoreMenuOpen(false);
-                          setIsColumnsOpen(true);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: '8px 16px',
-                          fontSize: 13,
-                          color: '#1e293b',
-                          cursor: 'pointer',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        style={{ position: 'relative' }}
+                        onMouseEnter={() => setActiveSubmenu('sort')}
                       >
-                        <SlidersHorizontal size={15} color="#0284c7" />
-                        <span>Customize Columns</span>
+                        <div
+                          onClick={() => setActiveSubmenu(activeSubmenu === 'sort' ? null : 'sort')}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '9px 16px',
+                            cursor: 'pointer',
+                            background: activeSubmenu === 'sort' ? '#0284c7' : 'transparent',
+                            color: activeSubmenu === 'sort' ? '#ffffff' : '#334155',
+                            fontSize: 13,
+                            fontWeight: 500,
+                            transition: 'background 0.1s ease',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <ArrowUpDown
+                              size={15}
+                              color={activeSubmenu === 'sort' ? '#ffffff' : '#0284c7'}
+                            />
+                            Sort by
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            color={activeSubmenu === 'sort' ? '#ffffff' : '#94a3b8'}
+                          />
+                        </div>
+
+                        {/* Sort Submenu to the LEFT */}
+                        {activeSubmenu === 'sort' && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              right: '100%',
+                              marginRight: 4,
+                              background: '#fff',
+                              borderRadius: 8,
+                              border: '1px solid #e2e8f0',
+                              boxShadow:
+                                '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                              minWidth: 195,
+                              zIndex: 110,
+                              padding: '6px 0',
+                            }}
+                          >
+                            {PO_SORT_OPTIONS.map((option) => {
+                              const isSelected = sortField === option.key;
+                              return (
+                                <button
+                                  key={option.key}
+                                  type="button"
+                                  onClick={() => handleSelectSort(option.key as SortField)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    width: '100%',
+                                    padding: '8px 16px',
+                                    border: 'none',
+                                    background: isSelected ? '#f0f9ff' : 'transparent',
+                                    color: isSelected ? '#0284c7' : '#334155',
+                                    fontWeight: isSelected ? 600 : 400,
+                                    fontSize: 13,
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isSelected)
+                                      e.currentTarget.style.background = 'transparent';
+                                  }}
+                                >
+                                  <span>{option.label}</span>
+                                  {isSelected &&
+                                    (sortAsc ? (
+                                      <ArrowUp size={14} color="#0284c7" />
+                                    ) : (
+                                      <ArrowDown size={14} color="#0284c7" />
+                                    ))}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
 
                       {/* Manage Custom Fields */}
                       <div
                         onClick={() => {
                           setIsMoreMenuOpen(false);
+                          setActiveSubmenu(null);
                           navigate(
                             `/organizations/${orgId}/settings/custom-fields?module=purchase_order`,
                           );
@@ -725,7 +891,10 @@ export function PurchaseOrdersList() {
                           color: '#1e293b',
                           cursor: 'pointer',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseEnter={(e) => {
+                          setActiveSubmenu(null);
+                          e.currentTarget.style.background = '#f8fafc';
+                        }}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
                         <Layers size={15} color="#0284c7" />
@@ -736,6 +905,7 @@ export function PurchaseOrdersList() {
                       <div
                         onClick={() => {
                           setIsMoreMenuOpen(false);
+                          setActiveSubmenu(null);
                           navigate(`/organizations/${orgId}/settings/preferences`);
                         }}
                         style={{
@@ -747,7 +917,10 @@ export function PurchaseOrdersList() {
                           color: '#1e293b',
                           cursor: 'pointer',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseEnter={(e) => {
+                          setActiveSubmenu(null);
+                          e.currentTarget.style.background = '#f8fafc';
+                        }}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
                         <Settings size={15} color="#0284c7" />
@@ -758,7 +931,10 @@ export function PurchaseOrdersList() {
 
                       {/* Refresh */}
                       <div
-                        onClick={handleRefresh}
+                        onClick={() => {
+                          setActiveSubmenu(null);
+                          handleRefresh();
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -768,7 +944,10 @@ export function PurchaseOrdersList() {
                           color: '#1e293b',
                           cursor: 'pointer',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseEnter={(e) => {
+                          setActiveSubmenu(null);
+                          e.currentTarget.style.background = '#f8fafc';
+                        }}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
                         <RotateCw size={15} color="#0284c7" />
@@ -860,17 +1039,18 @@ export function PurchaseOrdersList() {
             </div>
           )}
 
-          {/* Status Tab Pills Bar (Full view only) */}
-          {!selectedPoId && purchaseOrders.length > 0 && (
+          {/* Status Tab Pills & Table Search Bar (Full view only) */}
+          {!selectedPoId && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                justifyContent: 'space-between',
                 padding: '10px 24px',
                 background: '#ffffff',
                 borderBottom: '1px solid #f1f5f9',
-                overflowX: 'auto',
+                gap: 12,
+                flexWrap: 'wrap',
               }}
             >
               <div className="po-v3-status-pills">
@@ -887,6 +1067,65 @@ export function PurchaseOrdersList() {
                     </button>
                   );
                 })}
+              </div>
+
+              {/* In-table search input */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 6,
+                  padding: '0 10px',
+                  height: 32,
+                  width: 240,
+                  transition: 'all 0.15s ease',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#0284c7';
+                  e.currentTarget.style.boxShadow = '0 0 0 2px rgba(2, 132, 199, 0.12)';
+                  e.currentTarget.style.background = '#fff';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.background = '#f8fafc';
+                }}
+              >
+                <Search size={14} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search orders in table..."
+                  value={tableSearch}
+                  onChange={(e) => setTableSearch(e.target.value)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    outline: 'none',
+                    fontSize: 12,
+                    paddingLeft: 8,
+                    width: '100%',
+                    color: '#1e293b',
+                  }}
+                />
+                {tableSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setTableSearch('')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      color: '#94a3b8',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -942,31 +1181,51 @@ export function PurchaseOrdersList() {
                     lineHeight: 1.5,
                   }}
                 >
-                  {search
-                    ? `No purchase orders match "${search}". Try clearing search filters.`
-                    : 'Create your first purchase order to track vendor procurement, pricing, and receipts.'}
+                  {tableSearch
+                    ? `No purchase orders match "${tableSearch}".`
+                    : search
+                      ? `No purchase orders match "${search}". Try clearing search filters.`
+                      : 'Create your first purchase order to track vendor procurement, pricing, and receipts.'}
                 </p>
-                <button
-                  onClick={() =>
-                    navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, {
-                      state: { returnUrl: location.pathname + location.search },
-                    })
-                  }
-                  style={{
-                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                    color: 'white',
-                    border: 'none',
-                    padding: '8px 20px',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Create Purchase Order
-                </button>
+                {tableSearch ? (
+                  <button
+                    onClick={() => setTableSearch('')}
+                    style={{
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      color: '#475569',
+                    }}
+                  >
+                    Clear Search
+                  </button>
+                ) : (
+                  <button
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/purchases/purchase-orders/new`, {
+                        state: { returnUrl: location.pathname + location.search },
+                      })
+                    }
+                    style={{
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 20px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    Create Purchase Order
+                  </button>
+                )}
               </div>
             ) : (
               <div>
@@ -1191,16 +1450,70 @@ export function PurchaseOrdersList() {
                               col.key === 'total' ||
                               col.key === 'amount' ||
                               col.key === 'totalAmount';
+
+                            let colSortField: SortField | null = null;
+                            if (col.key === 'date') colSortField = 'date';
+                            else if (col.key === 'deliveryDate') colSortField = 'deliveryDate';
+                            else if (col.key === 'poNumber') colSortField = 'poNumber';
+                            else if (col.key === 'vendor' || col.key === 'vendorName')
+                              colSortField = 'vendorName';
+                            else if (
+                              col.key === 'total' ||
+                              col.key === 'amount' ||
+                              col.key === 'totalAmount'
+                            )
+                              colSortField = 'totalAmount';
+                            else if (col.key === 'status') colSortField = 'status';
+
+                            const isSorted = colSortField && sortField === colSortField;
+
                             return (
                               <th
                                 key={col.key}
+                                onClick={() => colSortField && handleSelectSort(colSortField)}
                                 style={{
                                   ...headerStyle,
                                   textAlign: isRight ? 'right' : isCenter ? 'center' : 'left',
                                   width: isCenter ? 95 : undefined,
+                                  cursor: colSortField ? 'pointer' : 'default',
+                                  userSelect: 'none',
                                 }}
+                                className={colSortField ? 'po-v3-sortable-th' : ''}
+                                title={colSortField ? `Click to sort by ${col.label}` : undefined}
                               >
-                                <span>{col.label}</span>
+                                <div
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    justifyContent: isRight
+                                      ? 'flex-end'
+                                      : isCenter
+                                        ? 'center'
+                                        : 'flex-start',
+                                    width: '100%',
+                                  }}
+                                >
+                                  <span>{col.label}</span>
+                                  {colSortField && (
+                                    <span
+                                      style={{
+                                        display: 'inline-flex',
+                                        opacity: isSorted ? 1 : 0.35,
+                                      }}
+                                    >
+                                      {isSorted ? (
+                                        sortAsc ? (
+                                          <ArrowUp size={13} color="#0284c7" />
+                                        ) : (
+                                          <ArrowDown size={13} color="#0284c7" />
+                                        )
+                                      ) : (
+                                        <ArrowUpDown size={12} />
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
                               </th>
                             );
                           })}

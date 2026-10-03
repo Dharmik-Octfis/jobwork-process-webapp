@@ -833,3 +833,14 @@
   border-color: var(--po-border-strong);
   color: var(--po-text-heading);
 }
+
+.po-v3-sortable-th {
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.po-v3-sortable-th:hover {
+  background: #f1f5f9 !important;
+  color: #0284c7 !important;
+}
