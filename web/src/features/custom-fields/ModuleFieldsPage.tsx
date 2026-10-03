@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, Plus, Edit2, Archive, GripVertical } from 'lucide-react';
+import {Plus, Edit2, Archive, GripVertical, X } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   useCustomFieldDefinitions,
@@ -90,29 +90,20 @@ export function ModuleFieldsPage() {
         flexDirection: 'column',
       }}
     >
-      <header style={{ padding: '16px 24px 0', borderBottom: '1px solid #eef0f3' }}>
-        <button
-          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/settings/modules`)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#64748b',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 12,
-            padding: 0,
-            marginBottom: 8,
-          }}
-        >
-          <ChevronLeft size={14} /> All modules
-        </button>
-        <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 12px' }}>
-          {moduleLabel(entityType!)}
-        </h1>
-
-        {/* Tabs — one tab today (Fields), matching Zoho's tabbed module settings. */}
+      <header
+        style={{
+          padding: '16px 24px 0',
+          borderBottom: '1px solid #eef0f3',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 12px' }}>
+            {moduleLabel(entityType!)}
+          </h1>
+          {/* Tabs — one tab today (Fields), matching Zoho's tabbed module settings. */}
         <div style={{ display: 'flex', gap: 24 }}>
           <div
             style={{
@@ -126,9 +117,26 @@ export function ModuleFieldsPage() {
             Fields
           </div>
         </div>
+        </div>
+        <button
+          onClick={() => navigate((location.state as { returnUrl?: string })?.returnUrl || `/organizations/${orgId}/settings/modules`)}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 4,
+          }}
+          title="Close"
+        >
+          <X size={20} />
+        </button>
       </header>
 
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {view === 'form' ? (
           <FieldForm
             key={fieldToEdit?.id ?? 'new'}
@@ -140,7 +148,7 @@ export function ModuleFieldsPage() {
             onCancel={() => setView('list')}
           />
         ) : (
-          <div style={{ padding: 24 }}>
+          <div style={{ flex: 1, padding: 24, overflow: 'auto' }}>
             <div
               style={{
                 display: 'flex',
