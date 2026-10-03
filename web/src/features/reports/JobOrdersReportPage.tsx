@@ -214,7 +214,7 @@ export function JobOrdersReportPage() {
           <Link
             className="hover-underline"
             to={`/organizations/${orgId}/jobwork/job-orders/${row.id}`}
-            style={{ color: '#0062ff', fontWeight: 500 }}
+            style={{ color: '#0062ff', fontWeight: 600 }}
           >
             {row.jobOrderNumber}
           </Link>
@@ -247,7 +247,7 @@ export function JobOrdersReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: 'zoho-puvi, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -264,7 +264,7 @@ export function JobOrdersReportPage() {
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Job Work</div>
-          <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
+          <div style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
             Job Order Report (Ledger View)
           </div>
         </div>
@@ -309,7 +309,7 @@ export function JobOrdersReportPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 500,
+            fontWeight: 600,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -342,7 +342,7 @@ export function JobOrdersReportPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
@@ -386,7 +386,7 @@ export function JobOrdersReportPage() {
                 alignItems: 'center',
                 gap: '6px',
                 cursor: 'pointer',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               <Columns size={14} color="#6b7280" />
@@ -398,7 +398,7 @@ export function JobOrdersReportPage() {
                   padding: '2px 6px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                 }}
               >
                 {visibleColumns.length}
@@ -415,13 +415,13 @@ export function JobOrdersReportPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
             >
               Job Order Report (Ledger View)
             </h2>
@@ -482,7 +482,7 @@ export function JobOrdersReportPage() {
                               style={{
                                 ...tdStyle,
                                 ...(RIGHT_ALIGNED.has(key)
-                                  ? { textAlign: 'right', fontWeight: 600 }
+                                  ? { textAlign: 'right', fontWeight: 700 }
                                   : {}),
                               }}
                             >
@@ -534,7 +534,7 @@ const thStyle = {
   padding: '10px 15px',
   textAlign: 'left' as const,
   fontSize: '11px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#333333',
   textTransform: 'uppercase' as const,
   background: '#fafafa',

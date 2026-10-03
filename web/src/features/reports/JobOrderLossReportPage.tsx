@@ -170,7 +170,7 @@ export function JobOrderLossReportPage() {
           <Link
             className="hover-underline"
             to={`/organizations/${orgId}/jobwork/job-orders/${row.jobOrderId}`}
-            style={{ color: '#0062ff', fontWeight: 500 }}
+            style={{ color: '#0062ff', fontWeight: 600 }}
           >
             {row.jobOrderNumber}
           </Link>
@@ -197,7 +197,7 @@ export function JobOrderLossReportPage() {
             <Link
               className="hover-underline"
               to={`/organizations/${orgId}/items?id=${row.itemId}`}
-              style={{ color: '#0062ff', fontWeight: 500 }}
+              style={{ color: '#0062ff', fontWeight: 600 }}
             >
               {row.itemName}
             </Link>{' '}
@@ -226,7 +226,7 @@ export function JobOrderLossReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: 'zoho-puvi, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -243,9 +243,9 @@ export function JobOrderLossReportPage() {
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Job Work</div>
-          <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
+          <div style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
             Job Order Loss Report
-            <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+            <span style={{ fontWeight: 500, color: '#6b7280', marginLeft: '6px' }}>
               • From {formattedFromDate} To {formattedToDate}
             </span>
           </div>
@@ -291,7 +291,7 @@ export function JobOrderLossReportPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 500,
+            fontWeight: 600,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -335,7 +335,7 @@ export function JobOrderLossReportPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
@@ -379,7 +379,7 @@ export function JobOrderLossReportPage() {
                 alignItems: 'center',
                 gap: '6px',
                 cursor: 'pointer',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               <Columns size={14} color="#6b7280" />
@@ -391,7 +391,7 @@ export function JobOrderLossReportPage() {
                   padding: '2px 6px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                 }}
               >
                 {visibleColumns.length}
@@ -408,13 +408,13 @@ export function JobOrderLossReportPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
             >
               Job Order Loss Report
             </h2>
@@ -465,7 +465,7 @@ export function JobOrderLossReportPage() {
                           style={{
                             ...tdStyle,
                             ...(RIGHT_ALIGNED.has(key)
-                              ? { textAlign: 'right', fontWeight: 600 }
+                              ? { textAlign: 'right', fontWeight: 700 }
                               : {}),
                             ...(key === 'reason'
                               ? { maxWidth: '280px', whiteSpace: 'normal' }
@@ -537,7 +537,7 @@ export function JobOrderLossReportPage() {
 const thStyle = {
   padding: '12px 24px',
   fontSize: '11px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#6b7280',
   textTransform: 'uppercase' as const,
   background: '#f9fafb',

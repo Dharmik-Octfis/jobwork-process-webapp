@@ -199,7 +199,7 @@ export function TakaReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: 'zoho-puvi, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -216,9 +216,9 @@ export function TakaReportPage() {
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Inventory</div>
-          <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
+          <div style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
             {batchUnitLabel.singular} Report
-            <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+            <span style={{ fontWeight: 500, color: '#6b7280', marginLeft: '6px' }}>
               • As on {asOnText}
             </span>
           </div>
@@ -264,7 +264,7 @@ export function TakaReportPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 500,
+            fontWeight: 600,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -297,7 +297,7 @@ export function TakaReportPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
@@ -321,7 +321,7 @@ export function TakaReportPage() {
               alignItems: 'center',
               gap: '6px',
               cursor: 'pointer',
-              fontWeight: 500,
+              fontWeight: 600,
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
           >
@@ -334,7 +334,7 @@ export function TakaReportPage() {
                 padding: '2px 6px',
                 borderRadius: '10px',
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 700,
               }}
             >
               {visibleColumns.length}
@@ -364,13 +364,13 @@ export function TakaReportPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
             >
               {batchUnitLabel.singular} Report
             </h2>
@@ -421,7 +421,7 @@ export function TakaReportPage() {
                           style={{
                             ...tdStyle,
                             textAlign: 'center',
-                            ...(RIGHT_ALIGNED.has(key) ? { fontWeight: 600 } : {}),
+                            ...(RIGHT_ALIGNED.has(key) ? { fontWeight: 700 } : {}),
                           }}
                         >
                           {cell(row, key)}
@@ -489,7 +489,7 @@ export function TakaReportPage() {
 const thStyle = {
   padding: '12px 24px',
   fontSize: '11px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#6b7280',
   textTransform: 'uppercase' as const,
   background: '#f9fafb',

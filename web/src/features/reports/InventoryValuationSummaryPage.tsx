@@ -312,7 +312,7 @@ export function InventoryValuationSummaryPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: 'zoho-puvi, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -350,14 +350,14 @@ export function InventoryValuationSummaryPage() {
             <div
               style={{
                 fontSize: '16px',
-                fontWeight: 500,
+                fontWeight: 600,
                 color: '#111827',
                 display: 'flex',
                 alignItems: 'center',
               }}
             >
               Inventory Valuation Summary
-              <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+              <span style={{ fontWeight: 500, color: '#6b7280', marginLeft: '6px' }}>
                 • As of {formattedAsOfDate}
               </span>
             </div>
@@ -400,7 +400,7 @@ export function InventoryValuationSummaryPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 500,
+            fontWeight: 600,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -437,7 +437,7 @@ export function InventoryValuationSummaryPage() {
             renderValue={(opt) => (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ color: '#6b7280' }}>Stock Availability :</span>
-                <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
+                <span style={{ color: '#111827', fontWeight: 600 }}>{opt?.label}</span>
               </div>
             )}
           />
@@ -463,7 +463,7 @@ export function InventoryValuationSummaryPage() {
             renderValue={(opt) => (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ color: '#6b7280' }}>Status :</span>
-                <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
+                <span style={{ color: '#111827', fontWeight: 600 }}>{opt?.label}</span>
               </div>
             )}
           />
@@ -490,7 +490,7 @@ export function InventoryValuationSummaryPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -538,7 +538,7 @@ export function InventoryValuationSummaryPage() {
                 alignItems: 'center',
                 gap: '6px',
                 cursor: 'pointer',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               <Columns size={14} color="#6b7280" />
@@ -550,7 +550,7 @@ export function InventoryValuationSummaryPage() {
                   padding: '2px 6px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                 }}
               >
                 {visibleColumns.length}
@@ -567,13 +567,13 @@ export function InventoryValuationSummaryPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
             >
               Inventory Valuation Summary
             </h2>
@@ -696,7 +696,7 @@ export function InventoryValuationSummaryPage() {
                           case 'itemName':
                             return (
                               <td key={colKey} style={tdStyle}>
-                                <span style={{ color: '#111827', fontWeight: 500 }}>
+                                <span style={{ color: '#111827', fontWeight: 600 }}>
                                   {row.itemName}
                                 </span>{' '}
                                 <span style={{ color: '#9ca3af', fontSize: '12px' }}>
@@ -732,7 +732,7 @@ export function InventoryValuationSummaryPage() {
                             return (
                               <td
                                 key={colKey}
-                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
                               >
                                 {row.stockOnHand.toFixed(2)}
                               </td>
@@ -745,7 +745,7 @@ export function InventoryValuationSummaryPage() {
                                   ...tdStyle,
                                   textAlign: 'right',
                                   color: '#111827',
-                                  fontWeight: 600,
+                                  fontWeight: 700,
                                 }}
                               >
                                 ₹{row.inventoryAssetValue < 0 ? '-' : ''}
@@ -778,7 +778,7 @@ export function InventoryValuationSummaryPage() {
                     {visibleColumns.map((colKey, index) => {
                       if (index === 0) {
                         return (
-                          <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
+                          <td key={colKey} style={{ ...tdStyle, fontWeight: 700 }}>
                             Total
                           </td>
                         );
@@ -874,7 +874,7 @@ const thStyle = {
   padding: '12px 24px',
   textAlign: 'left' as const,
   fontSize: '11px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#6b7280',
   textTransform: 'uppercase' as const,
   background: '#f9fafb',

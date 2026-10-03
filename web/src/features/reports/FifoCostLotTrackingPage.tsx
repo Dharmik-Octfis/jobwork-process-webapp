@@ -44,7 +44,7 @@ const thStyle = {
   padding: '12px 10px',
   textAlign: 'left' as const,
   fontSize: '11px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#4b5563',
   textTransform: 'uppercase' as const,
   letterSpacing: '0.5px',
@@ -56,7 +56,7 @@ const thStyle = {
 const tdStyle = {
   padding: '12px 10px',
   fontSize: '13px',
-  fontWeight: 500,
+  fontWeight: 600,
   color: '#1f2937',
   whiteSpace: 'normal' as const,
   wordWrap: 'break-word' as const,
@@ -356,7 +356,7 @@ export function FifoCostLotTrackingPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: 'zoho-puvi, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -394,14 +394,14 @@ export function FifoCostLotTrackingPage() {
             <div
               style={{
                 fontSize: '16px',
-                fontWeight: 500,
+                fontWeight: 600,
                 color: '#111827',
                 display: 'flex',
                 alignItems: 'center',
               }}
             >
               FIFO Cost Lot Tracking
-              <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+              <span style={{ fontWeight: 500, color: '#6b7280', marginLeft: '6px' }}>
                 •{' '}
                 {appliedFilters.fromDate
                   ? `From ${format(appliedFilters.fromDate, 'dd-MM-yyyy')}`
@@ -448,7 +448,7 @@ export function FifoCostLotTrackingPage() {
               gap: '6px',
               color: '#4b5563',
               fontSize: '13px',
-              fontWeight: 500,
+              fontWeight: 600,
             }}
           >
             <Filter size={14} color="#6b7280" />
@@ -487,14 +487,13 @@ export function FifoCostLotTrackingPage() {
               renderValue={(item) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ color: '#6b7280' }}>Item Name :</span>
-                  <span style={{ color: '#111827', fontWeight: 500 }}>
+                  <span style={{ color: '#111827', fontWeight: 600 }}>
                     {item ? item.name : 'All Items'}
                   </span>
                 </div>
               )}
               triggerStyle={filterTriggerStyle}
               style={{ width: 'max-content', minWidth: '220px' }}
-              dropdownWidth={300}
             />
 
             <SearchableSelect
@@ -508,7 +507,7 @@ export function FifoCostLotTrackingPage() {
               renderValue={(opt) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ color: '#6b7280' }}>Location Name :</span>
-                  <span style={{ color: '#111827', fontWeight: 500 }}>{opt?.label}</span>
+                  <span style={{ color: '#111827', fontWeight: 600 }}>{opt?.label}</span>
                 </div>
               )}
             />
@@ -530,7 +529,7 @@ export function FifoCostLotTrackingPage() {
                 border: 'none',
                 borderRadius: '4px',
                 fontSize: '13px',
-                fontWeight: 500,
+                fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -580,13 +579,13 @@ export function FifoCostLotTrackingPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
             >
               FIFO Cost Lot Tracking
             </h2>
@@ -615,7 +614,7 @@ export function FifoCostLotTrackingPage() {
               {appliedFilters.reportBasis === 'product_out' ? 'Product Out' : 'Product In'}
             </div>
             {appliedFilters.itemName && (
-              <div style={{ fontSize: '15px', color: '#111827', fontWeight: 500 }}>
+              <div style={{ fontSize: '15px', color: '#111827', fontWeight: 600 }}>
                 {appliedFilters.itemName}
               </div>
             )}
@@ -771,7 +770,7 @@ export function FifoCostLotTrackingPage() {
                         >
                           {row.inQty !== null && row.inQty > 0 ? (
                             <>
-                              <div style={{ color: '#111827', fontWeight: 600 }}>{row.inQty}</div>
+                              <div style={{ color: '#111827', fontWeight: 700 }}>{row.inQty}</div>
                               <div style={{ color: '#6b7280', fontSize: '12px' }}>
                                 {row.inQtyUnit}
                               </div>
@@ -839,7 +838,7 @@ export function FifoCostLotTrackingPage() {
                         >
                           {row.outQty !== null ? (
                             <>
-                              <div style={{ color: '#111827', fontWeight: 600 }}>
+                              <div style={{ color: '#111827', fontWeight: 700 }}>
                                 {Number(displayOutQty[i].toFixed(4))}
                               </div>
                               <div style={{ color: '#6b7280', fontSize: '12px' }}>
@@ -859,7 +858,7 @@ export function FifoCostLotTrackingPage() {
                               colSpan={11}
                               style={{
                                 padding: '8px 16px',
-                                fontWeight: 600,
+                                fontWeight: 700,
                                 color: '#111827',
                                 fontSize: '13px',
                                 textAlign: 'left',
