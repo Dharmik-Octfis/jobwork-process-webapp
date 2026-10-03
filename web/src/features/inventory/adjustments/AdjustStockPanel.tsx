@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { X } from 'lucide-react';
 import { Select } from '../../../components/ui/Select';
 import { DateInput } from '../../../components/ui/DateInput';
@@ -219,7 +219,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
 
     if (problems.length > 0) {
       setInvalid(new Set(problems.map(([field]) => field)));
-      toast.error(problems[0]![1]);
+      notify.error(problems[0]![1]);
       return;
     }
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { Plus, Trash2, X } from 'lucide-react';
 import { Select } from '../../../components/ui/Select';
 import { DateInput } from '../../../components/ui/DateInput';
@@ -307,7 +307,7 @@ function AdjustmentForm({
 
     if (problems.length > 0) {
       setInvalid(new Set(problems.map(([name]) => name)));
-      toast.error(problems[0]![1]);
+      notify.error(problems[0]![1]);
       return;
     }
 

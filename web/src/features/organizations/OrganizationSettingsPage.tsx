@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { Copy, Check } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -156,7 +156,7 @@ export function OrganizationSettingsPage() {
       await organizationsApi.deleteLogo(id);
       setLogoPreview(null);
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      toast.success('Organization logo removed');
+      notify.success('Organization logo removed');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     } finally {
@@ -182,7 +182,7 @@ export function OrganizationSettingsPage() {
         setLogoPreview(updated.logo_url);
       }
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
-      toast.success('Organization logo uploaded');
+      notify.success('Organization logo uploaded');
     } catch (err) {
       setServerError(toApiErrorMessage(err));
     } finally {
@@ -277,7 +277,9 @@ export function OrganizationSettingsPage() {
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+    <div
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}
+    >
       <header
         style={{
           padding: '0 32px',
@@ -303,7 +305,6 @@ export function OrganizationSettingsPage() {
 
       <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
         <div style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
           {/* Logo Section */}
           <div
             style={{
@@ -427,305 +428,301 @@ export function OrganizationSettingsPage() {
             onSubmit={handleSubmit(onSubmit)}
             style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
           >
-              {/* Org ID — read-only. The only field here a customer needs to read
+            {/* Org ID — read-only. The only field here a customer needs to read
                   *out* rather than edit. Generated once at creation and never
                   changes, so it is deliberately not part of the form state. */}
-              <div className="org-form-group">
-                <label>Organization Code</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-sans)',
-                      fontSize: 15,
-                      letterSpacing: '0.08em',
-                      color: 'var(--color-text)',
-                    }}
-                  >
-                    {activeOrg.orgCode ?? '—'}
-                  </span>
-                  {activeOrg.orgCode && (
-                    // type="button" is load-bearing: a bare <button> inside a form
-                    // defaults to type="submit", so copying would save the org.
-                    <button
-                      type="button"
-                      onClick={copyOrgCode}
-                      title={copiedOrgCode ? 'Copied' : 'Copy Organization Code'}
-                      style={{
-                        border: '1px solid var(--color-border)',
-                        background: 'var(--color-surface)',
-                        color: copiedOrgCode
-                          ? 'var(--color-success, #10b981)'
-                          : 'var(--color-text-muted)',
-                        borderRadius: 4,
-                        padding: '8px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {copiedOrgCode ? <Check size={16} /> : <Copy size={12} />}
-                    </button>
-                  )}
-                </div>
-                <p
+            <div className="org-form-group">
+              <label>Organization Code</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span
                   style={{
-                    marginTop: 4,
-                    fontSize: 12,
-                    color: 'var(--color-text-muted)',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: 15,
+                    letterSpacing: '0.08em',
+                    color: 'var(--color-text)',
                   }}
                 >
-                  Quote this when you contact support.
-                </p>
-              </div>
-
-              {/* Name and Industry */}
-              <div
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}
-              >
-                <div className="org-form-group">
-                  <label className="org-form-required-label">
-                    Organization Name <span className="org-form-required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`org-form-input ${errors.name ? 'error' : ''}`}
-                    placeholder="e.g. Acme Corp"
-                    {...register('name')}
-                  />
-                  {errors.name && <p className="org-form-error-msg">{errors.name.message}</p>}
-                </div>
-
-                <div className="org-form-group">
-                  <label className="org-form-required-label">
-                    Industry Type <span className="org-form-required">*</span>
-                  </label>
-                  <Controller
-                    name="industryType"
-                    control={control}
-                    render={({ field }) => (
-                      <div className={errors.industryType ? 'error' : ''}>
-                        <SearchableSelect
-                          options={
-                            masterData?.industries.map((ind) => ({
-                              label: ind.name,
-                              value: ind.code,
-                            })) || []
-                          }
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select Industry"
-                        />
-                      </div>
-                    )}
-                  />
-                  {errors.industryType && (
-                    <p className="org-form-error-msg">{errors.industryType.message}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Two column layout for email/phone */}
-              <div
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}
-              >
-                <div className="org-form-group">
-                  <label>Email</label>
-                  <input
-                    type="email"
-                    className={`org-form-input ${errors.email ? 'error' : ''}`}
-                    placeholder="contact@company.com"
-                    {...register('email')}
-                  />
-                  {errors.email && <p className="org-form-error-msg">{errors.email.message}</p>}
-                </div>
-
-                <div className="org-form-group">
-                  <label>Phone</label>
-                  <div
-                    className={`org-form-input-group ${errors.phone || errors.dialCode ? 'error' : ''}`}
+                  {activeOrg.orgCode ?? '—'}
+                </span>
+                {activeOrg.orgCode && (
+                  // type="button" is load-bearing: a bare <button> inside a form
+                  // defaults to type="submit", so copying would save the org.
+                  <button
+                    type="button"
+                    onClick={copyOrgCode}
+                    title={copiedOrgCode ? 'Copied' : 'Copy Organization Code'}
+                    style={{
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface)',
+                      color: copiedOrgCode
+                        ? 'var(--color-success, #10b981)'
+                        : 'var(--color-text-muted)',
+                      borderRadius: 4,
+                      padding: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
                   >
-                    <Controller
-                      name="dialCode"
-                      control={control}
-                      render={({ field }) => (
-                        <SearchableSelect
-                          options={
-                            masterData?.countries
-                              ? masterData.countries.map((c) => ({
-                                  label: `${c.code} ${c.dialCode}`,
-                                  value: c.dialCode,
-                                }))
-                              : [{ label: 'IND 91', value: '91' }]
-                          }
-                          value={field.value}
-                          onChange={field.onChange}
-                          style={{ width: '130px', flexShrink: 0 }}
-                          className="org-form-select"
-                          placeholder="Code"
-                        />
-                      )}
-                    />
-                    <div className="divider"></div>
-                    <input
-                      {...register('phone')}
-                      type="tel"
-                      maxLength={10}
-                      className="org-form-input"
-                      placeholder="9876543210"
-                      onInput={(e) => {
-                        e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
-                      }}
-                    />
-                  </div>
-                  {errors.phone && <p className="org-form-error-msg">{errors.phone.message}</p>}
-                </div>
-              </div>
-
-              <div className="org-form-group">
-                <label>Street</label>
-                <input
-                  type="text"
-                  className={`org-form-input ${errors.address?.streetAddress1 ? 'error' : ''}`}
-                  placeholder="E.g. 101, Business Center"
-                  {...register('address.streetAddress1')}
-                />
-                {errors.address?.streetAddress1 && (
-                  <p className="org-form-error-msg">{errors.address.streetAddress1.message}</p>
+                    {copiedOrgCode ? <Check size={16} /> : <Copy size={12} />}
+                  </button>
                 )}
               </div>
-
-              <div
+              <p
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--space-2)',
+                  marginTop: 4,
+                  fontSize: 12,
+                  color: 'var(--color-text-muted)',
                 }}
               >
-                <div className="org-form-group">
-                  <label>Country</label>
-                  <Controller
-                    name="address.country"
-                    control={control}
-                    render={({ field }) => (
-                      <div className={errors.address?.country ? 'error' : ''}>
-                        <SearchableSelect
-                          options={
-                            masterData?.countries.map((c) => ({ label: c.name, value: c.code })) ||
-                            []
-                          }
-                          value={field.value}
-                          onChange={(val) => {
-                            if (val !== field.value) {
-                              field.onChange(val);
-                              setValue('address.stateCode', '');
-                              setValue('address.city', '');
-                            }
-                          }}
-                          disabled={!masterData}
-                          placeholder="Select Country"
-                        />
-                      </div>
-                    )}
-                  />
-                </div>
+                Quote this when you contact support.
+              </p>
+            </div>
 
-                <div className="org-form-group">
-                  <label>State</label>
-                  <Controller
-                    name="address.stateCode"
-                    control={control}
-                    render={({ field }) => (
-                      <div className={errors.address?.stateCode ? 'error' : ''}>
-                        <SearchableSelect
-                          options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
-                          value={field.value}
-                          onChange={(val) => {
-                            if (val !== field.value) {
-                              field.onChange(val);
-                              setValue('address.city', '');
-                            }
-                          }}
-                          disabled={!selectedCountryCode}
-                          placeholder="Select State"
-                        />
-                      </div>
-                    )}
-                  />
-                </div>
-
-                <div className="org-form-group">
-                  <label>City</label>
-                  <Controller
-                    name="address.city"
-                    control={control}
-                    render={({ field }) => (
-                      <div className={errors.address?.city ? 'error' : ''}>
-                        <SearchableSelect
-                          options={availableCities.map((c) => ({ label: c.name, value: c.id }))}
-                          value={field.value}
-                          onChange={field.onChange}
-                          disabled={!selectedStateCode}
-                          placeholder="Select City"
-                        />
-                      </div>
-                    )}
-                  />
-                </div>
-
-                <div className="org-form-group">
-                  <label>Pin Code</label>
-                  <input
-                    type="text"
-                    className={`org-form-input ${errors.address?.zip ? 'error' : ''}`}
-                    placeholder="10001"
-                    {...register('address.zip')}
-                  />
-                </div>
+            {/* Name and Industry */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+              <div className="org-form-group">
+                <label className="org-form-required-label">
+                  Organization Name <span className="org-form-required">*</span>
+                </label>
+                <input
+                  type="text"
+                  className={`org-form-input ${errors.name ? 'error' : ''}`}
+                  placeholder="e.g. Acme Corp"
+                  {...register('name')}
+                />
+                {errors.name && <p className="org-form-error-msg">{errors.name.message}</p>}
               </div>
 
               <div className="org-form-group">
-                <label>Website</label>
-                <input
-                  type="text"
-                  className={`org-form-input ${errors.website ? 'error' : ''}`}
-                  placeholder="https://example.com"
-                  {...register('website')}
+                <label className="org-form-required-label">
+                  Industry Type <span className="org-form-required">*</span>
+                </label>
+                <Controller
+                  name="industryType"
+                  control={control}
+                  render={({ field }) => (
+                    <div className={errors.industryType ? 'error' : ''}>
+                      <SearchableSelect
+                        options={
+                          masterData?.industries.map((ind) => ({
+                            label: ind.name,
+                            value: ind.code,
+                          })) || []
+                        }
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Select Industry"
+                      />
+                    </div>
+                  )}
                 />
-                {errors.website && <p className="org-form-error-msg">{errors.website.message}</p>}
+                {errors.industryType && (
+                  <p className="org-form-error-msg">{errors.industryType.message}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Two column layout for email/phone */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+              <div className="org-form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  className={`org-form-input ${errors.email ? 'error' : ''}`}
+                  placeholder="contact@company.com"
+                  {...register('email')}
+                />
+                {errors.email && <p className="org-form-error-msg">{errors.email.message}</p>}
               </div>
 
-            </form>
-          </div>
-        </main>
+              <div className="org-form-group">
+                <label>Phone</label>
+                <div
+                  className={`org-form-input-group ${errors.phone || errors.dialCode ? 'error' : ''}`}
+                >
+                  <Controller
+                    name="dialCode"
+                    control={control}
+                    render={({ field }) => (
+                      <SearchableSelect
+                        options={
+                          masterData?.countries
+                            ? masterData.countries.map((c) => ({
+                                label: `${c.code} ${c.dialCode}`,
+                                value: c.dialCode,
+                              }))
+                            : [{ label: 'IND 91', value: '91' }]
+                        }
+                        value={field.value}
+                        onChange={field.onChange}
+                        style={{ width: '130px', flexShrink: 0 }}
+                        className="org-form-select"
+                        placeholder="Code"
+                      />
+                    )}
+                  />
+                  <div className="divider"></div>
+                  <input
+                    {...register('phone')}
+                    type="tel"
+                    maxLength={10}
+                    className="org-form-input"
+                    placeholder="9876543210"
+                    onInput={(e) => {
+                      e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+                    }}
+                  />
+                </div>
+                {errors.phone && <p className="org-form-error-msg">{errors.phone.message}</p>}
+              </div>
+            </div>
 
-        <footer style={{
+            <div className="org-form-group">
+              <label>Street</label>
+              <input
+                type="text"
+                className={`org-form-input ${errors.address?.streetAddress1 ? 'error' : ''}`}
+                placeholder="E.g. 101, Business Center"
+                {...register('address.streetAddress1')}
+              />
+              {errors.address?.streetAddress1 && (
+                <p className="org-form-error-msg">{errors.address.streetAddress1.message}</p>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 'var(--space-2)',
+              }}
+            >
+              <div className="org-form-group">
+                <label>Country</label>
+                <Controller
+                  name="address.country"
+                  control={control}
+                  render={({ field }) => (
+                    <div className={errors.address?.country ? 'error' : ''}>
+                      <SearchableSelect
+                        options={
+                          masterData?.countries.map((c) => ({ label: c.name, value: c.code })) || []
+                        }
+                        value={field.value}
+                        onChange={(val) => {
+                          if (val !== field.value) {
+                            field.onChange(val);
+                            setValue('address.stateCode', '');
+                            setValue('address.city', '');
+                          }
+                        }}
+                        disabled={!masterData}
+                        placeholder="Select Country"
+                      />
+                    </div>
+                  )}
+                />
+              </div>
+
+              <div className="org-form-group">
+                <label>State</label>
+                <Controller
+                  name="address.stateCode"
+                  control={control}
+                  render={({ field }) => (
+                    <div className={errors.address?.stateCode ? 'error' : ''}>
+                      <SearchableSelect
+                        options={availableStates.map((s) => ({ label: s.name, value: s.code }))}
+                        value={field.value}
+                        onChange={(val) => {
+                          if (val !== field.value) {
+                            field.onChange(val);
+                            setValue('address.city', '');
+                          }
+                        }}
+                        disabled={!selectedCountryCode}
+                        placeholder="Select State"
+                      />
+                    </div>
+                  )}
+                />
+              </div>
+
+              <div className="org-form-group">
+                <label>City</label>
+                <Controller
+                  name="address.city"
+                  control={control}
+                  render={({ field }) => (
+                    <div className={errors.address?.city ? 'error' : ''}>
+                      <SearchableSelect
+                        options={availableCities.map((c) => ({ label: c.name, value: c.id }))}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={!selectedStateCode}
+                        placeholder="Select City"
+                      />
+                    </div>
+                  )}
+                />
+              </div>
+
+              <div className="org-form-group">
+                <label>Pin Code</label>
+                <input
+                  type="text"
+                  className={`org-form-input ${errors.address?.zip ? 'error' : ''}`}
+                  placeholder="10001"
+                  {...register('address.zip')}
+                />
+              </div>
+            </div>
+
+            <div className="org-form-group">
+              <label>Website</label>
+              <input
+                type="text"
+                className={`org-form-input ${errors.website ? 'error' : ''}`}
+                placeholder="https://example.com"
+                {...register('website')}
+              />
+              {errors.website && <p className="org-form-error-msg">{errors.website.message}</p>}
+            </div>
+          </form>
+        </div>
+      </main>
+
+      <footer
+        style={{
           padding: '16px 32px',
           borderTop: '1px solid var(--color-border)',
           backgroundColor: '#fff',
           display: 'flex',
           justifyContent: 'flex-start',
-        }}>
-          <button
-            form="org-settings-form"
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              padding: '10px 24px',
-              fontSize: '15px',
-              fontWeight: 500,
-              backgroundColor: 'var(--navy-900)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              opacity: isSubmitting ? 0.7 : 1,
-              transition: 'background-color 0.2s',
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save Changes'}
-          </button>
-        </footer>
+        }}
+      >
+        <button
+          form="org-settings-form"
+          type="submit"
+          disabled={isSubmitting}
+          style={{
+            padding: '10px 24px',
+            fontSize: '15px',
+            fontWeight: 500,
+            backgroundColor: 'var(--navy-900)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isSubmitting ? 0.7 : 1,
+            transition: 'background-color 0.2s',
+          }}
+        >
+          {isSubmitting ? 'Saving...' : 'Save Changes'}
+        </button>
+      </footer>
     </div>
   );
 }

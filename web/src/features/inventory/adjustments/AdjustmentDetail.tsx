@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
 import { X } from 'lucide-react';
-import { toApiErrorMessage } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
 import { useBatchUnitLabel, useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
@@ -110,21 +109,17 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
       announceOutcome(result);
       refresh();
     },
-    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const removeMutation = useMutation({
     mutationFn: () => removeAdjustment(orgId, adjustmentId),
     onSuccess: (result) => {
       setConfirming(null);
-      toast.success(`${result.adjustmentNumber} ${result.deleted ? 'deleted' : 'cancelled'}.`);
+      notify.success(`${result.adjustmentNumber} ${result.deleted ? 'deleted' : 'cancelled'}.`);
       refresh();
       if (result.deleted) onClose();
     },
-    onError: (error) => {
-      setConfirming(null);
-      toast.error(toApiErrorMessage(error));
-    },
+    onError: () => setConfirming(null),
   });
 
   if (isLoading) {

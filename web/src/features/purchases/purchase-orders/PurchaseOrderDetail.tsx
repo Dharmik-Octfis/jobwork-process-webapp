@@ -26,8 +26,6 @@ import {
 import { storedLineDiscount } from '../../../lib/lineDiscount';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -235,11 +233,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
       invalidateStockQueries(queryClient, orgId);
       setBillToDelete(null);
     },
-    // A bill whose stock was used is refused, naming the document — say so.
-    onError: (error) => {
-      setBillToDelete(null);
-      toast.error(toApiErrorMessage(error));
-    },
+    // The refusal (stock already used, naming the document) is toasted globally.
+    onError: () => setBillToDelete(null),
   });
 
   const { data: po, isLoading } = useQuery({

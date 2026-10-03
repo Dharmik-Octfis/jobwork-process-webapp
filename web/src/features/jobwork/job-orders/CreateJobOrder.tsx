@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { X } from 'lucide-react';
 import { Spinner } from '../../../components/ui/Spinner';
 import { createJobOrder, fetchJobOrderById } from './jobOrders.api';
@@ -39,7 +39,7 @@ export function CreateJobOrder() {
     mutationFn: (data: CreateJobOrderData) => createJobOrder(orgId!, data),
     onSuccess: (data) => {
       const planWarning = unissuablePlanMessage(data);
-      if (planWarning) toast(planWarning, { icon: '⚠️', duration: 8000 });
+      if (planWarning) notify.warning(planWarning);
       queryClient.invalidateQueries({ queryKey: ['jobOrders', orgId] });
       navigate(`/organizations/${orgId}/jobwork/job-orders?id=${data.id}`);
     },

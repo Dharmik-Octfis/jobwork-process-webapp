@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import {
   Plus,
   Trash2,
@@ -455,7 +455,7 @@ export function CreateSalesOrder() {
   });
 
   const onInvalid = (errs: unknown) =>
-    toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.');
+    notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.');
 
   const onSubmit = (data: CreateSalesOrderData) => {
     const finalItems = (data.lineItems || []).map((item) => {

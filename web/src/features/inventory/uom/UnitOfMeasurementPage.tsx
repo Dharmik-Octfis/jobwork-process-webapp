@@ -5,7 +5,6 @@ import { useUoms, useDeleteUom } from './uom.api';
 import { UomFormModal } from './UomFormModal';
 import type { Uom } from './uom.schemas';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import { toast } from 'react-hot-toast';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 const UQC_MAPPING: Record<string, string> = {
@@ -317,12 +316,8 @@ export function UnitOfMeasurementPage() {
           if (uomToDelete) {
             deleteMutation.mutate(uomToDelete, {
               onSuccess: () => setUomToDelete(null),
-              // a unit in use is refused with a 409 naming what uses it
-              onError: (error: unknown) => {
-                const err = error as { response?: { data?: { message?: string } } };
-                toast.error(err.response?.data?.message || 'Failed to delete unit.');
-                setUomToDelete(null);
-              },
+              // the 409 naming what uses the unit is toasted globally
+              onError: () => setUomToDelete(null),
             });
           }
         }}

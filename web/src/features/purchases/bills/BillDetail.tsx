@@ -15,8 +15,6 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
 import {
   fetchBillById,
   getBillSignedUrl,
@@ -228,11 +226,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       setIsConfirmDeleteOpen(false);
       onClose();
     },
-    // A bill whose stock was used is refused, naming the document — say so.
-    onError: (error) => {
-      setIsConfirmDeleteOpen(false);
-      toast.error(toApiErrorMessage(error));
-    },
+    // The refusal (stock already used, naming the document) is toasted globally.
+    onError: () => setIsConfirmDeleteOpen(false),
   });
 
   const updateMutation = useMutation({
@@ -250,7 +245,6 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       queryClient.invalidateQueries({ queryKey: ['record-approvals', orgId, 'bills', poId] });
       announceOpenOutcome(updated);
     },
-    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const { data: po, isLoading } = useQuery({

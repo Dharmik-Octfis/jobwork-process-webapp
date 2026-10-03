@@ -2,9 +2,7 @@ import { Fragment, useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'react-hot-toast';
 import { itemsApi } from '../items.api';
-import { toApiErrorMessage } from '../../../api/client';
 import { fetchLocations, isOwnLocation } from '../../configuration/locations/locations.api';
 import '../../users/Users.css'; // For users-tooltip-wrapper classes
 import { AddOpeningStockModal } from './AddOpeningStockModal';
@@ -179,7 +177,6 @@ export function ItemBatchDetails({
       await queryClient.invalidateQueries({ queryKey: ['itemBatches', orgId, itemId] });
       await queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
     },
-    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const allBatches = useMemo(() => {

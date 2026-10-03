@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import {
   Plus,
   Trash2,
@@ -587,7 +587,7 @@ export function CreatePurchaseOrder() {
     setLocalCustomFieldErrors(newLocalCustomFieldErrors);
 
     if (hasErrors) {
-      toast.error('Please fill all required custom fields.');
+      notify.error('Please fill all required custom fields.');
       return;
     }
 
@@ -695,7 +695,7 @@ export function CreatePurchaseOrder() {
         <form
           id="create-po-form"
           onSubmit={handleSubmit(onSubmit, (errs) =>
-            toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+            notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
           )}
           noValidate
         >

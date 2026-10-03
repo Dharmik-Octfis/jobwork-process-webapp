@@ -3,9 +3,8 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { announceOpenOutcome } from './billApproval';
-import { toApiErrorMessage } from '../../../api/client';
 import {
   Plus,
   Search,
@@ -735,11 +734,7 @@ export function CreateBill() {
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
-    // The server's refusal says exactly why ("…already been used by challan JI-…"),
-    // and until this toast it only reached the console.
-    onError: (error: AxiosError<{ message?: string }>) => {
-      toast.error(toApiErrorMessage(error));
-    },
+    // No onError: the global mutation handler toasts the server's refusal (app/queryClient.ts).
   });
 
   const onSubmit = (data: CreateBillData) => {
@@ -764,7 +759,7 @@ export function CreateBill() {
     setLocalCustomFieldErrors(newLocalCustomFieldErrors);
 
     if (hasErrors) {
-      toast.error('Please fill all required custom fields.');
+      notify.error('Please fill all required custom fields.');
       return;
     }
 
@@ -878,7 +873,7 @@ export function CreateBill() {
         <form
           id="create-bill-form"
           onSubmit={handleSubmit(onSubmit, (errs) =>
-            toast.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+            notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
           )}
           noValidate
         >

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../lib/notify';
 import { useAuth } from '../../providers/auth-context';
 import { fetchSessionStatus, type SessionEndedReason } from './auth.api';
 
@@ -84,7 +84,7 @@ export function useSessionWatch(): void {
     if (!data || data.active || signedOut.current) return;
 
     signedOut.current = true;
-    toast.error(messageFor(data.reason));
+    notify.error(messageFor(data.reason));
 
     clearSession();
     queryClient.clear();

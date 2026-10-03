@@ -1,4 +1,4 @@
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import type { Bill } from './bills.schemas';
 
 /** `bills.approval_status` as people read it. A bill's `status` is only Draft or Open. */
@@ -17,8 +17,8 @@ export const APPROVAL_COLOURS: Record<string, string> = {
 /** Say what asking to open a bill ended as — it is not always "opened". */
 export function announceOpenOutcome(bill: Pick<Bill, 'billNumber' | 'status' | 'approvalStatus'>) {
   if (bill.status?.toLowerCase() === 'open') {
-    toast.success(`${bill.billNumber} opened. Stock updated.`);
+    notify.success(`${bill.billNumber} opened. Stock updated.`);
   } else if (bill.approvalStatus === 'pending') {
-    toast.success(`${bill.billNumber} sent for approval. Stock moves once it is approved.`);
+    notify.success(`${bill.billNumber} sent for approval. Stock moves once it is approved.`);
   }
 }

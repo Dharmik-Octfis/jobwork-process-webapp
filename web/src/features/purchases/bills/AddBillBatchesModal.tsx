@@ -1,5 +1,5 @@
 import { Fragment, useState, useMemo } from 'react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Trash2, Plus, Warehouse } from 'lucide-react';
@@ -430,14 +430,14 @@ export function AddBillBatchesModal({
     const validBatches = batches.filter((b) => parseFloat(b.quantityIn) > 0);
 
     if (validBatches.length === 0 && batches.length > 0) {
-      toast.error(
+      notify.error(
         `Please enter a valid quantity for at least one ${trackingLabel.singular.toLowerCase()}.`,
       );
       return;
     }
 
     if (!matches && !overwrite) {
-      toast.error(
+      notify.error(
         `Please allocate exactly ${formatQty(lineQty)} ${uomLabel} or choose to overwrite the line item quantity.`,
       );
       return;
@@ -464,7 +464,7 @@ export function AddBillBatchesModal({
           uomLabel,
         });
         if (problem) {
-          toast.error(problem);
+          notify.error(problem);
           return;
         }
       }
