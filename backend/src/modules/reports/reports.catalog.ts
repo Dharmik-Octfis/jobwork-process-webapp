@@ -55,14 +55,14 @@ export const REPORTS = [
     path: 'taka',
   },
   {
-    key: 'jobwork_challan_register',
-    name: 'Jobwork Challan Register',
+    key: 'jobwork_challan_report',
+    name: 'Jobwork Challan Report',
     category: 'Job Work',
     path: 'jobwork-challans',
   },
   {
-    key: 'jobwork_receipt_register',
-    name: 'Jobwork Receipt Register',
+    key: 'jobwork_receipt_report',
+    name: 'Jobwork Receipt Report',
     category: 'Job Work',
     path: 'jobwork-receipts',
   },

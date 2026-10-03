@@ -43,7 +43,7 @@ export function JobworkReceiptsRegisterPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
-  useRecordReportVisit(orgId, 'jobwork_receipt_register');
+  useRecordReportVisit(orgId, 'jobwork_receipt_report');
 
   const storageKey = `jobworkReceiptsState_${orgId}`;
   const initialState = useMemo(() => {

@@ -44,7 +44,7 @@ export function JobworkChallansRegisterPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
-  useRecordReportVisit(orgId, 'jobwork_challan_register');
+  useRecordReportVisit(orgId, 'jobwork_challan_report');
 
   const storageKey = `jobworkChallansState_${orgId}`;
   const initialState = useMemo(() => {
