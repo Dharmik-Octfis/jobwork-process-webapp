@@ -36,6 +36,7 @@ import { PurchaseOrderStatusBadge } from './PurchaseOrderStatusBadge';
 import type { PurchaseOrder } from './purchase-orders.schemas';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
+import './purchase-orders-v3.css';
 
 function formatDate(val: unknown): string {
   if (!val) return '-';
@@ -438,6 +439,8 @@ export function PurchaseOrdersList() {
     { key: 'all', label: 'All Orders' },
     { key: 'draft', label: 'Draft' },
     { key: 'issued', label: 'Issued' },
+    { key: 'billed', label: 'Billed' },
+    { key: 'unbilled', label: 'Unbilled' },
     { key: 'approved', label: 'Approved' },
     { key: 'closed', label: 'Closed' },
   ];
@@ -459,8 +462,8 @@ export function PurchaseOrdersList() {
         <div
           className="master-pane"
           style={{
-            flex: selectedPoId ? '0 0 340px' : 1,
-            borderRight: selectedPoId ? '1px solid #eef0f3' : 'none',
+            flex: selectedPoId ? '0 0 380px' : 1,
+            borderRight: selectedPoId ? '1px solid #e2e8f0' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
@@ -778,70 +781,22 @@ export function PurchaseOrdersList() {
             </header>
           )}
 
-          {/* Executive KPI Metric Ribbon (UI 2 Feature - when no PO selected) */}
+          {/* Executive KPI Metric Ribbon (V3 UI) */}
           {!selectedPoId && purchaseOrders.length > 0 && (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: 12,
-                padding: '16px 24px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0',
-              }}
-            >
+            <div className="po-v3-kpi-deck">
               {/* Card 1: Total Orders */}
               <div
                 onClick={() => setFilter('all')}
-                style={{
-                  background: '#fff',
-                  border: filter === 'all' ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#0284c7')}
-                onMouseLeave={(e) => {
-                  if (filter !== 'all') e.currentTarget.style.borderColor = '#e2e8f0';
-                }}
+                className={`po-v3-kpi-card ${filter === 'all' ? 'active' : ''}`}
               >
-                <div
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 8,
-                    background: '#e0f2fe',
-                    color: '#0284c7',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <ShoppingCart size={19} />
+                <div className="po-v3-kpi-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
+                  <ShoppingCart size={20} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Total Orders
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
-                      {stats.count}
-                    </span>
-                    <span style={{ fontSize: 12, color: '#0284c7', fontWeight: 600 }}>
+                <div className="po-v3-kpi-meta">
+                  <div className="po-v3-kpi-label">Total Orders</div>
+                  <div className="po-v3-kpi-val-row">
+                    <span className="po-v3-kpi-count">{stats.count}</span>
+                    <span className="po-v3-kpi-subtext">
                       ₹{stats.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
@@ -851,55 +806,18 @@ export function PurchaseOrdersList() {
               {/* Card 2: Draft Orders */}
               <div
                 onClick={() => setFilter('draft')}
-                style={{
-                  background: '#fff',
-                  border: filter === 'draft' ? '1.5px solid #d97706' : '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#d97706')}
-                onMouseLeave={(e) => {
-                  if (filter !== 'draft') e.currentTarget.style.borderColor = '#e2e8f0';
-                }}
+                className={`po-v3-kpi-card ${filter === 'draft' ? 'active' : ''}`}
               >
-                <div
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 8,
-                    background: '#fef3c7',
-                    color: '#d97706',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Clock size={19} />
+                <div className="po-v3-kpi-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
+                  <Clock size={20} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Drafts
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
-                      {stats.drafts}
+                <div className="po-v3-kpi-meta">
+                  <div className="po-v3-kpi-label">Draft Orders</div>
+                  <div className="po-v3-kpi-val-row">
+                    <span className="po-v3-kpi-count">{stats.drafts}</span>
+                    <span className="po-v3-kpi-subtext" style={{ color: '#b45309' }}>
+                      Awaiting Issue
                     </span>
-                    <span style={{ fontSize: 11, color: '#b45309' }}>Awaiting issue</span>
                   </div>
                 </div>
               </div>
@@ -907,55 +825,16 @@ export function PurchaseOrdersList() {
               {/* Card 3: Issued Orders */}
               <div
                 onClick={() => setFilter('issued')}
-                style={{
-                  background: '#fff',
-                  border: filter === 'issued' ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#0284c7')}
-                onMouseLeave={(e) => {
-                  if (filter !== 'issued') e.currentTarget.style.borderColor = '#e2e8f0';
-                }}
+                className={`po-v3-kpi-card ${filter === 'issued' ? 'active' : ''}`}
               >
-                <div
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 8,
-                    background: '#e0f2fe',
-                    color: '#0284c7',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Send size={19} />
+                <div className="po-v3-kpi-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
+                  <Send size={20} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Issued
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
-                      {stats.issued}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#0284c7' }}>With vendors</span>
+                <div className="po-v3-kpi-meta">
+                  <div className="po-v3-kpi-label">Issued Orders</div>
+                  <div className="po-v3-kpi-val-row">
+                    <span className="po-v3-kpi-count">{stats.issued}</span>
+                    <span className="po-v3-kpi-subtext">With Vendors</span>
                   </div>
                 </div>
               </div>
@@ -963,55 +842,18 @@ export function PurchaseOrdersList() {
               {/* Card 4: Approved & Closed */}
               <div
                 onClick={() => setFilter('approved')}
-                style={{
-                  background: '#fff',
-                  border: filter === 'approved' ? '1.5px solid #16a34a' : '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#16a34a')}
-                onMouseLeave={(e) => {
-                  if (filter !== 'approved') e.currentTarget.style.borderColor = '#e2e8f0';
-                }}
+                className={`po-v3-kpi-card ${filter === 'approved' ? 'active' : ''}`}
               >
-                <div
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 8,
-                    background: '#dcfce7',
-                    color: '#16a34a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <CheckCircle2 size={19} />
+                <div className="po-v3-kpi-icon" style={{ background: '#dcfce7', color: '#16a34a' }}>
+                  <CheckCircle2 size={20} />
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    Approved & Closed
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
-                      {stats.approved}
+                <div className="po-v3-kpi-meta">
+                  <div className="po-v3-kpi-label">Approved & Closed</div>
+                  <div className="po-v3-kpi-val-row">
+                    <span className="po-v3-kpi-count">{stats.approved}</span>
+                    <span className="po-v3-kpi-subtext" style={{ color: '#16a34a' }}>
+                      Fulfilled
                     </span>
-                    <span style={{ fontSize: 11, color: '#16a34a' }}>Fulfilled</span>
                   </div>
                 </div>
               </div>
@@ -1025,48 +867,27 @@ export function PurchaseOrdersList() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                padding: '8px 24px',
-                background: '#fff',
+                padding: '10px 24px',
+                background: '#ffffff',
                 borderBottom: '1px solid #f1f5f9',
                 overflowX: 'auto',
               }}
             >
-              {STATUS_TABS.map((tab) => {
-                const isActive = filter === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setFilter(tab.key)}
-                    style={{
-                      background: isActive ? '#0284c7' : '#f8fafc',
-                      color: isActive ? '#fff' : '#64748b',
-                      border: `1px solid ${isActive ? '#0284c7' : '#e2e8f0'}`,
-                      borderRadius: 20,
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      whiteSpace: 'nowrap',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.background = '#f1f5f9';
-                        e.currentTarget.style.color = '#1e293b';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.background = '#f8fafc';
-                        e.currentTarget.style.color = '#64748b';
-                      }
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+              <div className="po-v3-status-pills">
+                {STATUS_TABS.map((tab) => {
+                  const isActive = filter === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setFilter(tab.key)}
+                      className={`po-v3-pill ${isActive ? 'active' : ''}`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

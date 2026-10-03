@@ -46,7 +46,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   /**
    * Users. The first entry is the default, so an admin opening Settings → Users
    * lands on **Active Users** — the people who can actually sign in today, which is
-   * what they are looking for almost every time. (The key stays `all` because it 
+   * what they are looking for almost every time. (The key stays `all` because it
    * is the default slot, while the label and `where` narrow it.)
    *
    * 🔴 `unconfirmed` is the one preset whose rows do NOT come from `memberships` —
@@ -146,6 +146,9 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
     { key: 'issued', label: 'Issued', where: { status: 'Issued' } },
+    { key: 'billed', label: 'Billed', where: { bills: { some: { isDeleted: false } } } },
+    { key: 'unbilled', label: 'Unbilled', where: { bills: { none: { isDeleted: false } } } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
     { key: 'closed', label: 'Closed', where: { status: 'Closed' } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'Cancelled' } },
   ],

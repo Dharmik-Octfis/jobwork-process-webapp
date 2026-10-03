@@ -110,19 +110,30 @@ export function PurchaseOrderStatusBadge({
         display: 'inline-flex',
         alignItems: 'center',
         padding: isMd ? '3px 10px' : '2px 8px',
-        borderRadius: '12px',
-        fontSize: isMd ? '12px' : '11px',
+        borderRadius: '20px',
+        fontSize: isMd ? '11.5px' : '10.5px',
         fontWeight: 600,
         textTransform: 'uppercase',
-        letterSpacing: '0.03em',
+        letterSpacing: '0.04em',
         background: bg,
         color: text,
         border: `1px solid ${border}`,
         lineHeight: 1.4,
         whiteSpace: 'nowrap',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
         ...style,
       }}
     >
+      <span
+        style={{
+          width: isMd ? 6 : 5,
+          height: isMd ? 6 : 5,
+          borderRadius: '50%',
+          backgroundColor: text,
+          marginRight: 5,
+          flexShrink: 0,
+        }}
+      />
       {displayLabel}
     </span>
   );
