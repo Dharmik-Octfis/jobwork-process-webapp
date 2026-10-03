@@ -346,14 +346,14 @@ export function StockSummaryReportPage() {
             <div
               style={{
                 fontSize: '16px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#111827',
                 display: 'flex',
                 alignItems: 'center',
               }}
             >
               Stock Summary Report
-              <span style={{ fontWeight: 500, color: '#6b7280', marginLeft: '6px' }}>
+              <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
                 • From {formattedFromDate} To {formattedToDate}
               </span>
             </div>
@@ -396,7 +396,7 @@ export function StockSummaryReportPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 600,
+            fontWeight: 500,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -437,7 +437,7 @@ export function StockSummaryReportPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: 500,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -485,7 +485,7 @@ export function StockSummaryReportPage() {
                 alignItems: 'center',
                 gap: '6px',
                 cursor: 'pointer',
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               <Columns size={14} color="#6b7280" />
@@ -497,7 +497,7 @@ export function StockSummaryReportPage() {
                   padding: '2px 6px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                 }}
               >
                 {visibleColumns.length}
@@ -514,13 +514,13 @@ export function StockSummaryReportPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
               Stock Summary Report
             </h2>
@@ -648,7 +648,7 @@ export function StockSummaryReportPage() {
                               <td key={colKey} style={tdStyle}>
                                 <span
                                   className="hover-underline"
-                                  style={{ color: '#0062ff', fontWeight: 600, cursor: 'pointer' }}
+                                  style={{ color: '#0062ff', fontWeight: 500, cursor: 'pointer' }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     navigate(`/organizations/${orgId}/items?id=${row.itemId}`);
@@ -689,7 +689,7 @@ export function StockSummaryReportPage() {
                             return (
                               <td
                                 key={colKey}
-                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                               >
                                 {(row.openingStock || 0).toFixed(2)}
                               </td>
@@ -704,7 +704,7 @@ export function StockSummaryReportPage() {
                             return (
                               <td
                                 key={colKey}
-                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                               >
                                 <span
                                   className="hover-underline"
@@ -731,7 +731,7 @@ export function StockSummaryReportPage() {
                             return (
                               <td
                                 key={colKey}
-                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                               >
                                 <span
                                   className="hover-underline"
@@ -756,7 +756,7 @@ export function StockSummaryReportPage() {
                                   ...tdStyle,
                                   textAlign: 'right',
                                   color: '#111827',
-                                  fontWeight: 700,
+                                  fontWeight: 600,
                                 }}
                               >
                                 {(row.closingStock || 0).toFixed(2)}
@@ -785,7 +785,7 @@ export function StockSummaryReportPage() {
                     {visibleColumns.map((colKey, index) => {
                       if (index === 0) {
                         return (
-                          <td key={colKey} style={{ ...tdStyle, fontWeight: 700 }}>
+                          <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
                             Total
                           </td>
                         );
@@ -794,7 +794,7 @@ export function StockSummaryReportPage() {
                         return (
                           <td
                             key={colKey}
-                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                           >
                             {grandTotalOpening.toFixed(2)}
                           </td>
@@ -804,7 +804,7 @@ export function StockSummaryReportPage() {
                         return (
                           <td
                             key={colKey}
-                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                           >
                             {grandTotalIn.toFixed(2)}
                           </td>
@@ -814,7 +814,7 @@ export function StockSummaryReportPage() {
                         return (
                           <td
                             key={colKey}
-                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
+                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
                           >
                             {grandTotalOut.toFixed(2)}
                           </td>
@@ -827,7 +827,7 @@ export function StockSummaryReportPage() {
                             style={{
                               ...tdStyle,
                               textAlign: 'right',
-                              fontWeight: 700,
+                              fontWeight: 600,
                               color: '#111827',
                             }}
                           >
@@ -894,7 +894,7 @@ const thStyle = {
   padding: '12px 24px',
   textAlign: 'left' as const,
   fontSize: '11px',
-  fontWeight: 700,
+  fontWeight: 600,
   color: '#6b7280',
   textTransform: 'uppercase' as const,
   background: '#f9fafb',

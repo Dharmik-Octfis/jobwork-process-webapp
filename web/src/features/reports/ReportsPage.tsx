@@ -92,7 +92,7 @@ export function ReportsPage() {
           padding: '16px 24px',
         }}
       >
-        <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
           Reports Center
         </h1>
         <button
@@ -135,7 +135,7 @@ export function ReportsPage() {
           <div
             style={{
               fontSize: '11px',
-              fontWeight: 700,
+              fontWeight: 600,
               color: '#94a3b8',
               textTransform: 'uppercase',
               padding: '0 12px',
@@ -161,7 +161,7 @@ export function ReportsPage() {
                   background: isActive ? '#eff6ff' : 'transparent',
                   borderRadius: '6px',
                   color: isActive ? '#0062ff' : '#475569',
-                  fontWeight: 600,
+                  fontWeight: 500,
                   fontSize: '13px',
                   display: 'flex',
                   alignItems: 'center',
@@ -218,7 +218,7 @@ export function ReportsPage() {
                 gap: '8px',
               }}
             >
-              <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
                 {activeCategory || 'All Reports'}
               </h2>
               <span
@@ -226,7 +226,7 @@ export function ReportsPage() {
                   background: '#eff6ff',
                   color: '#0062ff',
                   fontSize: '12px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                   padding: '2px 8px',
                   borderRadius: '12px',
                 }}
@@ -269,7 +269,7 @@ export function ReportsPage() {
                         padding: '12px 24px',
                         textAlign: 'left',
                         fontSize: '11px',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: '#64748b',
                         textTransform: 'uppercase',
                         width: '40%',
@@ -282,7 +282,7 @@ export function ReportsPage() {
                         padding: '12px 24px',
                         textAlign: 'left',
                         fontSize: '11px',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: '#64748b',
                         textTransform: 'uppercase',
                         width: '30%',
@@ -295,7 +295,7 @@ export function ReportsPage() {
                         padding: '12px 24px',
                         textAlign: 'left',
                         fontSize: '11px',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: '#64748b',
                         textTransform: 'uppercase',
                         width: '30%',
@@ -393,7 +393,7 @@ export function ReportsPage() {
                                 to={reportUrl}
                                 // The row's own click would navigate a second time.
                                 onClick={(e) => e.stopPropagation()}
-                                style={{ color: '#0062ff', fontWeight: 600 }}
+                                style={{ color: '#0062ff', fontWeight: 500 }}
                               >
                                 {reportName}
                               </Link>
@@ -404,7 +404,7 @@ export function ReportsPage() {
                               padding: '14px 24px',
                               fontSize: '13px',
                               color: '#334155',
-                              fontWeight: 500,
+                              fontWeight: 400,
                             }}
                           >
                             System Generated
@@ -414,7 +414,7 @@ export function ReportsPage() {
                               padding: '14px 24px',
                               fontSize: '13px',
                               color: '#334155',
-                              fontWeight: 500,
+                              fontWeight: 400,
                             }}
                           >
                             {formatLastVisited(report.lastVisitedAt)}

@@ -92,7 +92,7 @@ export function StockMovementReportPage() {
     padding: '12px 16px',
     textAlign: 'left' as const,
     fontSize: '11px',
-    fontWeight: 700,
+    fontWeight: 600,
     color: '#6b7280',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.05em',
@@ -147,7 +147,7 @@ export function StockMovementReportPage() {
             <div
               style={{
                 fontSize: '18px',
-                fontWeight: 700,
+                fontWeight: 600,
                 color: '#111827',
                 display: 'flex',
                 alignItems: 'center',
@@ -155,7 +155,7 @@ export function StockMovementReportPage() {
             >
               Stock Movement{' '}
               <span
-                style={{ color: '#6b7280', fontSize: '14px', fontWeight: 500, marginLeft: '8px' }}
+                style={{ color: '#6b7280', fontSize: '14px', fontWeight: 400, marginLeft: '8px' }}
               >
                 • From {format(appliedFilters.fromDate, 'dd-MM-yyyy')} To{' '}
                 {format(appliedFilters.toDate, 'dd-MM-yyyy')}
@@ -200,7 +200,7 @@ export function StockMovementReportPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 600,
+            fontWeight: 500,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -235,7 +235,7 @@ export function StockMovementReportPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: 500,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -269,13 +269,13 @@ export function StockMovementReportPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
               Stock Movement
             </h2>
@@ -350,7 +350,7 @@ export function StockMovementReportPage() {
                         {row.source}
                       </td>
                       <td style={tdStyle}>{row.destination}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
                         {row.quantity.toFixed(2)}
                       </td>
                     </tr>
@@ -364,7 +364,7 @@ export function StockMovementReportPage() {
                       colSpan={7}
                       style={{
                         padding: '12px 16px',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: '#111827',
                         fontSize: '13px',
                       }}
@@ -374,7 +374,7 @@ export function StockMovementReportPage() {
                     <td
                       style={{
                         padding: '12px 16px',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: '#111827',
                         fontSize: '13px',
                         textAlign: 'right',

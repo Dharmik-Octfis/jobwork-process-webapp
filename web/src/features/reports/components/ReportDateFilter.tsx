@@ -71,7 +71,7 @@ export function ReportDateFilter({ value, onChange, labelPrefix = 'As of :', isR
         }}
       >
         {labelPrefix && <span style={{ color: '#6b7280' }}>{labelPrefix}</span>}
-        <span style={{ color: '#111827', fontWeight: 600 }}>{value}</span>
+        <span style={{ color: '#111827', fontWeight: 500 }}>{value}</span>
         <ChevronDown size={14} color="#9ca3af" style={{ marginLeft: '4px' }} />
       </div>
 
@@ -160,10 +160,10 @@ export function ReportDateFilter({ value, onChange, labelPrefix = 'As of :', isR
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <ChevronLeft size={16} color="#374151" style={{ cursor: 'pointer' }} onClick={() => selectingEnd ? setCustomEndDate(subMonths(customEndDate, 1)) : setCustomDate(subMonths(customDate, 1))} />
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>{format(selectingEnd ? customEndDate : customDate, 'MMM yyyy')}</div>
+                <div style={{ fontSize: '14px', fontWeight: 500 }}>{format(selectingEnd ? customEndDate : customDate, 'MMM yyyy')}</div>
                 <ChevronRight size={16} color="#374151" style={{ cursor: 'pointer' }} onClick={() => selectingEnd ? setCustomEndDate(addMonths(customEndDate, 1)) : setCustomDate(addMonths(customDate, 1))} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '12px', color: '#1d4ed8', fontWeight: 700, marginBottom: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '12px', color: '#1d4ed8', fontWeight: 600, marginBottom: '8px' }}>
                 <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '13px', color: '#374151' }}>
@@ -194,8 +194,8 @@ export function ReportDateFilter({ value, onChange, labelPrefix = 'As of :', isR
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
-              <button onClick={() => setIsOpen(false)} style={{ background: 'transparent', border: 'none', fontWeight: 700, fontSize: '13px', cursor: 'pointer', padding: '6px 12px' }}>Cancel</button>
-              <button onClick={handleApply} style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', padding: '6px 16px' }}>Apply</button>
+              <button onClick={() => setIsOpen(false)} style={{ background: 'transparent', border: 'none', fontWeight: 600, fontSize: '13px', cursor: 'pointer', padding: '6px 12px' }}>Cancel</button>
+              <button onClick={handleApply} style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', padding: '6px 16px' }}>Apply</button>
             </div>
           </div>
           )}

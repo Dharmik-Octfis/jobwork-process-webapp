@@ -292,7 +292,7 @@ export function BillsReportPage() {
       >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Purchases</div>
-          <div style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
+          <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
             Bill Report
           </div>
         </div>
@@ -337,7 +337,7 @@ export function BillsReportPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 600,
+            fontWeight: 500,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -370,7 +370,7 @@ export function BillsReportPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: 500,
               cursor: 'pointer',
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
             }}
@@ -414,7 +414,7 @@ export function BillsReportPage() {
                 alignItems: 'center',
                 gap: '6px',
                 cursor: 'pointer',
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               <Columns size={14} color="#6b7280" />
@@ -426,7 +426,7 @@ export function BillsReportPage() {
                   padding: '2px 6px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  fontWeight: 700,
+                  fontWeight: 600,
                 }}
               >
                 {visibleColumns.length}
@@ -442,12 +442,12 @@ export function BillsReportPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               {organizationName}
             </div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
               Bill Report
             </h2>
           </div>
@@ -478,7 +478,7 @@ export function BillsReportPage() {
                           key={key}
                           style={{
                             ...tdStyle,
-                            ...(RIGHT_ALIGNED.has(key) ? { textAlign: 'right', fontWeight: 700 } : {}),
+                            ...(RIGHT_ALIGNED.has(key) ? { textAlign: 'right', fontWeight: 600 } : {}),
                           }}
                         >
                           {cell(row, key)}
@@ -527,7 +527,7 @@ const thStyle = {
   padding: '10px 15px',
   textAlign: 'left' as const,
   fontSize: '11px',
-  fontWeight: 700,
+  fontWeight: 600,
   color: '#333333',
   textTransform: 'uppercase' as const,
   background: '#fafafa',

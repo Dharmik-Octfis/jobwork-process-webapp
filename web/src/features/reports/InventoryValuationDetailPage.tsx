@@ -115,7 +115,7 @@ export function InventoryValuationDetailPage() {
             <div
               style={{
                 fontSize: '16px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#111827',
                 display: 'flex',
                 alignItems: 'center',
@@ -162,7 +162,7 @@ export function InventoryValuationDetailPage() {
             gap: '6px',
             color: '#4b5563',
             fontSize: '13px',
-            fontWeight: 600,
+            fontWeight: 500,
           }}
         >
           <Filter size={14} color="#6b7280" />
@@ -189,7 +189,7 @@ export function InventoryValuationDetailPage() {
               border: 'none',
               borderRadius: '4px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: 500,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -223,13 +223,13 @@ export function InventoryValuationDetailPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
                 marginBottom: '8px',
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               {organizationName}
             </div>
             <h2
-              style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}
+              style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
               Inventory Valuation for {data?.itemInfo?.itemName} ( {data?.itemInfo?.sku || 'N/A'} )
             </h2>
@@ -285,7 +285,7 @@ export function InventoryValuationDetailPage() {
                       <tr key={idx} className="table-row-hover">
                         {rowSpan > 0 && (
                           <td
-                            style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 600 }}
+                            style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }}
                             rowSpan={rowSpan}
                           >
                             {row.date
@@ -298,7 +298,7 @@ export function InventoryValuationDetailPage() {
                           </td>
                         )}
                         {rowSpan > 0 && (
-                          <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 600 }} rowSpan={rowSpan}>
+                          <td style={{ ...tdStyle, verticalAlign: 'top', fontWeight: 500 }} rowSpan={rowSpan}>
                             {isSpecial ? (
                               <span style={{ color: '#059669', fontStyle: 'italic' }}>
                                 {row.transactionDetails}
@@ -325,16 +325,16 @@ export function InventoryValuationDetailPage() {
                           style={{
                             ...tdStyle,
                             textAlign: 'right',
-                            fontWeight: 600,
+                            fontWeight: 500,
                             color: row.quantity < 0 ? '#ef4444' : '#222',
                           }}
                         >
                           {row.quantity !== 0 ? row.quantity.toFixed(2) : ''}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                           {row.unitCost !== null ? row.unitCost.toFixed(2) : ''}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                           {row.totalCost !== 0
                             ? row.totalCost.toLocaleString('en-IN', {
                                 minimumFractionDigits: 2,
@@ -342,10 +342,10 @@ export function InventoryValuationDetailPage() {
                               })
                             : ''}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                           {row.stockOnHand?.toFixed(2) ?? ''}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
                           {row.inventoryAssetValue?.toLocaleString('en-IN', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
@@ -368,7 +368,7 @@ const thStyle = {
   padding: '10px 15px',
   textAlign: 'left' as const,
   fontSize: '11px',
-  fontWeight: 700,
+  fontWeight: 600,
   color: '#333333',
   textTransform: 'uppercase' as const,
   background: '#fafafa',
