@@ -346,6 +346,18 @@ const ApprovalDetailPage = lazyPage(
   () => import('../features/approvals/ApprovalDetailPage'),
   'ApprovalDetailPage',
 );
+const IntegrationsListPage = lazyPage(
+  () => import('../features/integrations/IntegrationsListPage'),
+  'IntegrationsListPage',
+);
+const ZohoBooksIntegrationPage = lazyPage(
+  () => import('../features/integrations/zoho/ZohoBooksIntegrationPage'),
+  'ZohoBooksIntegrationPage',
+);
+const ZohoOAuthCallbackPage = lazyPage(
+  () => import('../features/integrations/zoho/ZohoOAuthCallbackPage'),
+  'ZohoOAuthCallbackPage',
+);
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -391,6 +403,8 @@ export const router = createBrowserRouter([
       { path: '/invite/accept', element: <AcceptInvitePage /> },
       // Public — reached from a REFUSED sign-in, so there is no jobwork session to protect it with.
       { path: '/no-access', element: <NoAccessPage /> },
+      // Public OAuth callback popup route
+      { path: '/integrations/zoho/callback', element: <ZohoOAuthCallbackPage /> },
       {
         element: <ProtectedRoute />,
         children: [
@@ -607,6 +621,8 @@ export const router = createBrowserRouter([
                 path: 'automation/approval-processes/:id/edit',
                 element: <ApprovalProcessConfigStudio />,
               },
+              { path: 'integrations', element: <IntegrationsListPage /> },
+              { path: 'integrations/zoho', element: <ZohoBooksIntegrationPage /> },
             ],
           },
           { path: '/organizations/new', element: <CreateOrganizationForm /> },

@@ -163,6 +163,7 @@ const MODULE_GROUPS: readonly {
       { resource: 'payment_term', label: 'Payment Terms' },
       { resource: 'location', label: 'Locations' },
       { resource: 'custom_field', label: 'Custom Fields' },
+      { resource: 'integration', label: 'Integrations' },
     ],
   },
   {

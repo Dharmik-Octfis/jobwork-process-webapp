@@ -16,6 +16,7 @@ import {
   Workflow,
   X,
   Settings,
+  Blocks,
   // react-router exports a `Route` component and this file imports from it, so the
   // icon is aliased even though only the icon is used here.
   Route as RouteIcon,
@@ -50,9 +51,10 @@ export function SettingsLayout() {
   const onConfigRoute = location.pathname.includes('/settings/configuration');
   const onJobworkRoute = location.pathname.includes('/settings/jobwork');
   const onAutomationRoute = location.pathname.includes('/settings/automation');
+  const onIntegrationsRoute = location.pathname.includes('/settings/integrations');
 
   const [openSection, setOpenSection] = useState<
-    'org' | 'inventory' | 'config' | 'jobwork' | 'customization' | 'automation' | null
+    'org' | 'inventory' | 'config' | 'jobwork' | 'customization' | 'automation' | 'integrations' | null
   >(() => {
     if (onOrgRoute) return 'org';
     if (onInventoryRoute) return 'inventory';
@@ -60,6 +62,7 @@ export function SettingsLayout() {
     if (onJobworkRoute) return 'jobwork';
     if (onModulesRoute) return 'customization';
     if (onAutomationRoute) return 'automation';
+    if (onIntegrationsRoute) return 'integrations';
     return null;
   });
 
@@ -71,6 +74,7 @@ export function SettingsLayout() {
   const jobworkOpen = openSection === 'jobwork';
   const customizationOpen = openSection === 'customization';
   const automationOpen = openSection === 'automation';
+  const integrationsOpen = openSection === 'integrations';
   const isRootSettings = location.pathname === `/organizations/${orgId}/settings` || location.pathname === `/organizations/${orgId}/settings/`;
   const hasSelection = !isRootSettings || location.search.includes('view=company');
 
@@ -779,6 +783,116 @@ export function SettingsLayout() {
               >
                 <Workflow size={18} />
                 <span style={{ fontSize: 14 }}>Approval Processes</span>
+              </NavLink>
+            </div>
+          </div>
+
+          {/* Integrations Section */}
+          <button
+            type="button"
+            onClick={() => setOpenSection(integrationsOpen ? null : 'integrations')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'none',
+              border: 'none',
+              width: '100%',
+              padding: '0 12px',
+              marginTop: 16,
+              marginBottom: 4,
+              cursor: 'pointer',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              Integrations
+            </span>
+            <span
+              style={{
+                display: 'flex',
+                transform: integrationsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <ChevronRight size={14} />
+            </span>
+          </button>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: integrationsOpen ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.2s ease',
+            }}
+          >
+            <div
+              style={{
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+              }}
+            >
+              <NavLink
+                to={`/organizations/${orgId}/settings/integrations`}
+                end
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <Blocks size={18} />
+                <span style={{ fontSize: 14 }}>All Integrations</span>
+              </NavLink>
+
+              <NavLink
+                to={`/organizations/${orgId}/settings/integrations/zoho`}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  background: isActive ? 'var(--primary-50)' : 'transparent',
+                  fontWeight: isActive ? 600 : 500,
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                <span
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 4,
+                    backgroundColor: '#1e40af',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  ZB
+                </span>
+                <span style={{ fontSize: 14 }}>Zoho Books</span>
               </NavLink>
             </div>
           </div>

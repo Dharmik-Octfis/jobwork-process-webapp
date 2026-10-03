@@ -1,0 +1,55 @@
+/// Zoho Books Integration: holds OAuth tokens and connected organization metadata.
+///
+/// Multi-tenant: one row per tenant organization (`organization_id` unique).
+/// Refresh tokens and access tokens are encrypted at rest using AES-256-GCM.
+model ZohoIntegration {
+  id                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String        @unique @map("organization_id") @db.Uuid
+  provider                 String        @default("ZOHO_BOOKS") @map("provider") @db.VarChar(50)
+  status                   String        @default("NOT_CONNECTED") @map("status") @db.VarChar(50) // NOT_CONNECTED | CONFIGURED | AUTHORIZING | PENDING_ORGANIZATION_SELECTION | CONNECTED | TOKEN_EXPIRED | ERROR | DISCONNECTED
+  clientId                 String?       @map("client_id") @db.VarChar(255)
+  clientSecret             String?       @map("client_secret") @db.Text
+  refreshToken             String?       @map("refresh_token") @db.Text
+  accessToken              String?       @map("access_token") @db.Text
+  tokenType                String?       @default("Bearer") @map("token_type") @db.VarChar(50)
+  expiresAt                DateTime?     @map("expires_at") @db.Timestamptz(6)
+  apiDomain                String?       @map("api_domain") @db.VarChar(255)
+  accountsServer           String?       @map("accounts_server") @db.VarChar(255)
+  zohoLocation             String?       @map("zoho_location") @db.VarChar(50)
+  selectedOrganizationId   String?       @map("selected_organization_id") @db.VarChar(100)
+  selectedOrganizationName String?       @map("selected_organization_name") @db.VarChar(255)
+  connectedAt              DateTime?     @map("connected_at") @db.Timestamptz(6)
+  isDeleted                Boolean       @default(false) @map("is_deleted")
+  createdBy                String?       @map("created_by") @db.Uuid
+  updatedBy                String?       @map("updated_by") @db.Uuid
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization             Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser            User?         @relation("ZohoIntegrationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser            User?         @relation("ZohoIntegrationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("zoho_integrations")
+}
+
+/// Ephemeral OAuth State for CSRF protection and multi-tenant context tracking during Zoho OAuth flow.
+model OAuthState {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  state          String        @unique @map("state") @db.VarChar(128)
+  organizationId String        @map("organization_id") @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       String        @default("ZOHO_BOOKS") @map("provider") @db.VarChar(50)
+  accountsServer String?       @map("accounts_server") @db.VarChar(255)
+  returnTo       String?       @map("return_to") @db.VarChar(255)
+  expiresAt      DateTime      @map("expires_at") @db.Timestamptz(6)
+  usedAt         DateTime?     @map("used_at") @db.Timestamptz(6)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([state])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}

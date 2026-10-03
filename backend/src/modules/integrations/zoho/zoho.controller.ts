@@ -1,0 +1,177 @@
+import type { Request, Response } from 'express';
+import { env } from '../../../config/env.ts';
+import { prisma } from '../../../db/prisma.ts';
+import { sendSuccess } from '../../../lib/apiResponse.ts';
+import {
+  buildAuthorizationUrl,
+  handleCallback,
+  getSafeIntegrationStatus,
+  saveZohoCredentials,
+  disconnectIntegration,
+} from './zoho.oauth.service.ts';
+import { getValidAccessToken } from './zoho.token.service.ts';
+import {
+  fetchZohoOrganizations,
+  saveSelectedZohoOrganization,
+} from './zoho.api.service.ts';
+import type {
+  SelectZohoOrganizationInput,
+  ConfigureZohoCredentialsInput,
+} from './zoho.schemas.ts';
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/configure
+ * Save organization-specific Zoho Client ID and Client Secret.
+ */
+export async function saveZohoConfig(req: Request, res: Response): Promise<void> {
+  const body = req.body as ConfigureZohoCredentialsInput;
+  const status = await saveZohoCredentials(
+    req.tenantId!,
+    body.client_id,
+    body.client_secret,
+    body.data_center,
+    body.accounts_server,
+    req.user?.id,
+  );
+  sendSuccess(res, status, 'Zoho credentials saved successfully.');
+}
+
+/**
+ * GET /organizations/:orgId/settings/integrations/zoho/connect
+ * or POST /organizations/:orgId/settings/integrations/zoho/authorize
+ * Generate secure authorization URL for the user to initiate Zoho OAuth.
+ */
+export async function getZohoConnectUrl(req: Request, res: Response): Promise<void> {
+  const accountsServer =
+    typeof req.query['accounts_server'] === 'string' ? req.query['accounts_server'] : undefined;
+  const returnTo = typeof req.query['return_to'] === 'string' ? req.query['return_to'] : undefined;
+
+  const result = await buildAuthorizationUrl(
+    req.tenantId!,
+    req.user!.id,
+    accountsServer,
+    returnTo,
+  );
+
+  sendSuccess(res, result);
+}
+
+/**
+ * GET /api/integrations/zoho/callback
+ * Handle redirect from Zoho Accounts after user consent.
+ */
+export async function handleOAuthCallback(req: Request, res: Response): Promise<void> {
+  const code = typeof req.query['code'] === 'string' ? req.query['code'] : undefined;
+  const state = typeof req.query['state'] === 'string' ? req.query['state'] : undefined;
+  const error = typeof req.query['error'] === 'string' ? req.query['error'] : undefined;
+  const errorDesc =
+    typeof req.query['error_description'] === 'string'
+      ? req.query['error_description']
+      : undefined;
+  const accountsServer =
+    typeof req.query['accounts-server'] === 'string'
+      ? req.query['accounts-server']
+      : typeof req.query['accounts_server'] === 'string'
+        ? req.query['accounts_server']
+        : undefined;
+  const location = typeof req.query['location'] === 'string' ? req.query['location'] : undefined;
+
+  // Handle user denial or OAuth error returned from Zoho
+  if (error || !code) {
+    let targetOrgId: string | null = null;
+    if (state) {
+      const stateRecord = await prisma.oAuthState
+        .findUnique({ where: { state } })
+        .catch(() => null);
+      if (stateRecord) {
+        targetOrgId = stateRecord.organizationId;
+        await prisma.oAuthState.delete({ where: { id: stateRecord.id } }).catch(() => {});
+      }
+    }
+
+    const message =
+      error === 'access_denied'
+        ? 'Zoho authorization was cancelled or denied.'
+        : errorDesc || error || 'Zoho authorization failed.';
+
+    const redirectUrl = targetOrgId
+      ? `${env.appUrl}/integrations/zoho/callback?status=error&orgId=${targetOrgId}&error=${encodeURIComponent(message)}`
+      : `${env.appUrl}/integrations/zoho/callback?status=error&error=${encodeURIComponent(message)}`;
+
+    res.redirect(redirectUrl);
+    return;
+  }
+
+  try {
+    const { organizationId } = await handleCallback(code, state!, accountsServer, location);
+    res.redirect(
+      `${env.appUrl}/integrations/zoho/callback?status=authorized&orgId=${organizationId}`,
+    );
+  } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : 'Unable to complete Zoho authorization.';
+    let targetOrgId: string | null = null;
+    if (state) {
+      const stateRecord = await prisma.oAuthState
+        .findUnique({ where: { state } })
+        .catch(() => null);
+      targetOrgId = stateRecord?.organizationId || null;
+    }
+
+    const redirectUrl = targetOrgId
+      ? `${env.appUrl}/integrations/zoho/callback?status=error&orgId=${targetOrgId}&error=${encodeURIComponent(errorMessage)}`
+      : `${env.appUrl}/integrations/zoho/callback?status=error&error=${encodeURIComponent(errorMessage)}`;
+
+    res.redirect(redirectUrl);
+  }
+}
+
+/**
+ * GET /organizations/:orgId/settings/integrations/zoho/status
+ * Return current safe integration status (connected/disconnected/authorized, org name, masked credentials, etc.)
+ */
+export async function getIntegrationStatus(req: Request, res: Response): Promise<void> {
+  const status = await getSafeIntegrationStatus(req.tenantId!);
+  sendSuccess(res, status);
+}
+
+/**
+ * GET /organizations/:orgId/settings/integrations/zoho/organizations
+ * Fetch available Zoho Books organizations from Zoho API.
+ */
+export async function getZohoOrganizations(req: Request, res: Response): Promise<void> {
+  const orgs = await fetchZohoOrganizations(req.tenantId!);
+  sendSuccess(res, orgs);
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/organization
+ * Save the user's selected Zoho Books organization.
+ */
+export async function saveSelectedOrganization(req: Request, res: Response): Promise<void> {
+  const body = req.body as SelectZohoOrganizationInput;
+  const result = await saveSelectedZohoOrganization(
+    req.tenantId!,
+    body.organization_id,
+    req.user?.id,
+  );
+  sendSuccess(res, result, 'Zoho Books connected successfully.');
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/disconnect
+ * Disconnect and remove stored Zoho Books credentials.
+ */
+export async function disconnectZoho(req: Request, res: Response): Promise<void> {
+  await disconnectIntegration(req.tenantId!, req.user?.id);
+  sendSuccess(res, null, 'Zoho Books disconnected successfully.');
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/refresh
+ * Explicitly test or refresh access token.
+ */
+export async function refreshZohoToken(req: Request, res: Response): Promise<void> {
+  await getValidAccessToken(req.tenantId!);
+  sendSuccess(res, null, 'Zoho Books connection verified and refreshed successfully.');
+}

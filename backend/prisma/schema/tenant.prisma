@@ -112,6 +112,9 @@ model User {
   updatedBillActivities         BillActivity[]          @relation("BillActivityUpdatedBy")
   createdBillComments           BillComment[]           @relation("BillCommentCreatedBy")
   updatedBillComments           BillComment[]           @relation("BillCommentUpdatedBy")
+  createdZohoIntegrations       ZohoIntegration[]       @relation("ZohoIntegrationCreatedBy")
+  updatedZohoIntegrations       ZohoIntegration[]       @relation("ZohoIntegrationUpdatedBy")
+  oauthStates                   OAuthState[]
   refreshTokens                 RefreshToken[]
   createdRoles                  Role[]                  @relation("RoleCreatedBy")
   updatedRoles                  Role[]                  @relation("RoleUpdatedBy")
@@ -378,6 +381,8 @@ model Organization {
   vendors                Vendor[]
   itemCategories         ItemCategory[]
   processes              Process[]
+  zohoIntegration        ZohoIntegration?
+  oauthStates            OAuthState[]
   batches                Batch[]
   batchUnits             BatchUnit[]
   stockLedgerEntries     StockLedgerEntry[]

@@ -142,14 +142,17 @@ const TENANT_TABLES = [
   'approval_request_approvers',
   'approval_history',
   'approval_action_executions',
+  // Integrations (Zoho Books)
+  'zoho_integrations',
 ] as const;
 
 /**
  * Deliberately NOT tenant-gated. Gating these deadlocks the app: `tenantContext`
  * reads `memberships` to discover the tenant, "list my organizations" runs
- * before one is chosen, and invite links are public by design.
+ * before one is chosen, invite links are public by design, and OAuth handshake
+ * states are resolved on public unauthenticated callbacks.
  */
-const CONTROL_PLANE_TABLES = ['organizations', 'memberships', 'invitations'] as const;
+const CONTROL_PLANE_TABLES = ['organizations', 'memberships', 'invitations', 'oauth_states'] as const;
 
 let rlsLive = false;
 let skipReason = '';

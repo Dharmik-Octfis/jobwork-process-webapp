@@ -48,6 +48,7 @@ import { stockSummaryRouter } from '../modules/reports/stock-summary/stockSummar
 import stockMovementRouter from '../modules/reports/stock-movement/stockMovement.routes.ts';
 import { jobOrderLossRouter } from '../modules/reports/job-order-loss/jobOrderLoss.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
+import { zohoRouter, zohoCallbackRouter } from '../modules/integrations/zoho/zoho.routes.ts';
 import { env } from '../config/env.ts';
 
 /** Mounts every module router under `/api` (architecture §4). */
@@ -130,6 +131,9 @@ apiRouter.use('/organizations/:orgId/reports/stock-movement', stockMovementRoute
 apiRouter.use('/organizations/:orgId/reports/job-order-loss', jobOrderLossRouter);
 // The Reports Center list + per-user visit/favourite — after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
+apiRouter.use('/organizations/:orgId/settings/integrations/zoho', zohoRouter);
+apiRouter.use('/organizations/:orgId/integrations/zoho', zohoRouter);
+apiRouter.use('/integrations/zoho', zohoCallbackRouter);
 apiRouter.use('/organizations/:orgId/seed-data', tenantSeedDataRouter);
 apiRouter.use('/seed-data', globalSeedDataRouter);
 
