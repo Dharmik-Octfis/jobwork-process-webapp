@@ -60,7 +60,9 @@ import { fetchAdjustments } from '../../features/inventory/adjustments/adjustmen
  * absolute paths — see `navPath` below and app/router.tsx.
  */
 const ROUTE_MAP: Record<string, string> = {
-  DASHBOARD: '',
+  // HOME, not DASHBOARD: the old `DASHBOARD` app_modules row has no entry here, so
+  // `navigableModules` drops it and Home cannot render twice where it still exists.
+  HOME: '',
   REPORTS: '/reports',
   PURCHASES: '/purchases',
   VENDORS: '/purchases/vendors',
@@ -112,6 +114,19 @@ function navigableModules(modules: AppModule[]): AppModule[] {
     return [{ ...module, children }];
   });
 }
+
+/** Home is shown to every member, like My Jobs, so it lives in code rather than
+ *  `app_modules`. Rendered through `ModuleNavGroup` to keep the same look. */
+const HOME_MODULE: AppModule = {
+  id: 'home',
+  code: 'HOME',
+  name: 'Home',
+  parentId: null,
+  sortIndex: 0,
+  icon: 'Home',
+  isActive: true,
+  children: [],
+};
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
@@ -430,7 +445,7 @@ export function AppLayout() {
     queryKey: ['modules'],
     queryFn: fetchAppModules,
   });
-  const modules = navigableModules(fetchedModules);
+  const modules = [HOME_MODULE, ...navigableModules(fetchedModules)];
 
   // The URL is the single source of truth for which organization is active.
   // Previously this was React state mirrored into localStorage, which meant the
@@ -617,9 +632,7 @@ export function AppLayout() {
               to={`/organizations/${effectiveOrgId}/approvals`}
               className="sidebar-nav-link"
               title={
-                pendingApprovalsCount > 0
-                  ? `My Jobs (${pendingApprovalsCount} pending)`
-                  : 'My Jobs'
+                pendingApprovalsCount > 0 ? `My Jobs (${pendingApprovalsCount} pending)` : 'My Jobs'
               }
               style={({ isActive }) => ({
                 display: 'flex',
@@ -982,15 +995,13 @@ function ModuleNavGroup({
     return (
       <NavLink
         to={to}
-        end={module.code === 'DASHBOARD'}
+        end={module.code === 'HOME'}
         className="sidebar-nav-link"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={({ isActive }) => {
           const showButton =
-            (isHovered || isActive) &&
-            module.code !== 'DASHBOARD' &&
-            module.code !== 'REPORTS';
+            (isHovered || isActive) && module.code !== 'HOME' && module.code !== 'REPORTS';
           return {
             display: 'flex',
             alignItems: 'center',
@@ -1037,37 +1048,35 @@ function ModuleNavGroup({
               </span>
             </div>
 
-            {(isHovered || isActive) &&
-              module.code !== 'DASHBOARD' &&
-              module.code !== 'REPORTS' && (
-                <button
-                  onClick={handlePlusClick}
-                  title={`Create new ${module.name.toLowerCase()}`}
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: '32px',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    border: 'none',
-                    borderTopRightRadius: 'var(--radius-md)',
-                    borderBottomRightRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
-                  }
-                >
-                  <Plus size={16} color="#fff" strokeWidth={2.5} />
-                </button>
-              )}
+            {(isHovered || isActive) && module.code !== 'HOME' && module.code !== 'REPORTS' && (
+              <button
+                onClick={handlePlusClick}
+                title={`Create new ${module.name.toLowerCase()}`}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: '32px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderTopRightRadius: 'var(--radius-md)',
+                  borderBottomRightRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                }
+              >
+                <Plus size={16} color="#fff" strokeWidth={2.5} />
+              </button>
+            )}
           </>
         )}
       </NavLink>
@@ -1087,12 +1096,10 @@ function ModuleNavGroup({
     return (
       <NavLink
         to={to}
-        end={module.code === 'DASHBOARD'}
+        end={module.code === 'HOME'}
         style={({ isActive }) => {
           const showButton =
-            (isHovered || isActive) &&
-            module.code !== 'DASHBOARD' &&
-            module.code !== 'REPORTS';
+            (isHovered || isActive) && module.code !== 'HOME' && module.code !== 'REPORTS';
           return {
             display: 'flex',
             alignItems: 'center',
@@ -1134,37 +1141,35 @@ function ModuleNavGroup({
             >
               {module.name}
             </span>
-            {(isHovered || isActive) &&
-              module.code !== 'DASHBOARD' &&
-              module.code !== 'REPORTS' && (
-                <button
-                  onClick={handlePlusClick}
-                  title={`Create new ${module.name.toLowerCase()}`}
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: '32px',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    border: 'none',
-                    borderTopRightRadius: '4px',
-                    borderBottomRightRadius: '4px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
-                  }
-                >
-                  <Plus size={16} color="#fff" strokeWidth={2.5} />
-                </button>
-              )}
+            {(isHovered || isActive) && module.code !== 'HOME' && module.code !== 'REPORTS' && (
+              <button
+                onClick={handlePlusClick}
+                title={`Create new ${module.name.toLowerCase()}`}
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: '32px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderTopRightRadius: '4px',
+                  borderBottomRightRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')
+                }
+              >
+                <Plus size={16} color="#fff" strokeWidth={2.5} />
+              </button>
+            )}
           </>
         )}
       </NavLink>
@@ -1179,7 +1184,7 @@ function ModuleNavGroup({
     >
       <NavLink
         to={isParent ? '#' : to}
-        end={module.code === 'DASHBOARD'}
+        end={module.code === 'HOME'}
         onClick={(e) => {
           if (isParent) e.preventDefault();
         }}
