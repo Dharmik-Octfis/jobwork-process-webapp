@@ -458,7 +458,67 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             padding: '16px 24px',
           }}
         >
-
+          {/* Status Bar & PDF View Toggle */}
+          <div
+            style={{
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              marginBottom: '20px',
+              fontSize: '13px',
+            }}
+          >
+            {/* Toggle Switch */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
+              >
+                Show PDF View
+              </span>
+              <label
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                  width: '38px',
+                  height: '20px',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isPdfView}
+                  onChange={(e) => setIsPdfView(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
+                    transition: '0.3s',
+                    borderRadius: '20px',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    content: '""',
+                    height: '14px',
+                    width: '14px',
+                    left: isPdfView ? '20px' : '3px',
+                    bottom: '3px',
+                    backgroundColor: 'white',
+                    transition: '0.3s',
+                    borderRadius: '50%',
+                  }}
+                />
+              </label>
+            </div>
+          </div>
 
           {/* VIEW MODE 1: Standard Web View (isPdfView === false) */}
           {!isPdfView && (
@@ -700,7 +760,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           : item.discountPercentage || item.discount || 0,
                       );
                       const discDisplay =
-                        item.discountType === 'fixed' ? `?${discVal.toFixed(2)}` : `${discVal}%`;
+                        item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
                       return (
                         <tr
@@ -753,7 +813,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                               verticalAlign: 'top',
                             }}
                           >
-                            ?{Number(item.rate || 0).toFixed(2)}
+                            ₹{Number(item.rate || 0).toFixed(2)}
                           </td>
                           <td
                             style={{
@@ -764,7 +824,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                               verticalAlign: 'top',
                             }}
                           >
-                            {discVal > 0 ? discDisplay : '?0.00'}
+                            {discVal > 0 ? discDisplay : '₹0.00'}
                           </td>
                           <td
                             style={{
@@ -776,7 +836,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                               verticalAlign: 'top',
                             }}
                           >
-                            ?{Number(item.itemTotal || 0).toFixed(2)}
+                            ₹{Number(item.itemTotal || 0).toFixed(2)}
                           </td>
                         </tr>
                       );
@@ -888,7 +948,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                   >
                     <span style={{ color: '#64748b' }}>Sub Total</span>
                     <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      ?{Number(po.subTotal || 0).toFixed(2)}
+                      ₹{Number(po.subTotal || 0).toFixed(2)}
                     </span>
                   </div>
                   {Number(po.subTotal || 0) > Number(po.totalAmount || 0) && (
@@ -903,7 +963,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     >
                       <span>Total Discount</span>
                       <span style={{ fontWeight: 600 }}>
-                        -?{(Number(po.subTotal) - Number(po.totalAmount)).toFixed(2)}
+                        -₹{(Number(po.subTotal) - Number(po.totalAmount)).toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -920,7 +980,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     }}
                   >
                     <span>Total</span>
-                    <span>?{Number(po.totalAmount || 0).toFixed(2)}</span>
+                    <span>₹{Number(po.totalAmount || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -1243,10 +1303,10 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                             textAlign: 'right',
                           }}
                         >
-                          ?{Number(item.rate || 0).toFixed(2)}
+                          ₹{Number(item.rate || 0).toFixed(2)}
                         </td>
                         <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
-                          ?{Number(item.itemTotal || 0).toFixed(2)}
+                          ₹{Number(item.itemTotal || 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -1311,7 +1371,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           }}
                         >
                           <span>Sub Total:</span>
-                          <strong>?{Number(po.subTotal || 0).toFixed(2)}</strong>
+                          <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
                         </div>
                         <div
                           style={{
@@ -1324,7 +1384,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           }}
                         >
                           <span>Total:</span>
-                          <strong>?{Number(po.totalAmount || 0).toFixed(2)}</strong>
+                          <strong>₹{Number(po.totalAmount || 0).toFixed(2)}</strong>
                         </div>
 
                         <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
