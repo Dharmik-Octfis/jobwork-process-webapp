@@ -90,6 +90,7 @@ export const saveAdjustmentSchema = z
     referenceNumber: z.string().trim().max(100).optional().nullable(),
     description: z.string().trim().max(500).optional().nullable(),
     lines: z.array(adjustmentLineSchema).min(1, 'Add at least one item.').max(200),
+    customFields: z.record(z.string(), z.unknown()).optional(),
     /**
      * `draft` only saves. `adjust` saves and then posts the stock — or, when an
      * approval process applies, sends it for approval instead.

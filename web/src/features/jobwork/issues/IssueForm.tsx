@@ -30,6 +30,10 @@ import type { JobIssue, JobIssueLineData } from './jobIssues.schemas';
 import { AddBatchesModal } from './AddBatchesModal';
 import { selectionKey, type BatchSelection } from './batchSelection';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
+import { notify } from '../../../lib/notify';
 
 interface Props {
   jobOrder: JobOrder;
@@ -136,11 +140,10 @@ interface PlanGap {
  * the next step, long after anyone connects it to this dialog (§5.1).
  *
  * WHAT THE USER ACTUALLY DECIDES: where it goes out from, who it goes to, which
- * batches, and a free-text remark.
+ * batches, a free-text remark, and the org's custom fields (back 2026-10-05).
  *
- * ⚠️ Transport (vehicle / LR / e-way bill) and per-org custom fields were both
- * removed on 2026-08-10 — the columns are gone from `job_issues` and `job_issue`
- * is no longer a custom-field module, so there is nowhere left for either to go.
+ * ⚠️ Transport (vehicle / LR / e-way bill) was removed on 2026-08-10 — the columns
+ * are gone from `job_issues`, so there is nowhere left for it to go.
  *
  * The destination is not asked at all. It is the processor's own location, and
  * it is created on first use — making someone set up a location for a dyer
@@ -150,6 +153,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
   const unitLabel = useBatchUnitLabel();
 
   // Everything the draft already decided. Read once, as initial state, so the
@@ -184,6 +188,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
   /** Which item section opened Add Batches. Null when it is closed. */
   const [addBatchesFor, setAddBatchesFor] = useState<string | null>(null);
   const [remarks, setRemarks] = useState(draft?.remarks ?? '');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>(
+    (draft?.customFields as CustomFieldValues) ?? {},
+  );
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [overrideReason] = useState('');
   const [_needsOverride, setNeedsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -888,8 +896,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         lines,
         toleranceOverrideReason: overrideReason.trim() || null,
         remarks: remarks.trim() || null,
+        customFields,
         saveAsDraft,
       };
+      setCustomFieldErrors({});
       return draft ? updateJobIssue(orgId!, draft.id, payload) : createJobIssue(orgId!, payload);
     },
     meta: { suppressToast: true },
@@ -951,6 +961,17 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       // only side that knows what has already been issued. When it says so, the
       // reason box appears rather than the save just failing again.
       if (err.response?.data?.details?.toleranceOverrideReason) setNeedsOverride(true);
+      // Custom-field errors: red border on the field plus a toast, no banner text.
+      const cfErrors = Object.fromEntries(
+        Object.entries(err.response?.data?.details ?? {}).filter(([key]) =>
+          key.startsWith('customFields.'),
+        ),
+      );
+      if (Object.keys(cfErrors).length > 0) {
+        setCustomFieldErrors(cfErrors);
+        notify.error(Object.values(cfErrors)[0]);
+        return;
+      }
       setError(message);
     },
   });
@@ -1498,6 +1519,21 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           </div>
         </div>
       </section>
+
+      {customFieldDefs.length > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <h3 style={sectionHeading}>Custom Fields</h3>
+          <CustomFieldsSection
+            orgId={orgId!}
+            entityType="job_issue"
+            values={customFields}
+            onChange={setCustomFields}
+            errors={customFieldErrors}
+            applyDefaults={!draft}
+            layout="rows"
+          />
+        </section>
+      )}
 
       <section style={{ marginBottom: 20 }}>
         <h3 style={sectionHeading}>Pick the material</h3>

@@ -83,6 +83,7 @@ export interface SaveAdjustmentPayload {
   referenceNumber?: string | null;
   description?: string | null;
   lines: AdjustmentLinePayload[];
+  customFields?: Record<string, unknown>;
   /** `adjust` posts the stock, or sends it for approval when a process applies. */
   saveAs: 'draft' | 'adjust';
 }
@@ -107,6 +108,7 @@ const headerSchema = z.object({
   description: z.string().nullable(),
   status: z.string(),
   location: z.object({ id: z.string(), name: z.string() }),
+  customFields: z.record(z.string(), z.unknown()).default({}),
 });
 
 export const stockAdjustmentRowSchema = headerSchema.extend({

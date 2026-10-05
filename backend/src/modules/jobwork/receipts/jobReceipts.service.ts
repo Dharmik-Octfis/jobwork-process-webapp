@@ -2896,7 +2896,10 @@ export async function createNewJobReceipt(
     const lineCustomFields = validateCustomFields({
       defs: lineDefs,
       input: lines[0]?.customFields,
-      mode: 'create',
+      // `update`, not `create`: these are the header's definitions and no form
+      // fills them per line, so `create` would let one required receipt field
+      // refuse every receipt. Required is enforced on the header above.
+      mode: 'update',
     }) as Prisma.InputJsonValue;
 
     if (allocations.length > 0) {

@@ -177,10 +177,9 @@ const MODULE_GROUPS: readonly {
   {
     key: 'automation',
     label: 'Automation',
-    resources: [
-      { resource: 'approval_process', label: 'Approval Processes' },
-      { resource: 'approval_request', label: 'Approval Requests' },
-    ],
+    // No `approval_request`: the My Jobs inbox is open to every member, so the
+    // key gated nothing. Removed 2026-10-05; stored copies are dropped on read.
+    resources: [{ resource: 'approval_process', label: 'Approval Processes' }],
   },
   {
     key: 'reports',

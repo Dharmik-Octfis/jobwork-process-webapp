@@ -41,7 +41,15 @@ import {
   type LineDraft,
 } from './adjustmentLine';
 import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
-import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
+import {
+  announceOutcome,
+  customFieldErrorsOf,
+  refreshAfterAdjustment,
+  reportSaveError,
+} from './adjustmentSave';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { LineBatchPicker } from './LineBatchPicker';
 import { ReasonSelect } from './ReasonSelect';
 
@@ -108,6 +116,9 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
   const [line, setLine] = useState<LineDraft>(() => emptyLine(item));
   const [reasonId, setReasonId] = useState('');
   const [description, setDescription] = useState('');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>({});
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'stock_adjustment');
   const [isPicking, setIsPicking] = useState(false);
   const [invalid, setInvalid] = useState<ReadonlySet<Field>>(new Set());
 
@@ -193,6 +204,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
           ) as Field[],
         ),
       );
+      setCustomFieldErrors(customFieldErrorsOf(error));
     },
   });
 
@@ -235,6 +247,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
           ? toValueLinePayload(line, item, current.value)
           : toLinePayload(line, item, available),
       ],
+      customFields,
       saveAs,
     });
   };
@@ -573,6 +586,23 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
               }}
             />
           </div>
+
+          {customFieldDefs.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <CustomFieldsSection
+                orgId={orgId}
+                entityType="stock_adjustment"
+                values={customFields}
+                onChange={(values) => {
+                  setCustomFields(values);
+                  setCustomFieldErrors({});
+                }}
+                errors={customFieldErrors}
+                applyDefaults
+                layout="grid"
+              />
+            </div>
+          )}
         </div>
       </div>
 
