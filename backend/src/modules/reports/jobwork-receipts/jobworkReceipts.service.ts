@@ -11,7 +11,26 @@ export async function getJobworkReceipts(
   organizationId: string,
   query: JobworkReceiptsQuery,
 ): Promise<PaginatedJobworkReceiptsResponse> {
-  const { processorName, processName, jobOrderNumber, itemName, fromDate, toDate, minAgeDays, receiptNumber, status, issuedQty, receivedQty, acceptedQty, reworkQty, scrapQty, returnedQty, processChargeTotal, page, perPage } = query;
+  const {
+    processorName,
+    processName,
+    jobOrderNumber,
+    itemName,
+    fromDate,
+    toDate,
+    minAgeDays,
+    receiptNumber,
+    status,
+    issuedQty,
+    receivedQty,
+    acceptedQty,
+    reworkQty,
+    scrapQty,
+    returnedQty,
+    processChargeTotal,
+    page,
+    perPage,
+  } = query;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.JobReceiptWhereInput = {
@@ -23,17 +42,17 @@ export async function getJobworkReceipts(
     if (processorName) {
       where.processorNameSnapshot = { contains: processorName, mode: 'insensitive' };
     }
-    
+
     if (jobOrderNumber) {
       where.jobOrder = { jobOrderNumber: { contains: jobOrderNumber, mode: 'insensitive' } };
     }
-    
+
     if (processName) {
       where.step = {
         process: { name: { contains: processName, mode: 'insensitive' } },
       };
     }
-    
+
     if (itemName) {
       where.outputs = {
         some: {
@@ -45,11 +64,11 @@ export async function getJobworkReceipts(
     if (receiptNumber) {
       where.receiptNumber = { contains: receiptNumber, mode: 'insensitive' };
     }
-    
+
     if (status) {
       where.status = status; // Exact match for status
     }
-    
+
     if (issuedQty !== undefined) {
       where.totalIssuedQty = issuedQty;
     }
@@ -94,7 +113,7 @@ export async function getJobworkReceipts(
         jobOrder: { select: { jobOrderNumber: true } },
         outputs: {
           include: {
-            item: { select: { name: true, unit: true } },
+            item: { select: { name: true, unit: true, stockingUom: { select: { symbol: true } } } },
           },
         },
       },
@@ -128,19 +147,20 @@ export async function getJobworkReceipts(
 
     const results: JobworkReceiptRow[] = receipts.map((receipt) => {
       const pName = receipt.processorNameSnapshot || '';
-      
+
       const lines = receipt.outputs.map((output) => {
-        const itemNameWithUom = output.item.name + (output.item.unit ? ` (${output.item.unit})` : '');
+        const unit = output.item.stockingUom?.symbol || output.item.unit;
+        const itemNameWithUom = output.item.name + (unit ? ` (${unit})` : '');
         const plannedOutput = receipt.step?.outputs.find((o) => o.itemId === output.itemId);
         const plannedQty = plannedOutput?.expectedQty ? Number(plannedOutput.expectedQty) : 0;
-        
+
         const receivedQty = Number(output.receivedQty || 0);
-        
+
         const key = `${receipt.jobOrderStepId}_${output.itemId}`;
         const totalReceived = receivedMap.get(key) || 0;
-        
+
         const toBeReceivedQty = Math.max(0, plannedQty - totalReceived);
-        
+
         return {
           id: output.id,
           items: itemNameWithUom,

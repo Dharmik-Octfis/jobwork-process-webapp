@@ -113,6 +113,8 @@ export async function getStockMovementReport(
             WHEN n.source_doc_type = 'job_issue' THEN (SELECT challan_number FROM job_issues WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'purchase_order' THEN (SELECT po_number FROM purchase_orders WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'inventory_adjustment' THEN (SELECT adjustment_number FROM stock_adjustments WHERE id = n.source_doc_id)
+            -- its source_doc_id is the item's own id, never a number to show
+            WHEN n.source_doc_type = 'item_opening_stock' THEN 'Opening Stock'
             ELSE n.source_doc_id::text
           END,
           '-'

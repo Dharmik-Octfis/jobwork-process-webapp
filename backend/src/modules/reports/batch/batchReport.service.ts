@@ -103,7 +103,7 @@ export async function getBatchReport(
         b.supplier_batch_ref AS "batchLabel",
         i.id AS "itemId",
         i.name AS "itemName",
-        (SELECT u.unit_name FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
+        (SELECT COALESCE(NULLIF(u.symbol, ''), u.unit_name) FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
         loc.id AS "locationId",
         loc.name AS "locationName",
         bal.qty,

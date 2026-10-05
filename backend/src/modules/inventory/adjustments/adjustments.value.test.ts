@@ -452,9 +452,20 @@ describe('value adjustment — cancel and drafts', { timeout: 60_000 }, () => {
     expect(after[cancel + 1]).toMatchObject({ unitCost: 10, inventoryAssetValue: 17000 });
   });
 
-  it('the FIFO cost lot report shows the adjustment as an event on the lot', async () => {
-    const { itemId } = await zohoItem();
+  it('the FIFO cost lot report re-lots the changed stock, like Zoho', async () => {
+    const { itemId, old } = await zohoItem();
     const adjustment = await revalue(itemId, -2000);
+    // FIFO takes the 70 @ ₹100 first, then 30 of what the adjustment re-lotted.
+    await runAsTenant(orgId, (tx) =>
+      postMovement(tx, {
+        organizationId: orgId,
+        batchId: old[0]!.batchId,
+        locationId: godownId,
+        movementType: 'issue',
+        qtyOut: 100,
+        sourceDocType: 'test',
+      }),
+    );
     const item = await runAsTenant(orgId, (tx) =>
       tx.item.findFirstOrThrow({ where: { id: itemId }, select: { name: true } }),
     );
@@ -463,11 +474,25 @@ describe('value adjustment — cancel and drafts', { timeout: 60_000 }, () => {
       page: 1,
       perPage: 50,
     } as Parameters<typeof getFifoCostLotTracking>[1]);
-    const event = report.results.find((row) => row.outDocId === adjustment.id);
-    expect(event?.outTransaction).toBe(
-      `Inventory Adjustment By Value # ${adjustment.adjustmentNumber} (rate 10.00 → 8.00)`,
-    );
-    expect(event?.outQty).toBeNull();
+    const label = `Inventory Adjustment By Value # ${adjustment.adjustmentNumber}`;
+
+    // The ₹10 entry disperses all 1,000 to the adjustment …
+    const out = report.results.find((row) => row.outTransaction === label);
+    expect(out).toMatchObject({ inQty: 1000, inCost: '10.00', outQty: 1000 });
+    expect(out?.inQtyRemaining).toBe(0);
+
+    // … which is a lot of its own at ₹8, and owns what was drawn after it.
+    const relot = report.results.filter((row) => row.inTransaction === label);
+    expect(relot[0]).toMatchObject({
+      inQty: 1000,
+      inCost: '8.00',
+      inTotal: '8000.00',
+      inQtyRemaining: 970,
+      inDocType: 'inventory_adjustment',
+      inDocId: adjustment.id,
+      outQty: 30,
+    });
+    expect(report.results.find((row) => row.inCost === '100.00')?.outQty).toBe(70);
   });
 
   it('current values read the layers on hand', async () => {

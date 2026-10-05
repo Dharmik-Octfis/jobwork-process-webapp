@@ -6,6 +6,7 @@ import { getItemLedger } from '../../reports/inventory-valuation/inventoryValuat
 import { getFifoCostLotTracking } from '../../reports/fifo-cost-lot-tracking/fifoCostLotTracking.service.ts';
 import { getStockMovementReport } from '../../reports/stock-movement/stockMovement.service.ts';
 import { adjustmentsService } from './adjustments.service.ts';
+import { createBatch, postMovement } from '../stock-ledger/stockLedger.service.ts';
 
 /**
  * A stock adjustment has to read as one everywhere a ledger row is named — the
@@ -153,6 +154,20 @@ describe('stock adjustments — as other screens name them', { timeout: 60_000 }
     expect(text).toContain(removal.adjustmentNumber);
   });
 
+  it('the FIFO report lists a decrease this period against a lot received before it', async () => {
+    // The removal draws on the OLDER lot, received before this window opens.
+    const report = await getFifoCostLotTracking(orgId, {
+      reportBasis: 'product_in',
+      fromDate: daysAgo(2),
+      toDate: new Date(Date.now() + 86_400_000).toISOString(),
+      page: 1,
+      perPage: 25,
+    });
+    const carried = report.results.find((row) => row.inDocId === older.id);
+    expect(carried?.outDocId).toBe(removal.id);
+    expect(carried?.outQty).toBe(2);
+  });
+
   it('the stock movement report shows the number, not an id', async () => {
     const report = await getStockMovementReport(orgId, {
       itemId,
@@ -162,6 +177,48 @@ describe('stock adjustments — as other screens name them', { timeout: 60_000 }
     });
     expect(report.results.map((row) => row.transactionNumber).sort()).toEqual(
       [older.adjustmentNumber, newer.adjustmentNumber, removal.adjustmentNumber].sort(),
+    );
+  });
+
+  it('the stock movement report never shows opening stock as an id', async () => {
+    // Its own item, so the balances the other cases assert stay untouched.
+    const { openingItemId, opening } = await runAsTenant(orgId, async (tx) => {
+      const item = await tx.item.create({
+        data: {
+          organizationId: orgId,
+          name: `Adj opening ${unique()}`,
+          sku: `ADJO-${unique()}`,
+          unit: 'Metre',
+          itemType: 'goods',
+          trackInventory: true,
+        },
+        select: { id: true },
+      });
+      const batch = await createBatch(tx, {
+        organizationId: orgId,
+        itemId: item.id,
+        sourceDocType: 'test',
+      });
+      const entry = await postMovement(tx, {
+        organizationId: orgId,
+        batchId: batch.id,
+        locationId: godownId,
+        movementType: 'opening',
+        qtyIn: 1,
+        valueIn: 10,
+        sourceDocType: 'item_opening_stock',
+        sourceDocId: item.id,
+      });
+      return { openingItemId: item.id, opening: entry };
+    });
+    const report = await getStockMovementReport(orgId, {
+      itemId: openingItemId,
+      movementType: 'all',
+      page: 1,
+      perPage: 25,
+    });
+    expect(report.results.find((row) => row.id === opening.id)?.transactionNumber).toBe(
+      'Opening Stock',
     );
   });
 
