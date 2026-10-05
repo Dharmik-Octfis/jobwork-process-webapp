@@ -139,6 +139,16 @@ export function batchSummary(line: LineDraft, adjusted: number) {
   };
 }
 
+/** The batch button's words: "Add Batches" / "Select Batches", then "1 Batch added" / "2 Batches selected". */
+export function batchButtonText(
+  count: number,
+  adjusted: number,
+  words: { singular: string; plural: string },
+) {
+  if (count === 0) return `${adjusted > 0 ? 'Add' : 'Select'} ${words.plural}`;
+  return `${count} ${count === 1 ? words.singular : words.plural} ${adjusted > 0 ? 'added' : 'selected'}`;
+}
+
 /**
  * Why this line cannot be ADJUSTED yet, or null. A draft is allowed to be
  * incomplete, so this is asked only on Adjust.
