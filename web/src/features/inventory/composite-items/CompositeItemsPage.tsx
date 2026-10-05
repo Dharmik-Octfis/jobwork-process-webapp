@@ -97,7 +97,7 @@ function ExpandableCompositeItemRow({
 }: {
   item: Item;
   columns: { key: string; label: string; locked?: boolean }[];
-  setSearchParams: (params: Record<string, string>) => void;
+  setSearchParams: ReturnType<typeof useSearchParams>[1];
   orgId: string;
   customFieldsDef?: CustomFieldDefinition[];
   isSelected: boolean;
@@ -251,7 +251,7 @@ function CompactCompositeItemRow({
   onToggle: _onToggle,
 }: {
   item: Item;
-  setSearchParams: (params: Record<string, string>) => void;
+  setSearchParams: ReturnType<typeof useSearchParams>[1];
   orgId: string;
   isSelected: boolean;
   isActive?: boolean;
