@@ -26,6 +26,7 @@ import {
 import {
   QTY_EPSILON,
   adjustedOf,
+  batchButtonText,
   batchSummary,
   boxTexts,
   emptyLine,
@@ -165,7 +166,6 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
 
   const adjusted = adjustedOf(line, available);
   const magnitude = Math.abs(adjusted);
-  const isIncrease = adjusted > 0;
   const texts = boxTexts(line, available);
   const picked = batchSummary(line, adjusted);
   const isDecrease = adjusted < 0 && magnitude >= QTY_EPSILON;
@@ -538,9 +538,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
                         cursor: locationId ? 'pointer' : 'not-allowed',
                       }}
                     >
-                      {picked.count > 0
-                        ? `${picked.count} ${picked.count === 1 ? tracking.singular : tracking.plural} · ${formatQty(picked.total)} ${uomLabel}`
-                        : `${isIncrease ? 'Add' : 'Select'} ${tracking.plural}`}
+                      {batchButtonText(picked.count, adjusted, tracking)}
                     </button>
                   </div>
                 )}

@@ -34,6 +34,7 @@ import {
 import {
   QTY_EPSILON,
   adjustedOf,
+  batchButtonText,
   batchSummary,
   boxTexts,
   emptyLine,
@@ -715,9 +716,7 @@ function AdjustmentForm({
                                   cursor: locationId ? 'pointer' : 'not-allowed',
                                 }}
                               >
-                                {picked.count > 0
-                                  ? `${picked.count} · ${formatQty(picked.total)}`
-                                  : `${adjusted > 0 ? 'Add' : 'Select'} ${tracking.plural}`}
+                                {batchButtonText(picked.count, adjusted, tracking)}
                               </button>
                             ) : (
                               <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: '36px' }}>
