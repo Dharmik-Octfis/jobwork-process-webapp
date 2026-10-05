@@ -14,6 +14,16 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
+const ERROR_BORDER = '1px solid #ef4444';
+
+// A frame, not an outline on the box itself — that would replace the focus ring.
+const checkboxErrorFrame: React.CSSProperties = {
+  display: 'inline-flex',
+  padding: 2,
+  border: ERROR_BORDER,
+  borderRadius: 4,
+};
+
 /** ISO datetime (stored) -> value for <input type="datetime-local"> in local time. */
 function isoToLocalInput(iso: unknown): string {
   if (typeof iso !== 'string' || !iso) return '';
@@ -33,6 +43,7 @@ interface Props {
   def: CustomFieldDefinition;
   value: unknown;
   onChange: (value: unknown) => void;
+  /** Marks the field invalid: a red border, never text. The caller toasts the message. */
   error?: string;
   /** Portal the date calendar out — see `DateInput`. Needed when this renders
    * inside a `Modal` or any other clipping scroll container. */
@@ -42,6 +53,11 @@ interface Props {
 /** Renders exactly one control for a custom field, driven by its dataType. */
 export function CustomFieldInput({ def, value, onChange, error, portal = false }: Props) {
   const options = def.config?.options ?? [];
+  const hasError = Boolean(error);
+  // The shared date/time controls merge `style` last, so the red border has to
+  // travel in it — `hasError` alone would lose to inputStyle's grey one.
+  const fieldStyle = hasError ? { ...inputStyle, border: ERROR_BORDER } : inputStyle;
+  const ariaInvalid = hasError || undefined;
 
   let control: React.ReactNode;
 
@@ -52,18 +68,22 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
-          style={{ ...inputStyle, resize: 'vertical', height: 'auto' }}
+          style={{ ...fieldStyle, resize: 'vertical', height: 'auto' }}
+          aria-invalid={ariaInvalid}
         />
       );
       break;
 
     case 'checkbox':
       control = (
-        <input
-          type="checkbox"
-          checked={value === true}
-          onChange={(e) => onChange(e.target.checked)}
-        />
+        <span style={hasError ? checkboxErrorFrame : undefined}>
+          <input
+            type="checkbox"
+            checked={value === true}
+            onChange={(e) => onChange(e.target.checked)}
+            aria-invalid={ariaInvalid}
+          />
+        </span>
       );
       break;
 
@@ -75,7 +95,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           step={def.dataType === 'decimal' ? 'any' : '1'}
           value={value === null || value === undefined ? '' : String(value)}
           onChange={(e) => onChange(e.target.value === '' ? '' : e.target.value)}
-          style={inputStyle}
+          style={fieldStyle}
+          aria-invalid={ariaInvalid}
         />
       );
       break;
@@ -86,7 +107,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           value={(value as string) ?? ''}
           onChange={onChange}
           ariaLabel={def.label}
-          style={inputStyle}
+          style={fieldStyle}
+          hasError={hasError}
           containerStyle={{ maxWidth: 440 }}
           portal={portal}
           defaultToCurrent={true}
@@ -100,7 +122,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="datetime"
           value={isoToLocalInput(value)}
           onChange={(val) => onChange(localInputToIso(val))}
-          style={inputStyle}
+          style={fieldStyle}
+          hasError={hasError}
           containerStyle={{ maxWidth: 440 }}
           portal={portal}
           defaultToCurrent={true}
@@ -114,7 +137,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="time"
           value={(value as string) ?? ''}
           onChange={(val) => onChange(val)}
-          style={inputStyle}
+          style={fieldStyle}
+          hasError={hasError}
           defaultToCurrent={true}
         />
       );
@@ -126,7 +150,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="email"
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
-          style={inputStyle}
+          style={fieldStyle}
+          aria-invalid={ariaInvalid}
         />
       );
       break;
@@ -138,7 +163,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
           placeholder="https://…"
-          style={inputStyle}
+          style={fieldStyle}
+          aria-invalid={ariaInvalid}
         />
       );
       break;
@@ -153,6 +179,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
             ...options.map((o) => ({ value: o.id, label: o.label })),
           ]}
           portal={portal}
+          hasError={hasError}
           containerStyle={{ maxWidth: '440px' }}
           buttonStyle={{ height: '36px' }}
         />
@@ -162,7 +189,17 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
     case 'multi_select': {
       const selected = Array.isArray(value) ? (value as string[]) : [];
       control = (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 440 }}>
+        <div
+          role="group"
+          aria-invalid={ariaInvalid}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            maxWidth: 440,
+            ...(hasError ? { border: ERROR_BORDER, borderRadius: 4, padding: '6px 8px' } : {}),
+          }}
+        >
           {options.map((o) => (
             <label
               key={o.id}
@@ -199,7 +236,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="text"
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
-          style={inputStyle}
+          style={fieldStyle}
+          aria-invalid={ariaInvalid}
         />
       );
   }
@@ -212,7 +250,6 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           {def.config.helpText}
         </div>
       )}
-      {error && <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>{error}</div>}
     </div>
   );
 }

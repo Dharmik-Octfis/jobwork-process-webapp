@@ -14,6 +14,7 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
+import { notify } from '../../lib/notify.ts';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -55,7 +56,6 @@ export function EditItemPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [initializedId, setInitializedId] = useState<string | null>(null);
-
 
   const [frontImageFile] = useState<File | null>(null);
   const [rearImageFile] = useState<File | null>(null);
@@ -236,7 +236,6 @@ export function EditItemPage() {
   };
   */
 
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -275,6 +274,11 @@ export function EditItemPage() {
 
     setErrors(newErrors);
     setCustomFieldErrors(newCustomFieldErrors);
+
+    // Custom fields mark the field red and say why in a toast; the built-in
+    // fields above keep their own messages.
+    const firstCustomFieldError = Object.values(newCustomFieldErrors)[0];
+    if (firstCustomFieldError) notify.error(firstCustomFieldError);
 
     if (!hasErrors) {
       updateMutation.mutate(formData);
@@ -1075,8 +1079,6 @@ export function EditItemPage() {
                         </label>
                       </div>
                     </div>
-
-
                   </div>
                 )}
               </div>
@@ -1166,5 +1168,3 @@ export function EditItemPage() {
     </div>
   );
 }
-
-

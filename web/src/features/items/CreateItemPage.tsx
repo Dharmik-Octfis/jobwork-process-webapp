@@ -13,6 +13,7 @@ import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus, X, Trash2 } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
+import { notify } from '../../lib/notify.ts';
 
 interface CreateItemPageProps {
   isModal?: boolean;
@@ -294,6 +295,11 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
 
     setErrors(newErrors);
     setCustomFieldErrors(newCustomFieldErrors);
+
+    // Custom fields mark the field red and say why in a toast; the built-in
+    // fields above keep their own messages.
+    const firstCustomFieldError = Object.values(newCustomFieldErrors)[0];
+    if (firstCustomFieldError) notify.error(firstCustomFieldError);
 
     if (!hasErrors) {
       createMutation.mutate(formData);
@@ -658,7 +664,14 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       <div
                         onMouseEnter={() => setHoveredImage('front')}
                         onMouseLeave={() => setHoveredImage(null)}
-                        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{
+                          position: 'relative',
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
                         <img
                           src={URL.createObjectURL(frontImageFile)}
@@ -674,7 +687,22 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                               if (frontImageRef.current) frontImageRef.current.value = '';
                               setHoveredImage(null);
                             }}
-                            style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                            style={{
+                              position: 'absolute',
+                              top: -4,
+                              right: -4,
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: 20,
+                              height: 20,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -689,7 +717,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           wordBreak: 'break-all',
                         }}
                       >
-                        {(formData.frontImage as ItemImageAttachment).name || 'Existing Front Image'}
+                        {(formData.frontImage as ItemImageAttachment).name ||
+                          'Existing Front Image'}
                       </div>
                     ) : (
                       <>
@@ -751,7 +780,14 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       <div
                         onMouseEnter={() => setHoveredImage('rear')}
                         onMouseLeave={() => setHoveredImage(null)}
-                        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{
+                          position: 'relative',
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
                         <img
                           src={URL.createObjectURL(rearImageFile)}
@@ -767,7 +803,22 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                               if (rearImageRef.current) rearImageRef.current.value = '';
                               setHoveredImage(null);
                             }}
-                            style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                            style={{
+                              position: 'absolute',
+                              top: -4,
+                              right: -4,
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: 20,
+                              height: 20,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -838,11 +889,26 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   }}
                 >
                   {otherImageFiles.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '100%',
+                        height: '100%',
+                      }}
+                    >
                       <div
                         onMouseEnter={() => setHoveredImage('other')}
                         onMouseLeave={() => setHoveredImage(null)}
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', minHeight: 0, position: 'relative' }}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginBottom: '8px',
+                          minHeight: 0,
+                          position: 'relative',
+                        }}
                       >
                         {otherImageFiles[selectedOtherImageIndex] ? (
                           <img
@@ -864,7 +930,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                               e.stopPropagation();
                               setOtherImageFiles((prev) => {
                                 const newFiles = [...prev];
-                                const indexToRemove = selectedOtherImageIndex < newFiles.length ? selectedOtherImageIndex : 0;
+                                const indexToRemove =
+                                  selectedOtherImageIndex < newFiles.length
+                                    ? selectedOtherImageIndex
+                                    : 0;
                                 newFiles.splice(indexToRemove, 1);
                                 return newFiles;
                               });
@@ -872,41 +941,100 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                               if (otherImagesRef.current) otherImagesRef.current.value = '';
                               setHoveredImage(null);
                             }}
-                            style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                            style={{
+                              position: 'absolute',
+                              top: -4,
+                              right: -4,
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: 20,
+                              height: 20,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
                           >
                             <Trash2 size={14} />
                           </button>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center', width: '100%' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '6px',
+                          flexWrap: 'nowrap',
+                          justifyContent: 'center',
+                          width: '100%',
+                        }}
+                      >
                         {otherImageFiles.map((file, idx) => (
                           <div
                             key={idx}
                             onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOtherImageIndex(idx);
+                              e.stopPropagation();
+                              setSelectedOtherImageIndex(idx);
                             }}
-                            style={{ flex: '0 0 40px', width: '40px', height: '40px', borderRadius: '4px', border: `2px solid ${idx === (selectedOtherImageIndex < otherImageFiles.length ? selectedOtherImageIndex : 0) ? '#0062ff' : 'transparent'}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            style={{
+                              flex: '0 0 40px',
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '4px',
+                              border: `2px solid ${idx === (selectedOtherImageIndex < otherImageFiles.length ? selectedOtherImageIndex : 0) ? '#0062ff' : 'transparent'}`,
+                              overflow: 'hidden',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                            }}
                           >
-                            <img src={URL.createObjectURL(file)} alt={`Thumb ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img
+                              src={URL.createObjectURL(file)}
+                              alt={`Thumb ${idx}`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
                           </div>
                         ))}
                         {otherImageFiles.length < 3 && (
                           <button
                             type="button"
                             onClick={(e) => {
-                                e.stopPropagation();
-                                otherImagesRef.current?.click();
+                              e.stopPropagation();
+                              otherImagesRef.current?.click();
                             }}
-                            style={{ flex: '0 0 40px', width: '40px', height: '40px', borderRadius: '4px', border: '2px dashed #0062ff', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                            style={{
+                              flex: '0 0 40px',
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '4px',
+                              border: '2px dashed #0062ff',
+                              background: '#f8fafc',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
                           >
-                            <div style={{ color: '#0062ff', fontSize: '20px', fontWeight: 'bold' }}>+</div>
+                            <div style={{ color: '#0062ff', fontSize: '20px', fontWeight: 'bold' }}>
+                              +
+                            </div>
                           </button>
                         )}
                       </div>
                     </div>
                   ) : formData.images && formData.images.length > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                      }}
+                    >
                       <div
                         style={{
                           fontWeight: 600,
@@ -1261,9 +1389,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       marginLeft: 22,
                     }}
                   >
-                    <div
-                      style={{ display: 'flex', alignItems: 'center', gap: 24 }}
-                    >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
                       <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                         Inventory Tracking
                       </label>
@@ -1306,8 +1432,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         </label>
                       </div>
                     </div>
-
-
                   </div>
                 )}
               </div>
@@ -1421,5 +1545,3 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
     </div>
   );
 }
-
-
