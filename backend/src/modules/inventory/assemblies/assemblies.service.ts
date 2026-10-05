@@ -16,6 +16,8 @@ import {
   reverseMovement,
 } from '../stock-ledger/stockLedger.service.js';
 import { allocateOutward } from '../stock-ledger/allocateOutward.js';
+import { validateCustomFields } from '../../settings/customization/custom-fields/customFields.engine.ts';
+import { loadActiveDefinitions } from '../../settings/customization/custom-fields/custom-fields.service.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 
 /**
@@ -203,6 +205,13 @@ export const assembliesService = {
       if (!location) {
         throw ApiError.notFound('Location not found.');
       }
+
+      // Before anything posts: a bad field must not leave stock moved.
+      const customFields = validateCustomFields({
+        defs: await loadActiveDefinitions(tx, orgId, 'item_assembly'),
+        input: data.customFields,
+        mode: 'create',
+      });
 
       // 3. Generate assembly number if not provided
       const assemblyNumber = data.assemblyNumber;
@@ -483,6 +492,7 @@ export const assembliesService = {
               qty: data.qty,
               locationId: data.locationId,
               remarks: data.remarks,
+              customFields: customFields as Prisma.InputJsonObject,
               createdBy: userId,
               updatedBy: userId,
               direction: 'assemble',

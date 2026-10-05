@@ -20,6 +20,9 @@ import type { BatchSelection } from '../../jobwork/issues/batchSelection';
 import type { CompositeComponent } from '../composite-items/compositeItems.api';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 import { AssemblyNumberConfigModal } from './AssemblyNumberConfigModal';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -53,6 +56,10 @@ export function CreateAssemblyPage() {
     handleSubmit,
     formState: { errors },
   } = form;
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'item_assembly');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>({});
+  /** Server `details`, keyed `customFields.<key>` — a red border, the message goes in the toast. */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const compositeItemId = useWatch({ control, name: 'compositeItemId' });
   const qty = useWatch({ control, name: 'qty' });
   /** 🔴 Which godown this assembly happens in. Both sides post there, so it also
@@ -247,9 +254,14 @@ export function CreateAssemblyPage() {
       navigate(`/organizations/${orgId}/inventory/assembly?id=${resData.id}`);
     },
     onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } } };
+      const err = error as {
+        response?: { data?: { message?: string; details?: Record<string, string> } };
+      };
+      const details = err.response?.data?.details ?? {};
+      setFieldErrors(details);
       notify.error(
-        err.response?.data?.message ||
+        Object.values(details)[0] ||
+          err.response?.data?.message ||
           (error instanceof Error ? error.message : 'Failed to create assembly'),
       );
     },
@@ -310,9 +322,11 @@ export function CreateAssemblyPage() {
       return;
     }
 
+    setFieldErrors({});
     createMutation.mutate({
       ...data,
       lines: combinedLines,
+      customFields,
     });
   };
 
@@ -571,6 +585,20 @@ export function CreateAssemblyPage() {
                 <Select options={[]} placeholder="Select a project" value="" onChange={() => {}} />
               </div>
             </div>
+
+            {customFieldDefs.length > 0 && (
+              <div style={{ marginTop: '24px' }}>
+                <CustomFieldsSection
+                  orgId={orgId!}
+                  entityType="item_assembly"
+                  values={customFields}
+                  onChange={setCustomFields}
+                  errors={fieldErrors}
+                  applyDefaults
+                  layout="rows"
+                />
+              </div>
+            )}
 
             <hr style={{ border: 'none', borderTop: '1px solid #eef0f3', margin: '40px 0' }} />
 

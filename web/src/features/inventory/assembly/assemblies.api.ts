@@ -14,6 +14,7 @@ export interface ItemAssembly {
   status: string;
   direction: string;
   createdAt: string;
+  customFields?: Record<string, unknown>;
   compositeItem?: {
     name: string;
     sku: string;
@@ -79,6 +80,7 @@ export const createAssemblySchema = z.object({
   locationId: z.string().min(1, 'Location is required'),
   projectId: z.string().optional(),
   lines: z.array(itemAssemblyLineSchema).optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateAssemblyDto = z.infer<typeof createAssemblySchema>;

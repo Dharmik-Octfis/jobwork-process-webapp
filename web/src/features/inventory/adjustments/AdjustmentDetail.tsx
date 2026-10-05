@@ -22,6 +22,8 @@ import {
 import { headerButton } from './adjustmentButtons';
 import { announceOutcome, refreshAfterAdjustment } from './adjustmentSave';
 import { ValueAdjustmentLines } from './ValueAdjustmentLines';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
 interface AdjustmentDetailProps {
   orgId: string;
@@ -99,6 +101,7 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
   // Rendered only when an approval request exists — an organization with no
   // approval process for adjustments sees none of it.
   const approval = useRecordApproval(orgId, ADJUSTMENT_APPROVAL_MODULE, adjustmentId);
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'stock_adjustment');
 
   const itemIds = adjustment?.lines.map((line) => line.itemId) ?? [];
   const refresh = () => refreshAfterAdjustment(queryClient, itemIds);
@@ -265,6 +268,11 @@ export function AdjustmentDetail({ orgId, adjustmentId, onClose }: AdjustmentDet
           <Fact label="Reference Number">{adjustment.referenceNumber || '-'}</Fact>
           {posted && <Fact label="Value">{formatMoney(adjustment.value)}</Fact>}
           <Fact label="Created By">{adjustment.createdByUser?.fullName || '-'}</Fact>
+          {customFieldDefs.map((def) => (
+            <Fact key={def.id} label={def.label}>
+              {formatCustomFieldValue(adjustment.customFields[def.key], def)}
+            </Fact>
+          ))}
         </div>
 
         {adjustment.description && (

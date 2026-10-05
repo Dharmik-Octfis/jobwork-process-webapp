@@ -50,7 +50,15 @@ import {
   type LineDraft,
 } from './adjustmentLine';
 import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
-import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
+import {
+  announceOutcome,
+  customFieldErrorsOf,
+  refreshAfterAdjustment,
+  reportSaveError,
+} from './adjustmentSave';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { LineBatchPicker } from './LineBatchPicker';
 import { FifoCostField } from './FifoCostField';
 import { ReasonSelect } from './ReasonSelect';
@@ -167,6 +175,9 @@ function AdjustmentForm({
   const [referenceNumber, setReferenceNumber] = useState(existing?.referenceNumber ?? '');
   const [reasonId, setReasonId] = useState(existing?.reasonId ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>(existing?.customFields ?? {});
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'stock_adjustment');
   const [chosenLocationId, setChosenLocationId] = useState<string | null>(
     existing?.locationId ?? null,
   );
@@ -256,7 +267,10 @@ function AdjustmentForm({
       refreshAfterAdjustment(queryClient, itemIds);
       leave(adjustment.id);
     },
-    onError: (error) => setInvalid(new Set(reportSaveError(error))),
+    onError: (error) => {
+      setInvalid(new Set(reportSaveError(error)));
+      setCustomFieldErrors(customFieldErrorsOf(error));
+    },
   });
 
   const handleSave = (saveAs: 'draft' | 'adjust') => {
@@ -323,6 +337,7 @@ function AdjustmentForm({
           ? toValueLinePayload(row.line, row.item!, currentOf(row.item!.id).value)
           : toLinePayload(row.line, row.item!, availableOf(row.item!.id)),
       ),
+      customFields,
       saveAs,
     });
   };
@@ -450,6 +465,23 @@ function AdjustmentForm({
             }}
           />
         </div>
+
+        {customFieldDefs.length > 0 && (
+          <div style={{ maxWidth: 620, marginBottom: 14 }}>
+            <CustomFieldsSection
+              orgId={orgId}
+              entityType="stock_adjustment"
+              values={customFields}
+              onChange={(values) => {
+                setCustomFields(values);
+                setCustomFieldErrors({});
+              }}
+              errors={customFieldErrors}
+              applyDefaults={!existing}
+              layout="rows"
+            />
+          </div>
+        )}
 
         <div style={{ marginTop: 24, border: '1px solid #eef0f3', borderRadius: 4 }}>
           <div

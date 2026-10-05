@@ -31,18 +31,17 @@ export const ENTITY_TYPES = [
    * (field-sources §2.6). Those must never become hardcoded columns: one org's
    * cutper is another org's nothing.
    *
-   * `job_issue` is NOT here (removed 2026-08-10). Its table still carries the
-   * column, but the Issue dialog no longer has a section to fill it in, so
-   * offering the module in Settings → Modules would let an admin define a field
-   * that can never be entered. It is list-only now — see
-   * `LIST_ONLY_ENTITY_TYPES` in `listViews.catalog.ts`.
+   * `job_issue` was removed 2026-08-10 (no section to fill it in) and came back
+   * 2026-10-05 with one on the Issue form, alongside `stock_adjustment`.
    *
    * `batch` has no list page of its own — batches are picked from an availability
    * query, not browsed — but it earns an entry because Material In writes a batch
    * and an org needs somewhere to record the tag details it cares about.
    */
   'job_order',
+  'job_issue',
   'job_receipt',
+  'stock_adjustment',
   'rejection_reason',
   'batch',
   'composite_item_component',

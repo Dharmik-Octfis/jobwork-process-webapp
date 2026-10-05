@@ -8,6 +8,9 @@ import { Select } from '../../../components/ui/Select';
 import { SplitButton } from '../../../components/ui/SplitButton';
 import { RadioGroup } from '../../../components/ui/RadioGroup';
 import { InfoTip } from '../../../components/ui/InfoTip';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import {
   LOCATION_KIND_LABELS,
   fetchLocations,
@@ -265,6 +268,10 @@ export function ReceiveForm({
   );
   const [locationId, setLocationId] = useState(draft?.locationId ?? '');
   const [remarks, setRemarks] = useState(draft?.remarks ?? '');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>(
+    (draft?.customFields as CustomFieldValues) ?? {},
+  );
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'job_receipt');
   /**
    * 🔴 THE USED FIGURES SOMEBODY TYPED, per input item. An item absent (or null)
    * follows the calculation — so clearing a box hands it back to the plan.
@@ -967,6 +974,7 @@ export function ReceiveForm({
             responsibility: null,
           })),
         remarks: remarks.trim() || null,
+        customFields,
         saveAsDraft,
       };
       return draft
@@ -1248,6 +1256,21 @@ export function ReceiveForm({
               </div>
             </div>
           </section>
+
+          {customFieldDefs.length > 0 && (
+            <section style={{ maxWidth: 900, marginBottom: 20 }}>
+              <h3 style={sectionHeading}>Custom Fields</h3>
+              <CustomFieldsSection
+                orgId={orgId!}
+                entityType="job_receipt"
+                values={customFields}
+                onChange={setCustomFields}
+                errors={fieldErrors}
+                applyDefaults={!draft}
+                layout="rows"
+              />
+            </section>
+          )}
 
           <section style={{ marginBottom: 20 }}>
             {/* 🔴 The warning that stood here — "ticking a challan closes it

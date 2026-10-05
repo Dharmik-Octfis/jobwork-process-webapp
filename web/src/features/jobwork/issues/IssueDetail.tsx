@@ -8,6 +8,8 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { invalidateStockQueries } from '../stockCache';
 import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
@@ -66,6 +68,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const trackingLabel = useTrackingLabel();
   /** What this org calls the level below a batch, for the challan's own column. */
   const unitLabel = useBatchUnitLabel();
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelReasonMissing, setCancelReasonMissing] = useState(false);
@@ -510,6 +513,14 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
                 </tr>
               )}
+              {customFieldDefs.map((def) => (
+                <tr key={def.id}>
+                  <td style={rowLabel}>{def.label}</td>
+                  <td style={rowValue}>
+                    {formatCustomFieldValue(issue.customFields?.[def.key], def)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

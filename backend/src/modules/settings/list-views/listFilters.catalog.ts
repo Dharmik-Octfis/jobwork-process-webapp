@@ -159,6 +159,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],
   item_assembly_line: [{ key: 'all', label: 'All', where: {} }],
+  stock_adjustment: [{ key: 'all', label: 'All Adjustments', where: {} }],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
     { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },

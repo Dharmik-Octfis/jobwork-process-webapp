@@ -5,6 +5,8 @@ import { assembliesApi } from './assemblies.api';
 import { formatDate } from '../../../lib/formatDate';
 import { AssemblyComments } from './AssemblyComments';
 import { AssemblyActivityTimeline } from './AssemblyActivityTimeline';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
 interface Html2PdfOptions {
   margin?: number | [number, number] | [number, number, number, number];
@@ -102,6 +104,7 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
     queryFn: () => assembliesApi.getById(orgId, assemblyId),
     enabled: Boolean(orgId && assemblyId),
   });
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'item_assembly');
 
   if (isLoading) {
     return (
@@ -430,6 +433,14 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                     </span>
                   </div>
                 </div>
+                {customFieldDefs.map((def) => (
+                  <div key={def.id} style={{ display: 'flex', marginBottom: 16 }}>
+                    <div style={{ width: 160, color: '#64748b', fontSize: 13 }}>{def.label}</div>
+                    <div style={{ color: '#1e293b', fontSize: 14, minWidth: 0 }}>
+                      {formatCustomFieldValue(assembly.customFields?.[def.key], def)}
+                    </div>
+                  </div>
+                ))}
               </div>
               <div style={{ width: 320 }}>
                 <div
@@ -469,93 +480,97 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                   Items
                 </h4>
                 <div className="responsive-table-wrapper">
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr
-                      style={{
-                        borderBottom: '2px solid #eef0f3',
-                        color: '#64748b',
-                        fontSize: 12,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Item Details</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total Qty Consumed</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost Per Unit</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {goodsItems.map((line) => (
-                      <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                        <td style={{ padding: '16px', display: 'flex', gap: 12 }}>
-                          <div
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: '2px solid #eef0f3',
+                          color: '#64748b',
+                          fontSize: 12,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>Item Details</th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>
+                          Total Qty Consumed
+                        </th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost Per Unit</th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {goodsItems.map((line) => (
+                        <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                          <td style={{ padding: '16px', display: 'flex', gap: 12 }}>
+                            <div
+                              style={{
+                                width: 48,
+                                height: 48,
+                                background: '#f8fafc',
+                                border: '1px solid #eef0f3',
+                                borderRadius: 6,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#cbd5e1',
+                              }}
+                            >
+                              <ImageIcon size={24} />
+                            </div>
+                            <div>
+                              <div style={{ color: '#0062ff', fontSize: 14, marginBottom: 4 }}>
+                                {line.item.name}
+                              </div>
+                              <div style={{ color: '#64748b', fontSize: 13 }}>
+                                SKU: {line.item.sku}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
+                            {line.qtyPerUnit} X {assembly.qty} assemblies
+                          </td>
+                          <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
+                            {line.qty} {line.item.stockingUom?.unitName || ''}
+                          </td>
+                          <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
+                            {formatMoney(line.unitValue)}
+                          </td>
+                          <td
                             style={{
-                              width: 48,
-                              height: 48,
-                              background: '#f8fafc',
-                              border: '1px solid #eef0f3',
-                              borderRadius: 6,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: '#cbd5e1',
+                              padding: '16px',
+                              color: '#334155',
+                              fontSize: 14,
+                              textAlign: 'right',
                             }}
                           >
-                            <ImageIcon size={24} />
-                          </div>
-                          <div>
-                            <div style={{ color: '#0062ff', fontSize: 14, marginBottom: 4 }}>
-                              {line.item.name}
-                            </div>
-                            <div style={{ color: '#64748b', fontSize: 13 }}>
-                              SKU: {line.item.sku}
-                            </div>
-                          </div>
+                            {formatMoney(getLineAmount(line))}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: '2px solid #eef0f3', background: '#f8fafc' }}>
+                        <td style={{ padding: '16px', fontWeight: 600, color: '#1e293b' }}>
+                          Total
                         </td>
-                        <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                          {line.qtyPerUnit} X {assembly.qty} assemblies
-                        </td>
-                        <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                          {line.qty} {line.item.stockingUom?.unitName || ''}
-                        </td>
-                        <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                          {formatMoney(line.unitValue)}
-                        </td>
+                        <td style={{ padding: '16px' }} />
+                        <td style={{ padding: '16px' }} />
+                        <td style={{ padding: '16px' }} />
                         <td
                           style={{
                             padding: '16px',
-                            color: '#334155',
+                            color: '#1e293b',
                             fontSize: 14,
+                            fontWeight: 600,
                             textAlign: 'right',
                           }}
                         >
-                          {formatMoney(getLineAmount(line))}
+                          {formatMoney(getSectionTotal(goodsItems))}
                         </td>
                       </tr>
-                    ))}
-                    <tr style={{ borderTop: '2px solid #eef0f3', background: '#f8fafc' }}>
-                      <td style={{ padding: '16px', fontWeight: 600, color: '#1e293b' }}>Total</td>
-                      <td style={{ padding: '16px' }} />
-                      <td style={{ padding: '16px' }} />
-                      <td style={{ padding: '16px' }} />
-                      <td
-                        style={{
-                          padding: '16px',
-                          color: '#1e293b',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {formatMoney(getSectionTotal(goodsItems))}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -566,93 +581,97 @@ export function AssemblyDetail({ orgId, assemblyId, onClose }: AssemblyDetailPro
                   Services
                 </h4>
                 <div className="responsive-table-wrapper">
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr
-                      style={{
-                        borderBottom: '2px solid #eef0f3',
-                        color: '#64748b',
-                        fontSize: 12,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Service Details</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total Qty Consumed</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost Per Unit</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {serviceItems.map((line) => (
-                      <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                        <td style={{ padding: '16px', display: 'flex', gap: 12 }}>
-                          <div
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: '2px solid #eef0f3',
+                          color: '#64748b',
+                          fontSize: 12,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>Service Details</th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>Quantity Consumed</th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>
+                          Total Qty Consumed
+                        </th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost Per Unit</th>
+                        <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {serviceItems.map((line) => (
+                        <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
+                          <td style={{ padding: '16px', display: 'flex', gap: 12 }}>
+                            <div
+                              style={{
+                                width: 48,
+                                height: 48,
+                                background: '#f8fafc',
+                                border: '1px solid #eef0f3',
+                                borderRadius: 6,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#cbd5e1',
+                              }}
+                            >
+                              <ImageIcon size={24} />
+                            </div>
+                            <div>
+                              <div style={{ color: '#0062ff', fontSize: 14, marginBottom: 4 }}>
+                                {line.item.name}
+                              </div>
+                              <div style={{ color: '#64748b', fontSize: 13 }}>
+                                SKU: {line.item.sku}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
+                            {line.qtyPerUnit} X {assembly.qty} assemblies
+                          </td>
+                          <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
+                            {line.qty} {line.item.stockingUom?.unitName || ''}
+                          </td>
+                          <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
+                            {formatMoney(line.unitValue)}
+                          </td>
+                          <td
                             style={{
-                              width: 48,
-                              height: 48,
-                              background: '#f8fafc',
-                              border: '1px solid #eef0f3',
-                              borderRadius: 6,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: '#cbd5e1',
+                              padding: '16px',
+                              color: '#334155',
+                              fontSize: 14,
+                              textAlign: 'right',
                             }}
                           >
-                            <ImageIcon size={24} />
-                          </div>
-                          <div>
-                            <div style={{ color: '#0062ff', fontSize: 14, marginBottom: 4 }}>
-                              {line.item.name}
-                            </div>
-                            <div style={{ color: '#64748b', fontSize: 13 }}>
-                              SKU: {line.item.sku}
-                            </div>
-                          </div>
+                            {formatMoney(getLineAmount(line))}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: '2px solid #eef0f3', background: '#f8fafc' }}>
+                        <td style={{ padding: '16px', fontWeight: 600, color: '#1e293b' }}>
+                          Total
                         </td>
-                        <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                          {line.qtyPerUnit} X {assembly.qty} assemblies
-                        </td>
-                        <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                          {line.qty} {line.item.stockingUom?.unitName || ''}
-                        </td>
-                        <td style={{ padding: '16px', color: '#334155', fontSize: 14 }}>
-                          {formatMoney(line.unitValue)}
-                        </td>
+                        <td style={{ padding: '16px' }} />
+                        <td style={{ padding: '16px' }} />
+                        <td style={{ padding: '16px' }} />
                         <td
                           style={{
                             padding: '16px',
-                            color: '#334155',
+                            color: '#1e293b',
                             fontSize: 14,
+                            fontWeight: 600,
                             textAlign: 'right',
                           }}
                         >
-                          {formatMoney(getLineAmount(line))}
+                          {formatMoney(getSectionTotal(serviceItems))}
                         </td>
                       </tr>
-                    ))}
-                    <tr style={{ borderTop: '2px solid #eef0f3', background: '#f8fafc' }}>
-                      <td style={{ padding: '16px', fontWeight: 600, color: '#1e293b' }}>Total</td>
-                      <td style={{ padding: '16px' }} />
-                      <td style={{ padding: '16px' }} />
-                      <td style={{ padding: '16px' }} />
-                      <td
-                        style={{
-                          padding: '16px',
-                          color: '#1e293b',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {formatMoney(getSectionTotal(serviceItems))}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
