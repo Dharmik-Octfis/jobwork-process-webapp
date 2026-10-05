@@ -12,7 +12,17 @@ export async function getJobworkChallans(
   organizationId: string,
   query: JobworkChallansQuery,
 ): Promise<PaginatedJobworkChallansResponse> {
-  const { processorName, processName, jobOrderNumber, itemName, fromDate, toDate, minAgeDays, page, perPage } = query;
+  const {
+    processorName,
+    processName,
+    jobOrderNumber,
+    itemName,
+    fromDate,
+    toDate,
+    minAgeDays,
+    page,
+    perPage,
+  } = query;
 
   return runAsTenant(organizationId, async (tx) => {
     // We start with a base where clause for job_issues.
@@ -25,17 +35,17 @@ export async function getJobworkChallans(
     if (processorName) {
       where.processorNameSnapshot = { contains: processorName, mode: 'insensitive' };
     }
-    
+
     if (jobOrderNumber) {
       where.jobOrder = { jobOrderNumber: { contains: jobOrderNumber, mode: 'insensitive' } };
     }
-    
+
     if (processName) {
       where.step = {
         process: { name: { contains: processName, mode: 'insensitive' } },
       };
     }
-    
+
     if (itemName) {
       where.lines = {
         some: {
@@ -56,25 +66,25 @@ export async function getJobworkChallans(
       if (!where.issueDate) where.issueDate = {};
       (where.issueDate as Prisma.DateTimeFilter).lte = cutoff;
     }
-    
+
     // We do NOT override status here for openOnly. 'closed' status doesn't exist,
     // and overwriting would remove POSTED_DOC_STATUS (allowing drafts/cancelled).
 
     const issues = await tx.jobIssue.findMany({
       where,
       include: {
-        step: { 
-          include: { 
+        step: {
+          include: {
             process: { select: { name: true } },
-            inputs: { select: { itemId: true, plannedQty: true } }
-          } 
+            inputs: { select: { itemId: true, plannedQty: true } },
+          },
         },
         jobOrder: { select: { jobOrderNumber: true } },
         destination: { select: { name: true } },
         lines: {
           where: { isDeleted: false },
           include: {
-            item: { select: { name: true, unit: true } },
+            item: { select: { name: true, unit: true, stockingUom: { select: { symbol: true } } } },
           },
         },
       },
@@ -84,7 +94,7 @@ export async function getJobworkChallans(
     });
 
     const stepIds = Array.from(new Set(issues.map((i) => i.jobOrderStepId)));
-    
+
     // Fetch all lines for these steps to calculate total issued so far
     const stepIssues = await tx.jobIssue.findMany({
       where: {
@@ -114,15 +124,16 @@ export async function getJobworkChallans(
       const processName = issue.step?.process?.name || '';
 
       const lines = issue.lines.map((line) => {
-        const itemNameWithUom = line.item.name + (line.item.unit ? ` (${line.item.unit})` : '');
+        const unit = line.item.stockingUom?.symbol || line.item.unit;
+        const itemNameWithUom = line.item.name + (unit ? ` (${unit})` : '');
         const plannedInput = issue.step?.inputs.find((i) => i.itemId === line.itemId);
         const plannedQty = plannedInput?.plannedQty ? Number(plannedInput.plannedQty) : 0;
-        
+
         const issuedQty = Number(line.qty);
-        
+
         const key = `${issue.jobOrderStepId}_${line.itemId}`;
         const totalIssued = issuedMap.get(key) || 0;
-        
+
         const toBeIssuedQty = Math.max(0, plannedQty - totalIssued);
 
         return {
@@ -134,7 +145,9 @@ export async function getJobworkChallans(
         };
       });
 
-      const daysOutstanding = Math.floor((Date.now() - issue.issueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysOutstanding = Math.floor(
+        (Date.now() - issue.issueDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       return {
         id: issue.id,

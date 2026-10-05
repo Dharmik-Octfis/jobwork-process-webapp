@@ -110,7 +110,7 @@ export async function getJobOrderLossReport(
         COALESCE(ji.processor_name_snapshot, s.processor_name_snapshot) AS "processorName",
         i.id AS "itemId",
         i.name AS "itemName",
-        (SELECT u.unit_name FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
+        (SELECT COALESCE(NULLIF(u.symbol, ''), u.unit_name) FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
         (SELECT b.batch_number FROM batches b WHERE b.id = w.batch_id) AS "batchNumber",
         w.qty,
         w.value,

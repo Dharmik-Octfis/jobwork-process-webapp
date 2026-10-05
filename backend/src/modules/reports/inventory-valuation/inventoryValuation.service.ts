@@ -68,7 +68,7 @@ export async function getInventoryValuationSummary(
         i.sku AS "sku",
         i.hsn_code AS "hsnCode",
         i.custom_fields AS "customFields",
-        u.unit_name AS "uomName",
+        COALESCE(NULLIF(u.symbol, ''), u.unit_name) AS "uomName",
         COALESCE(SUM(l.qty_in - l.qty_out), 0) AS "stockOnHand",
         COALESCE(SUM(l.value_in - l.value_out), 0) AS "inventoryAssetValue"
       FROM items i
@@ -117,7 +117,7 @@ export async function getInventoryValuationSummary(
       }
     }
 
-    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.unit_name`;
+    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.symbol, u.unit_name`;
 
     if (stockAvailability === 'gt') {
       q = Prisma.sql`${q} HAVING COALESCE(SUM(l.qty_in - l.qty_out), 0) > 0`;
@@ -575,7 +575,7 @@ export async function getItemLedger(
       itemInfo: {
         itemName: item.name,
         sku: item.sku,
-        uomName: item.stockingUom?.unitName || null,
+        uomName: item.stockingUom?.symbol || item.stockingUom?.unitName || null,
       },
       rows,
     };
