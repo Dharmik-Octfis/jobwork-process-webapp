@@ -13,9 +13,9 @@ import { reportsApi, type CustomersReportQuery, type CustomersReportRow } from '
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 
 const COLUMN_CATALOG = [
-  { key: 'primaryContact', label: 'PRIMARY CONTACT', defaultVisible: true },
-  { key: 'companyName', label: 'COMPANY NAME', defaultVisible: true },
   { key: 'contactName', label: 'DISPLAY NAME', defaultVisible: true },
+  { key: 'companyName', label: 'COMPANY NAME', defaultVisible: true },
+  { key: 'primaryContact', label: 'PRIMARY CONTACT', defaultVisible: true },
   { key: 'email', label: 'EMAIL', defaultVisible: true },
   { key: 'contactNumber', label: 'CUSTOMER#', locked: true, defaultVisible: true },
   { key: 'customerType', label: 'BUSINESS TYPE', defaultVisible: true },
@@ -80,15 +80,14 @@ export function CustomersReportPage() {
     return [...COLUMN_CATALOG, ...customColumns];
   }, [customColumns]);
 
-  useEffect(() => {
-    if (customColumns.length > 0) {
-      setVisibleColumns((prev) => {
-        const newCols = customColumns.filter(c => c.defaultVisible).map(c => c.key).filter(k => !prev.includes(k));
-        if (newCols.length > 0) return [...prev, ...newCols];
-        return prev;
-      });
+  const [prevCustomColumns, setPrevCustomColumns] = useState(customColumns);
+  if (customColumns.length > 0 && customColumns !== prevCustomColumns) {
+    setPrevCustomColumns(customColumns);
+    const newCols = customColumns.filter(c => c.defaultVisible).map(c => c.key).filter(k => !visibleColumns.includes(k));
+    if (newCols.length > 0) {
+      setVisibleColumns([...visibleColumns, ...newCols]);
     }
-  }, [customColumns]);
+  }
 
   const customFilterFields = useMemo(() => {
     return customFields.map((cf) => {
@@ -154,8 +153,9 @@ export function CustomersReportPage() {
     if (key === 'contactNumber') {
       return (
         <Link
-          to={`/organizations/${orgId}/sales/customers/${row.id}/edit`}
+          to={`/organizations/${orgId}/sales/customers?id=${row.id}`}
           className="text-blue-600 hover:underline"
+          style={{ color: '#0062ff' }}
         >
           {row[key as keyof CustomersReportRow] as string}
         </Link>

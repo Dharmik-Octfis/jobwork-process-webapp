@@ -141,6 +141,7 @@ export async function getBatchReport(
 
       return {
         id: row.id,
+        itemId: row.itemId,
         batch: row.batchLabel || row.batchNumber,
         itemName: row.itemName + (row.uomName ? ` (${row.uomName})` : ''),
         locationName: row.locationName,

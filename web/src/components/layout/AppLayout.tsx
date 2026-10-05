@@ -34,6 +34,8 @@ import {
   Menu,
   BarChart2,
   CheckSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
@@ -462,6 +464,20 @@ export function AppLayout() {
   const [prevLogoUrl, setPrevLogoUrl] = useState(activeOrg?.logo_url);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const isRouteCollapsed = location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
+    const stored = localStorage.getItem('sidebar-collapsed');
+    return stored !== null ? stored === 'true' : null;
+  });
+  
+  const isSidebarCollapsed = userCollapsed !== null ? userCollapsed : isRouteCollapsed;
+
+  const toggleSidebar = () => {
+    const next = !isSidebarCollapsed;
+    setUserCollapsed(next);
+    localStorage.setItem('sidebar-collapsed', String(next));
+  };
+
   if (activeOrgId !== prevOrgId) {
     setPrevOrgId(activeOrgId);
     setLogoError(false);
@@ -476,6 +492,12 @@ export function AppLayout() {
     setPrevPathname(location.pathname);
     setPrevModulesLength(modules.length);
     if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+    
+    // Auto-collapse if navigating to reports or opening stock
+    if (location.pathname.includes('/reports') || location.pathname.endsWith('/opening-stock')) {
+      setUserCollapsed(true);
+    }
+
     const effectiveOrgId = activeOrgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
     const activeModule = modules.find((m) =>
       m.children?.some((c) => {
@@ -487,9 +509,6 @@ export function AppLayout() {
       setExpandedModuleId(activeModule.id);
     }
   }
-
-  const isSidebarCollapsed =
-    location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
@@ -716,6 +735,49 @@ export function AppLayout() {
             </NavLink>
           </div>
         )}
+        
+        {/* Toggle Sidebar Button */}
+        <div
+          style={{
+            height: '44px',
+            boxSizing: 'border-box',
+            padding: isSidebarCollapsed ? '0 8px' : '0 var(--space-3)',
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+          }}
+        >
+          <button
+            onClick={toggleSidebar}
+            style={{
+              width: '100%',
+              display: 'flex',
+              flexDirection: isSidebarCollapsed ? 'column' : 'row',
+              alignItems: 'center',
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+              gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
+              padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              background: 'transparent',
+              color: 'rgba(255,255,255,0.7)',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'white')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {isSidebarCollapsed ? (
+              <PanelLeftOpen size={22} />
+            ) : (
+              <PanelLeftClose size={18} />
+            )}
+            {!isSidebarCollapsed && <span style={{ fontSize: 13 }}>Collapse</span>}
+          </button>
+        </div>
       </aside>
 
       {/* Main Container */}

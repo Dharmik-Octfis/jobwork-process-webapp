@@ -83,15 +83,14 @@ export function BillsReportPage() {
     return [...COLUMN_CATALOG, ...customColumns];
   }, [customColumns]);
 
-  useEffect(() => {
-    if (customColumns.length > 0) {
-      setVisibleColumns((prev) => {
-        const newCols = customColumns.filter(c => c.defaultVisible).map(c => c.key).filter(k => !prev.includes(k));
-        if (newCols.length > 0) return [...prev, ...newCols];
-        return prev;
-      });
+  const [prevCustomColumns, setPrevCustomColumns] = useState(customColumns);
+  if (customColumns.length > 0 && customColumns !== prevCustomColumns) {
+    setPrevCustomColumns(customColumns);
+    const newCols = customColumns.filter(c => c.defaultVisible).map(c => c.key).filter(k => !visibleColumns.includes(k));
+    if (newCols.length > 0) {
+      setVisibleColumns([...visibleColumns, ...newCols]);
     }
-  }, [customColumns]);
+  }
 
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId],
@@ -233,10 +232,23 @@ export function BillsReportPage() {
     if (key === 'billNumber') {
       return (
         <Link
-          to={`/organizations/${orgId}/purchases/bills/${row.id}`}
+          to={`/organizations/${orgId}/purchases/bills?id=${row.id}`}
           className="text-blue-600 hover:underline"
+          style={{ color: '#0062ff' }}
         >
           {row[key as keyof BillsReportRow] as string}
+        </Link>
+      );
+    }
+    
+    if (key === 'vendorName') {
+      return (
+        <Link
+          to={`/organizations/${orgId}/purchases/vendors?id=${row.vendorId}`}
+          className="text-blue-600 hover:underline"
+          style={{ color: '#0062ff' }}
+        >
+          {row.vendorName || '-'}
         </Link>
       );
     }

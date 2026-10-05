@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
 import { format } from 'date-fns';
@@ -186,9 +186,39 @@ export function BatchReportPage() {
   const cell = (row: BatchReportRow, key: string) => {
     switch (key) {
       case 'batch':
+        if (row.batch && row.takaCount && row.takaCount > 0) {
+          return (
+            <Link
+              to={`/organizations/${orgId}/reports/taka`}
+              className="text-blue-600 hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                const conditions = [
+                  { field: 'batchText', operator: 'equals', value: row.batch }
+                ];
+                sessionStorage.setItem(`takaReportState_${orgId}`, JSON.stringify({
+                  conditions,
+                  applied: { conditions }
+                }));
+              }}
+              style={{ color: '#0062ff' }}
+            >
+              {row.batch}
+            </Link>
+          );
+        }
         return row.batch || '-';
       case 'itemName':
-        return row.itemName;
+        return (
+          <Link
+            to={`/organizations/${orgId}/items?id=${row.itemId}`}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: '#0062ff' }}
+          >
+            {row.itemName}
+          </Link>
+        );
       case 'locationName':
         return row.locationName;
       case 'qty':

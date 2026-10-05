@@ -76,15 +76,15 @@ export function StockMovementReportPage() {
     // Basic mapping, assuming standard routes
     switch (row.source.toLowerCase().replace(/ /g, '_')) {
       case 'bill':
-        return `/organizations/${orgId}/purchases/bills`;
+        return `/organizations/${orgId}/purchases/bills?id=${row.sourceDocId}`;
       case 'job_receipt':
-        return `/organizations/${orgId}/jobwork/receipts`;
+        return `/organizations/${orgId}/jobwork/receipts?id=${row.sourceDocId}`;
       case 'job_issue':
-        return `/organizations/${orgId}/jobwork/issues`;
+        return `/organizations/${orgId}/jobwork/issues?id=${row.sourceDocId}`;
       case 'purchase_order':
-        return `/organizations/${orgId}/purchases/purchase-orders`;
+        return `/organizations/${orgId}/purchases/purchase-orders?id=${row.sourceDocId}`;
       case 'inventory_adjustment':
-        return `/organizations/${orgId}/inventory/adjustments`;
+        return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
       default:
         return null;
     }

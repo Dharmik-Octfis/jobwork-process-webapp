@@ -183,7 +183,16 @@ export function JobworkChallansRegisterPage() {
           </Link>
         );
       case 'items':
-        return line.items;
+        return (
+          <Link
+            to={`/organizations/${orgId}/items?id=${line.itemId}`}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: '#0062ff' }}
+          >
+            {line.items}
+          </Link>
+        );
       case 'plannedQty':
         return line.plannedQty.toFixed(2);
       case 'issuedQty':

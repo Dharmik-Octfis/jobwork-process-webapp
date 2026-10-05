@@ -52,15 +52,15 @@ export function InventoryValuationDetailPage() {
     // Add routing for specific document types based on standard URL paths in this app
     switch (row.sourceDocType) {
       case 'bill':
-        return `/organizations/${orgId}/purchases/bills/${row.sourceDocId}/edit`;
+        return `/organizations/${orgId}/purchases/bills?id=${row.sourceDocId}`;
       case 'invoice':
         return `/organizations/${orgId}/sales/customers`; // Actually we don't have invoices in router yet, default to customers
       case 'job_receipt':
-        return `/organizations/${orgId}/jobwork/receipts`; // Or specific receipt id view
+        return `/organizations/${orgId}/jobwork/receipts?id=${row.sourceDocId}`;
       case 'job_issue':
-        return `/organizations/${orgId}/jobwork/issues`;
+        return `/organizations/${orgId}/jobwork/issues?id=${row.sourceDocId}`;
       case 'purchase_order':
-        return `/organizations/${orgId}/purchases/purchase-orders/${row.sourceDocId}/edit`;
+        return `/organizations/${orgId}/purchases/purchase-orders?id=${row.sourceDocId}`;
       case 'item_opening_stock':
         return `/organizations/${orgId}/items/${itemId}/opening-stock`;
       case 'inventory_adjustment':

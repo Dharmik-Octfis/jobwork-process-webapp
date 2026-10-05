@@ -126,6 +126,7 @@ export async function getPurchaseOrdersReport(
 
       return {
         id: po.id,
+        vendorId: po.vendorId,
         poNumber: po.poNumber,
         vendorName: po.vendor?.contactName || po.vendor?.companyName || '-',
         locationName: locationName || '-',

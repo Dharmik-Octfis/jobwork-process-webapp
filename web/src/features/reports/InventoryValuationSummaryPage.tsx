@@ -696,7 +696,23 @@ export function InventoryValuationSummaryPage() {
                           case 'itemName':
                             return (
                               <td key={colKey} style={tdStyle}>
-                                <span style={{ color: '#111827', fontWeight: 500 }}>
+                                <span
+                                  style={{
+                                    color: '#2563eb',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/organizations/${orgId}/items?id=${row.itemId}`);
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.textDecoration = 'underline';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.textDecoration = 'none';
+                                  }}
+                                >
                                   {row.itemName}
                                 </span>{' '}
                                 <span style={{ color: '#9ca3af', fontSize: '12px' }}>

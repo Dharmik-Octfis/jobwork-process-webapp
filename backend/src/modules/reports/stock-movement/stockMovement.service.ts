@@ -29,6 +29,7 @@ export async function getStockMovementReport(
       source: string;
       destination: string;
       quantity: string | number | bigint;
+      sourceDocId: string | null;
     };
 
     const {
@@ -120,6 +121,7 @@ export async function getStockMovementReport(
           '-'
         ) AS "transactionNumber",
         n.item_id AS "itemId",
+        n.source_doc_id::text AS "sourceDocId",
         i.name AS "itemName",
         n.created_at AS "createdAt",
         ${transactionTypeAndSource} AS "transactionType",
@@ -143,6 +145,7 @@ export async function getStockMovementReport(
       transactionType: row.transactionType,
       movementType: row.movementType,
       source: row.source,
+      sourceDocId: row.sourceDocId,
       destination: row.destination,
       quantity: Number(row.quantity),
     }));

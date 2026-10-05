@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
 import { format } from 'date-fns';
@@ -170,7 +170,16 @@ export function TakaReportPage() {
       case 'label':
         return row.label;
       case 'itemName':
-        return row.itemName;
+        return (
+          <Link
+            to={`/organizations/${orgId}/items?id=${row.itemId}`}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: '#0062ff' }}
+          >
+            {row.itemName}
+          </Link>
+        );
       case 'batch':
         return row.batch || '-';
       case 'locationName':

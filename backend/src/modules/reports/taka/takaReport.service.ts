@@ -170,6 +170,7 @@ export async function getTakaReport(
 
       return {
         id: row.id,
+        itemId: row.itemId,
         label: row.unitLabel || '(untagged)',
         itemName: row.itemName + (row.uomName ? ` (${row.uomName})` : ''),
         batch: row.batchSupplierRef || row.batchNumber,
