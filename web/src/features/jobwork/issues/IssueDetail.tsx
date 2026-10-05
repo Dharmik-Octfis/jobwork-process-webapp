@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  Truck,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -459,14 +460,15 @@ export function IssueDetail({ issueId, onClose }: Props) {
 
       {/* Scrollable Content Body */}
       <div style={{ padding: '20px 24px', flex: 1, overflowY: 'auto' }}>
-        {/* Logistics Movement Flow Banner */}
+        {/* 3-Stage Delivery Route & Transit Progress Timeline */}
         <div
           style={{
-            background: '#f8fafc',
+            background: '#ffffff',
             border: '1px solid #e2e8f0',
             borderRadius: 8,
             padding: '16px 20px',
             marginBottom: 20,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
           }}
         >
           <div
@@ -476,81 +478,155 @@ export function IssueDetail({ issueId, onClose }: Props) {
               color: '#64748b',
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
-              marginBottom: 12,
+              marginBottom: 14,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}
           >
-            Material Movement Route
+            <span>Delivery Route & Transit Progress</span>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: status.color,
+                background: status.bg,
+                padding: '2px 8px',
+                borderRadius: 10,
+              }}
+            >
+              {issue.status === 'issued' ? 'Dispatched' : status.label}
+            </span>
           </div>
 
           <div
             style={{
-              display: 'flex',
+              display: 'grid',
+              gridTemplateColumns:
+                'minmax(130px, 1fr) auto minmax(130px, 1fr) auto minmax(130px, 1fr)',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              flexWrap: 'wrap',
+              gap: 10,
             }}
           >
-            {/* Origin Source Location */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 160 }}>
+            {/* Stage 1: Origin Source */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                padding: '10px 12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Warehouse size={13} color="#0284c7" />
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: '#0369a1',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Origin Godown
+                </span>
+              </div>
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 6,
-                  background: '#eff6ff',
-                  color: '#0284c7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: '#0f172a',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                <Warehouse size={18} />
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>Issued From</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                  {issue.sourceLocation?.name ?? 'Our Godown'}
-                </div>
+                {issue.sourceLocation?.name ?? 'Internal Warehouse'}
               </div>
             </div>
 
-            {/* Directional Transit Indicator */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0284c7' }}>
-              <div style={{ width: 24, height: 1, background: '#bae6fd' }} />
-              <ArrowRight size={16} />
-              <div style={{ width: 24, height: 1, background: '#bae6fd' }} />
+            {/* Direction 1 */}
+            <div style={{ display: 'flex', alignItems: 'center', color: '#0284c7' }}>
+              <ArrowRight size={15} />
             </div>
 
-            {/* Destination Processor */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 160 }}>
+            {/* Stage 2: Transit Status */}
+            <div
+              style={{
+                background: issue.status === 'issued' ? '#f0fdf4' : '#f8fafc',
+                border: `1px solid ${issue.status === 'issued' ? '#bbf7d0' : '#e2e8f0'}`,
+                borderRadius: 6,
+                padding: '10px 12px',
+                textAlign: 'center',
+              }}
+            >
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 6,
-                  background: issue.processorType === 'internal' ? '#f0fdf4' : '#faf5ff',
-                  color: issue.processorType === 'internal' ? '#16a34a' : '#7c3aed',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  gap: 6,
+                  marginBottom: 4,
                 }}
               >
+                <Truck size={13} color={issue.status === 'issued' ? '#16a34a' : '#64748b'} />
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: issue.status === 'issued' ? '#15803d' : '#475569',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Challan Transit
+                </span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>
+                {issue.status === 'issued' ? 'Dispatched / In-Transit' : 'Draft / Not Dispatched'}
+              </div>
+            </div>
+
+            {/* Direction 2 */}
+            <div style={{ display: 'flex', alignItems: 'center', color: '#0284c7' }}>
+              <ArrowRight size={15} />
+            </div>
+
+            {/* Stage 3: Destination Processor */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                padding: '10px 12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                 {issue.processorType === 'internal' ? (
-                  <Warehouse size={18} />
+                  <Warehouse size={13} color="#0284c7" />
                 ) : (
-                  <Building2 size={18} />
+                  <Building2 size={13} color="#7c3aed" />
                 )}
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: issue.processorType === 'internal' ? '#0369a1' : '#6d28d9',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {issue.processorType === 'internal' ? 'In-house Work Centre' : 'Vendor Processor'}
+                </span>
               </div>
-              <div>
-                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
-                  {issue.processorType === 'internal'
-                    ? 'In-house Work Centre'
-                    : 'Processor (Vendor)'}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                  {issue.processorNameSnapshot ?? issue.destination?.name ?? 'Processor Location'}
-                </div>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: '#0f172a',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {issue.processorNameSnapshot ?? issue.destination?.name ?? 'Processor Location'}
               </div>
             </div>
           </div>
@@ -796,24 +872,49 @@ export function IssueDetail({ issueId, onClose }: Props) {
                       )}
                     </td>
                     <td style={{ padding: '10px 14px', fontSize: 13, color: '#475569' }}>
-                      {line.batch?.supplierBatchRef ? (
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '2px 8px',
-                            background: '#f1f5f9',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 4,
-                            fontSize: 12,
-                            fontWeight: 500,
-                            color: '#334155',
-                          }}
-                        >
-                          {line.batch.supplierBatchRef}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#94a3b8', fontSize: 12 }}>Unspecified / FIFO</span>
-                      )}
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        {line.batch?.supplierBatchRef ? (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              background: '#f1f5f9',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: 4,
+                              fontSize: 12,
+                              fontWeight: 500,
+                              color: '#334155',
+                            }}
+                          >
+                            {line.batch.supplierBatchRef}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>Unspecified / FIFO</span>
+                        )}
+                        {line.batchUnit && (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '2px 6px',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: '#0284c7',
+                            }}
+                          >
+                            Unit: {line.batchUnit.label ?? `#${line.batchUnit.seq}`}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td
                       style={{

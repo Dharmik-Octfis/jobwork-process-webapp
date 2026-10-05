@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -14,16 +14,26 @@ import {
   Building2,
   Warehouse,
   RotateCw,
+  ArrowRight,
+  MapPin,
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
 import { ISSUE_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
-import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
+import {
+  fetchIssuesForStep,
+  fetchJobIssueCount,
+  fetchJobIssues,
+  deleteJobIssue,
+} from './jobIssues.api';
 import { IssueDetail } from './IssueDetail';
 import type { JobIssue } from './jobIssues.schemas';
 
@@ -78,6 +88,27 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
   switch (key) {
     case 'status':
       return <IssueStatusBadge status={issue.status} />;
+    case 'challanNumber':
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontWeight: 700,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: 12.5,
+            color: 'var(--color-primary, #0284c7)',
+            background: '#f0f9ff',
+            padding: '3px 8px',
+            borderRadius: 6,
+            border: '1px solid #bae6fd',
+          }}
+        >
+          <FileText size={13} />
+          <span>{issue.challanNumber}</span>
+        </span>
+      );
     case 'jobOrderNumber':
       return issue.jobOrder?.jobOrderNumber ? (
         <span
@@ -85,7 +116,7 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 4,
-            fontWeight: 500,
+            fontWeight: 600,
             color: '#1e293b',
           }}
         >
@@ -119,34 +150,62 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 5,
+            gap: 6,
             fontSize: 12.5,
             color: '#1e293b',
             fontWeight: 500,
           }}
         >
-          {issue.processorType === 'internal' ? (
-            <>
-              <Warehouse size={13} color="#0284c7" />
-              <span>In-house</span>
-            </>
-          ) : (
-            <>
-              <Building2 size={13} color="#475569" />
-              <span>{issue.processorNameSnapshot ?? 'Vendor'}</span>
-            </>
-          )}
+          <div
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              background: issue.processorType === 'internal' ? '#e0f2fe' : '#f3e8ff',
+              color: issue.processorType === 'internal' ? '#0284c7' : '#7e22ce',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {issue.processorType === 'internal' ? <Warehouse size={12} /> : <Building2 size={12} />}
+          </div>
+          <span>
+            {issue.processorNameSnapshot ??
+              (issue.processorType === 'internal' ? 'In-house' : 'Vendor')}
+          </span>
         </span>
       );
     case 'sourceLocation':
       return (
-        <span style={{ fontSize: 12.5, color: '#475569' }}>
-          {issue.sourceLocation?.name ?? '-'}
+        <span
+          style={{
+            fontSize: 12.5,
+            color: '#475569',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+        >
+          <Warehouse size={13} color="#94a3b8" />
+          <span>{issue.sourceLocation?.name ?? '-'}</span>
         </span>
       );
     case 'destinationLocation':
       return (
-        <span style={{ fontSize: 12.5, color: '#475569' }}>{issue.destination?.name ?? '-'}</span>
+        <span
+          style={{
+            fontSize: 12.5,
+            color: '#475569',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+        >
+          <MapPin size={13} color="#94a3b8" />
+          <span>{issue.destination?.name ?? '-'}</span>
+        </span>
       );
     case 'totalQty':
       return (
@@ -267,7 +326,61 @@ export function IssuesList() {
   } = useListColumns(orgId, 'job_issue');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
 
-  // Quick summary counts for KPI ribbon
+  const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === issues.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(issues.map((i) => i.id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setIsProcessing(true);
+    let successCount = 0;
+    let failedCount = 0;
+    try {
+      for (const id of selectedIds) {
+        try {
+          await deleteJobIssue(orgId!, id);
+          successCount++;
+        } catch {
+          failedCount++;
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues-count', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues-kpi-all', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues-kpi-issued', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues-kpi-draft', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues-kpi-rework', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-issues-kpi-cancelled', orgId] });
+
+      if (failedCount === 0) {
+        toast.success(successCount === 1 ? 'Challan deleted' : `${successCount} challans deleted`);
+      } else if (successCount > 0) {
+        toast.error(
+          `Deleted ${successCount} draft(s). ${failedCount} challan(s) could not be deleted (only drafts can be deleted).`,
+        );
+      } else {
+        toast.error('Could not delete selected challan(s). Only draft challans can be deleted.');
+      }
+      setSelectedIds([]);
+      setIsBulkDeleteDialogOpen(false);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Quick summary counts for filter tabs
   const { data: totalAllCount } = useQuery({
     queryKey: ['job-issues-kpi-all', orgId],
     queryFn: () => fetchJobIssueCount(orgId!, {}),
@@ -289,7 +402,30 @@ export function IssuesList() {
     staleTime: 30000,
   });
 
+  const { data: reworkCount } = useQuery({
+    queryKey: ['job-issues-kpi-rework', orgId],
+    queryFn: () => fetchJobIssueCount(orgId!, { filter: 'rework' }),
+    enabled: Boolean(orgId) && !stepId,
+    staleTime: 30000,
+  });
+
+  const { data: cancelledCount } = useQuery({
+    queryKey: ['job-issues-kpi-cancelled', orgId],
+    queryFn: () => fetchJobIssueCount(orgId!, { filter: 'cancelled' }),
+    enabled: Boolean(orgId) && !stepId,
+    staleTime: 30000,
+  });
+
+  const quickFilterTabs = [
+    { key: 'all', label: 'All Dispatches', count: totalAllCount },
+    { key: 'issued', label: 'Issued & Active', count: issuedCount },
+    { key: 'draft', label: 'Drafts', count: draftCount },
+    { key: 'rework', label: 'Rework Issues', count: reworkCount },
+    { key: 'cancelled', label: 'Cancelled', count: cancelledCount },
+  ];
+
   const openDetail = (id: string) => {
+    setSelectedIds([]);
     const next = new URLSearchParams(searchParams);
     next.set('id', id);
     setSearchParams(next);
@@ -392,290 +528,238 @@ export function IssuesList() {
           }}
         >
           {/* Header & Controls Toolbar */}
-          <header
-            style={{
-              padding: '16px 24px',
-              borderBottom: '1px solid #eef0f3',
-              background: '#ffffff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-            }}
-          >
-            {/* Top row: Filter Dropdown & Primary Action Buttons */}
-            <div
+          {!selectedId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onDelete={() => setIsBulkDeleteDialogOpen(true)}
+              isProcessing={isProcessing}
+            />
+          ) : (
+            <header
               style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid #eef0f3',
+                background: '#ffffff',
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 12,
+                flexDirection: 'column',
+                gap: 14,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {!stepId ? (
-                  <ListFilterDropdown
-                    filters={filters}
-                    value={filter}
-                    onChange={handleFilterSelect}
-                    fallbackLabel="All Challans"
-                  />
-                ) : (
-                  <span style={{ fontSize: 15, fontWeight: 600, color: '#1e293b' }}>
-                    Challans for Step
-                  </span>
-                )}
-                {isPageFetching && !isLoading && (
-                  <RotateCw size={13} className="spin" color="#0284c7" title="Updating..." />
-                )}
-              </div>
-
-              {!selectedId && !stepId && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsColumnsOpen(true)}
-                    title="Customize Columns"
-                    aria-label="Customize Columns"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 34,
-                      height: 34,
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      background: '#fff',
-                      cursor: 'pointer',
-                      color: '#475569',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f8fafc';
-                      e.currentTarget.style.borderColor = '#cbd5e1';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#fff';
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                    }}
-                  >
-                    <SlidersHorizontal size={15} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(`/organizations/${orgId}/jobwork/issues/new`, {
-                        state: { returnUrl: location.pathname + location.search },
-                      })
-                    }
-                    style={{
-                      background: 'var(--color-primary, #0284c7)',
-                      color: 'white',
-                      border: 'none',
-                      padding: '7px 14px',
-                      borderRadius: 6,
-                      fontWeight: 600,
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      boxShadow: '0 1px 2px rgba(2, 132, 199, 0.2)',
-                      transition: 'background 0.15s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(0.92)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-                  >
-                    <Plus size={16} /> New Issue
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Metrics Ribbon (When full list view is active and not in step mode) */}
-            {!selectedId && !stepId && (
+              {/* Top row: Filter Dropdown & Primary Action Buttons */}
               <div
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                  gap: 10,
-                  marginTop: 2,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
                 }}
               >
-                <div
-                  onClick={() => handleFilterSelect('all')}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    background: filter === 'all' ? '#eff6ff' : '#f8fafc',
-                    border: `1px solid ${filter === 'all' ? '#bfdbfe' : '#e2e8f0'}`,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#64748b',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Total Issues
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: '#0f172a',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {totalAllCount !== undefined ? totalAllCount : (total ?? '-')}
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {!stepId ? (
+                    <ListFilterDropdown
+                      filters={filters}
+                      value={filter}
+                      onChange={handleFilterSelect}
+                      fallbackLabel="All Challans"
+                    />
+                  ) : (
+                    <span style={{ fontSize: 15, fontWeight: 600, color: '#1e293b' }}>
+                      Challans for Step
+                    </span>
+                  )}
+                  {isPageFetching && !isLoading && (
+                    <RotateCw size={13} className="spin" color="#0284c7" title="Updating..." />
+                  )}
                 </div>
 
-                <div
-                  onClick={() => handleFilterSelect('issued')}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    background: filter === 'issued' ? '#eff6ff' : '#f8fafc',
-                    border: `1px solid ${filter === 'issued' ? '#93c5fd' : '#e2e8f0'}`,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#1d4ed8',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    <CheckCircle2 size={12} /> Issued / Out
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: '#1d4ed8',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {issuedCount !== undefined ? issuedCount : '—'}
-                  </div>
-                </div>
+                {!selectedId && !stepId && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsColumnsOpen(true)}
+                      title="Customize Columns"
+                      aria-label="Customize Columns"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 34,
+                        height: 34,
+                        borderRadius: 6,
+                        border: '1px solid #e2e8f0',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        color: '#475569',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#fff';
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                      }}
+                    >
+                      <SlidersHorizontal size={15} />
+                    </button>
 
-                <div
-                  onClick={() => handleFilterSelect('draft')}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    background: filter === 'draft' ? '#f1f5f9' : '#f8fafc',
-                    border: `1px solid ${filter === 'draft' ? '#cbd5e1' : '#e2e8f0'}`,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#475569',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    <Clock size={12} /> Drafts
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/organizations/${orgId}/jobwork/issues/new`, {
+                          state: { returnUrl: location.pathname + location.search },
+                        })
+                      }
+                      style={{
+                        background: 'var(--color-primary, #0284c7)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '7px 14px',
+                        borderRadius: 6,
+                        fontWeight: 600,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 1px 2px rgba(2, 132, 199, 0.2)',
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(0.92)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+                    >
+                      <Plus size={16} /> New Issue
+                    </button>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: '#334155',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {draftCount !== undefined ? draftCount : '—'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Search Input Bar */}
-            {!stepId && (
-              <div style={{ position: 'relative', width: '100%' }}>
-                <Search
-                  size={15}
-                  style={{
-                    position: 'absolute',
-                    left: 10,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: '#94a3b8',
-                    pointerEvents: 'none',
-                  }}
-                />
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search by challan #, processor, job order..."
-                  style={{
-                    width: '100%',
-                    height: 34,
-                    padding: '0 32px 0 32px',
-                    fontSize: 13,
-                    borderRadius: 6,
-                    border: '1px solid #d1d5db',
-                    background: '#fff',
-                    outline: 'none',
-                    color: '#1e293b',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s, box-shadow 0.15s',
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--color-primary, #0284c7)';
-                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.15)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchInput('');
-                      setSearch('');
-                    }}
-                    style={{
-                      position: 'absolute',
-                      right: 8,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'none',
-                      border: 'none',
-                      color: '#94a3b8',
-                      cursor: 'pointer',
-                      padding: 2,
-                    }}
-                  >
-                    <X size={14} />
-                  </button>
                 )}
               </div>
-            )}
-          </header>
+
+              {/* Quick Filter Tabs Bar */}
+              {!selectedId && !stepId && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    overflowX: 'auto',
+                    paddingTop: 4,
+                    paddingBottom: 2,
+                  }}
+                >
+                  {quickFilterTabs.map((tab) => {
+                    const isActive = filter === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => handleFilterSelect(tab.key)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '6px 14px',
+                          borderRadius: 20,
+                          fontSize: 12.5,
+                          fontWeight: isActive ? 600 : 500,
+                          background: isActive ? '#0284c7' : '#f1f5f9',
+                          color: isActive ? '#ffffff' : '#475569',
+                          border: 'none',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <span>{tab.label}</span>
+                        {tab.count !== undefined && (
+                          <span
+                            style={{
+                              padding: '1px 6px',
+                              borderRadius: 10,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              background: isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                              color: isActive ? '#ffffff' : '#334155',
+                            }}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Search Input Bar */}
+              {!stepId && (
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <Search
+                    size={15}
+                    style={{
+                      position: 'absolute',
+                      left: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: '#94a3b8',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Search by challan #, processor, job order..."
+                    style={{
+                      width: '100%',
+                      height: 34,
+                      padding: '0 32px 0 32px',
+                      fontSize: 13,
+                      borderRadius: 6,
+                      border: '1px solid #d1d5db',
+                      background: '#fff',
+                      outline: 'none',
+                      color: '#1e293b',
+                      boxSizing: 'border-box',
+                      transition: 'border-color 0.15s, box-shadow 0.15s',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--color-primary, #0284c7)';
+                      e.currentTarget.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.15)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = '#d1d5db';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchInput('');
+                        setSearch('');
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: 8,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        padding: 2,
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </header>
+          )}
 
           {/* List Content */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -821,43 +905,97 @@ export function IssuesList() {
                           marginBottom: 4,
                         }}
                       >
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                        <span
+                          style={{
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            fontFamily:
+                              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                            color: isSelected ? 'var(--color-primary, #0284c7)' : '#1e293b',
+                            background: isSelected ? '#ffffff' : '#f8fafc',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            border: `1px solid ${isSelected ? '#bae6fd' : '#e2e8f0'}`,
+                          }}
+                        >
                           {issue.challanNumber}
                         </span>
                         <IssueStatusBadge status={issue.status} />
                       </div>
+
+                      {/* Route flow strip */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 11.5,
+                          color: '#475569',
+                          margin: '5px 0',
+                          background: isSelected ? '#ffffff' : '#f8fafc',
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          border: `1px solid ${isSelected ? '#e0f2fe' : '#f1f5f9'}`,
+                        }}
+                      >
+                        <Warehouse size={11} color="#0284c7" />
+                        <span
+                          style={{
+                            maxWidth: 100,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {issue.sourceLocation?.name ?? 'Godown'}
+                        </span>
+                        <ArrowRight size={10} color="#94a3b8" />
+                        {issue.processorType === 'internal' ? (
+                          <Warehouse size={11} color="#0284c7" />
+                        ) : (
+                          <Building2 size={11} color="#7c3aed" />
+                        )}
+                        <span
+                          style={{
+                            maxWidth: 110,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {issue.processorNameSnapshot ??
+                            (issue.processorType === 'internal' ? 'In-house' : 'Vendor')}
+                        </span>
+                      </div>
+
                       <div
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {issue.processorType === 'internal' ? (
-                            <Warehouse size={12} color="#0284c7" />
-                          ) : (
-                            <Building2 size={12} color="#64748b" />
-                          )}
-                          {issue.processorNameSnapshot ?? 'In-house'}
-                        </span>
-                        <span style={{ fontWeight: 600, color: '#334155' }}>
-                          {formatQty(issue.totalQty)}
-                        </span>
-                      </div>
-                      <div
-                        style={{
                           fontSize: 11.5,
-                          color: '#94a3b8',
+                          color: '#64748b',
                           marginTop: 4,
-                          display: 'flex',
-                          justifyContent: 'space-between',
                         }}
                       >
-                        <span>{issue.jobOrder?.jobOrderNumber ?? 'Direct'}</span>
-                        <span>{formatDate(issue.issueDate)}</span>
+                        <span style={{ fontWeight: 600, color: '#334155' }}>
+                          {issue.jobOrder?.jobOrderNumber ?? 'Direct Issue'}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              color: '#0f172a',
+                              background: isSelected ? '#e0f2fe' : '#f1f5f9',
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {formatQty(issue.totalQty)}
+                          </span>
+                          <span>{formatDate(issue.issueDate)}</span>
+                        </div>
                       </div>
                     </button>
                   );
@@ -875,69 +1013,144 @@ export function IssuesList() {
                         borderBottom: '1px solid #e2e8f0',
                       }}
                     >
+                      <th
+                        style={{
+                          width: 44,
+                          padding: '12px 16px',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={issues.length > 0 && selectedIds.length === issues.length}
+                          onChange={toggleAll}
+                          style={{ cursor: 'pointer', accentColor: '#0284c7' }}
+                        />
+                      </th>
                       {columns.map((col) => (
                         <th key={col.key} style={tableHeaderStyle} scope="col">
                           {col.label}
                         </th>
                       ))}
+                      <th style={{ width: 44, textAlign: 'center', padding: '8px 12px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsColumnsOpen(true)}
+                          title="Customize Columns"
+                          aria-label="Customize Columns"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            borderRadius: 4,
+                            border: '1px solid #cbd5e1',
+                            background: '#fff',
+                            cursor: 'pointer',
+                            color: '#475569',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#f0f7fd';
+                            e.currentTarget.style.color = '#0284c7';
+                            e.currentTarget.style.borderColor = '#0284c7';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#fff';
+                            e.currentTarget.style.color = '#475569';
+                            e.currentTarget.style.borderColor = '#cbd5e1';
+                          }}
+                        >
+                          <SlidersHorizontal size={14} />
+                        </button>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {issues.map((issue, idx) => (
-                      <tr
-                        key={issue.id}
-                        onClick={() => openDetail(issue.id)}
-                        style={{
-                          borderBottom: '1px solid #f1f5f9',
-                          cursor: 'pointer',
-                          background: idx % 2 === 0 ? '#ffffff' : '#fafafa',
-                          transition: 'background 0.12s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.background = idx % 2 === 0 ? '#ffffff' : '#fafafa')
-                        }
-                      >
-                        {columns.map((col) => (
+                    {issues.map((issue, idx) => {
+                      const isChecked = selectedIds.includes(issue.id);
+                      return (
+                        <tr
+                          key={issue.id}
+                          onClick={() => openDetail(issue.id)}
+                          style={{
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                            background: isChecked
+                              ? '#f0f9ff'
+                              : idx % 2 === 0
+                                ? '#ffffff'
+                                : '#fafafa',
+                            transition: 'background 0.12s',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isChecked) e.currentTarget.style.background = '#f8fafc';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isChecked) {
+                              e.currentTarget.style.background =
+                                idx % 2 === 0 ? '#ffffff' : '#fafafa';
+                            }
+                          }}
+                        >
                           <td
-                            key={col.key}
                             style={{
+                              width: 44,
                               padding: '12px 16px',
-                              fontSize: 13,
-                              color: '#334155',
-                              verticalAlign: 'middle',
+                              textAlign: 'center',
                             }}
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {col.locked ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openDetail(issue.id);
-                                }}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  padding: 0,
-                                  font: 'inherit',
-                                  fontWeight: 600,
-                                  color: 'var(--color-primary, #0284c7)',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                }}
-                              >
-                                {renderCell(issue, col.key)}
-                              </button>
-                            ) : (
-                              renderCell(issue, col.key)
-                            )}
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleSelection(issue.id)}
+                              style={{ cursor: 'pointer', accentColor: '#0284c7' }}
+                            />
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          {columns.map((col) => (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                fontSize: 13,
+                                color: '#334155',
+                                verticalAlign: 'middle',
+                              }}
+                            >
+                              {col.locked ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openDetail(issue.id);
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    font: 'inherit',
+                                    fontWeight: 600,
+                                    color: 'var(--color-primary, #0284c7)',
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                  }}
+                                >
+                                  {renderCell(issue, col.key)}
+                                </button>
+                              ) : (
+                                renderCell(issue, col.key)
+                              )}
+                            </td>
+                          ))}
+                          <td style={{ width: 44, textAlign: 'center', padding: '12px 16px' }} />
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -981,6 +1194,16 @@ export function IssuesList() {
         visible={visible}
         isSaving={saveColumns.isPending}
         onSave={(cols) => saveColumns.mutate(cols, { onSuccess: () => setIsColumnsOpen(false) })}
+      />
+
+      <ConfirmDialog
+        isOpen={isBulkDeleteDialogOpen}
+        onCancel={() => setIsBulkDeleteDialogOpen(false)}
+        onConfirm={handleBulkDelete}
+        title="Delete Selected Material Issues"
+        message={`Are you sure you want to delete ${selectedIds.length} selected challan(s)? Only draft challans can be deleted. Issued challans cannot be deleted.`}
+        confirmText={isProcessing ? 'Deleting...' : 'Delete'}
+        isConfirming={isProcessing}
       />
     </div>
   );

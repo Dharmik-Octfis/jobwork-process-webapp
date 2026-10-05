@@ -1118,6 +1118,15 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
    * one line (a challan of nothing is not a draft, it is an empty form) and the
    * godown it goes out of (every line's batch is scoped to it).
    */
+  const totalPlannedQty = useMemo(
+    () => inputItems.reduce((acc, it) => acc + (it.plannedQty ?? 0), 0),
+    [inputItems],
+  );
+  const totalAllocatedQty = useMemo(
+    () => [...qtyByItem.values()].reduce((acc, qty) => acc + qty, 0),
+    [qtyByItem],
+  );
+
   const canSaveDraft = lines.length > 0 && Boolean(effectiveSourceId) && !mutation.isPending;
 
   return (
@@ -1574,6 +1583,60 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
             Enter dispatch quantities and allocate {trackingLabel.plural.toLowerCase()}
           </span>
         </div>
+
+        {/* Dispatch Allocation Progress Gauge */}
+        {totalPlannedQty > 0 && (
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 6,
+              padding: '10px 14px',
+              marginBottom: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: 12,
+              }}
+            >
+              <span style={{ fontWeight: 600, color: '#334155' }}>
+                Dispatch Allocation Progress
+              </span>
+              <span
+                style={{ fontWeight: 700, color: '#0284c7', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {formatQty(totalAllocatedQty)} / {formatQty(totalPlannedQty)} (
+                {Math.min(100, Math.round((totalAllocatedQty / totalPlannedQty) * 100))}%)
+              </span>
+            </div>
+            <div
+              style={{
+                width: '100%',
+                height: 6,
+                background: '#e2e8f0',
+                borderRadius: 3,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${Math.min(100, (totalAllocatedQty / totalPlannedQty) * 100)}%`,
+                  height: '100%',
+                  background: totalAllocatedQty > totalPlannedQty ? '#eab308' : '#0284c7',
+                  borderRadius: 3,
+                  transition: 'width 0.2s ease',
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/*
           🔴 ONE ROW PER INPUT ITEM (§5.7). Issuing all seven of a step's items on
