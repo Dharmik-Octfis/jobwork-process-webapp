@@ -618,8 +618,8 @@ export function AppLayout() {
               className="sidebar-nav-link"
               title={
                 pendingApprovalsCount > 0
-                  ? `Approvals (${pendingApprovalsCount} pending)`
-                  : 'Approvals'
+                  ? `My Jobs (${pendingApprovalsCount} pending)`
+                  : 'My Jobs'
               }
               style={({ isActive }) => ({
                 display: 'flex',
@@ -658,7 +658,7 @@ export function AppLayout() {
                   </span>
                 )}
               </div>
-              <span style={{ fontSize: isSidebarCollapsed ? 10 : 13, flex: 1 }}>Approvals</span>
+              <span style={{ fontSize: isSidebarCollapsed ? 10 : 13, flex: 1 }}>My Jobs</span>
               {!isSidebarCollapsed && pendingApprovalsCount > 0 && (
                 <span
                   style={{

@@ -57,7 +57,7 @@ export const ApprovalsListPage: React.FC = () => {
         <div className="approvals-inbox-title">
           <h1>
             <CheckSquare size={26} color="#2563eb" />
-            Approvals
+            My Jobs
           </h1>
           <p>Review, track, and manage approval requests across CRM modules</p>
         </div>
