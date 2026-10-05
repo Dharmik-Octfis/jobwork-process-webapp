@@ -24,6 +24,8 @@ import { DateInput } from '../../../components/ui/DateInput';
 import { ItemComboBox } from '../../../components/ui/ItemComboBox';
 import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 import type { CreateSalesOrderData, SalesOrderItem } from './sales-orders.schemas';
 import { lineDiscountAmount, lineDiscountError, lineGross } from '../../../lib/lineDiscount';
 import { firstErrorMessage } from '../../../lib/formErrors';
@@ -124,6 +126,9 @@ export function CreateSalesOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'sales_order');
+  const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['salesOrder', orgId, poIdToFetch],
@@ -458,6 +463,31 @@ export function CreateSalesOrder() {
     notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.');
 
   const onSubmit = (data: CreateSalesOrderData) => {
+    let hasErrors = false;
+    const newLocalCustomFieldErrors: Record<string, string> = {};
+
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = data.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newLocalCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setLocalCustomFieldErrors(newLocalCustomFieldErrors);
+
+    if (hasErrors) {
+      notify.error('Please fill all required custom fields.');
+      return;
+    }
+
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
@@ -929,6 +959,18 @@ export function CreateSalesOrder() {
                 style={searchableSelectStyle}
               />
             </div>
+          </div>
+
+          {/* Custom Fields Section */}
+          <div style={{ marginBottom: '32px' }}>
+            <CustomFieldsSection
+              orgId={orgId!}
+              entityType="sales_order"
+              values={(watch('customFields') as Record<string, unknown>) ?? {}}
+              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+              errors={localCustomFieldErrors}
+              applyDefaults={!isEdit && !isClone}
+            />
           </div>
 
           {/* Items Table Section */}

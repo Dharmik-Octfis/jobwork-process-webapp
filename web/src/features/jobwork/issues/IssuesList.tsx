@@ -183,7 +183,7 @@ export function IssuesList() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setSearchParams({})}
+                  onClick={() => setSearchParams(prev => { prev.delete('id'); return prev; })}
                   style={{
                     marginLeft: 12,
                     background: 'none',
@@ -405,7 +405,7 @@ export function IssuesList() {
             )}
           </div>
 
-          {!selectedId && !stepId && (
+          {!stepId && (
             <Pagination
               pageContext={pageData?.pageContext}
               page={page}

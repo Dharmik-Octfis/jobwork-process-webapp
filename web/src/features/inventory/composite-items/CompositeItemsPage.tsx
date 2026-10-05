@@ -115,7 +115,7 @@ function ExpandableCompositeItemRow({
   return (
     <>
       <tr
-        onClick={() => setSearchParams({ id: item.id })}
+        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
         style={{
           borderBottom: '1px solid #eef0f3',
           transition: 'background 0.1s',
@@ -268,7 +268,7 @@ function CompactCompositeItemRow({
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div
-        onClick={() => setSearchParams({ id: item.id })}
+        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -735,8 +735,7 @@ export function CompositeItemsPage() {
           </div>
 
           {/* Pagination — hidden while an item is selected (narrow master pane) */}
-          {!selectedItemId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -746,13 +745,12 @@ export function CompositeItemsPage() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
           <div className="detail-pane" style={{ overflowY: 'auto' }}>
-            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
+            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>

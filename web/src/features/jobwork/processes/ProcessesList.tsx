@@ -90,11 +90,11 @@ export function ProcessesList() {
       queryClient.invalidateQueries({ queryKey: ['processes', orgId] });
       setToDelete(null);
       // The detail pane was showing the row that just went away.
-      if (selectedId === id) setSearchParams({});
+      if (selectedId === id) setSearchParams(prev => { prev.delete('id'); return prev; });
     },
   });
 
-  const openDetail = (id: string) => setSearchParams({ id });
+  const openDetail = (id: string) => setSearchParams(prev => { prev.set('id', id); return prev; });
 
   return (
     <div
@@ -401,8 +401,7 @@ export function ProcessesList() {
             )}
           </div>
 
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -412,12 +411,11 @@ export function ProcessesList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <ProcessDetail processId={selectedId} onClose={() => setSearchParams({})} />
+            <ProcessDetail processId={selectedId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>

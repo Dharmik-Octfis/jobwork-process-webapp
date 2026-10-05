@@ -90,6 +90,7 @@ export async function getJobOrderLossReport(
       JOIN items i ON i.id = w.item_id
       LEFT JOIN job_issue_lines il ON il.id = w.line_id
       LEFT JOIN job_issues ji ON ji.id = il.job_issue_id
+      LEFT JOIN processes p ON p.id = s.process_id
       ${where}`;
 
     const totals = await tx.$queryRaw<{ count: bigint; value: Prisma.Decimal | null }[]>`
@@ -103,14 +104,14 @@ export async function getJobOrderLossReport(
         jo.id AS "jobOrderId",
         jo.job_order_number AS "jobOrderNumber",
         s.seq AS "stepSeq",
-        s.process_name_snapshot AS "processName",
+        COALESCE(NULLIF(p.code, ''), s.process_name_snapshot) AS "processName",
         s.status AS "closedAs",
         ji.id AS "jobIssueId",
         ji.challan_number AS "challanNumber",
         COALESCE(ji.processor_name_snapshot, s.processor_name_snapshot) AS "processorName",
         i.id AS "itemId",
         i.name AS "itemName",
-        (SELECT COALESCE(NULLIF(u.symbol, ''), u.unit_name) FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
+        (SELECT u.unit_name FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
         (SELECT b.batch_number FROM batches b WHERE b.id = w.batch_id) AS "batchNumber",
         w.qty,
         w.value,

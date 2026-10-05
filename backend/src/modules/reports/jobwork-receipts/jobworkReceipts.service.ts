@@ -109,11 +109,11 @@ export async function getJobworkReceipts(
     const receipts = await tx.jobReceipt.findMany({
       where,
       include: {
-        step: { include: { process: { select: { name: true } }, outputs: true } },
+        step: { include: { process: { select: { name: true, code: true } }, outputs: true } },
         jobOrder: { select: { jobOrderNumber: true } },
         outputs: {
           include: {
-            item: { select: { name: true, unit: true, stockingUom: { select: { symbol: true } } } },
+            item: { select: { name: true, unit: true } },
           },
         },
       },
@@ -149,8 +149,8 @@ export async function getJobworkReceipts(
       const pName = receipt.processorNameSnapshot || '';
 
       const lines = receipt.outputs.map((output) => {
-        const unit = output.item.stockingUom?.symbol || output.item.unit;
-        const itemNameWithUom = output.item.name + (unit ? ` (${unit})` : '');
+        const itemNameWithUom =
+          output.item.name + (output.item.unit ? ` (${output.item.unit})` : '');
         const plannedOutput = receipt.step?.outputs.find((o) => o.itemId === output.itemId);
         const plannedQty = plannedOutput?.expectedQty ? Number(plannedOutput.expectedQty) : 0;
 
@@ -175,7 +175,9 @@ export async function getJobworkReceipts(
         receiptNumber: receipt.receiptNumber,
         receiptDate: receipt.receiptDate,
         processorName: pName,
-        process: receipt.step?.process?.name || '',
+        process: receipt.step?.process
+          ? receipt.step.process.code || receipt.step.process.name
+          : '',
         jobOrderNumber: receipt.jobOrder?.jobOrderNumber || '',
         jobOrderId: receipt.jobOrderId || '',
         lines,

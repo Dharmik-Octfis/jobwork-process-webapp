@@ -471,7 +471,20 @@ export function DateInput({
           }}
         >
           <FooterButton
-            onClick={() => commit(clamp(new Date(), minDate, maxDate))}
+            onClick={() => {
+              const now = clamp(new Date(), minDate, maxDate);
+              if (type === 'datetime') {
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                const isoTime = `${format(now, ISO)}T${hh}:${mm}`;
+                onChange(isoTime);
+                setText(displayFrom(isoTime, 'datetime'));
+                setTimeState(parseTime(isoTime));
+                close(true);
+              } else {
+                commit(now);
+              }
+            }}
             disabled={isBlocked(new Date(), minDate, maxDate)}
           >
             Today
