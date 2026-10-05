@@ -35,7 +35,16 @@ export async function getTakaReport(
   organizationId: string,
   query: TakaReportQuery,
 ): Promise<PaginatedTakaReportResponse> {
-  const { itemName, locationName, batchText, onlyAtJobWorkers, asOnDate, minAgeDays, page, perPage } = query;
+  const {
+    itemName,
+    locationName,
+    batchText,
+    onlyAtJobWorkers,
+    asOnDate,
+    minAgeDays,
+    page,
+    perPage,
+  } = query;
 
   return runAsTenant(organizationId, async (tx) => {
     const filters = [
@@ -44,9 +53,7 @@ export async function getTakaReport(
       batchText
         ? Prisma.sql`(b.supplier_batch_ref ILIKE ${`%${batchText}%`} OR b.batch_number ILIKE ${`%${batchText}%`})`
         : null,
-      onlyAtJobWorkers
-        ? Prisma.sql`loc.type IN ('vendor_location', 'customer_location')`
-        : null,
+      onlyAtJobWorkers ? Prisma.sql`loc.type IN ('vendor_location', 'customer_location')` : null,
       minAgeDays !== undefined
         ? Prisma.sql`(EXTRACT(DAY FROM CURRENT_TIMESTAMP - bal.last_in_here) >= ${minAgeDays})`
         : null,
@@ -114,7 +121,7 @@ export async function getTakaReport(
       LEFT JOIN job_issues ji ON ji.id = il.job_issue_id AND ji.destination_location_id = loc.id AND ji.status != 'draft' AND ji.status != 'cancelled' AND ji.status != 'closed'
       ${where}
     `;
-    
+
     // NOTE: The above LEFT JOIN for open challans (ji) is a bit loose because multiple challans could match
     // if goods are sent multiple times. We just grab MAX(ji.challan_number) in the SELECT if needed.
 
@@ -146,7 +153,7 @@ export async function getTakaReport(
         b.batch_number AS "batchNumber",
         i.id AS "itemId",
         i.name AS "itemName",
-        (SELECT u.unit_name FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
+        (SELECT COALESCE(NULLIF(u.symbol, ''), u.unit_name) FROM units_of_measurement u WHERE u.id = i.stocking_uom_id) AS "uomName",
         loc.name AS "locationName",
         loc.type AS "locationType",
         MAX(ji.challan_number) AS "challanNumber"

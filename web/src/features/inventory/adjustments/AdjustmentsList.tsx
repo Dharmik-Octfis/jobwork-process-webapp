@@ -1,4 +1,4 @@
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+﻿import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList } from 'lucide-react';
 import { useListSearch } from '../../../hooks/useListSearch';
@@ -297,8 +297,7 @@ export function AdjustmentsList() {
             )}
           </div>
 
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={data?.pageContext}
               perPage={perPage}
               page={page}
@@ -308,7 +307,6 @@ export function AdjustmentsList() {
               isCounting={isCounting}
               onRequestCount={requestCount}
             />
-          )}
         </div>
 
         {selectedId && orgId && (

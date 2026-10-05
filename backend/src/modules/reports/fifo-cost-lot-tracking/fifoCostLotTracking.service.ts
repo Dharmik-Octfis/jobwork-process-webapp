@@ -19,6 +19,11 @@ import { format, differenceInDays } from 'date-fns';
  * movements no longer appear (valuation never counted them either). A document's
  * corrections of itself — an edited bill taking its old layer back, a cancelled
  * receipt withdrawing its output — are netted out rather than listed as dispersals.
+ *
+ * 🔴 A VALUE ADJUSTMENT RE-LOTS THE STOCK IT CHANGED, as Zoho prints it: the lots it
+ * touched disperse their remaining quantity to it, and it is a new lot of that
+ * quantity at the new cost. Draws made after it are that new lot's dispersals. The
+ * layers themselves are only revalued in place (`revalueLayers`) — this is the view.
  */
 
 interface LayerRow {
@@ -41,15 +46,18 @@ interface DrawRow {
   outDocType: string;
   outDocId: string | null;
   outDate: Date;
+  createdAt: Date;
+  /** The stock a value adjustment re-lotted, not a draw. */
+  byValue?: boolean;
 }
 
 interface RevaluationRow {
   layerId: string;
   qty: Prisma.Decimal;
-  valueBefore: Prisma.Decimal;
   valueAfter: Prisma.Decimal;
   docId: string;
   date: Date;
+  createdAt: Date;
 }
 
 const DOC_LABELS: Record<string, string> = {
@@ -63,6 +71,7 @@ const DOC_LABELS: Record<string, string> = {
   inventory_adjustment: 'Inventory Adjustment By Quantity',
   item_assembly: 'Assemblies',
 };
+const VALUE_ADJUSTMENT_LABEL = 'Inventory Adjustment By Value';
 
 export async function getFifoCostLotTracking(
   organizationId: string,
@@ -77,7 +86,7 @@ export async function getFifoCostLotTracking(
         l.id,
         l.item_id AS "itemId",
         i.name AS "itemName",
-        u.unit_name AS "uomName",
+        COALESCE(NULLIF(u.symbol, ''), u.unit_name) AS "uomName",
         l.in_date AS "inDate",
         l.qty,
         l.value,
@@ -104,7 +113,8 @@ export async function getFifoCostLotTracking(
             d.qty,
             o.source_doc_type AS "outDocType",
             o.source_doc_id AS "outDocId",
-            o.posted_at AS "outDate"
+            o.posted_at AS "outDate",
+            d.created_at AS "createdAt"
           FROM stock_layer_draws d
           JOIN stock_ledger o ON o.id = d.out_ledger_entry_id
           WHERE d.organization_id = ${organizationId}::uuid
@@ -113,17 +123,17 @@ export async function getFifoCostLotTracking(
           ORDER BY o.posted_at ASC, d.created_at ASC`
       : [];
 
-    // Value adjustments still standing on these layers — an event on the lot, not a dispersal.
+    // Value adjustments still standing on these layers, in the order they were made.
     const revaluations = layers.length
       ? await tx.$queryRaw<RevaluationRow[]>`
-          SELECT r.layer_id AS "layerId", r.qty, r.value_before AS "valueBefore",
-                 r.value_after AS "valueAfter", e.source_doc_id AS "docId", e.posted_at AS "date"
+          SELECT r.layer_id AS "layerId", r.qty, r.value_after AS "valueAfter",
+                 e.source_doc_id AS "docId", e.posted_at AS "date", r.created_at AS "createdAt"
           FROM stock_layer_revaluations r
           JOIN stock_ledger e ON e.id = r.ledger_entry_id
           WHERE r.organization_id = ${organizationId}::uuid
             AND r.reversed_at IS NULL
             AND r.layer_id = ANY(${layers.map((layer) => layer.id)}::uuid[])
-          ORDER BY e.posted_at ASC`
+          ORDER BY r.created_at ASC`
       : [];
     const revaluationsByLayer = new Map<string, RevaluationRow[]>();
     for (const row of revaluations) {
@@ -145,8 +155,12 @@ export async function getFifoCostLotTracking(
       ...revaluations.map((row) => ({ type: 'inventory_adjustment', id: row.docId })),
     ]);
 
-    const describe = (type: string | null, id: string | null) => {
-      const label = type ? (DOC_LABELS[type] ?? type) : 'FIFO Cut-over Balance';
+    const describe = (type: string | null, id: string | null, byValue = false) => {
+      const label = byValue
+        ? VALUE_ADJUSTMENT_LABEL
+        : type
+          ? (DOC_LABELS[type] ?? type)
+          : 'FIFO Cut-over Balance';
       const info = id ? docInfo.get(id) : undefined;
       return {
         transaction: info ? `${label} # ${info.number}` : label,
@@ -160,43 +174,75 @@ export async function getFifoCostLotTracking(
     const to = toDate ? new Date(toDate).getTime() : Infinity;
     const inRange = (date: Date) => date.getTime() >= from && date.getTime() <= to;
     const qty = (value: Prisma.Decimal) => Number(value.toDecimalPlaces(4));
+    const ZERO = new Prisma.Decimal(0);
 
     /**
      * 🔴 A LOT IS ONE DOCUMENT'S STOCK AT ONE COST, not one layer (2026-09-23). A
      * receipt or bill putting 100 into two batches writes two layers of 50; listing
      * them separately showed "50" beside a Summary saying 100 (JR-00085). Layers of
      * the same item, document, date and unit cost are one lot; a different cost stays
-     * its own lot. Cut-over balances carry no document and stay one per layer.
+     * its own lot. Cut-over balances carry no document and stay one per layer. A
+     * value adjustment is one lot per item, at the blended cost of what it re-lotted.
      */
     interface Lot {
       key: string;
-      layer: LayerRow;
-      unitCost: Prisma.Decimal;
+      itemId: string;
+      itemName: string;
+      uomName: string | null;
+      inDate: Date;
+      inDocType: string | null;
+      inDocId: string | null;
+      byValue: boolean;
       qty: Prisma.Decimal;
+      value: Prisma.Decimal;
       remaining: Prisma.Decimal;
       dispersals: DrawRow[];
-      /** Per value adjustment: what it moved across this lot's layers. */
-      revalued: Map<
-        string,
-        { date: Date; qty: Prisma.Decimal; before: Prisma.Decimal; after: Prisma.Decimal }
-      >;
     }
     const lots = new Map<string, Lot>();
+    const lotFor = (
+      key: string,
+      layer: LayerRow,
+      opened: Pick<Lot, 'inDate' | 'inDocType' | 'inDocId' | 'byValue'>,
+    ): Lot => {
+      const lot = lots.get(key) ?? {
+        key,
+        itemId: layer.itemId,
+        itemName: layer.itemName,
+        uomName: layer.uomName,
+        ...opened,
+        qty: ZERO,
+        value: ZERO,
+        remaining: ZERO,
+        dispersals: [],
+      };
+      lots.set(key, lot);
+      return lot;
+    };
+    const disperse = (lot: Lot, draw: DrawRow) => {
+      // One challan drawing on both layers of a lot is one dispersal of that lot.
+      const same = draw.outDocId
+        ? lot.dispersals.find(
+            (row) =>
+              row.outDocType === draw.outDocType &&
+              row.outDocId === draw.outDocId &&
+              Boolean(row.byValue) === Boolean(draw.byValue),
+          )
+        : undefined;
+      if (same) same.qty = same.qty.plus(draw.qty);
+      else lot.dispersals.push({ ...draw });
+    };
+
     for (const layer of layers) {
       // A document taking back its own layer is a correction of itself, not a
       // dispersal: an edited bill's old lot, a cancelled receipt's output.
       const own = (draw: DrawRow) =>
         draw.outDocType === layer.inDocType && draw.outDocId === layer.inDocId;
       const layerDraws = drawsByLayer.get(layer.id) ?? [];
-      const selfTaken = layerDraws
-        .filter(own)
-        .reduce((sum, draw) => sum.plus(draw.qty), new Prisma.Decimal(0));
+      const selfTaken = layerDraws.filter(own).reduce((sum, draw) => sum.plus(draw.qty), ZERO);
       const lotQty = layer.qty.minus(selfTaken);
       if (!lotQty.greaterThan(0)) continue;
 
-      const unitCost = layer.qty.isZero()
-        ? new Prisma.Decimal(0)
-        : layer.value.dividedBy(layer.qty);
+      const unitCost = layer.qty.isZero() ? ZERO : layer.value.dividedBy(layer.qty);
       const key = layer.inDocId
         ? [
             layer.itemId,
@@ -206,70 +252,82 @@ export async function getFifoCostLotTracking(
             unitCost.toFixed(4),
           ].join('|')
         : layer.id;
-      const lot: Lot = lots.get(key) ?? {
-        key,
-        layer,
-        unitCost,
-        qty: new Prisma.Decimal(0),
-        remaining: new Prisma.Decimal(0),
-        dispersals: [],
-        revalued: new Map(),
-      };
-      lot.qty = lot.qty.plus(lotQty);
-      lot.remaining = lot.remaining.plus(layer.remainingQty);
-      for (const row of revaluationsByLayer.get(layer.id) ?? []) {
-        const seen = lot.revalued.get(row.docId) ?? {
-          date: row.date,
-          qty: new Prisma.Decimal(0),
-          before: new Prisma.Decimal(0),
-          after: new Prisma.Decimal(0),
-        };
-        seen.qty = seen.qty.plus(row.qty);
-        seen.before = seen.before.plus(row.valueBefore);
-        seen.after = seen.after.plus(row.valueAfter);
-        lot.revalued.set(row.docId, seen);
+      const original = lotFor(key, layer, {
+        inDate: layer.inDate,
+        inDocType: layer.inDocType,
+        inDocId: layer.inDocId,
+        byValue: false,
+      });
+      original.qty = original.qty.plus(lotQty);
+      original.value = original.value.plus(unitCost.times(lotQty));
+
+      // Each value adjustment takes what is left of the layer out of the lot before
+      // it and opens a lot of its own at the new cost.
+      const revs = revaluationsByLayer.get(layer.id) ?? [];
+      const chain = [original];
+      for (const rev of revs) {
+        const relot = lotFor(`value|${layer.itemId}|${rev.docId}`, layer, {
+          inDate: rev.date,
+          inDocType: 'inventory_adjustment',
+          inDocId: rev.docId,
+          byValue: true,
+        });
+        disperse(chain[chain.length - 1]!, {
+          layerId: layer.id,
+          qty: rev.qty,
+          outDocType: 'inventory_adjustment',
+          outDocId: rev.docId,
+          outDate: rev.date,
+          createdAt: rev.createdAt,
+          byValue: true,
+        });
+        relot.qty = relot.qty.plus(rev.qty);
+        relot.value = relot.value.plus(rev.valueAfter);
+        chain.push(relot);
       }
+      chain[chain.length - 1]!.remaining = chain[chain.length - 1]!.remaining.plus(
+        layer.remainingQty,
+      );
+
       for (const draw of layerDraws.filter((row) => !own(row))) {
-        // One challan drawing on both layers of a lot is one dispersal of that lot.
-        const same = draw.outDocId
-          ? lot.dispersals.find(
-              (row) => row.outDocType === draw.outDocType && row.outDocId === draw.outDocId,
-            )
-          : undefined;
-        if (same) same.qty = same.qty.plus(draw.qty);
-        else lot.dispersals.push({ ...draw });
+        // A draw belongs to the lot in force when it was made — the clock, not the
+        // posting date, since either can be backdated.
+        const after = revs.filter((rev) => rev.createdAt <= draw.createdAt).length;
+        disperse(chain[after]!, draw);
       }
-      lots.set(key, lot);
     }
+
+    // Lots a value adjustment opened sit by date among their item's other lots.
+    const itemOrder = new Map<string, number>();
+    for (const layer of layers) {
+      if (!itemOrder.has(layer.itemId)) itemOrder.set(layer.itemId, itemOrder.size);
+    }
+    const ordered = [...lots.values()].sort(
+      (a, b) =>
+        itemOrder.get(a.itemId)! - itemOrder.get(b.itemId)! ||
+        a.inDate.getTime() - b.inDate.getTime(),
+    );
 
     const rows: FifoCostLotTrackingRow[] = [];
     let currentItemId = '';
 
-    for (const {
-      key,
-      layer,
-      unitCost,
-      qty: lotQty,
-      remaining,
-      dispersals,
-      revalued,
-    } of lots.values()) {
-      dispersals.sort((a, b) => a.outDate.getTime() - b.outDate.getTime());
-      const inDoc = describe(layer.inDocType, layer.inDocId);
-      const age = differenceInDays(new Date(), layer.inDate);
+    for (const lot of ordered) {
+      const unitCost = lot.qty.isZero() ? ZERO : lot.value.dividedBy(lot.qty);
+      const inDoc = describe(lot.inDocType, lot.inDocId, lot.byValue);
+      const age = differenceInDays(new Date(), lot.inDate);
       const inCols = {
-        lotKey: key,
-        inDate: format(layer.inDate, 'dd-MM-yyyy'),
+        lotKey: lot.key,
+        inDate: format(lot.inDate, 'dd-MM-yyyy'),
         inTransaction: inDoc.transaction,
         inReceivedFrom: inDoc.partyName,
-        inQty: qty(lotQty),
-        inQtyUnit: layer.uomName ?? 'unit',
-        inQtyRemaining: qty(remaining),
+        inQty: qty(lot.qty),
+        inQtyUnit: lot.uomName ?? 'unit',
+        inQtyRemaining: qty(lot.remaining),
         inAge: age > 0 ? `${age} Days` : '',
         inCost: unitCost.toFixed(2),
-        inTotal: unitCost.times(lotQty).toFixed(2),
-        inDocType: layer.inDocType ?? '',
-        inDocId: layer.inDocId ?? '',
+        inTotal: lot.value.toFixed(2),
+        inDocType: lot.inDocType ?? '',
+        inDocId: lot.inDocId ?? '',
         inPartyId: inDoc.partyId,
         inPartyType: inDoc.partyType,
       };
@@ -285,13 +343,13 @@ export async function getFifoCostLotTracking(
         outPartyType: null,
       };
       const outCols = (draw: DrawRow) => {
-        const outDoc = describe(draw.outDocType, draw.outDocId);
+        const outDoc = describe(draw.outDocType, draw.outDocId, draw.byValue);
         return {
           outDate: format(draw.outDate, 'dd-MM-yyyy'),
           outTransaction: outDoc.transaction,
           outDispersedTo: outDoc.partyName,
           outQty: qty(draw.qty),
-          outQtyUnit: layer.uomName ?? 'unit',
+          outQtyUnit: lot.uomName ?? 'unit',
           outDocType: draw.outDocType,
           outDocId: draw.outDocId ?? '',
           outPartyId: outDoc.partyId,
@@ -299,40 +357,32 @@ export async function getFifoCostLotTracking(
         };
       };
 
-      // A value adjustment on the lot: no quantity left, the rate it changed.
-      const rate = (value: Prisma.Decimal, q: Prisma.Decimal) =>
-        q.isZero() ? '0.00' : value.dividedBy(q).toFixed(2);
-      const events = [...revalued.entries()].map(([docId, change]) => {
-        const doc = describe('inventory_adjustment', docId);
-        return {
-          date: change.date,
-          cols: {
-            ...noOut,
-            outDate: format(change.date, 'dd-MM-yyyy'),
-            outTransaction:
-              `${doc.transaction.replace('By Quantity', 'By Value')} ` +
-              `(rate ${rate(change.before, change.qty)} → ${rate(change.after, change.qty)})`,
-            outDocType: 'inventory_adjustment',
-            outDocId: docId,
-          },
-        };
-      });
-      const timeline = [
-        ...dispersals.map((draw) => ({ date: draw.outDate, cols: outCols(draw) })),
-        ...events,
-      ].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const timeline = lot.dispersals
+        .sort(
+          (a, b) =>
+            a.outDate.getTime() - b.outDate.getTime() ||
+            a.createdAt.getTime() - b.createdAt.getTime(),
+        )
+        .map((draw) => ({ date: draw.outDate, cols: outCols(draw) }));
 
+      const inPeriod = timeline
+        .filter((row) => inRange(row.date))
+        .map((row) => ({ ...inCols, ...row.cols }));
+      // A lot carried into the period still lists what drew on it inside the period —
+      // otherwise an adjustment or issue this month against older stock vanished.
       const printed = isProductOut
-        ? timeline.filter((row) => inRange(row.date)).map((row) => ({ ...inCols, ...row.cols }))
-        : inRange(layer.inDate)
+        ? inPeriod
+        : inRange(lot.inDate)
           ? timeline.length
             ? timeline.map((row) => ({ ...inCols, ...row.cols }))
             : [{ ...inCols, ...noOut }]
-          : [];
+          : lot.inDate.getTime() < from
+            ? inPeriod
+            : [];
 
       for (const row of printed) {
-        rows.push({ ...row, itemName: layer.itemId !== currentItemId ? layer.itemName : '' });
-        currentItemId = layer.itemId;
+        rows.push({ ...row, itemName: lot.itemId !== currentItemId ? lot.itemName : '' });
+        currentItemId = lot.itemId;
       }
     }
 

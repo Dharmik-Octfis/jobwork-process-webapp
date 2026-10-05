@@ -81,7 +81,7 @@ export async function getStockSummaryReport(
         i.sku AS "sku",
         i.hsn_code AS "hsnCode",
         i.custom_fields AS "customFields",
-        u.unit_name AS "uomName",
+        COALESCE(NULLIF(u.symbol, ''), u.unit_name) AS "uomName",
         COALESCE(SUM(d.opening), 0) AS "openingStock",
         COALESCE(SUM(CASE WHEN d.period_net > 0 THEN d.period_net ELSE 0 END), 0) AS "quantityIn",
         COALESCE(SUM(CASE WHEN d.period_net < 0 THEN -d.period_net ELSE 0 END), 0) AS "quantityOut",
@@ -123,7 +123,7 @@ export async function getStockSummaryReport(
       }
     }
 
-    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.unit_name`;
+    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.symbol, u.unit_name`;
 
     q = Prisma.sql`${q} HAVING COALESCE(SUM(d.opening), 0) != 0 OR COALESCE(SUM(CASE WHEN d.period_net > 0 THEN d.period_net ELSE 0 END), 0) != 0 OR COALESCE(SUM(CASE WHEN d.period_net < 0 THEN -d.period_net ELSE 0 END), 0) != 0 OR COALESCE(SUM(d.closing), 0) != 0`;
 

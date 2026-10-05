@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, startOfWeek, startOfMonth, startOfYear, subDays, subWeeks, subMonths, subYears, subQuarters, startOfQuarter, addMonths, getDaysInMonth, setDate, getDay, startOfDay, endOfDay, endOfWeek, endOfMonth, endOfQuarter, endOfYear } from 'date-fns';
+import { Select } from '../../../components/ui/Select';
 
 const PRESETS = [
   { label: 'Today', getValue: () => startOfDay(new Date()), getRange: () => [startOfDay(new Date()), endOfDay(new Date())] },
@@ -27,7 +28,10 @@ export function ReportDateFilter({ value, onChange, labelPrefix = 'As of :', isR
   
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Element;
+      if (target.closest('[role="listbox"]')) return;
+      
+      if (containerRef.current && !containerRef.current.contains(target)) {
         setIsOpen(false);
       }
     }
@@ -160,7 +164,55 @@ export function ReportDateFilter({ value, onChange, labelPrefix = 'As of :', isR
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <ChevronLeft size={16} color="#374151" style={{ cursor: 'pointer' }} onClick={() => selectingEnd ? setCustomEndDate(subMonths(customEndDate, 1)) : setCustomDate(subMonths(customDate, 1))} />
-                <div style={{ fontSize: '14px', fontWeight: 500 }}>{format(selectingEnd ? customEndDate : customDate, 'MMM yyyy')}</div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Select 
+                    value={String((selectingEnd ? customEndDate : customDate).getMonth())}
+                    onChange={(val) => {
+                      const newMonth = parseInt(val, 10);
+                      if (selectingEnd) {
+                        const d = new Date(customEndDate);
+                        d.setMonth(newMonth);
+                        setCustomEndDate(d);
+                      } else {
+                        const d = new Date(customDate);
+                        d.setMonth(newMonth);
+                        setCustomDate(d);
+                      }
+                    }}
+                    options={Array.from({ length: 12 }).map((_, i) => ({
+                      value: String(i),
+                      label: format(new Date(2000, i, 1), 'MMM')
+                    }))}
+                    minWidth={80}
+                    buttonStyle={{ padding: '4px 8px', height: '28px', fontSize: '13px' }}
+                    portal={true}
+                  />
+                  
+                  <Select 
+                    value={String((selectingEnd ? customEndDate : customDate).getFullYear())}
+                    onChange={(val) => {
+                      const newYear = parseInt(val, 10);
+                      if (selectingEnd) {
+                        const d = new Date(customEndDate);
+                        d.setFullYear(newYear);
+                        setCustomEndDate(d);
+                      } else {
+                        const d = new Date(customDate);
+                        d.setFullYear(newYear);
+                        setCustomDate(d);
+                      }
+                    }}
+                    options={Array.from({ length: 201 }).map((_, i) => {
+                      const year = 1926 + i;
+                      return { value: String(year), label: String(year) };
+                    })}
+                    minWidth={80}
+                    buttonStyle={{ padding: '4px 8px', height: '28px', fontSize: '13px' }}
+                    portal={true}
+                  />
+                </div>
+
                 <ChevronRight size={16} color="#374151" style={{ cursor: 'pointer' }} onClick={() => selectingEnd ? setCustomEndDate(addMonths(customEndDate, 1)) : setCustomDate(addMonths(customDate, 1))} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '12px', color: '#1d4ed8', fontWeight: 600, marginBottom: '8px' }}>

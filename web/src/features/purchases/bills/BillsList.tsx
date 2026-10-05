@@ -312,7 +312,7 @@ export function BillsList() {
                     {bills.map((po) => (
                       <div
                         key={po.id}
-                        onClick={() => setSearchParams({ id: po.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', po.id ); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -392,7 +392,7 @@ export function BillsList() {
                         {bills.map((po) => (
                           <tr
                             key={po.id}
-                            onClick={() => setSearchParams({ id: po.id })}
+                            onClick={() => setSearchParams(prev => { prev.set('id', po.id ); return prev; })}
                             style={{
                               borderBottom: '1px solid #eef0f3',
                               transition: 'background 0.1s',
@@ -445,8 +445,7 @@ export function BillsList() {
           </div>
 
           {/* Pagination — hidden while a Bill is selected (narrow master pane) */}
-          {!selectedPoId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               perPage={perPage}
@@ -456,13 +455,12 @@ export function BillsList() {
               isCounting={isCounting}
               onRequestCount={requestCount}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedPoId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <BillDetail poId={selectedPoId} onClose={() => setSearchParams({})} />
+            <BillDetail poId={selectedPoId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>

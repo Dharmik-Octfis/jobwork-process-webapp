@@ -1,22 +1,6 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { PER_PAGE_OPTIONS, type PageContext } from '../../lib/pagination';
 import { Select } from './Select';
-
-/** Control height shared by the page-size select and the nav buttons. */
-const CONTROL_HEIGHT = 30;
-
-const navBtnStyle = (disabled: boolean) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: CONTROL_HEIGHT,
-  height: CONTROL_HEIGHT,
-  border: '1px solid var(--color-border)',
-  borderRadius: 'var(--radius-sm)',
-  background: disabled ? 'var(--color-surface-2)' : 'var(--color-surface)',
-  cursor: disabled ? 'default' : 'pointer',
-  color: disabled ? 'var(--color-text-subtle)' : 'var(--color-text-muted)',
-});
 
 /**
  * The list pagination bar: page size, previous/next, and an opt-in total.
@@ -54,77 +38,153 @@ export function Pagination({
   const canPrev = page > 1;
   const canNext = pageContext.hasMore;
 
-  return (
-    <div className="pagination-bar">
-      {hideTotal ? (
-        <div />
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span>Total count:</span>
-          {isCounting ? (
-            <span>loading…</span>
-          ) : total !== undefined ? (
-            <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{total}</span>
-          ) : (
-            <button
-              type="button"
-              onClick={onRequestCount}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                font: 'inherit',
-                fontWeight: 500,
-                color: 'var(--color-primary)',
-                cursor: 'pointer',
-              }}
-            >
-              View
-            </button>
-          )}
-        </div>
-      )}
+  const start = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const end = total !== undefined ? Math.min(page * perPage, total) : page * perPage;
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {!hidePerPage && (
-          <div className="pagination-per-page" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Select
-              value={String(perPage)}
-              onChange={(v) => onPerPageChange(Number(v))}
-              options={PER_PAGE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
-              minWidth={78}
-              fullWidth={false}
-              // The bar sits at the bottom of a container that clips its overflow,
-              // so the list has to open upward or it is never visible.
-              dropUp
-              ariaLabel="Rows per page"
-            />
-            <span>per page</span>
+  return (
+    <div 
+      className="pagination-bar" 
+      style={{ 
+        display: 'flex', 
+        flexDirection: 'row', 
+        flexWrap: 'wrap',
+        gap: '8px', 
+        padding: '6px 16px',
+        minHeight: '44px',
+        height: 'auto',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}
+    >
+      <div style={{ display: 'flex', flex: 1, minWidth: '100px', alignItems: 'center' }}>
+        {!hideTotal && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px' }}>
+            <span style={{ color: 'var(--color-text-muted)' }}>Total Count:</span>
+            {isCounting ? (
+              <span style={{ color: 'var(--color-text-subtle)' }}>loading…</span>
+            ) : total !== undefined ? (
+              <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{total}</span>
+            ) : (
+              <button
+                type="button"
+                onClick={onRequestCount}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  font: 'inherit',
+                  fontWeight: 500,
+                  color: 'var(--color-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                View
+              </button>
+            )}
           </div>
         )}
+      </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>Page {pageContext.page}</span>
-          <button
-            type="button"
-            onClick={() => onPageChange(Math.max(1, page - 1))}
-            disabled={!canPrev}
-            title="Previous page"
-            aria-label="Previous page"
-            style={navBtnStyle(!canPrev)}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div 
+          style={{ 
+            display: 'inline-flex', 
+            border: '1px solid #cbd5e1', 
+            borderRadius: '6px', 
+            overflow: 'hidden',
+            height: '32px'
+          }}
+        >
+          {/* Left section: Per Page Selector */}
+          {!hidePerPage && (
+            <div 
+              style={{ 
+                background: '#f8fafc', 
+                borderRight: '1px solid #cbd5e1',
+                display: 'flex', 
+                alignItems: 'center', 
+                padding: '0 4px 0 8px',
+                gap: '2px'
+              }}
+            >
+              <Settings size={14} color="#64748b" style={{ flexShrink: 0 }} />
+              <Select
+                value={String(perPage)}
+                onChange={(v) => onPerPageChange(Number(v))}
+                options={PER_PAGE_OPTIONS.map((n) => ({ value: String(n), label: `${n} per page` }))}
+                minWidth={95}
+                fullWidth={false}
+                dropUp
+                hideIcon={true}
+                ariaLabel="Rows per page"
+                buttonStyle={{
+                  border: 'none',
+                  background: 'transparent',
+                  padding: '0 4px',
+                  height: '100%',
+                  color: '#475569',
+                  fontWeight: 400
+                }}
+              />
+            </div>
+          )}
+
+          {/* Right section: Navigation */}
+          <div 
+            style={{ 
+              background: '#ffffff', 
+              display: 'flex', 
+              alignItems: 'center', 
+              padding: '0 12px',
+              gap: '12px'
+            }}
           >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onPageChange(page + 1)}
-            disabled={!canNext}
-            title="Next page"
-            aria-label="Next page"
-            style={navBtnStyle(!canNext)}
-          >
-            <ChevronRight size={16} />
-          </button>
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={!canPrev}
+              title="Previous page"
+              aria-label="Previous page"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                background: 'transparent',
+                cursor: canPrev ? 'pointer' : 'default',
+                color: canPrev ? '#3b82f6' : '#cbd5e1',
+                padding: 0,
+              }}
+            >
+              <ChevronLeft size={16} strokeWidth={2.5} />
+            </button>
+            
+            <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap' }}>
+              {start} - {end}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => onPageChange(page + 1)}
+              disabled={!canNext}
+              title="Next page"
+              aria-label="Next page"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                background: 'transparent',
+                cursor: canNext ? 'pointer' : 'default',
+                color: canNext ? '#3b82f6' : '#cbd5e1',
+                padding: 0,
+              }}
+            >
+              <ChevronRight size={16} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -344,7 +344,7 @@ export function VendorsList() {
                     {vendors.map((vendor) => (
                       <div
                         key={vendor.id}
-                        onClick={() => setSearchParams({ id: vendor.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', vendor.id ); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -443,7 +443,7 @@ export function VendorsList() {
                         {vendors.map((vendor) => (
                           <tr
                             key={vendor.id}
-                            onClick={() => setSearchParams({ id: vendor.id })}
+                            onClick={() => setSearchParams(prev => { prev.set('id', vendor.id ); return prev; })}
                             style={{
                               borderBottom: '1px solid #eef0f3',
                               transition: 'background 0.1s',
@@ -499,8 +499,7 @@ export function VendorsList() {
           </div>
 
           {/* Pagination — hidden while a vendor is selected (narrow master pane) */}
-          {!selectedVendorId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -510,13 +509,12 @@ export function VendorsList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedVendorId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams({})} />
+            <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>

@@ -345,7 +345,7 @@ export function CustomersList() {
                     {customers.map((customer) => (
                       <div
                         key={customer.id}
-                        onClick={() => setSearchParams({ id: customer.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', customer.id ); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -447,7 +447,7 @@ export function CustomersList() {
                         {customers.map((customer) => (
                           <tr
                             key={customer.id}
-                            onClick={() => setSearchParams({ id: customer.id })}
+                            onClick={() => setSearchParams(prev => { prev.set('id', customer.id ); return prev; })}
                             style={{
                               borderBottom: '1px solid #eef0f3',
                               transition: 'background 0.1s',
@@ -503,8 +503,7 @@ export function CustomersList() {
           </div>
 
           {/* Pagination — hidden while a customer is selected (narrow master pane) */}
-          {!selectedCustomerId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -514,13 +513,12 @@ export function CustomersList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedCustomerId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <CustomerDetail customerId={selectedCustomerId} onClose={() => setSearchParams({})} />
+            <CustomerDetail customerId={selectedCustomerId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>
