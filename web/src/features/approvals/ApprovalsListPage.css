@@ -298,7 +298,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 16px;
+  min-height: 44px;
+  height: auto;
   background: #ffffff;
   border-top: 1px solid #e2e8f0;
 }

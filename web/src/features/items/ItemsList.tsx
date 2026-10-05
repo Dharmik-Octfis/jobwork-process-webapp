@@ -378,7 +378,7 @@ export function ItemsList() {
                     {items.map((item) => (
                       <div
                         key={item.id}
-                        onClick={() => setSearchParams({ id: item.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -500,7 +500,7 @@ export function ItemsList() {
                         {items.map((item) => (
                           <tr
                             key={item.id}
-                            onClick={() => setSearchParams({ id: item.id })}
+                            onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
                             style={{
                               borderBottom: '1px solid #eef0f3',
                               transition: 'background 0.1s',
@@ -554,8 +554,7 @@ export function ItemsList() {
           </div>
 
           {/* Pagination — hidden while an item is selected (narrow master pane) */}
-          {!selectedItemId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -565,13 +564,12 @@ export function ItemsList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
+            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>

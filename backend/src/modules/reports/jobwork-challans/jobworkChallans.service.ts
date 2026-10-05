@@ -65,7 +65,7 @@ export async function getJobworkChallans(
       include: {
         step: { 
           include: { 
-            process: { select: { name: true } },
+            process: { select: { name: true, code: true } },
             inputs: { select: { itemId: true, plannedQty: true } }
           } 
         },
@@ -111,7 +111,7 @@ export async function getJobworkChallans(
 
     const results: JobworkChallanRow[] = issues.map((issue) => {
       const pName = issue.processorNameSnapshot || issue.destination?.name || '';
-      const processName = issue.step?.process?.name || '';
+      const processName = issue.step?.process ? (issue.step.process.code || issue.step.process.name) : '';
 
       const lines = issue.lines.map((line) => {
         const itemNameWithUom = line.item.name + (line.item.unit ? ` (${line.item.unit})` : '');

@@ -254,7 +254,7 @@ export function AssemblyList() {
                   assemblies.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => setSearchParams({ id: item.id })}
+                      onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
                       style={{
                         padding: '12px 16px',
                         borderBottom: '1px solid #eef0f3',
@@ -379,7 +379,7 @@ export function AssemblyList() {
                     assemblies.map((item) => (
                       <tr
                         key={item.id}
-                        onClick={() => setSearchParams({ id: item.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
                         style={{
                           borderBottom: '1px solid #eef0f3',
                           cursor: 'pointer',
@@ -425,8 +425,7 @@ export function AssemblyList() {
             )}
           </div>
 
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               perPage={perPage}
               page={page}
@@ -436,7 +435,6 @@ export function AssemblyList() {
               isCounting={isCounting}
               onRequestCount={requestCount}
             />
-          )}
         </div>
 
         {selectedId && (
@@ -453,7 +451,7 @@ export function AssemblyList() {
             <AssemblyDetail
               orgId={orgId!}
               assemblyId={selectedId}
-              onClose={() => setSearchParams({})}
+              onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })}
             />
           </div>
         )}

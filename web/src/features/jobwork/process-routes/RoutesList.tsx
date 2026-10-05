@@ -90,11 +90,11 @@ export function RoutesList() {
     onSuccess: (_result, id) => {
       queryClient.invalidateQueries({ queryKey: ['routes', orgId] });
       setToDelete(null);
-      if (selectedId === id) setSearchParams({});
+      if (selectedId === id) setSearchParams(prev => { prev.delete('id'); return prev; });
     },
   });
 
-  const openDetail = (id: string) => setSearchParams({ id });
+  const openDetail = (id: string) => setSearchParams(prev => { prev.set('id', id); return prev; });
   const newPath = `/organizations/${orgId}/settings/jobwork/routes/new`;
 
   return (
@@ -390,8 +390,7 @@ export function RoutesList() {
             )}
           </div>
 
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -401,12 +400,11 @@ export function RoutesList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <RouteDetail routeId={selectedId} onClose={() => setSearchParams({})} />
+            <RouteDetail routeId={selectedId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>

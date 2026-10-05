@@ -120,7 +120,7 @@ export function PermissionTemplatesPage() {
       setServerError(null);
       setToDelete(null);
       // Clear the detail pane if it was showing the row that just went away.
-      if (selectedId === id) setSearchParams({});
+      if (selectedId === id) setSearchParams(prev => { prev.delete('id'); return prev; });
       await queryClient.invalidateQueries({ queryKey: ['permission-templates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['permission-templates-all', orgId] });
     },
@@ -315,7 +315,7 @@ export function PermissionTemplatesPage() {
                 {templates.map((template) => (
                   <div
                     key={template.id}
-                    onClick={() => setSearchParams({ id: template.id })}
+                    onClick={() => setSearchParams(prev => { prev.set('id', template.id ); return prev; })}
                     style={{
                       padding: '12px 16px',
                       borderBottom: '1px solid #eef0f3',
@@ -361,7 +361,7 @@ export function PermissionTemplatesPage() {
                     {templates.map((template) => (
                       <tr
                         key={template.id}
-                        onClick={() => setSearchParams({ id: template.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', template.id ); return prev; })}
                         style={{
                           borderBottom: '1px solid #eef0f3',
                           transition: 'background 0.1s',
@@ -393,8 +393,7 @@ export function PermissionTemplatesPage() {
           </div>
 
           {/* Hidden while a profile is selected (narrow master pane) */}
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -404,7 +403,6 @@ export function PermissionTemplatesPage() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && (
@@ -415,7 +413,7 @@ export function PermissionTemplatesPage() {
               key={selectedId}
               orgId={orgId}
               templateId={selectedId}
-              onClose={() => setSearchParams({})}
+              onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })}
               onDelete={(template) => setToDelete(template)}
             />
           </div>

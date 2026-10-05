@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
@@ -595,8 +595,7 @@ export function UsersPage() {
           </div>
 
           {/* Hidden while a user is selected (narrow master pane) */}
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -606,7 +605,6 @@ export function UsersPage() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && selected && (

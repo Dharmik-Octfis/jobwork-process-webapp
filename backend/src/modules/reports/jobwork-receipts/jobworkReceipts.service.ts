@@ -90,7 +90,7 @@ export async function getJobworkReceipts(
     const receipts = await tx.jobReceipt.findMany({
       where,
       include: {
-        step: { include: { process: { select: { name: true } }, outputs: true } },
+        step: { include: { process: { select: { name: true, code: true } }, outputs: true } },
         jobOrder: { select: { jobOrderNumber: true } },
         outputs: {
           include: {
@@ -155,7 +155,7 @@ export async function getJobworkReceipts(
         receiptNumber: receipt.receiptNumber,
         receiptDate: receipt.receiptDate,
         processorName: pName,
-        process: receipt.step?.process?.name || '',
+        process: receipt.step?.process ? (receipt.step.process.code || receipt.step.process.name) : '',
         jobOrderNumber: receipt.jobOrder?.jobOrderNumber || '',
         jobOrderId: receipt.jobOrderId || '',
         lines,

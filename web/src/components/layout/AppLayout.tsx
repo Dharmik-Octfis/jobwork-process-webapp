@@ -986,23 +986,29 @@ function ModuleNavGroup({
         className="sidebar-nav-link"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        style={({ isActive }) => ({
-          display: 'flex',
-          alignItems: 'center',
-          padding: '8px 4px',
-          paddingLeft: 4,
-          paddingRight: '36px',
-          justifyContent: 'space-between',
-          borderRadius: 'var(--radius-md)',
-          textDecoration: 'none',
-          color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
-          background: isActive ? '#186337' : 'transparent',
-          fontWeight: isActive ? 600 : 500,
-          transition: 'all 0.2s ease',
-          whiteSpace: 'nowrap',
-          position: 'relative',
-          overflow: 'hidden',
-        })}
+        style={({ isActive }) => {
+          const showButton =
+            (isHovered || isActive) &&
+            module.code !== 'DASHBOARD' &&
+            module.code !== 'REPORTS';
+          return {
+            display: 'flex',
+            alignItems: 'center',
+            padding: '8px 4px',
+            paddingLeft: 4,
+            paddingRight: showButton ? '36px' : '4px',
+            justifyContent: 'space-between',
+            borderRadius: 'var(--radius-md)',
+            textDecoration: 'none',
+            color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
+            background: isActive ? '#186337' : 'transparent',
+            fontWeight: isActive ? 600 : 500,
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
+            position: 'relative',
+            overflow: 'hidden',
+          };
+        }}
       >
         {({ isActive }) => (
           <>
@@ -1012,11 +1018,23 @@ function ModuleNavGroup({
                 alignItems: 'center',
                 gap: 4,
                 justifyContent: 'flex-start',
+                overflow: 'hidden',
+                flex: 1,
               }}
             >
-              <div style={{ width: 14 + depth * 20 }}></div>
-              {depth === 0 && <Icon size={16} />}
-              <span style={{ fontSize: 13, marginLeft: 6 }}>{module.name}</span>
+              <div style={{ width: 14 + depth * 20, flexShrink: 0 }}></div>
+              {depth === 0 && <Icon size={16} style={{ flexShrink: 0 }} />}
+              <span
+                style={{
+                  fontSize: 13,
+                  marginLeft: 6,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {module.name}
+              </span>
             </div>
 
             {(isHovered || isActive) &&
@@ -1070,23 +1088,29 @@ function ModuleNavGroup({
       <NavLink
         to={to}
         end={module.code === 'DASHBOARD'}
-        style={({ isActive }) => ({
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 16px',
-          paddingRight: '36px',
-          textDecoration: 'none',
-          color: isActive ? '#fff' : '#cbd5e1',
-          background: isActive ? '#186337' : 'transparent',
-          fontSize: '13px',
-          fontWeight: 500,
-          transition: 'all 0.2s ease',
-          borderRadius: '4px',
-          margin: '0 8px 4px 8px',
-          position: 'relative',
-          overflow: 'hidden',
-        })}
+        style={({ isActive }) => {
+          const showButton =
+            (isHovered || isActive) &&
+            module.code !== 'DASHBOARD' &&
+            module.code !== 'REPORTS';
+          return {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 16px',
+            paddingRight: showButton ? '36px' : '16px',
+            textDecoration: 'none',
+            color: isActive ? '#fff' : '#cbd5e1',
+            background: isActive ? '#186337' : 'transparent',
+            fontSize: '13px',
+            fontWeight: 500,
+            transition: 'all 0.2s ease',
+            borderRadius: '4px',
+            margin: '0 8px 4px 8px',
+            position: 'relative',
+            overflow: 'hidden',
+          };
+        }}
         onMouseEnter={(e) => {
           if (e.currentTarget.style.background !== '#186337') {
             e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
@@ -1100,7 +1124,16 @@ function ModuleNavGroup({
       >
         {({ isActive }) => (
           <>
-            <span>{module.name}</span>
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'block',
+              }}
+            >
+              {module.name}
+            </span>
             {(isHovered || isActive) &&
               module.code !== 'DASHBOARD' &&
               module.code !== 'REPORTS' && (

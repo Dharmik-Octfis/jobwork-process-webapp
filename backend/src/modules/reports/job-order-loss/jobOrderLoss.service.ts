@@ -90,6 +90,7 @@ export async function getJobOrderLossReport(
       JOIN items i ON i.id = w.item_id
       LEFT JOIN job_issue_lines il ON il.id = w.line_id
       LEFT JOIN job_issues ji ON ji.id = il.job_issue_id
+      LEFT JOIN processes p ON p.id = s.process_id
       ${where}`;
 
     const totals = await tx.$queryRaw<{ count: bigint; value: Prisma.Decimal | null }[]>`
@@ -103,7 +104,7 @@ export async function getJobOrderLossReport(
         jo.id AS "jobOrderId",
         jo.job_order_number AS "jobOrderNumber",
         s.seq AS "stepSeq",
-        s.process_name_snapshot AS "processName",
+        COALESCE(NULLIF(p.code, ''), s.process_name_snapshot) AS "processName",
         s.status AS "closedAs",
         ji.id AS "jobIssueId",
         ji.challan_number AS "challanNumber",

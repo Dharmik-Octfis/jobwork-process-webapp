@@ -189,7 +189,7 @@ export function ReceiptsList() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setSearchParams({})}
+                  onClick={() => setSearchParams(prev => { prev.delete('id'); return prev; })}
                   style={{
                     marginLeft: 12,
                     background: 'none',
@@ -411,7 +411,7 @@ export function ReceiptsList() {
             )}
           </div>
 
-          {!selectedId && !stepId && (
+          {!stepId && (
             <Pagination
               pageContext={pageData?.pageContext}
               page={page}

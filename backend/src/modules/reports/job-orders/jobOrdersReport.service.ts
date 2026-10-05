@@ -134,7 +134,7 @@ export async function getJobOrdersReport(
         steps: {
           where: { isDeleted: false },
           include: {
-            process: { select: { name: true } },
+            process: { select: { name: true, code: true } },
             workCentre: { select: { name: true } },
             issues: {
               where: { isDeleted: false, status: POSTED_DOC_STATUS },
@@ -153,7 +153,7 @@ export async function getJobOrdersReport(
       const stepPairs: { process: string; doneBy: string; processorName: string }[] = [];
 
       for (const step of jo.steps) {
-        const processName = step.process?.name || '-';
+        const processName = step.process ? (step.process.code || step.process.name) : '-';
         const doneBy = step.processorType === 'in_house' ? 'In-house' : 'Vendor';
         
         let pName = step.processorNameSnapshot;

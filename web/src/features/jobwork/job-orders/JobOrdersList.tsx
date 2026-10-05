@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { ClipboardList, Plus, SlidersHorizontal } from 'lucide-react';
@@ -403,8 +403,7 @@ export function JobOrdersList() {
           </div>
 
           {/* Hidden while an order is selected — the master pane is 320px wide. */}
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -414,7 +413,6 @@ export function JobOrdersList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && (
