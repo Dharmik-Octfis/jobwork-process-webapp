@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
+import { Building2, CheckCircle2, Clock, Layers, Plus, Send, Warehouse, Info } from 'lucide-react';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Select } from '../../../components/ui/Select';
 import { LocalComboBox } from '../../../components/ui/LocalComboBox';
-import { SplitButton } from '../../../components/ui/SplitButton';
 import { blurOnWheel } from '../../../components/ui/blurOnWheel';
 import { fetchVendors } from '../../purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../sales/customers/customers.api';
@@ -70,15 +70,6 @@ const readOnlyStyle: React.CSSProperties = {
   ...inputStyle,
   background: '#f8fafc',
   color: '#64748b',
-};
-
-const sectionHeading: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#111',
-  margin: '0 0 10px 0',
-  textTransform: 'uppercase',
-  letterSpacing: 0.4,
 };
 
 const lineTh: React.CSSProperties = {
@@ -155,9 +146,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
   // Everything the draft already decided. Read once, as initial state, so the
   // user's own edits are never fought by a re-render.
   const [sourceLocationId, setSourceLocationId] = useState(draft?.sourceLocationId ?? '');
-  const [processorType, setProcessorType] = useState<string>(
-    draft?.processorType ?? step.processorType,
-  );
+  const [processorType] = useState<string>(draft?.processorType ?? step.processorType);
   const [processorId, setProcessorId] = useState<string | null>(
     draft ? draft.processorId : step.processorId,
   );
@@ -1133,16 +1122,87 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111', margin: '0 0 4px 0' }}>
-          Issue material — step {step.seq}, {step.processNameSnapshot}
-        </h2>
-        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
-          {jobOrder.jobOrderNumber} ·{' '}
-          {inputItems.length === 1
-            ? `${inputItems[0]!.name}${inputItems[0]!.uomLabel ? ` (${inputItems[0]!.uomLabel})` : ''}`
-            : `${inputItems.length} items`}
-        </p>
+      {/* Step Context Banner */}
+      <div
+        style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: 8,
+          padding: '14px 18px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 6,
+              background: '#eff6ff',
+              color: 'var(--color-primary, #0284c7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Layers size={20} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  background: '#eff6ff',
+                  color: '#0284c7',
+                  borderRadius: 4,
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Step {step.seq}
+              </span>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                {step.processNameSnapshot}
+              </h2>
+            </div>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 3 }}>
+              Job Order <strong>{jobOrder.jobOrderNumber}</strong> ·{' '}
+              {inputItems.length === 1
+                ? `${inputItems[0]!.name}${inputItems[0]!.uomLabel ? ` (${inputItems[0]!.uomLabel})` : ''}`
+                : `${inputItems.length} items to dispatch`}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              padding: '4px 10px',
+              borderRadius: 6,
+              background: step.processorType === 'internal' ? '#f0fdf4' : '#faf5ff',
+              color: step.processorType === 'internal' ? '#16a34a' : '#7c3aed',
+              border: `1px solid ${step.processorType === 'internal' ? '#bbf7d0' : '#e9d5ff'}`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            {step.processorType === 'internal' ? <Warehouse size={13} /> : <Building2 size={13} />}
+            <span>
+              {step.processorNameSnapshot ??
+                (step.processorType === 'internal' ? 'In-house Work Centre' : 'Vendor Processor')}
+            </span>
+          </span>
+        </div>
       </div>
       {/* The plan gate (D11): Issue stays off until the job order's plan is complete. */}
       {planProblems.length > 0 && (
@@ -1294,54 +1354,84 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           cell beside Date it read as one detail among five, and the two sides of
           the question had nowhere to sit. Label left, the choice on one line, the
           list beneath — the shape Zoho Books uses for the same question. */}
-      <section style={{ marginBottom: 20 }}>
+      {/* 🔴 Section 1: Logistics & Source Details */}
+      <section
+        style={{
+          background: '#ffffff',
+          borderRadius: 8,
+          border: '1px solid #e2e8f0',
+          padding: '20px 24px',
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              background: '#eff6ff',
+              color: 'var(--color-primary, #0284c7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            1
+          </div>
+          <h3
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#0f172a',
+              margin: 0,
+              textTransform: 'uppercase',
+              letterSpacing: '0.03em',
+            }}
+          >
+            Dispatch & Logistics Details
+          </h3>
+        </div>
+
         <div
-          className="form-field-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: '120px 1fr',
-            gap: 16,
-            alignItems: 'start', // Align start since Issue from has two stacked inputs
-            maxWidth: '600px', // Increased from 480px so RadioGroup doesn't wrap
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 20,
+            alignItems: 'start',
           }}
         >
-          {/* Label, choice, list — stacked, the way every other field on this form
-              reads. `maxWidth` so the control does not stretch the width of a 1440px
-              monitor just because it now has a row to itself. */}
-          <label style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}>
-            Issue from
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Processor-to-processor is a real move (§5.4), so the Vendor side is
-                  not an escape hatch — it is how the second leg of a job is raised.
-                  The destination is excluded from both sides, so neither can offer
-                  the shed the goods are going to. */}
-            <RadioGroup
-              name="issue-location-kind"
-              ariaLabel="Issue from one of our locations, or from the vendor holding the goods"
-              value={sourceKind}
-              onChange={changeSourceKind}
-              options={[
-                {
-                  value: 'location',
-                  label: LOCATION_KIND_LABELS.location,
-                  disabled: ownSourceOptions.length === 0,
-                },
-                {
-                  value: 'vendor',
-                  label: LOCATION_KIND_LABELS.vendor,
-                  disabled: processorSourceOptions.length === 0,
-                },
-              ]}
-            />
-            <div style={{ width: 320 }}>
+          {/* Issue from Godown */}
+          <div>
+            <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Warehouse size={14} color="#0284c7" />
+              <span>Issue From (Source Godown)</span>
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+              <RadioGroup
+                name="issue-location-kind"
+                ariaLabel="Issue from one of our locations, or from the vendor holding the goods"
+                value={sourceKind}
+                onChange={changeSourceKind}
+                options={[
+                  {
+                    value: 'location',
+                    label: LOCATION_KIND_LABELS.location,
+                    disabled: ownSourceOptions.length === 0,
+                  },
+                  {
+                    value: 'vendor',
+                    label: LOCATION_KIND_LABELS.vendor,
+                    disabled: processorSourceOptions.length === 0,
+                  },
+                ]}
+              />
               <Select
                 value={effectiveSourceId}
                 onChange={(value) => {
                   if (value === effectiveSourceId) return;
-                  /* Ask only when there is something to lose. Changing the godown
-                       before anything is picked is the ordinary first action on this
-                       dialog and must not cost a confirm. */
                   if (allocatedCount > 0) setPendingLocationId(value);
                   else applyLocation(value);
                 }}
@@ -1356,86 +1446,32 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
             </div>
           </div>
 
-          <label
-            style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
-            htmlFor="issue-date"
-          >
-            Date
-          </label>
-          <div style={{ width: 320 }}>
-            <DateInput
-              id="issue-date"
-              value={issueDate}
-              onChange={setIssueDate}
-              style={{ ...inputStyle, width: '100%' }}
-              portal
-            />
-          </div>
-
-          <label
-            style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
-          >
-            Done By
-          </label>
-          <div style={{ width: 320 }}>
-            <Select
-              value={processorType}
-              onChange={(value) => {
-                setProcessorType(value);
-                if (value === 'internal') {
-                  setProcessorId(null);
-                } else if (value === step.processorType) {
-                  setProcessorId(step.processorId);
-                } else {
-                  setProcessorId(null);
-                }
-              }}
-              options={[
-                { value: 'vendor', label: 'Vendor (jobworker)' },
-                { value: 'customer', label: 'Customer' },
-                { value: 'internal', label: 'In-house' },
-              ]}
-              ariaLabel="Done By"
-              fullWidth
-            />
-          </div>
-
-          {processorType === 'internal' ? (
-            <>
-              <label
-                style={{
-                  ...labelStyle,
-                  whiteSpace: 'nowrap',
-                  marginBottom: 0,
-                  alignSelf: 'center',
-                }}
-                htmlFor="issue-workcentre"
-              >
-                Work centre
+          {/* Date & Processor */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={labelStyle} htmlFor="issue-date">
+                Issue Date
               </label>
-              <div style={{ width: 320 }}>
+              <DateInput
+                id="issue-date"
+                value={issueDate}
+                onChange={setIssueDate}
+                style={{ ...inputStyle, width: '100%' }}
+                portal
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Processor / Work Centre</label>
+              {processorType === 'internal' ? (
                 <input
                   id="issue-workcentre"
                   type="text"
-                  value={step.workCentre?.name ?? '—'}
+                  value={`In-house (${step.workCentre?.name ?? 'Main Plant'})`}
                   readOnly
                   style={{ ...readOnlyStyle, width: '100%' }}
                 />
-              </div>
-            </>
-          ) : (
-            <>
-              <label
-                style={{
-                  ...labelStyle,
-                  whiteSpace: 'nowrap',
-                  marginBottom: 0,
-                  alignSelf: 'center',
-                }}
-              >
-                Processor
-              </label>
-              <div style={{ width: 320 }}>
+              ) : (
                 <LocalComboBox
                   value={processorId ?? null}
                   onChange={(value) => setProcessorId(value || null)}
@@ -1447,34 +1483,97 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                   ariaLabel="Processor"
                   portal={true}
                 />
-              </div>
-            </>
-          )}
+              )}
+            </div>
+          </div>
 
-          {/* Remarks sat in the Transport section until that section was removed
-              (2026-08-10). It is not a transport field — it is the one free-text
-              note the challan prints — so it moved up here rather than going with
-              vehicle / LR / e-way bill. */}
-          <label
-            style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, alignSelf: 'center' }}
-            htmlFor="issue-remarks"
-          >
-            Remarks
-          </label>
-          <div style={{ width: 320 }}>
+          {/* Remarks */}
+          <div>
+            <label style={labelStyle} htmlFor="issue-remarks">
+              Challan Remarks / Dispatch Notes
+            </label>
             <input
               id="issue-remarks"
               type="text"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
+              placeholder="e.g. Consignment notes, instructions for processor..."
               style={{ ...inputStyle, width: '100%' }}
             />
+            <span style={{ fontSize: 11.5, color: '#94a3b8', display: 'block', marginTop: 4 }}>
+              Prints on the delivery challan accompanying the goods
+            </span>
           </div>
         </div>
       </section>
 
-      <section style={{ marginBottom: 20 }}>
-        <h3 style={sectionHeading}>Pick the material</h3>
+      {/* 🔴 Section 2: Material Items to Issue */}
+      <section
+        style={{
+          background: '#ffffff',
+          borderRadius: 8,
+          border: '1px solid #e2e8f0',
+          padding: '20px 24px',
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: '#eff6ff',
+                color: 'var(--color-primary, #0284c7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              2
+            </div>
+            <h3
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: '#0f172a',
+                margin: 0,
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em',
+              }}
+            >
+              Material Items to Issue
+            </h3>
+            <span
+              style={{
+                background: '#f1f5f9',
+                color: '#475569',
+                fontSize: 11.5,
+                fontWeight: 600,
+                padding: '2px 8px',
+                borderRadius: 12,
+              }}
+            >
+              {inputItems.length} {inputItems.length === 1 ? 'item' : 'items'}
+            </span>
+          </div>
+
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            Enter dispatch quantities and allocate {trackingLabel.plural.toLowerCase()}
+          </span>
+        </div>
 
         {/*
           🔴 ONE ROW PER INPUT ITEM (§5.7). Issuing all seven of a step's items on
@@ -1632,11 +1731,37 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                         style={{
                           ...lineTd,
                           textAlign: 'center',
-                          color: isEmptyHere ? '#b45309' : '#334155',
                         }}
                       >
                         <div style={lineCellCenter}>
-                          {query?.isLoading ? '…' : formatQty(available)}
+                          {query?.isLoading ? (
+                            '…'
+                          ) : (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '2px 8px',
+                                borderRadius: 10,
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                                background: isEmptyHere
+                                  ? '#fef2f2'
+                                  : available >= (input.plannedQty ?? 0)
+                                    ? '#f0fdf4'
+                                    : '#fffbeb',
+                                color: isEmptyHere
+                                  ? '#dc2626'
+                                  : available >= (input.plannedQty ?? 0)
+                                    ? '#16a34a'
+                                    : '#b45309',
+                                border: `1px solid ${isEmptyHere ? '#fecaca' : available >= (input.plannedQty ?? 0) ? '#bbf7d0' : '#fde68a'}`,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {isEmptyHere ? '0 (Out of stock)' : formatQty(available)}
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -1727,8 +1852,24 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                           /* Untracked stock is allocated FIFO by the server, so there
                            is nothing to pick — saying so keeps the column meaningful
                            on every row rather than blank on half of them. */
-                          <div style={{ ...lineCell, fontSize: 12, color: '#94a3b8' }}>
-                            Oldest stock first
+                          <div style={{ ...lineCell, fontSize: 12 }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                padding: '3px 8px',
+                                background: '#eff6ff',
+                                color: '#0369a1',
+                                border: '1px solid #bfdbfe',
+                                borderRadius: 4,
+                                fontSize: 11.5,
+                                fontWeight: 500,
+                              }}
+                            >
+                              <Info size={12} />
+                              <span>FIFO (Oldest stock)</span>
+                            </span>
                           </div>
                         ) : (
                           <>
@@ -1738,20 +1879,58 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                                 onClick={() => openAddBatches(input.itemId)}
                                 disabled={isEmptyHere}
                                 style={{
-                                  padding: 0,
-                                  border: 'none',
-                                  background: 'none',
-                                  fontSize: 12.5,
-                                  fontWeight: 500,
-                                  textAlign: 'left',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '4px 10px',
+                                  border: `1px solid ${
+                                    isEmptyHere
+                                      ? '#e2e8f0'
+                                      : blockedLines.has(input.itemId)
+                                        ? '#fca5a5'
+                                        : pickedBatchCount > 0
+                                          ? '#bbf7d0'
+                                          : '#bae6fd'
+                                  }`,
+                                  borderRadius: 6,
+                                  background: isEmptyHere
+                                    ? '#f8fafc'
+                                    : blockedLines.has(input.itemId)
+                                      ? '#fef2f2'
+                                      : pickedBatchCount > 0
+                                        ? '#f0fdf4'
+                                        : '#f0f9ff',
+                                  fontSize: 12,
+                                  fontWeight: 600,
                                   cursor: isEmptyHere ? 'not-allowed' : 'pointer',
-                                  color: isEmptyHere ? '#cbd5e1' : '#0062ff',
+                                  color: isEmptyHere
+                                    ? '#94a3b8'
+                                    : blockedLines.has(input.itemId)
+                                      ? '#b91c1c'
+                                      : pickedBatchCount > 0
+                                        ? '#15803d'
+                                        : '#0284c7',
                                   whiteSpace: 'nowrap',
+                                  transition: 'all 0.12s',
                                 }}
                               >
-                                {pickedBatchCount === 0
-                                  ? `Add ${trackingLabel.plural}`
-                                  : `${pickedBatchCount} ${pickedBatchCount === 1 ? trackingLabel.singular.toLowerCase() : trackingLabel.plural.toLowerCase()} added`}
+                                {pickedBatchCount === 0 ? (
+                                  <>
+                                    <Plus size={13} />
+                                    <span>Allocate {trackingLabel.plural}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 size={13} />
+                                    <span>
+                                      {pickedBatchCount}{' '}
+                                      {pickedBatchCount === 1
+                                        ? trackingLabel.singular.toLowerCase()
+                                        : trackingLabel.plural.toLowerCase()}{' '}
+                                      ({formatQty(picked)} {input.uomLabel})
+                                    </span>
+                                  </>
+                                )}
                               </button>
                             </div>
 
@@ -1871,52 +2050,124 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           alignItems: 'center',
           position: 'sticky',
           bottom: 0,
-          height: 44,
+          minHeight: 52,
           boxSizing: 'border-box',
-          padding: '0 24px',
+          padding: '8px 24px',
           margin: 'auto -24px -24px -24px',
-          background: '#fff',
-          borderTop: '1px solid #eef0f3',
+          background: '#ffffff',
+          borderTop: '1px solid #e2e8f0',
+          boxShadow: '0 -4px 12px rgba(15,23,42,0.05)',
           zIndex: 10,
         }}
       >
-        {/* The draft keeps its own disabled state — a challan too incomplete to
-            send can still be parked. */}
-        <SplitButton
-          label={mutation.isPending ? 'Saving…' : 'Save as Draft'}
+        {/* Primary Action: Issue Challan */}
+        <button
+          type="button"
+          onClick={() => mutation.mutate(false)}
+          disabled={!canSave || mutation.isPending}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 22px',
+            background:
+              !canSave || mutation.isPending ? '#94a3b8' : 'var(--color-primary, #0284c7)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: !canSave || mutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
+            fontSize: 13,
+            boxShadow: canSave && !mutation.isPending ? '0 1px 3px rgba(2,132,199,0.3)' : 'none',
+            transition: 'all 0.15s ease',
+          }}
+          title={
+            !canSave
+              ? 'Ensure a source location is chosen and quantities/batches are allocated'
+              : undefined
+          }
+        >
+          <Send size={15} />
+          {mutation.isPending ? 'Processing…' : draft ? 'Issue Challan' : 'Issue & Create Challan'}
+        </button>
+
+        {/* Secondary Action: Save as Draft */}
+        <button
+          type="button"
           onClick={() => mutation.mutate(true)}
-          disabled={!canSaveDraft}
-          actions={[
-            {
-              label: draft ? 'Issue challan' : 'Issue & create challan',
-              disabled: !canSave,
-              onClick: () => mutation.mutate(false),
-            },
-          ]}
-        />
+          disabled={!canSaveDraft || mutation.isPending}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '7px 18px',
+            background: '#fff',
+            color: !canSaveDraft || mutation.isPending ? '#94a3b8' : '#334155',
+            border: `1px solid ${!canSaveDraft || mutation.isPending ? '#e2e8f0' : '#cbd5e1'}`,
+            borderRadius: 6,
+            cursor: !canSaveDraft || mutation.isPending ? 'not-allowed' : 'pointer',
+            fontWeight: 500,
+            fontSize: 13,
+            transition: 'all 0.15s ease',
+          }}
+          title={!canSaveDraft ? 'At least one item must have a quantity to save draft' : undefined}
+        >
+          <Clock size={14} />
+          {mutation.isPending ? 'Saving…' : 'Save as Draft'}
+        </button>
+
+        {/* Tertiary Action: Cancel */}
         <button
           type="button"
           onClick={onCancel}
           style={{
-            padding: '6px 20px',
-            background: '#fff',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
+            padding: '7px 16px',
+            background: 'transparent',
+            color: '#64748b',
+            border: '1px solid transparent',
+            borderRadius: 6,
             cursor: 'pointer',
             fontWeight: 500,
             fontSize: 13,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = '#0f172a';
+            e.currentTarget.style.background = '#f1f5f9';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = '#64748b';
+            e.currentTarget.style.background = 'transparent';
           }}
         >
           Cancel
         </button>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
-          {readyCount === 0
-            ? 'nothing selected yet'
-            : `${readyCount} of ${inputItems.length} ${
-                inputItems.length === 1 ? 'item' : 'items'
-              } on this challan`}
-        </span>
+
+        {/* Live Status Indicator */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {readyCount > 0 ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                color: '#166534',
+                fontWeight: 600,
+                background: '#f0fdf4',
+                padding: '4px 12px',
+                borderRadius: 20,
+                border: '1px solid #bbf7d0',
+              }}
+            >
+              <CheckCircle2 size={13} color="#16a34a" />
+              {readyCount} of {inputItems.length} {inputItems.length === 1 ? 'item' : 'items'} ready
+              for challan
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, color: '#64748b' }}>No items allocated yet</span>
+          )}
+        </div>
       </div>
     </div>
   );

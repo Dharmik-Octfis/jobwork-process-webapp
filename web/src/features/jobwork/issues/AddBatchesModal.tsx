@@ -778,7 +778,7 @@ export function AddBatchesModal({
               padding: '4px 6px',
               fontSize: 13,
               fontWeight: 500,
-              color: rows.length >= MAX_ROWS ? '#94a3b8' : '#0062ff',
+              color: rows.length >= MAX_ROWS ? '#94a3b8' : 'var(--color-primary, #0284c7)',
               background: 'none',
               border: 'none',
               cursor: rows.length >= MAX_ROWS ? 'not-allowed' : 'pointer',
@@ -1046,7 +1046,7 @@ function BatchSelectCell({
           padding: '7px 10px',
           fontSize: 13,
           textAlign: 'left',
-          border: `1px solid ${isOpen ? '#0062ff' : '#d1d5db'}`,
+          border: `1px solid ${isOpen ? 'var(--color-primary, #0284c7)' : '#d1d5db'}`,
           borderRadius: 4,
           background: '#fff',
           color: value ? '#111' : '#94a3b8',
@@ -1152,11 +1152,26 @@ function BatchSelectCell({
                         color: highlightedIndex === index ? '#fff' : '#111',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
                         <div style={{ fontWeight: 500 }}>{batchLabel(batch)}</div>
                         {unitLabel.enabled && batch.units.length > 0 && (
-                          <div style={{ fontSize: 11.5, fontWeight: 500, color: highlightedIndex === index ? '#e0edff' : '#64748b' }}>
-                            {batch.units.length} {batch.units.length === 1 ? unitLabel.singular.toLowerCase() : unitLabel.plural.toLowerCase()}
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              fontWeight: 500,
+                              color: highlightedIndex === index ? '#e0edff' : '#64748b',
+                            }}
+                          >
+                            {batch.units.length}{' '}
+                            {batch.units.length === 1
+                              ? unitLabel.singular.toLowerCase()
+                              : unitLabel.plural.toLowerCase()}
                           </div>
                         )}
                       </div>
