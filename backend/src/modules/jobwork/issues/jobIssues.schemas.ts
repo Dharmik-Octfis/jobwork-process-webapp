@@ -19,9 +19,9 @@ import { PROCESSOR_TYPES } from '../jobwork.types.ts';
  * takes a number and keeps it — re-editing the draft does not take another.
  *
  * And since 2026-08-10, no transport (`transporterId`, `vehicleNo`, `lrNo`,
- * `lrDate`, `ewayBillNo`) and no `customFields`. The four transport columns were
- * dropped from `job_issues` and `job_issue` is no longer a custom-field module,
- * so accepting any of them here would 500 on the write instead of 400ing here.
+ * `lrDate`, `ewayBillNo`): those columns were dropped from `job_issues`, so
+ * accepting them here would 500 on the write instead of 400ing here.
+ * `customFields` came back 2026-10-05, when the Issue form regained its section.
  */
 
 export const jobIssueLineSchema = z.object({
@@ -128,6 +128,9 @@ export const createJobIssueSchema = openApiRegistry.register(
     lines: z.array(jobIssueLineSchema).min(1, 'Pick at least one batch to issue.'),
 
     remarks: z.string().trim().max(2000).nullable().optional(),
+
+    /** Raw input — the service validates it against the org's definitions. */
+    customFields: z.record(z.string(), z.unknown()).optional(),
 
     /**
      * 🔴 A MODE, NOT A STATUS — and the difference is the reason this is a boolean.

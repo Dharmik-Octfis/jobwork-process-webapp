@@ -10,6 +10,8 @@ export const takaReportQuerySchema = listQuerySchema.extend({
     .optional()
     .transform((val) => val === 'true'),
   asOnDate: z.string().datetime().optional(),
+  fromDate: z.string().datetime().optional(),
+  toDate: z.string().datetime().optional(),
   minAgeDays: z.coerce.number().min(0).optional(),
 });
 

@@ -24,6 +24,10 @@ import { approvalExecutionService } from '../../automation/approval-processes/ap
 import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
 import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
 import { Prisma } from '../../../../generated/prisma/client.ts';
+import {
+  loadActiveDefinitions,
+  validateCustomFields,
+} from '../../settings/customization/custom-fields/customFields.engine.ts';
 import { assertUsableReason } from './adjustmentReasons.service.js';
 import type {
   AdjustmentBatchDto,
@@ -474,8 +478,28 @@ async function writeDocument(
 
   await assertUsableReason(tx, organizationId, data.reasonId, existingId);
 
+  // Validated the way job orders and bills do it: a draft is held to the same
+  // rules as a save, and an edit that omits `customFields` leaves them as they are.
+  let customFields: Prisma.InputJsonValue | undefined;
+  if (!existingId || data.customFields !== undefined) {
+    const defs = await loadActiveDefinitions(tx, organizationId, 'stock_adjustment');
+    const existing = existingId
+      ? await tx.stockAdjustment.findFirst({
+          where: { id: existingId, organizationId, isDeleted: false },
+          select: { customFields: true },
+        })
+      : null;
+    customFields = validateCustomFields({
+      defs,
+      input: data.customFields,
+      mode: existingId ? 'update' : 'create',
+      existing: existing?.customFields as Record<string, unknown> | undefined,
+    }) as Prisma.InputJsonValue;
+  }
+
   const isValue = data.adjustmentType === 'value';
   const header = {
+    ...(customFields !== undefined ? { customFields } : {}),
     adjustmentType: data.adjustmentType ?? 'quantity',
     adjustmentDate,
     locationId: location.id,

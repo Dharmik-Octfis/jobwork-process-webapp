@@ -34,20 +34,13 @@ import {
  * when it needs Customize Columns and nothing else; add it to `ENTITY_TYPES` only
  * when the table actually carries `customFields`.
  *
- * `process`, `process_route` and `job_issue` are here rather than in
- * `ENTITY_TYPES` for a different reason: all three tables DO carry
- * `customFields`, but nothing fills it in any more (all removed 2026-08-10) —
- * the two masters are set up once and rarely revisited, and the Issue dialog lost
- * its "Additional fields" section. The columns stay, with whatever they already
- * hold; the modules are simply no longer offered in Settings → Modules. Their
- * lists still need Customize Columns, which is exactly what this set is for.
+ * `process` and `process_route` are here rather than in `ENTITY_TYPES` for a
+ * different reason: both tables DO carry `customFields`, but nothing fills it in
+ * any more (removed 2026-08-10) — the masters are set up once and rarely
+ * revisited. Their lists still need Customize Columns, which is what this set is
+ * for. (`job_issue` was here too until it regained its form section, 2026-10-05.)
  */
-export const LIST_ONLY_ENTITY_TYPES = [
-  'permission_template',
-  'process',
-  'process_route',
-  'job_issue',
-] as const;
+export const LIST_ONLY_ENTITY_TYPES = ['permission_template', 'process', 'process_route'] as const;
 
 export const LIST_ENTITY_TYPES = [...ENTITY_TYPES, ...LIST_ONLY_ENTITY_TYPES] as const;
 export type ListEntityType = (typeof LIST_ENTITY_TYPES)[number];
@@ -179,7 +172,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
   process: [
     { key: 'name', label: 'Process Name', locked: true },
     { key: 'code', label: 'Code', defaultVisible: true },
-    { key: 'description', label: 'Description' },
+    { key: 'description', label: 'Description', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
@@ -221,9 +214,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
    * Issues — the challans out. Ordered the way someone chases material: number,
    * who has it, how much, when it went.
    *
-   * No `cf:` columns are merged into this one — `job_issue` is list-only now
-   * (LIST_ONLY_ENTITY_TYPES above). Vehicle No and E-way Bill went with the
-   * columns themselves on 2026-08-10.
+   * Vehicle No and E-way Bill went with the columns themselves on 2026-08-10.
    */
   job_issue: [
     { key: 'challanNumber', label: 'Challan #', locked: true },
@@ -297,6 +288,15 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
     { key: 'createdAt', label: 'Created At' },
   ],
   item_assembly_line: [{ key: 'id', label: 'ID', locked: true }],
+  /** Required by the type now that adjustments carry custom fields; the list page
+   * itself does not offer Customize Columns yet. */
+  stock_adjustment: [
+    { key: 'adjustmentNumber', label: 'Reference #', locked: true },
+    { key: 'adjustmentDate', label: 'Date', defaultVisible: true },
+    { key: 'reason', label: 'Reason', defaultVisible: true },
+    { key: 'status', label: 'Status', defaultVisible: true },
+    { key: 'createdAt', label: 'Created At' },
+  ],
   purchase_order: [
     { key: 'poNumber', label: 'PO Number', locked: true },
     { key: 'vendor', label: 'Vendor', defaultVisible: true },

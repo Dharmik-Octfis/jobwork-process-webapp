@@ -79,6 +79,7 @@ export const createAssemblySchema = z.object({
     )
     .optional(),
   lines: z.array(itemAssemblyLineSchema).min(1),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type AssemblyBatchAllocation = z.infer<typeof assemblyBatchAllocationSchema>;

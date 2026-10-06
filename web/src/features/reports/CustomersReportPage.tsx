@@ -11,11 +11,13 @@ import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type CustomersReportQuery, type CustomersReportRow } from './reports.api';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
-  { key: 'primaryContact', label: 'PRIMARY CONTACT', defaultVisible: true },
-  { key: 'companyName', label: 'COMPANY NAME', defaultVisible: true },
   { key: 'contactName', label: 'DISPLAY NAME', defaultVisible: true },
+  { key: 'companyName', label: 'COMPANY NAME', defaultVisible: true },
+  { key: 'primaryContact', label: 'PRIMARY CONTACT', defaultVisible: true },
   { key: 'email', label: 'EMAIL', defaultVisible: true },
   { key: 'contactNumber', label: 'CUSTOMER#', locked: true, defaultVisible: true },
   { key: 'customerType', label: 'BUSINESS TYPE', defaultVisible: true },
@@ -80,15 +82,14 @@ export function CustomersReportPage() {
     return [...COLUMN_CATALOG, ...customColumns];
   }, [customColumns]);
 
-  useEffect(() => {
-    if (customColumns.length > 0) {
-      setVisibleColumns((prev) => {
-        const newCols = customColumns.filter(c => c.defaultVisible).map(c => c.key).filter(k => !prev.includes(k));
-        if (newCols.length > 0) return [...prev, ...newCols];
-        return prev;
-      });
+  const [prevCustomColumns, setPrevCustomColumns] = useState(customColumns);
+  if (customColumns.length > 0 && customColumns !== prevCustomColumns) {
+    setPrevCustomColumns(customColumns);
+    const newCols = customColumns.filter(c => c.defaultVisible).map(c => c.key).filter(k => !visibleColumns.includes(k));
+    if (newCols.length > 0) {
+      setVisibleColumns([...visibleColumns, ...newCols]);
     }
-  }, [customColumns]);
+  }
 
   const customFilterFields = useMemo(() => {
     return customFields.map((cf) => {
@@ -148,14 +149,16 @@ export function CustomersReportPage() {
   });
 
   const rows = useMemo(() => data?.items || [], [data?.items]);
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.pagination.totalCount || 0;
 
   const cell = (row: CustomersReportRow, key: string) => {
     if (key === 'contactNumber') {
       return (
         <Link
-          to={`/organizations/${orgId}/sales/customers/${row.id}/edit`}
+          to={`/organizations/${orgId}/sales/customers?id=${row.id}`}
           className="text-blue-600 hover:underline"
+          style={{ color: '#0062ff' }}
         >
           {row[key as keyof CustomersReportRow] as string}
         </Link>
@@ -362,21 +365,28 @@ export function CustomersReportPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th key={key} style={{ ...thStyle, textAlign: RIGHT_ALIGNED.has(key) ? 'right' : 'left' }}>
-                      {allColumns.find((col) => col.key === key)?.label}
-                    </th>
+                    <SortableHeader
+                      key={key}
+                      label={allColumns.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align={RIGHT_ALIGNED.has(key) ? 'right' : 'left'}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td colSpan={visibleColumns.length} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
                       {isLoading ? 'Loading...' : isError ? 'Could not load the report.' : 'No customers found'}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr key={row.id} className="table-row-hover">
                       {visibleColumns.map((key) => (
                         <td

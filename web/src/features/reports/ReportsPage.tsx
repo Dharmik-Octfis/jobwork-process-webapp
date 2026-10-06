@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Folder, Star } from 'lucide-react';
+import { X, Folder, Star, Home } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   reportsApi,
@@ -15,14 +15,62 @@ function formatLastVisited(iso: string | null): string {
   return iso ? format(new Date(iso), 'dd-MM-yyyy hh:mm a') : '—';
 }
 
+function SidebarItem({
+  icon,
+  label,
+  isActive,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  const Icon = icon;
+  return (
+    <button
+      type="button"
+      aria-pressed={isActive}
+      style={{
+        width: '100%',
+        border: 'none',
+        textAlign: 'left',
+        padding: '8px 12px',
+        cursor: 'pointer',
+        background: isActive ? '#eff6ff' : 'transparent',
+        borderRadius: '6px',
+        color: isActive ? '#0062ff' : '#475569',
+        fontWeight: 500,
+        fontSize: '13px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        transition: 'background-color 0.15s',
+        marginBottom: '2px',
+      }}
+      onClick={onClick}
+      onMouseEnter={(e) => {
+        if (!isActive) e.currentTarget.style.backgroundColor = '#f8fafc';
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+      }}
+    >
+      <Icon size={16} color={isActive ? '#0062ff' : '#94a3b8'} strokeWidth={1.5} />
+      {label}
+    </button>
+  );
+}
+
+
 export function ReportsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
   const batchUnitLabel = useBatchUnitLabel();
-  // By default, nothing is selected
-  const [activeCategory, setActiveCategory] = useState('');
+  // By default, Home (all reports) is selected
+  const [activeFilter, setActiveFilter] = useState('Home');
 
   const queryKey = reportsCenterQueryKey(orgId ?? '');
   const {
@@ -60,9 +108,11 @@ export function ReportsPage() {
 
   const categories = Array.from(new Set(reports.map((r) => r.category)));
 
-  const filteredReports = activeCategory
-    ? reports.filter((r) => r.category === activeCategory)
-    : reports;
+  const filteredReports = reports.filter((r) => {
+    if (activeFilter === 'Home') return true;
+    if (activeFilter === 'Favorites') return r.isFavorite;
+    return r.category === activeFilter;
+  });
 
   const sortedReports = [...filteredReports].sort((a, b) => {
     if (a.isFavorite && !b.isFavorite) return -1;
@@ -132,6 +182,21 @@ export function ReportsPage() {
             overflowY: 'auto',
           }}
         >
+          <div style={{ marginBottom: '24px' }}>
+            <SidebarItem
+              icon={Home}
+              label="Home"
+              isActive={activeFilter === 'Home'}
+              onClick={() => setActiveFilter('Home')}
+            />
+            <SidebarItem
+              icon={Star}
+              label="Favorites"
+              isActive={activeFilter === 'Favorites'}
+              onClick={() => setActiveFilter('Favorites')}
+            />
+          </div>
+
           <div
             style={{
               fontSize: '11px',
@@ -145,43 +210,15 @@ export function ReportsPage() {
             Report Category
           </div>
 
-          {categories.map((cat) => {
-            const isActive = activeCategory === cat;
-            return (
-              <button
-                type="button"
-                key={cat}
-                aria-pressed={isActive}
-                style={{
-                  width: '100%',
-                  border: 'none',
-                  textAlign: 'left',
-                  padding: '8px 12px',
-                  cursor: 'pointer',
-                  background: isActive ? '#eff6ff' : 'transparent',
-                  borderRadius: '6px',
-                  color: isActive ? '#0062ff' : '#475569',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  transition: 'background-color 0.15s',
-                  marginBottom: '2px',
-                }}
-                onClick={() => setActiveCategory(cat === activeCategory ? '' : cat)}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.backgroundColor = '#f8fafc';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                <Folder size={16} color={isActive ? '#0062ff' : '#94a3b8'} strokeWidth={1.5} />
-                {cat}
-              </button>
-            );
-          })}
+          {categories.map((cat) => (
+            <SidebarItem
+              key={cat}
+              icon={Folder}
+              label={cat}
+              isActive={activeFilter === cat}
+              onClick={() => setActiveFilter(cat)}
+            />
+          ))}
         </div>
 
         {/* Main Content */}
@@ -219,7 +256,7 @@ export function ReportsPage() {
               }}
             >
               <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                {activeCategory || 'All Reports'}
+                {activeFilter === 'Home' ? 'All Reports' : activeFilter}
               </h2>
               <span
                 style={{
@@ -236,8 +273,8 @@ export function ReportsPage() {
               <select
                 className="visible-on-mobile"
                 aria-label="Report category"
-                value={activeCategory}
-                onChange={(e) => setActiveCategory(e.target.value)}
+                value={activeFilter}
+                onChange={(e) => setActiveFilter(e.target.value)}
                 style={{
                   marginLeft: 'auto',
                   minHeight: '44px',
@@ -250,12 +287,15 @@ export function ReportsPage() {
                   borderRadius: '6px',
                 }}
               >
-                <option value="">All categories</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
+                <option value="Home">All Reports</option>
+                <option value="Favorites">Favorites</option>
+                <optgroup label="Categories">
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 

@@ -4,16 +4,16 @@ import { format, startOfWeek, startOfMonth, startOfYear, subDays, subWeeks, subM
 import { Select } from '../../../components/ui/Select';
 
 const PRESETS = [
-  { label: 'Today', getValue: () => startOfDay(new Date()), getRange: () => [startOfDay(new Date()), endOfDay(new Date())] },
-  { label: 'This Week', getValue: () => startOfWeek(new Date(), { weekStartsOn: 1 }), getRange: () => [startOfWeek(new Date(), { weekStartsOn: 1 }), endOfWeek(new Date(), { weekStartsOn: 1 })] },
-  { label: 'This Month', getValue: () => startOfMonth(new Date()), getRange: () => [startOfMonth(new Date()), endOfMonth(new Date())] },
-  { label: 'This Quarter', getValue: () => startOfQuarter(new Date()), getRange: () => [startOfQuarter(new Date()), endOfQuarter(new Date())] },
-  { label: 'This Year', getValue: () => startOfYear(new Date()), getRange: () => [startOfYear(new Date()), endOfYear(new Date())] },
-  { label: 'Yesterday', getValue: () => startOfDay(subDays(new Date(), 1)), getRange: () => [startOfDay(subDays(new Date(), 1)), endOfDay(subDays(new Date(), 1))] },
-  { label: 'Previous Week', getValue: () => startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }), getRange: () => [startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }), endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 })] },
-  { label: 'Previous Month', getValue: () => startOfMonth(subMonths(new Date(), 1)), getRange: () => [startOfMonth(subMonths(new Date(), 1)), endOfMonth(subMonths(new Date(), 1))] },
-  { label: 'Previous Quarter', getValue: () => startOfQuarter(subQuarters(new Date(), 1)), getRange: () => [startOfQuarter(subQuarters(new Date(), 1)), endOfQuarter(subQuarters(new Date(), 1))] },
-  { label: 'Previous Year', getValue: () => startOfYear(subYears(new Date(), 1)), getRange: () => [startOfYear(subYears(new Date(), 1)), endOfYear(subYears(new Date(), 1))] },
+  { label: 'Today', getValue: () => endOfDay(new Date()), getRange: () => [startOfDay(new Date()), endOfDay(new Date())] },
+  { label: 'This Week', getValue: () => endOfWeek(new Date(), { weekStartsOn: 1 }), getRange: () => [startOfWeek(new Date(), { weekStartsOn: 1 }), endOfWeek(new Date(), { weekStartsOn: 1 })] },
+  { label: 'This Month', getValue: () => endOfMonth(new Date()), getRange: () => [startOfMonth(new Date()), endOfMonth(new Date())] },
+  { label: 'This Quarter', getValue: () => endOfQuarter(new Date()), getRange: () => [startOfQuarter(new Date()), endOfQuarter(new Date())] },
+  { label: 'This Year', getValue: () => endOfYear(new Date()), getRange: () => [startOfYear(new Date()), endOfYear(new Date())] },
+  { label: 'Yesterday', getValue: () => endOfDay(subDays(new Date(), 1)), getRange: () => [startOfDay(subDays(new Date(), 1)), endOfDay(subDays(new Date(), 1))] },
+  { label: 'Previous Week', getValue: () => endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }), getRange: () => [startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }), endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 })] },
+  { label: 'Previous Month', getValue: () => endOfMonth(subMonths(new Date(), 1)), getRange: () => [startOfMonth(subMonths(new Date(), 1)), endOfMonth(subMonths(new Date(), 1))] },
+  { label: 'Previous Quarter', getValue: () => endOfQuarter(subQuarters(new Date(), 1)), getRange: () => [startOfQuarter(subQuarters(new Date(), 1)), endOfQuarter(subQuarters(new Date(), 1))] },
+  { label: 'Previous Year', getValue: () => endOfYear(subYears(new Date(), 1)), getRange: () => [startOfYear(subYears(new Date(), 1)), endOfYear(subYears(new Date(), 1))] },
   { label: 'Custom', getValue: () => null, getRange: () => null },
 ];
 

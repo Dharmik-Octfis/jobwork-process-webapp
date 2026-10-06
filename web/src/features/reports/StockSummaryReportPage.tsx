@@ -23,6 +23,8 @@ import { fetchLocations, isOwnLocation } from '../configuration/locations/locati
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 // Filter fields are now dynamically generated in the component to access orgId
 
 export function StockSummaryReportPage() {
@@ -295,6 +297,7 @@ export function StockSummaryReportPage() {
   }, [orgId, page, perPage, appliedFilters]);
 
   const rows = data?.results || [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const grandTotalOpening = data?.grandTotalOpening || 0;
   const grandTotalIn = data?.grandTotalIn || 0;
   const grandTotalOut = data?.grandTotalOut || 0;
@@ -537,78 +540,29 @@ export function StockSummaryReportPage() {
                   {visibleColumns.map((colKey) => {
                     switch (colKey) {
                       case 'itemName':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            ITEM NAME{' '}
-                            <ChevronDown
-                              size={12}
-                              color="#9ca3af"
-                              style={{
-                                display: 'inline',
-                                verticalAlign: 'middle',
-                                marginLeft: '4px',
-                              }}
-                            />
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'categoryName':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            CATEGORY NAME
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="CATEGORY NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'sku':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            SKU
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="SKU" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'hsnCode':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            HSN CODE
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="HSN CODE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'uomName':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            UNIT
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="UNIT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'openingStock':
-                        return (
-                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                            OPENING STOCK
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="OPENING STOCK" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
                       case 'quantityIn':
-                        return (
-                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                            QUANTITY IN
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="QUANTITY IN" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
                       case 'quantityOut':
-                        return (
-                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                            QUANTITY OUT
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="QUANTITY OUT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
                       case 'closingStock':
-                        return (
-                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                            CLOSING STOCK
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="CLOSING STOCK" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
                       default:
                         if (colKey.startsWith('cf_')) {
                           const cfKey = colKey.replace('cf_', '');
                           const cfLabel =
                             customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
-                          return (
-                            <th key={colKey} style={thStyle}>
-                              {cfLabel.toUpperCase()}
-                            </th>
-                          );
+                          return <SortableHeader key={colKey} sortKey={colKey} label={cfLabel.toUpperCase()} currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                         }
                         return null;
                     }
@@ -625,7 +579,7 @@ export function StockSummaryReportPage() {
                       Loading...
                     </td>
                   </tr>
-                ) : rows.length === 0 ? (
+                ) : sortedRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={visibleColumns.length}
@@ -635,7 +589,7 @@ export function StockSummaryReportPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr
                       key={row.itemId}
                       className="table-row-hover"
@@ -780,7 +734,7 @@ export function StockSummaryReportPage() {
                     </tr>
                   ))
                 )}
-                {rows.length > 0 && (
+                {sortedRows.length > 0 && (
                   <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                     {visibleColumns.map((colKey, index) => {
                       if (index === 0) {

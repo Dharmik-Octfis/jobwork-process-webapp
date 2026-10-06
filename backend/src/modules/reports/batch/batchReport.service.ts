@@ -33,7 +33,7 @@ export async function getBatchReport(
   organizationId: string,
   query: BatchReportQuery,
 ): Promise<PaginatedBatchReportResponse> {
-  const { itemName, locationName, batchText, state, asOnDate, minAgeDays, page, perPage } = query;
+  const { itemName, locationName, batchText, state, asOnDate, fromDate, toDate, minAgeDays, page, perPage } = query;
 
   return runAsTenant(organizationId, async (tx) => {
     const filters = [
@@ -46,6 +46,8 @@ export async function getBatchReport(
       minAgeDays !== undefined
         ? Prisma.sql`(EXTRACT(DAY FROM CURRENT_TIMESTAMP - bal.received_on) >= ${minAgeDays})`
         : null,
+      fromDate ? Prisma.sql`bal.received_on >= ${new Date(fromDate)}` : null,
+      toDate ? Prisma.sql`bal.received_on <= ${new Date(toDate)}` : null,
       Prisma.sql`b.state != 'draft'`,
       Prisma.sql`b.is_deleted = false`,
       Prisma.sql`i.is_deleted = false`,
@@ -141,6 +143,7 @@ export async function getBatchReport(
 
       return {
         id: row.id,
+        itemId: row.itemId,
         batch: row.batchLabel || row.batchNumber,
         itemName: row.itemName + (row.uomName ? ` (${row.uomName})` : ''),
         locationName: row.locationName,

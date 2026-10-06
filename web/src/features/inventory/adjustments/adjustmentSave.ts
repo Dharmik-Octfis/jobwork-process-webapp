@@ -42,3 +42,14 @@ export function reportSaveError(error: unknown): string[] {
   const details = (error.response?.data as { details?: Record<string, unknown> })?.details;
   return details ? Object.keys(details) : [];
 }
+
+/** The server's `customFields.<key>` messages, as `CustomFieldsSection` takes them. */
+export function customFieldErrorsOf(error: unknown): Record<string, string> {
+  if (!axios.isAxiosError(error)) return {};
+  const details = (error.response?.data as { details?: Record<string, unknown> })?.details ?? {};
+  return Object.fromEntries(
+    Object.entries(details)
+      .filter(([key]) => key.startsWith('customFields.'))
+      .map(([key, message]) => [key, String(message)]),
+  );
+}

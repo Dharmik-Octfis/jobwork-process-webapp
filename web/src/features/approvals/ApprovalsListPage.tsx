@@ -6,17 +6,13 @@ import {
   Search,
   ExternalLink,
   ChevronRight,
-  Clock,
-  CheckCircle2,
-  XCircle,
   Inbox,
-  User,
-  ChevronDown,
 } from 'lucide-react';
 import { approvalsApi } from './approvals.api';
 import { useApprovalModules } from '../automation/approval-processes/api/approvalProcess.api';
 import type { ModuleMetadata } from '../automation/approval-processes/types/approvalProcess.types';
 import { resolveRecordRoute, getModuleBadgeStyle } from './approvalRoutes.helper';
+import { Select } from '../../components/ui/Select';
 import './ApprovalsListPage.css';
 
 type TabKey = 'all' | 'pending' | 'my' | 'approved' | 'rejected';
@@ -63,89 +59,68 @@ export const ApprovalsListPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="approvals-tabs-row">
-        <button
-          type="button"
-          className={`approval-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('all');
-            setPage(1);
-          }}
-        >
-          All Requests
-        </button>
-        <button
-          type="button"
-          className={`approval-tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('pending');
-            setPage(1);
-          }}
-        >
-          <Clock size={15} />
-          Pending
-        </button>
-        <button
-          type="button"
-          className={`approval-tab-btn ${activeTab === 'my' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('my');
-            setPage(1);
-          }}
-        >
-          <User size={15} />
-          My Approvals
-        </button>
-        <button
-          type="button"
-          className={`approval-tab-btn ${activeTab === 'approved' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('approved');
-            setPage(1);
-          }}
-        >
-          <CheckCircle2 size={15} />
-          Approved
-        </button>
-        <button
-          type="button"
-          className={`approval-tab-btn ${activeTab === 'rejected' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('rejected');
-            setPage(1);
-          }}
-        >
-          <XCircle size={15} />
-          Rejected
-        </button>
-      </div>
-
       {/* Toolbar & Filters */}
       <div className="approvals-toolbar">
-        {/* Module Dropdown Filter */}
-        <div className="approvals-filter-group">
-          <label htmlFor="approvals-module-select" className="approvals-filter-label">
-            Module:
-          </label>
-          <div className="approvals-select-wrapper">
-            <select
-              id="approvals-module-select"
-              className="no-global-focus approvals-module-select"
-              value={selectedModule}
-              onChange={(e) => {
-                setSelectedModule(e.target.value);
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          {/* View Dropdown Filter */}
+          <div className="approvals-filter-group">
+            <label htmlFor="approvals-view-select" className="approvals-filter-label">
+              View:
+            </label>
+            <Select
+              value={activeTab}
+              onChange={(val) => {
+                setActiveTab(val as TabKey);
                 setPage(1);
               }}
-            >
-              <option value="all">All Modules</option>
-              {modules.map((m: ModuleMetadata) => (
-                <option key={m.id} value={m.code.toLowerCase()}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="approvals-select-chevron" />
+              options={[
+                { value: 'my', label: 'My Approvals' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'approved', label: 'Approved' },
+                { value: 'rejected', label: 'Rejected' },
+              ]}
+              minWidth={160}
+              buttonStyle={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                height: '34px',
+                color: '#1e293b',
+                fontWeight: 500
+              }}
+            />
+          </div>
+
+          {/* Module Dropdown Filter */}
+          <div className="approvals-filter-group">
+            <label htmlFor="approvals-module-select" className="approvals-filter-label">
+              Module:
+            </label>
+            <Select
+              value={selectedModule}
+              onChange={(val) => {
+                setSelectedModule(val);
+                setPage(1);
+              }}
+              options={[
+                { value: 'all', label: 'All Modules' },
+                ...[...modules]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((m: ModuleMetadata) => ({
+                    value: m.code.toLowerCase(),
+                    label: m.name,
+                  })),
+              ]}
+              minWidth={200}
+              buttonStyle={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                height: '34px',
+                color: '#1e293b',
+                fontWeight: 500
+              }}
+            />
           </div>
         </div>
 

@@ -114,6 +114,7 @@ export function LineBatchPicker({
       onSearchChange={setSearch}
       isLoading={isLoading}
       isCapped={batches.length >= BATCH_PAGE}
+      quantityHeader="Quantity Out"
     />
   );
 }

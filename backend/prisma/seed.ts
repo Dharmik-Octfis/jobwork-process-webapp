@@ -60,12 +60,9 @@ async function main() {
   console.log(`Seeded ${cities.length} India cities.`);
 
   // 4. Seed Modules
-
-  await prisma.appModule.upsert({
-    where: { code: 'DASHBOARD' },
-    update: { name: 'Home', icon: 'Home' },
-    create: { code: 'DASHBOARD', name: 'Home', sortIndex: 1, icon: 'Home' },
-  });
+  //
+  // No Home row: Home is shown to every member, so the sidebar hard-codes it
+  // (AppLayout.tsx `HOME_MODULE`). The old DASHBOARD row is deactivated below.
 
   const purchases = await prisma.appModule.upsert({
     where: { code: 'PURCHASES' },
@@ -238,12 +235,12 @@ async function main() {
     create: { code: 'REPORTS', name: 'Reports', sortIndex: 7, icon: 'BarChart2' },
   });
 
-  // Their pages now hang off SettingsLayout, which reads no module tree, so the
-  // rows have nothing to drive. Deactivated rather than deleted: `buildTree`
-  // filters on `isActive`, and an active row with no `ROUTE_MAP` entry renders as
-  // a sidebar link to '#'. Deleting is the destructive way to say the same thing.
+  // PROCESSES/ROUTES pages now hang off SettingsLayout, which reads no module
+  // tree, and DASHBOARD (Home) is hard-coded in the sidebar, so these rows have
+  // nothing to drive. Deactivated rather than deleted: `buildTree` filters on
+  // `isActive`, and deleting is the destructive way to say the same thing.
   await prisma.appModule.updateMany({
-    where: { code: { in: ['PROCESSES', 'ROUTES'] } },
+    where: { code: { in: ['PROCESSES', 'ROUTES', 'DASHBOARD'] } },
     data: { isActive: false, parentId: null },
   });
   console.log('Seeded app modules.');

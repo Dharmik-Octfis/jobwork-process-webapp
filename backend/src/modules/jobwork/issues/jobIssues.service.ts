@@ -6,6 +6,10 @@ import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { allocateNumber } from '../../../lib/numberSequence.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
+import {
+  loadActiveDefinitions,
+  validateCustomFields,
+} from '../../settings/customization/custom-fields/customFields.engine.ts';
 // No `createBatch` here since 2026-08-14 — an issue consumes stock, it never
 // creates any. The scaffold that did was deleted with FIFO allocation.
 import {
@@ -1058,7 +1062,7 @@ export async function createNewJobIssue(
   mode: IssueSaveMode = 'post',
   existingId?: string,
 ) {
-  const { lines, ...header } = data;
+  const { lines, customFields: rawCustomFields, ...header } = data;
   const asDraft = mode === 'draft';
 
   // Two ledger rows per line, and a fifty-taka challan is normal — past
@@ -1070,7 +1074,13 @@ export async function createNewJobIssue(
     const existing = existingId
       ? await tx.jobIssue.findFirst({
           where: { id: existingId, organizationId, isDeleted: false },
-          select: { id: true, status: true, challanNumber: true, createdBy: true },
+          select: {
+            id: true,
+            status: true,
+            challanNumber: true,
+            createdBy: true,
+            customFields: true,
+          },
         })
       : null;
     if (existingId && !existing) throw ApiError.notFound('Challan not found');
@@ -1335,6 +1345,16 @@ export async function createNewJobIssue(
       label: 'challan',
     });
 
+    // Same rule as receipts: a draft validates in `update` mode so a required field
+    // cannot block parking a half-filled form; posting re-validates as `create`.
+    const defs = await loadActiveDefinitions(tx, organizationId, 'job_issue');
+    const customFields = validateCustomFields({
+      defs,
+      input: rawCustomFields,
+      mode: asDraft ? 'update' : 'create',
+      existing: existing?.customFields as Record<string, unknown> | undefined,
+    }) as Prisma.InputJsonValue;
+
     const headerData = {
       jobOrderId: step.jobOrderId,
       jobOrderStepId: step.id,
@@ -1354,6 +1374,7 @@ export async function createNewJobIssue(
       status: asDraft ? 'draft' : 'issued',
       toleranceOverrideReason: header.toleranceOverrideReason?.trim() || null,
       remarks: header.remarks?.trim() || null,
+      customFields,
       updatedBy: userId ?? null,
     };
 
@@ -1537,6 +1558,7 @@ export async function postJobIssueDraft(organizationId: string, id: string, user
       isRework: draft.isRework,
       toleranceOverrideReason: draft.toleranceOverrideReason,
       remarks: draft.remarks,
+      customFields: draft.customFields as Record<string, unknown>,
       lines: draft.lines.map((line) => ({
         itemId: line.itemId,
         batchId: line.batchId,

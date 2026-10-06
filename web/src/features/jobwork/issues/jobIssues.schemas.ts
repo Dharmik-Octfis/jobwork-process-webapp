@@ -51,6 +51,7 @@ export const jobIssueSchema = z.object({
   toleranceOverrideReason: z.string().nullable(),
   status: z.string(),
   remarks: z.string().nullable(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
   lines: z.array(jobIssueLineSchema).default([]),
 
   jobOrder: z
@@ -117,6 +118,7 @@ export interface CreateJobIssueData {
   toleranceOverrideReason?: string | null;
   lines: JobIssueLineData[];
   remarks?: string | null;
+  customFields?: Record<string, unknown>;
   /**
    * Which button was pressed — a MODE, not a status. `status` is derived by the
    * server from the receipts underneath and is never accepted from here; this
