@@ -14,8 +14,23 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../../../lib/formatDate';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
+import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 
-function renderAssemblyCell(assembly: ItemAssembly, colKey: string) {
+function renderAssemblyCell(
+  assembly: ItemAssembly,
+  colKey: string,
+  customFieldDefs: CustomFieldDefinition[],
+) {
+  if (colKey.startsWith(CUSTOM_FIELD_PREFIX)) {
+    const cfKey = colKey.slice(CUSTOM_FIELD_PREFIX.length);
+    return formatCustomFieldValue(
+      assembly.customFields?.[cfKey],
+      customFieldDefs.find((d) => d.key === cfKey),
+    );
+  }
   switch (colKey) {
     case 'assemblyNumber':
       return <span style={{ fontWeight: 500, color: '#0062ff' }}>{assembly.assemblyNumber}</span>;
@@ -103,6 +118,7 @@ export function AssemblyList() {
     filters,
     save: saveColumns,
   } = useListColumns(orgId, 'item_assembly');
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'item_assembly');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -121,9 +137,7 @@ export function AssemblyList() {
   };
 
   const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleAll = () => {
@@ -144,8 +158,12 @@ export function AssemblyList() {
         flexDirection: 'column',
       }}
     >
-      <div className={`master-detail-container ${selectedId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
-        <div className="master-pane"
+      <div
+        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
+        <div
+          className="master-pane"
           style={{
             flex: selectedId ? '0 0 320px' : 1,
             borderRight: selectedId ? '1px solid #eef0f3' : 'none',
@@ -205,7 +223,11 @@ export function AssemblyList() {
                 )}
                 <button
                   type="button"
-                  onClick={() => navigate(`/organizations/${orgId}/inventory/assembly/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/inventory/assembly/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -254,7 +276,12 @@ export function AssemblyList() {
                   assemblies.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
+                      onClick={() =>
+                        setSearchParams((prev) => {
+                          prev.set('id', item.id);
+                          return prev;
+                        })
+                      }
                       style={{
                         padding: '12px 16px',
                         borderBottom: '1px solid #eef0f3',
@@ -270,14 +297,14 @@ export function AssemblyList() {
                           e.currentTarget.style.background = 'transparent';
                       }}
                     >
-                        <div
-                          style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: '#1e293b',
-                            marginBottom: '4px',
-                          }}
-                        >
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: '#1e293b',
+                          marginBottom: '4px',
+                        }}
+                      >
                         {item.assemblyNumber}
                       </div>
                       <div style={{ fontSize: '13px', color: '#334155', marginBottom: '8px' }}>
@@ -319,126 +346,150 @@ export function AssemblyList() {
                           {formatDate(item.assemblyDate)}
                         </span>
                       </div>
-                  </div>
+                    </div>
                   ))
                 )}
               </div>
             ) : (
               <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-                  <tr>
-                    <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center', borderBottom: '1px solid #eef0f3' }}>
-                      <input
-                        type="checkbox"
-                        checked={assemblies.length > 0 && selectedIds.length === assemblies.length}
-                        onChange={toggleAll}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </th>
-                    {columns.map((col) => (
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                    <tr>
                       <th
-                        key={col.key}
                         style={{
+                          width: 48,
                           ...headerStyle,
+                          paddingRight: 0,
+                          textAlign: 'center',
                           borderBottom: '1px solid #eef0f3',
-                          display: selectedId && !col.locked ? 'none' : 'table-cell',
                         }}
                       >
-                        {col.label}
+                        <input
+                          type="checkbox"
+                          checked={
+                            assemblies.length > 0 && selectedIds.length === assemblies.length
+                          }
+                          onChange={toggleAll}
+                          style={{ cursor: 'pointer' }}
+                        />
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td
-                        colSpan={columns.length}
-                        style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
-                      >
-                        Loading...
-                      </td>
+                      {columns.map((col) => (
+                        <th
+                          key={col.key}
+                          style={{
+                            ...headerStyle,
+                            borderBottom: '1px solid #eef0f3',
+                            display: selectedId && !col.locked ? 'none' : 'table-cell',
+                          }}
+                        >
+                          {col.label}
+                        </th>
+                      ))}
                     </tr>
-                  ) : assemblies.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={columns.length}
-                        style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}
-                      >
-                        <Settings size={48} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
-                        <div style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
-                          No assemblies found
-                        </div>
-                        <div style={{ fontSize: 13, marginTop: 4 }}>
-                          Create a new assembly to get started.
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    assemblies.map((item) => (
-                      <tr
-                        key={item.id}
-                        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
-                        style={{
-                          borderBottom: '1px solid #eef0f3',
-                          cursor: 'pointer',
-                          background: selectedIds.includes(item.id) ? '#f8fafc' : 'transparent',
-                          transition: 'background 0.1s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f8fafc';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!selectedIds.includes(item.id))
-                            e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.includes(item.id)}
-                            onChange={() => toggleSelection(item.id)}
-                            style={{ cursor: 'pointer' }}
-                          />
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      <tr>
+                        <td
+                          colSpan={columns.length}
+                          style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}
+                        >
+                          Loading...
                         </td>
-                        {columns.map((col) => (
-                          <td
-                            key={col.key}
-                            style={{
-                              padding: '12px 16px',
-                              fontSize: 13,
-                              color: col.locked ? '#0062ff' : '#333',
-                              fontWeight: col.locked ? 500 : 400,
-                              display: selectedId && !col.locked ? 'none' : 'table-cell',
-                            }}
-                          >
-                            {renderAssemblyCell(item, col.key)}
-                          </td>
-                        ))}
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-                  </div>
+                    ) : assemblies.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={columns.length}
+                          style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}
+                        >
+                          <Settings size={48} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
+                          <div style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+                            No assemblies found
+                          </div>
+                          <div style={{ fontSize: 13, marginTop: 4 }}>
+                            Create a new assembly to get started.
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      assemblies.map((item) => (
+                        <tr
+                          key={item.id}
+                          onClick={() =>
+                            setSearchParams((prev) => {
+                              prev.set('id', item.id);
+                              return prev;
+                            })
+                          }
+                          style={{
+                            borderBottom: '1px solid #eef0f3',
+                            cursor: 'pointer',
+                            background: selectedIds.includes(item.id) ? '#f8fafc' : 'transparent',
+                            transition: 'background 0.1s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#f8fafc';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!selectedIds.includes(item.id))
+                              e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <td
+                            style={{
+                              width: 48,
+                              padding: '12px 16px',
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(item.id)}
+                              onChange={() => toggleSelection(item.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
+                          {columns.map((col) => (
+                            <td
+                              key={col.key}
+                              style={{
+                                padding: '12px 16px',
+                                fontSize: 13,
+                                color: col.locked ? '#0062ff' : '#333',
+                                fontWeight: col.locked ? 500 : 400,
+                                display: selectedId && !col.locked ? 'none' : 'table-cell',
+                              }}
+                            >
+                              {renderAssemblyCell(item, col.key, customFieldDefs)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
           <Pagination
-              pageContext={pageContext}
-              perPage={perPage}
-              page={page}
-              onPageChange={setPage}
-              onPerPageChange={setPerPage}
-              total={total}
-              isCounting={isCounting}
-              onRequestCount={requestCount}
-            />
+            pageContext={pageContext}
+            perPage={perPage}
+            page={page}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+            total={total}
+            isCounting={isCounting}
+            onRequestCount={requestCount}
+          />
         </div>
 
         {selectedId && (
-          <div className="detail-pane"
+          <div
+            className="detail-pane"
             style={{
               flex: 1,
               borderLeft: '1px solid #eef0f3',
@@ -451,7 +502,12 @@ export function AssemblyList() {
             <AssemblyDetail
               orgId={orgId!}
               assemblyId={selectedId}
-              onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })}
+              onClose={() =>
+                setSearchParams((prev) => {
+                  prev.delete('id');
+                  return prev;
+                })
+              }
             />
           </div>
         )}
@@ -475,7 +531,7 @@ export function AssemblyList() {
           setIsProcessing(true);
           try {
             await Promise.allSettled(
-              selectedIds.map(id => assembliesApi.deleteAssembly(orgId!, id))
+              selectedIds.map((id) => assembliesApi.deleteAssembly(orgId!, id)),
             );
             setSelectedIds([]);
             window.location.reload();

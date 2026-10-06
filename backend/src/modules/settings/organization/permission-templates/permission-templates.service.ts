@@ -4,7 +4,7 @@ import { getMemberDirectory, type MemberDirectory } from '../../../../lib/member
 import { pageSlice, searchWhere, takeForPage, type ListQuery } from '../../../../lib/pagination.ts';
 import { filterWhere } from '../../list-views/listFilters.catalog.ts';
 import { invalidateTemplate } from './permissionTemplates.cache.ts';
-import { ALL_PERMISSIONS, SYSTEM_TEMPLATES } from './permissions.catalog.ts';
+import { ALL_PERMISSIONS, isPermissionKey, SYSTEM_TEMPLATES } from './permissions.catalog.ts';
 import type { CreateTemplateInput, UpdateTemplateInput } from './permission-templates.schemas.ts';
 import type { PublicPermissionTemplate } from './permission-templates.types.ts';
 import type { Prisma } from '../../../../../generated/prisma/client.ts';
@@ -35,7 +35,11 @@ function toPublic(
     grantsAllPermissions: row.grantsAllPermissions,
     // An auto-granting template stores no keys — expose the full computed catalog
     // so the UI renders its checkboxes (all ticked, read-only) like any other.
-    permissions: row.grantsAllPermissions ? [...ALL_PERMISSIONS] : row.permissions,
+    // Retired keys are dropped: the editor saves back what it was given, and the
+    // save schema rejects a key the catalog no longer has.
+    permissions: row.grantsAllPermissions
+      ? [...ALL_PERMISSIONS]
+      : row.permissions.filter(isPermissionKey),
     memberCount,
     // Ids → this org's names. Never a join: see the header of memberDirectory.ts.
     createdByName: directory.actorName(row.createdBy),
@@ -270,7 +274,7 @@ export async function updateTemplate(
       description?: string | null;
       permissions?: string[];
     } = { updatedBy: userId };
-    
+
     if (input.name !== undefined) {
       const lowerName = input.name.trim().toLowerCase();
       const existingTemplates = await tx.permissionTemplate.findMany({
@@ -282,7 +286,7 @@ export async function updateTemplate(
       }
       data.name = input.name;
     }
-    
+
     if (input.description !== undefined) data.description = input.description;
     if (input.permissions !== undefined) data.permissions = input.permissions; // wholesale replace
 
@@ -355,4 +359,3 @@ export async function deleteTemplate(
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
-

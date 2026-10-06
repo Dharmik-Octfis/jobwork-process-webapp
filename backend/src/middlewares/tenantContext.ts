@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.ts';
 import { ApiError } from '../lib/apiError.ts';
 import {
   ALL_PERMISSIONS,
+  isPermissionKey,
   withImpliedRead,
 } from '../modules/settings/organization/permission-templates/permissions.catalog.ts';
 import { getTemplateBody } from '../modules/settings/organization/permission-templates/permissionTemplates.cache.ts';
@@ -155,8 +156,9 @@ async function resolvePermissions(
   if (!template) return new Set();
   if (template.grantsAllPermissions) return new Set(ALL_PERMISSIONS);
   // Rows written before `read` became implied (or by anything but the editor) get
-  // the same treatment as a fresh save — see `withImpliedRead`.
-  return new Set(withImpliedRead(template.permissions));
+  // the same treatment as a fresh save — see `withImpliedRead`. Keys retired from
+  // the catalog are dropped, so a stored copy never resurfaces as a grant.
+  return new Set(withImpliedRead(template.permissions.filter(isPermissionKey)));
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

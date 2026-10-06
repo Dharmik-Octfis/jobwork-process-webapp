@@ -26,6 +26,7 @@ import {
 import {
   QTY_EPSILON,
   adjustedOf,
+  batchButtonText,
   batchSummary,
   boxTexts,
   emptyLine,
@@ -41,7 +42,15 @@ import {
   type LineDraft,
 } from './adjustmentLine';
 import { formPrimaryButton, formSecondaryButton } from './adjustmentButtons';
-import { announceOutcome, refreshAfterAdjustment, reportSaveError } from './adjustmentSave';
+import {
+  announceOutcome,
+  customFieldErrorsOf,
+  refreshAfterAdjustment,
+  reportSaveError,
+} from './adjustmentSave';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { LineBatchPicker } from './LineBatchPicker';
 import { ReasonSelect } from './ReasonSelect';
 
@@ -108,6 +117,9 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
   const [line, setLine] = useState<LineDraft>(() => emptyLine(item));
   const [reasonId, setReasonId] = useState('');
   const [description, setDescription] = useState('');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>({});
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'stock_adjustment');
   const [isPicking, setIsPicking] = useState(false);
   const [invalid, setInvalid] = useState<ReadonlySet<Field>>(new Set());
 
@@ -154,7 +166,6 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
 
   const adjusted = adjustedOf(line, available);
   const magnitude = Math.abs(adjusted);
-  const isIncrease = adjusted > 0;
   const texts = boxTexts(line, available);
   const picked = batchSummary(line, adjusted);
   const isDecrease = adjusted < 0 && magnitude >= QTY_EPSILON;
@@ -193,6 +204,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
           ) as Field[],
         ),
       );
+      setCustomFieldErrors(customFieldErrorsOf(error));
     },
   });
 
@@ -235,6 +247,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
           ? toValueLinePayload(line, item, current.value)
           : toLinePayload(line, item, available),
       ],
+      customFields,
       saveAs,
     });
   };
@@ -525,9 +538,7 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
                         cursor: locationId ? 'pointer' : 'not-allowed',
                       }}
                     >
-                      {picked.count > 0
-                        ? `${picked.count} ${picked.count === 1 ? tracking.singular : tracking.plural} · ${formatQty(picked.total)} ${uomLabel}`
-                        : `${isIncrease ? 'Add' : 'Select'} ${tracking.plural}`}
+                      {batchButtonText(picked.count, adjusted, tracking)}
                     </button>
                   </div>
                 )}
@@ -573,6 +584,23 @@ export function AdjustStockPanel({ orgId, item, onClose }: AdjustStockPanelProps
               }}
             />
           </div>
+
+          {customFieldDefs.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <CustomFieldsSection
+                orgId={orgId}
+                entityType="stock_adjustment"
+                values={customFields}
+                onChange={(values) => {
+                  setCustomFields(values);
+                  setCustomFieldErrors({});
+                }}
+                errors={customFieldErrors}
+                applyDefaults
+                layout="grid"
+              />
+            </div>
+          )}
         </div>
       </div>
 
