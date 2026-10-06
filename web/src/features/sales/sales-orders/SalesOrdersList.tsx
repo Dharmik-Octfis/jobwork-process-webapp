@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDate } from '../../../lib/formatDate';
 import {
   fetchSalesOrders,
   fetchSalesOrderCount,
@@ -39,7 +40,7 @@ function renderPoCell(po: SalesOrder, key: string, paymentTerms: PaymentTerm[] =
   const value = (po as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
   if (key === 'date' || key === 'deliveryDate' || key === 'createdAt' || key === 'updatedAt') {
-    return new Date(String(value)).toLocaleDateString();
+    return formatDate(String(value));
   }
   return String(value);
 }

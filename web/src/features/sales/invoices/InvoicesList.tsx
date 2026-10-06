@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDate } from '../../../lib/formatDate';
 import {
   fetchInvoices,
   fetchInvoiceCount,
@@ -39,7 +40,7 @@ function renderInvoiceCell(invoice: Invoice, key: string, paymentTerms: PaymentT
   const value = (invoice as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
   if (key === 'date' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
-    return new Date(String(value)).toLocaleDateString();
+    return formatDate(String(value));
   }
   return String(value);
 }
@@ -365,7 +366,7 @@ export default function InvoicesList() {
                               }}
                             >
                               <span>{inv.customer?.contactName || '-'}</span>
-                              <span>{new Date(inv.date).toLocaleDateString()}</span>
+                              <span>{formatDate(inv.date)}</span>
                             </div>
                           </td>
                         ) : (
