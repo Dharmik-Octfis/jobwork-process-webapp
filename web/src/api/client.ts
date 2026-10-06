@@ -126,11 +126,13 @@ apiClient.interceptors.response.use(
     if (isApiEnvelope(response.data)) {
       const message = response.data.message;
       const method = response.config.method?.toLowerCase();
+      const isRefresh = response.config.url?.includes(endpoints.auth.refresh);
       // Show toast if it's a mutation and the message is not just the generic 'Success'
       if (
         ['post', 'put', 'patch', 'delete'].includes(method || '') &&
         message &&
-        message !== 'Success'
+        message !== 'Success' &&
+        !isRefresh
       ) {
         toast.success(message);
       }

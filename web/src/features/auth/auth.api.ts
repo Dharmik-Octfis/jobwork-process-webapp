@@ -21,12 +21,17 @@ export async function signup(input: SignupInput): Promise<AuthResponse> {
   return data;
 }
 
-export async function updateProfile(input: UpdateProfileInput): Promise<{ user: AuthResponse['user'] }> {
+export async function updateProfile(
+  input: UpdateProfileInput,
+): Promise<{ user: AuthResponse['user'] }> {
   const { data } = await apiClient.put<{ user: AuthResponse['user'] }>(endpoints.auth.me, input);
   return data;
 }
 
-export async function updateLocation(input: { latitude: number; longitude: number }): Promise<void> {
+export async function updateLocation(input: {
+  latitude: number;
+  longitude: number;
+}): Promise<void> {
   await apiClient.post(endpoints.auth.location, input);
 }
 
@@ -65,10 +70,12 @@ export async function changePassword(
   input: import('./auth.schemas').ChangePasswordInput,
 ): Promise<{ message: string }> {
   const { confirmPassword: _confirmPassword, ...payload } = input;
-  const { data } = await apiClient.post<{ message: string }>(endpoints.auth.changePassword, payload);
+  const { data } = await apiClient.post<{ message: string }>(
+    endpoints.auth.changePassword,
+    payload,
+  );
   return data;
 }
-
 
 /**
  * POST /auth/logout — the server ends the session using the Bearer access token
@@ -86,7 +93,11 @@ export async function logout(): Promise<{ message: string }> {
  * valid cookie (i.e. the visitor isn't logged in). The access token is stashed
  * in memory as a side effect.
  */
+let restoreInFlight: Promise<{ user: AuthResponse['user'] } | null> | null = null;
+
 export async function restoreSession(): Promise<{ user: AuthResponse['user'] } | null> {
+  if (restoreInFlight) return restoreInFlight;
+
   const doRestore = async () => {
     try {
       const { data } = await apiClient.post<AuthResponse>(endpoints.auth.refresh);
@@ -99,7 +110,18 @@ export async function restoreSession(): Promise<{ user: AuthResponse['user'] } |
   };
 
   if (typeof navigator !== 'undefined' && navigator.locks) {
-    return navigator.locks.request('auth_refresh', doRestore);
+    restoreInFlight = (
+      navigator.locks.request('auth_refresh', doRestore) as unknown as Promise<{
+        user: AuthResponse['user'];
+      } | null>
+    ).finally(() => {
+      restoreInFlight = null;
+    });
+  } else {
+    restoreInFlight = doRestore().finally(() => {
+      restoreInFlight = null;
+    });
   }
-  return doRestore();
+
+  return restoreInFlight;
 }
