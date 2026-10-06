@@ -612,25 +612,27 @@ interface MovementRow {
 }
 
 function materialStanding(row: {
-  uomSymbol: string | null;
-  stillOutQty: string;
-  closedQty: string;
-  writtenOffQty: string;
-  writtenOffValue: string;
+  uomSymbol?: string | null;
+  stillOutQty?: string;
+  closedQty?: string;
+  writtenOffQty?: string;
+  writtenOffValue?: string;
 }): MovementRow['detail'] {
+  const stillOut = row.stillOutQty ?? '0';
+  const closed = row.closedQty ?? '0';
+  const writtenOff = row.writtenOffQty ?? '0';
+  const writtenOffVal = row.writtenOffValue ?? '0';
+  const uom = row.uomSymbol ?? null;
+
   const parts = [
-    toNumber(row.stillOutQty) > 0
-      ? `${qtyWithUnit(row.stillOutQty, row.uomSymbol)} still at the processor`
-      : null,
-    toNumber(row.closedQty) > 0
-      ? `${qtyWithUnit(row.closedQty, row.uomSymbol)} on closed challans`
-      : null,
-    toNumber(row.writtenOffQty) > 0
-      ? `${qtyWithUnit(row.writtenOffQty, row.uomSymbol)} written off · ${formatMoney(row.writtenOffValue)} loss`
+    toNumber(stillOut) > 0 ? `${qtyWithUnit(stillOut, uom)} still at the processor` : null,
+    toNumber(closed) > 0 ? `${qtyWithUnit(closed, uom)} on closed challans` : null,
+    toNumber(writtenOff) > 0
+      ? `${qtyWithUnit(writtenOff, uom)} written off · ${formatMoney(writtenOffVal)} loss`
       : null,
   ].filter((part): part is string => part !== null);
   if (parts.length === 0) return undefined;
-  return { text: parts.join(' · '), tone: toNumber(row.writtenOffQty) > 0 ? 'loss' : 'muted' };
+  return { text: parts.join(' · '), tone: toNumber(writtenOff) > 0 ? 'loss' : 'muted' };
 }
 
 /**

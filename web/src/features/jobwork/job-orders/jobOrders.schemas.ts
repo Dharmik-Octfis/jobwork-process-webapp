@@ -345,3 +345,12 @@ export type UpdateJobOrderData = Omit<CreateJobOrderData, 'jobOrderNumber'>;
 
 export const jobOrdersPageSchema = paginatedSchema(jobOrderSchema);
 export type JobOrdersPage = Paginated<JobOrder>;
+
+export const jobOrderMetricsSchema = z.object({
+  totalCount: z.number(),
+  totalQty: z.number(),
+  drafts: z.number(),
+  inProgress: z.number(),
+  completed: z.number(),
+});
+export type JobOrderMetrics = z.infer<typeof jobOrderMetricsSchema>;

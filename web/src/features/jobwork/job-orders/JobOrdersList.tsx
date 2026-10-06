@@ -29,7 +29,12 @@ import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldVal
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { formatQty } from '../jobwork.schemas';
-import { fetchJobOrderCount, fetchJobOrders, deleteJobOrder } from './jobOrders.api';
+import {
+  fetchJobOrderCount,
+  fetchJobOrderMetrics,
+  fetchJobOrders,
+  deleteJobOrder,
+} from './jobOrders.api';
 import { JobOrderOverview } from './JobOrderOverview';
 import type { JobOrder } from './jobOrders.schemas';
 import { JobOrderStatusBadge } from './JobOrderStatusBadge';
@@ -235,11 +240,19 @@ export function JobOrdersList() {
     }
   };
 
+  const { data: metricsData } = useQuery({
+    queryKey: ['job-orders-metrics', orgId, search],
+    queryFn: () => fetchJobOrderMetrics(orgId!, search || undefined),
+    enabled: Boolean(orgId),
+    placeholderData: (prev) => prev,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteJobOrder(orgId!, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-orders-count', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['job-orders-metrics', orgId] });
       toast.success('Job order deleted');
     },
   });
@@ -264,6 +277,7 @@ export function JobOrdersList() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['job-orders-count', orgId] }),
+      queryClient.invalidateQueries({ queryKey: ['job-orders-metrics', orgId] }),
     ]);
     setTimeout(() => {
       setIsRefreshing(false);
@@ -271,37 +285,16 @@ export function JobOrdersList() {
     }, 400);
   };
 
-  // KPI Metrics calculated dynamically
+  // KPI Metrics from organization-wide query (independent of active status filter)
   const stats = useMemo(() => {
-    let drafts = 0;
-    let inProgress = 0;
-    let completed = 0;
-    let totalQty = 0;
-
-    for (const order of orders) {
-      const st = (order.status || '').toLowerCase();
-      if (st === 'draft') drafts++;
-      else if (st === 'in_progress' || st === 'open' || st === 'pending') inProgress++;
-      else if (st === 'completed' || st === 'closed') completed++;
-
-      totalQty += Number(order.inputQty || 0);
-    }
-
     return {
-      totalCount: total ?? orders.length,
-      totalQty,
-      drafts,
-      inProgress,
-      completed,
+      totalCount: metricsData?.totalCount ?? 0,
+      totalQty: metricsData?.totalQty ?? 0,
+      drafts: metricsData?.drafts ?? 0,
+      inProgress: metricsData?.inProgress ?? 0,
+      completed: metricsData?.completed ?? 0,
     };
-  }, [orders, total]);
-
-  const quickFilterTabs = [
-    { key: 'all', label: 'All Orders', count: stats.totalCount },
-    { key: 'draft', label: 'Draft', count: stats.drafts },
-    { key: 'in_progress', label: 'In Progress', count: stats.inProgress },
-    { key: 'completed', label: 'Completed', count: stats.completed },
-  ];
+  }, [metricsData]);
 
   return (
     <div
@@ -324,10 +317,228 @@ export function JobOrdersList() {
             borderRight: selectedId ? '1px solid #e2e8f0' : 'none',
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden',
             background: '#fff',
           }}
         >
+          {/* Action Header / Toolbar */}
+          {!selectedId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onDelete={() => setIsBulkDeleteDialogOpen(true)}
+              isProcessing={isProcessing}
+            />
+          ) : (
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: selectedId ? '12px 14px' : '14px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #e2e8f0',
+                gap: 8,
+                flexWrap: 'nowrap',
+                position: 'relative',
+                zIndex: 20,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
+                <ListFilterDropdown
+                  filters={filters}
+                  value={filter}
+                  onChange={setFilter}
+                  fallbackLabel="All Job Orders"
+                />
+
+                {/* Inline Search Bar */}
+                {!selectedId && (
+                  <form
+                    onSubmit={handleSearchSubmit}
+                    style={{
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      maxWidth: 280,
+                      width: '100%',
+                    }}
+                  >
+                    <Search
+                      size={15}
+                      style={{
+                        position: 'absolute',
+                        left: 10,
+                        color: '#94a3b8',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search orders, items..."
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 28px 6px 32px',
+                        fontSize: 13,
+                        borderRadius: 6,
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        outline: 'none',
+                        color: '#0f172a',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.background = '#fff';
+                        e.currentTarget.style.borderColor = '#0284c7';
+                        e.currentTarget.style.boxShadow = '0 0 0 2px rgba(2, 132, 199, 0.12)';
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    />
+                    {searchInput && (
+                      <button
+                        type="button"
+                        onClick={handleSearchClear}
+                        style={{
+                          position: 'absolute',
+                          right: 8,
+                          background: 'none',
+                          border: 'none',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: 2,
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </form>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                {/* Refresh Trigger - Full list view only */}
+                {!selectedId && (
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    title="Refresh job orders"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.color = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff';
+                      e.currentTarget.style.color = '#64748b';
+                    }}
+                  >
+                    <RotateCw
+                      size={15}
+                      style={{
+                        animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                      }}
+                    />
+                  </button>
+                )}
+
+                {/* Column Customizer - Full list view only */}
+                {!selectedId && (
+                  <button
+                    type="button"
+                    onClick={() => setIsColumnsOpen(true)}
+                    title="Customize Columns"
+                    aria-label="Customize Columns"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f7fd';
+                      e.currentTarget.style.color = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff';
+                      e.currentTarget.style.color = '#64748b';
+                    }}
+                  >
+                    <SlidersHorizontal size={15} />
+                  </button>
+                )}
+
+                {/* Primary Action Button */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(newPath, { state: { returnUrl: location.pathname + location.search } })
+                  }
+                  style={{
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                    color: 'white',
+                    border: 'none',
+                    padding: selectedId ? '6px 12px' : '7px 16px',
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
+                    e.currentTarget.style.transform = 'none';
+                  }}
+                >
+                  <Plus size={16} /> {selectedId ? 'New' : 'New Job Order'}
+                </button>
+              </div>
+            </header>
+          )}
+
           {/* Executive KPI Metrics Ribbon (Displayed in Full View) */}
           {!selectedId && (
             <div
@@ -335,16 +546,17 @@ export function JobOrdersList() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                 gap: 12,
-                padding: '16px 24px 0 24px',
+                padding: '16px 24px',
                 background: '#fff',
+                borderBottom: '1px solid #e2e8f0',
               }}
             >
               {/* Card 1: Total Job Orders */}
               <div
                 onClick={() => setFilter('all')}
                 style={{
-                  background: filter === 'all' ? '#f0f9ff' : '#fff',
-                  border: `1px solid ${filter === 'all' ? '#0284c7' : '#e2e8f0'}`,
+                  background: filter === 'all' || filter === 'all_orders' ? '#f0f9ff' : '#fff',
+                  border: `1px solid ${filter === 'all' || filter === 'all_orders' ? '#0284c7' : '#e2e8f0'}`,
                   borderRadius: 10,
                   padding: '14px 16px',
                   cursor: 'pointer',
@@ -541,278 +753,6 @@ export function JobOrdersList() {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Quick-Status Filter Tabs */}
-          {!selectedId && (
-            <div
-              style={{
-                display: 'flex',
-                gap: 8,
-                padding: '14px 24px 8px 24px',
-                borderBottom: '1px solid #f1f5f9',
-                background: '#fff',
-                overflowX: 'auto',
-              }}
-            >
-              {quickFilterTabs.map((tab) => {
-                const isActive = (filter || 'all').toLowerCase() === tab.key.toLowerCase();
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setFilter(tab.key)}
-                    style={{
-                      padding: '5px 12px',
-                      borderRadius: 20,
-                      fontSize: 12,
-                      fontWeight: isActive ? 600 : 500,
-                      color: isActive ? '#0284c7' : '#64748b',
-                      background: isActive ? '#e0f2fe' : '#f8fafc',
-                      border: `1px solid ${isActive ? '#bae6fd' : '#e2e8f0'}`,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      whiteSpace: 'nowrap',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <span>{tab.label}</span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: '1px 6px',
-                        borderRadius: 10,
-                        background: isActive ? '#0284c7' : '#e2e8f0',
-                        color: isActive ? '#fff' : '#64748b',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Action Header / Toolbar */}
-          {!selectedId && selectedIds.length > 0 ? (
-            <BulkActionBar
-              selectedCount={selectedIds.length}
-              onClearSelection={() => setSelectedIds([])}
-              onDelete={() => setIsBulkDeleteDialogOpen(true)}
-              isProcessing={isProcessing}
-            />
-          ) : (
-            <header
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: selectedId ? '12px 14px' : '14px 24px',
-                background: '#fff',
-                borderBottom: '1px solid #e2e8f0',
-                gap: 8,
-                flexWrap: 'nowrap',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  minWidth: 0,
-                  flex: 1,
-                  overflow: 'hidden',
-                }}
-              >
-                <ListFilterDropdown
-                  filters={filters}
-                  value={filter}
-                  onChange={setFilter}
-                  fallbackLabel="All Job Orders"
-                />
-
-                {/* Inline Search Bar */}
-                {!selectedId && (
-                  <form
-                    onSubmit={handleSearchSubmit}
-                    style={{
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      maxWidth: 280,
-                      width: '100%',
-                    }}
-                  >
-                    <Search
-                      size={15}
-                      style={{
-                        position: 'absolute',
-                        left: 10,
-                        color: '#94a3b8',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Search orders, items..."
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '6px 28px 6px 32px',
-                        fontSize: 13,
-                        borderRadius: 6,
-                        border: '1px solid #cbd5e1',
-                        background: '#f8fafc',
-                        outline: 'none',
-                        color: '#0f172a',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.background = '#fff';
-                        e.currentTarget.style.borderColor = '#0284c7';
-                        e.currentTarget.style.boxShadow = '0 0 0 2px rgba(2, 132, 199, 0.12)';
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.background = '#f8fafc';
-                        e.currentTarget.style.borderColor = '#cbd5e1';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    />
-                    {searchInput && (
-                      <button
-                        type="button"
-                        onClick={handleSearchClear}
-                        style={{
-                          position: 'absolute',
-                          right: 8,
-                          background: 'none',
-                          border: 'none',
-                          color: '#94a3b8',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          padding: 2,
-                        }}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </form>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {/* Refresh Trigger - Full list view only */}
-                {!selectedId && (
-                  <button
-                    type="button"
-                    onClick={handleRefresh}
-                    disabled={isRefreshing}
-                    title="Refresh job orders"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      background: '#fff',
-                      cursor: 'pointer',
-                      color: '#64748b',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f0f7fd';
-                      e.currentTarget.style.color = '#0284c7';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#fff';
-                      e.currentTarget.style.color = '#64748b';
-                    }}
-                  >
-                    <RotateCw
-                      size={15}
-                      style={{
-                        animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
-                      }}
-                    />
-                  </button>
-                )}
-
-                {/* Column Customizer - Full list view only */}
-                {!selectedId && (
-                  <button
-                    type="button"
-                    onClick={() => setIsColumnsOpen(true)}
-                    title="Customize Columns"
-                    aria-label="Customize Columns"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      background: '#fff',
-                      cursor: 'pointer',
-                      color: '#64748b',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f0f7fd';
-                      e.currentTarget.style.color = '#0284c7';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#fff';
-                      e.currentTarget.style.color = '#64748b';
-                    }}
-                  >
-                    <SlidersHorizontal size={15} />
-                  </button>
-                )}
-
-                {/* Primary Action Button */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(newPath, { state: { returnUrl: location.pathname + location.search } })
-                  }
-                  style={{
-                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                    color: 'white',
-                    border: 'none',
-                    padding: selectedId ? '6px 12px' : '7px 16px',
-                    borderRadius: 6,
-                    fontWeight: 600,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    whiteSpace: 'nowrap',
-                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
-                    e.currentTarget.style.transform = 'none';
-                  }}
-                >
-                  <Plus size={16} /> {selectedId ? 'New' : 'New Job Order'}
-                </button>
-              </div>
-            </header>
           )}
 
           {/* List / Table Content */}

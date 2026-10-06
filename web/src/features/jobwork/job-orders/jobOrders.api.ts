@@ -6,6 +6,8 @@ import {
   jobOrderOverviewSchema,
   jobOrderSchema,
   jobOrdersPageSchema,
+  jobOrderMetricsSchema,
+  type JobOrderMetrics,
   type CreateJobOrderData,
   jobOrderWithStepsSchema,
   type JobOrder,
@@ -27,6 +29,16 @@ export async function fetchJobOrders(
 export async function fetchJobOrderCount(orgId: string, params: PageParams = {}): Promise<number> {
   const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/count`, { params });
   return z.object({ total: z.number() }).parse(response.data).total;
+}
+
+export async function fetchJobOrderMetrics(
+  orgId: string,
+  search?: string,
+): Promise<JobOrderMetrics> {
+  const response = await apiClient.get(`${endpoints.jobwork.jobOrders(orgId)}/metrics`, {
+    params: search ? { search } : undefined,
+  });
+  return jobOrderMetricsSchema.parse(response.data);
 }
 
 export async function fetchJobOrderById(

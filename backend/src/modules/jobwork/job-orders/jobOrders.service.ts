@@ -171,6 +171,63 @@ export async function countJobOrders(organizationId: string, opts: ListQuery): P
   );
 }
 
+export async function getJobOrderMetrics(organizationId: string, search?: string) {
+  return runAsTenant(organizationId, async (tx) => {
+    const where: Prisma.JobOrderWhereInput = {
+      organizationId,
+      isDeleted: false,
+      ...(search
+        ? {
+            OR: [
+              { jobOrderNumber: { contains: search, mode: 'insensitive' } },
+              { routeNameSnapshot: { contains: search, mode: 'insensitive' } },
+              { remarks: { contains: search, mode: 'insensitive' } },
+              { inputItem: { name: { contains: search, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
+
+    const grouped = await tx.jobOrder.groupBy({
+      by: ['status'],
+      where,
+      _count: { id: true },
+      _sum: { inputQty: true },
+    });
+
+    let drafts = 0;
+    let inProgress = 0;
+    let completed = 0;
+    let totalCount = 0;
+    let totalQty = 0;
+
+    for (const g of grouped) {
+      const count = g._count.id;
+      const qty = Number(g._sum.inputQty ?? 0);
+      const st = (g.status || '').toLowerCase();
+
+      totalCount += count;
+      totalQty += qty;
+
+      if (st === 'draft') {
+        drafts += count;
+      } else if (st === 'in_progress' || st === 'open' || st === 'pending') {
+        inProgress += count;
+      } else if (st === 'completed' || st === 'closed') {
+        completed += count;
+      }
+    }
+
+    return {
+      totalCount,
+      totalQty,
+      drafts,
+      inProgress,
+      completed,
+    };
+  });
+}
+
 /**
  * 🔴 THE TERNARY IS ON THE QUERY, NOT INSIDE `include` (2026-09-01).
  *

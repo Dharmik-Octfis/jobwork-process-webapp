@@ -16,6 +16,7 @@ import {
   getJobOrder,
   getJobOrderWithSteps,
   getJobOrderCount,
+  getJobOrderMetricsRoute,
   getJobOrders,
   getNumberPreferenceRoute,
   getOverview,
@@ -41,6 +42,7 @@ router.post(
 
 // Before '/:id', or '/count' is captured as a job order id.
 router.get('/count', requirePermission('job_order:read'), getJobOrderCount);
+router.get('/metrics', requirePermission('job_order:read'), getJobOrderMetricsRoute);
 
 // Also before '/:id'. Reading the series is part of opening the form, so it rides
 // on `read`; changing it renumbers every future order, so it takes `update`.
@@ -90,11 +92,7 @@ router.post(
   shortClose,
 );
 
-router.post(
-  '/:id/steps/:stepId/complete',
-  requirePermission('job_order:update'),
-  completeStep,
-);
+router.post('/:id/steps/:stepId/complete', requirePermission('job_order:update'), completeStep);
 
 router.delete('/:id', requirePermission('job_order:delete'), deleteJobOrder);
 

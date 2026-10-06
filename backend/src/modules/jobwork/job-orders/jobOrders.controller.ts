@@ -11,6 +11,7 @@ import {
   deleteJobOrderById,
   getJobOrderById,
   getJobOrderWithStepsById,
+  getJobOrderMetrics,
   getJobOrderNumberPreference,
   getJobOrderOverview,
   getJobOrdersList,
@@ -74,6 +75,18 @@ openApiRegistry.registerPath({
     }),
   },
   responses: { 200: { description: 'Paginated job orders: { results, pageContext }' } },
+});
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/organizations/{orgId}/jobwork/job-orders/metrics',
+  tags: ['Job Orders'],
+  summary: 'Job order KPI metrics (total, totalQty, drafts, inProgress, completed)',
+  request: {
+    params: orgParam,
+    query: z.object({ search: z.string().optional() }),
+  },
+  responses: { 200: { description: 'Job order metrics' } },
 });
 
 openApiRegistry.registerPath({
@@ -152,6 +165,11 @@ export const getJobOrderCount = async (req: Request, res: Response) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
   sendSuccess(res, { total: await countJobOrders(req.tenantId!, parsed.data) });
+};
+
+export const getJobOrderMetricsRoute = async (req: Request, res: Response) => {
+  const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+  sendSuccess(res, await getJobOrderMetrics(req.tenantId!, search));
 };
 
 export const createJobOrder = async (req: Request, res: Response) => {
