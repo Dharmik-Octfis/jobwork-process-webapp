@@ -728,14 +728,31 @@ export function IssueDetail({ issueId, onClose }: Props) {
             </div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: 700,
                 color: '#0f172a',
                 fontVariantNumeric: 'tabular-nums',
                 marginTop: 4,
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 5,
               }}
             >
-              {formatQty(issue.totalQty)} {unit}
+              <span>{formatQty(issue.totalQty)}</span>
+              {unit && (
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    color: '#64748b',
+                    background: '#f1f5f9',
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                  }}
+                >
+                  {unit}
+                </span>
+              )}
             </div>
           </div>
 
@@ -795,10 +812,39 @@ export function IssueDetail({ issueId, onClose }: Props) {
               <Package size={15} color="#0284c7" />
               <span>Dispatched Material Lines ({issue.lines.length})</span>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>
-              {issuedByItem
-                .map((item) => `${item.name} (${formatQty(item.qty)} ${item.unit})`)
-                .join(', ')}
+            <div
+              style={{
+                fontSize: 12,
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              {issuedByItem.map((item) => (
+                <span
+                  key={item.name}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  <span>{item.name}:</span>
+                  <strong style={{ color: '#0f172a' }}>{formatQty(item.qty)}</strong>
+                  {item.unit && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        background: '#e2e8f0',
+                        color: '#475569',
+                        padding: '1px 5px',
+                        borderRadius: 3,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {item.unit}
+                    </span>
+                  )}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -920,13 +966,28 @@ export function IssueDetail({ issueId, onClose }: Props) {
                       style={{
                         padding: '10px 14px',
                         fontSize: 13,
-                        fontWeight: 600,
+                        fontWeight: 700,
                         color: '#0f172a',
                         textAlign: 'right',
                         fontVariantNumeric: 'tabular-nums',
                       }}
                     >
-                      {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
+                      <span>{formatQty(line.qty)}</span>
+                      {(line.uom?.symbol ?? line.uom?.unitName ?? unit) && (
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            color: '#64748b',
+                            background: '#f1f5f9',
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                            marginLeft: 6,
+                          }}
+                        >
+                          {line.uom?.symbol ?? line.uom?.unitName ?? unit}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -662,17 +662,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                       }}
                     >
                       {jobOrder.ownership === 'customer'
-                        ? jobOrder.ownerCustomer?.companyName ||
-                          jobOrder.ownerCustomer?.contactName ||
-                          'Customer Goods'
+                        ? 'Customer Goods'
                         : 'Internal Stock (Self-Manufactured)'}
                     </div>
-                    {jobOrder.ownerCustomer && (
-                      <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
-                        {jobOrder.ownerCustomer.email && <div>{jobOrder.ownerCustomer.email}</div>}
-                        {jobOrder.ownerCustomer.phone && <div>{jobOrder.ownerCustomer.phone}</div>}
-                      </div>
-                    )}
                   </div>
 
                   <div>
@@ -785,7 +777,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                     Remaining to Issue:{' '}
                     <strong>
                       {jobOrder.inputQty !== null
-                        ? `${formatQty(Math.max(0, toNumber(jobOrder.inputQty) - summary.issuedQty))} ${unit}`
+                        ? `${formatQty(Math.max(0, toNumber(jobOrder.inputQty) - toNumber(summary.issuedQty)))} ${unit}`
                         : '-'}
                     </strong>
                   </div>
@@ -993,9 +985,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                   <User size={15} color="#0284c7" />
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
-                    {jobOrder.createdByUser?.name ||
-                      jobOrder.createdByUser?.email ||
-                      'System Administrator'}
+                    System Administrator
                   </span>
                 </div>
                 <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>

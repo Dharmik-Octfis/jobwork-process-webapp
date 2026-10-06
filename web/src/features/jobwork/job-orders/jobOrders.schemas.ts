@@ -82,12 +82,17 @@ export type JobOrder = z.infer<typeof jobOrderSchema>;
 
 export const jobOrderWithStepsSchema = z.object({
   id: z.string(),
+  jobOrderNumber: z.string().optional(),
+  inputQty: z.union([z.string(), z.number()]).nullable().optional(),
+  inputItem: itemRefSchema.nullable().optional(),
+  inputUom: uomRefSchema.nullable().optional(),
   steps: z
     .array(
       z.object({
         id: z.string(),
         seq: z.number(),
         processNameSnapshot: z.string(),
+        processorType: z.string().optional(),
         processorNameSnapshot: z.string().nullable(),
       }),
     )

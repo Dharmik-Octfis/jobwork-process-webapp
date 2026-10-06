@@ -1183,6 +1183,10 @@ export const JOB_ORDER_OVERVIEW_INCLUDE = {
 
 export const JOB_ORDER_WITH_STEPS_SELECT = {
   id: true,
+  jobOrderNumber: true,
+  inputQty: true,
+  inputItem: { select: { id: true, name: true, sku: true } },
+  inputUom: { select: { id: true, name: true, symbol: true } },
   steps: {
     where: { isDeleted: false },
     orderBy: { seq: 'asc' },
@@ -1190,6 +1194,7 @@ export const JOB_ORDER_WITH_STEPS_SELECT = {
       id: true,
       seq: true,
       processNameSnapshot: true,
+      processorType: true,
       processorNameSnapshot: true,
     },
   },

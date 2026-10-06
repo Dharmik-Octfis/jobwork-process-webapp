@@ -47,12 +47,16 @@ export function useListSearch(defaultFilter = 'all') {
     );
   };
 
+  /** Change search term. An empty search is dropped from the URL. */
+  const setSearch = (next: string) => setParam('search', next ? next : null);
+
   /** Switch preset view. `defaultFilter` is dropped from the URL. */
-  const setFilter = (next: string) => setParam('filter', next && next !== defaultFilter ? next : null);
+  const setFilter = (next: string) =>
+    setParam('filter', next && next !== defaultFilter ? next : null);
 
   /** Change page size. The default is dropped from the URL. */
   const setPerPage = (next: number) =>
     setParam('perPage', next === DEFAULT_PER_PAGE ? null : String(next));
 
-  return { search, filter, setFilter, perPage, setPerPage, page, setPage };
+  return { search, setSearch, filter, setFilter, perPage, setPerPage, page, setPage };
 }

@@ -47,16 +47,17 @@ const tableHeaderStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-function IssueStatusBadge({ status }: { status: string }) {
+function IssueStatusBadge({ status, size = 'md' }: { status: string; size?: 'sm' | 'md' }) {
   const meta = statusMeta(ISSUE_STATUS_META, status);
+  const isSm = size === 'sm';
   const getIcon = () => {
     switch (status) {
       case 'issued':
-        return <CheckCircle2 size={12} />;
+        return <CheckCircle2 size={isSm ? 10 : 12} />;
       case 'draft':
-        return <Clock size={12} />;
+        return <Clock size={isSm ? 10 : 12} />;
       case 'cancelled':
-        return <CircleSlash size={12} />;
+        return <CircleSlash size={isSm ? 10 : 12} />;
       default:
         return null;
     }
@@ -67,15 +68,16 @@ function IssueStatusBadge({ status }: { status: string }) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 5,
-        padding: '3px 10px',
+        gap: isSm ? 3.5 : 5,
+        padding: isSm ? '2px 7px' : '3px 10px',
         borderRadius: 12,
-        fontSize: 11.5,
+        fontSize: isSm ? 11 : 11.5,
         fontWeight: 600,
         color: meta.color,
         background: meta.bg,
         border: `1px solid ${meta.color}25`,
         letterSpacing: '0.01em',
+        lineHeight: 1.2,
       }}
     >
       {getIcon()}
@@ -92,21 +94,12 @@ function renderCell(issue: JobIssue, key: string): React.ReactNode {
       return (
         <span
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            fontWeight: 700,
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            fontSize: 12.5,
-            color: 'var(--color-primary, #0284c7)',
-            background: '#f0f9ff',
-            padding: '3px 8px',
-            borderRadius: 6,
-            border: '1px solid #bae6fd',
+            fontWeight: 600,
+            fontSize: 13,
+            color: '#0284c7',
           }}
         >
-          <FileText size={13} />
-          <span>{issue.challanNumber}</span>
+          {issue.challanNumber}
         </span>
       );
     case 'jobOrderNumber':
@@ -523,6 +516,7 @@ export function IssuesList() {
             borderRight: selectedId ? '1px solid #e2e8f0' : 'none',
             display: 'flex',
             flexDirection: 'column',
+            overflow: 'hidden',
             background: '#fff',
             transition: 'flex 0.15s ease',
           }}
@@ -538,44 +532,48 @@ export function IssuesList() {
           ) : (
             <header
               style={{
-                padding: '16px 24px',
-                borderBottom: '1px solid #eef0f3',
-                background: '#ffffff',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 14,
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: selectedId ? '12px 14px' : '14px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+                gap: 8,
+                flexWrap: 'nowrap',
               }}
             >
-              {/* Top row: Filter Dropdown & Primary Action Buttons */}
               <div
                 style={{
                   display: 'flex',
-                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 12,
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                  overflow: 'hidden',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {!stepId ? (
-                    <ListFilterDropdown
-                      filters={filters}
-                      value={filter}
-                      onChange={handleFilterSelect}
-                      fallbackLabel="All Challans"
-                    />
-                  ) : (
-                    <span style={{ fontSize: 15, fontWeight: 600, color: '#1e293b' }}>
-                      Challans for Step
-                    </span>
-                  )}
-                  {isPageFetching && !isLoading && (
-                    <RotateCw size={13} className="spin" color="#0284c7" title="Updating..." />
-                  )}
-                </div>
+                {!stepId ? (
+                  <ListFilterDropdown
+                    filters={filters}
+                    value={filter}
+                    onChange={handleFilterSelect}
+                    fallbackLabel="All Challans"
+                  />
+                ) : (
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                    Challans for Step
+                  </span>
+                )}
+                {isPageFetching && !isLoading && (
+                  <span title="Updating...">
+                    <RotateCw size={13} className="spin" color="#0284c7" />
+                  </span>
+                )}
+              </div>
 
-                {!selectedId && !stepId && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {!stepId && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  {!selectedId && (
                     <button
                       type="button"
                       onClick={() => setIsColumnsOpen(true)}
@@ -585,8 +583,8 @@ export function IssuesList() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: 34,
-                        height: 34,
+                        width: 32,
+                        height: 32,
                         borderRadius: 6,
                         border: '1px solid #e2e8f0',
                         background: '#fff',
@@ -605,160 +603,240 @@ export function IssuesList() {
                     >
                       <SlidersHorizontal size={15} />
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate(`/organizations/${orgId}/jobwork/issues/new`, {
-                          state: { returnUrl: location.pathname + location.search },
-                        })
-                      }
-                      style={{
-                        background: 'var(--color-primary, #0284c7)',
-                        color: 'white',
-                        border: 'none',
-                        padding: '7px 14px',
-                        borderRadius: 6,
-                        fontWeight: 600,
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        boxShadow: '0 1px 2px rgba(2, 132, 199, 0.2)',
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(0.92)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-                    >
-                      <Plus size={16} /> New Issue
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Quick Filter Tabs Bar */}
-              {!selectedId && !stepId && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    overflowX: 'auto',
-                    paddingTop: 4,
-                    paddingBottom: 2,
-                  }}
-                >
-                  {quickFilterTabs.map((tab) => {
-                    const isActive = filter === tab.key;
-                    return (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        onClick={() => handleFilterSelect(tab.key)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '6px 14px',
-                          borderRadius: 20,
-                          fontSize: 12.5,
-                          fontWeight: isActive ? 600 : 500,
-                          background: isActive ? '#0284c7' : '#f1f5f9',
-                          color: isActive ? '#ffffff' : '#475569',
-                          border: 'none',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        <span>{tab.label}</span>
-                        {tab.count !== undefined && (
-                          <span
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: 10,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              background: isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
-                              color: isActive ? '#ffffff' : '#334155',
-                            }}
-                          >
-                            {tab.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Search Input Bar */}
-              {!stepId && (
-                <div style={{ position: 'relative', width: '100%' }}>
-                  <Search
-                    size={15}
-                    style={{
-                      position: 'absolute',
-                      left: 10,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: '#94a3b8',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Search by challan #, processor, job order..."
-                    style={{
-                      width: '100%',
-                      height: 34,
-                      padding: '0 32px 0 32px',
-                      fontSize: 13,
-                      borderRadius: 6,
-                      border: '1px solid #d1d5db',
-                      background: '#fff',
-                      outline: 'none',
-                      color: '#1e293b',
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.15s, box-shadow 0.15s',
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--color-primary, #0284c7)';
-                      e.currentTarget.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.15)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  />
-                  {searchInput && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchInput('');
-                        setSearch('');
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: 8,
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        background: 'none',
-                        border: 'none',
-                        color: '#94a3b8',
-                        cursor: 'pointer',
-                        padding: 2,
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/jobwork/issues/new`, {
+                        state: { returnUrl: location.pathname + location.search },
+                      })
+                    }
+                    style={{
+                      background: '#0284c7',
+                      color: 'white',
+                      border: 'none',
+                      padding: selectedId ? '6px 12px' : '7px 16px',
+                      borderRadius: 6,
+                      fontWeight: 600,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#0369a1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#0284c7';
+                    }}
+                  >
+                    <Plus size={16} /> {selectedId ? 'New' : 'New Issue'}
+                  </button>
                 </div>
               )}
             </header>
+          )}
+
+          {/* Split View compact search bar */}
+          {selectedId && !stepId && (
+            <div
+              style={{
+                padding: '8px 12px',
+                borderBottom: '1px solid #f1f5f9',
+                background: '#fafbfc',
+              }}
+            >
+              <div style={{ position: 'relative', width: '100%' }}>
+                <Search
+                  size={13}
+                  style={{
+                    position: 'absolute',
+                    left: 9,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#94a3b8',
+                    pointerEvents: 'none',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search in Challans..."
+                  style={{
+                    width: '100%',
+                    height: 28,
+                    padding: '0 26px 0 28px',
+                    fontSize: 12,
+                    borderRadius: 5,
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    outline: 'none',
+                    color: '#1e293b',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('');
+                      setSearch('');
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: 6,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Full View Filter tabs and search bar */}
+          {!selectedId && !stepId && (
+            <div
+              style={{
+                padding: '12px 24px 0 24px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+              }}
+            >
+              {/* Quick Filter Tabs Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  overflowX: 'auto',
+                }}
+              >
+                {quickFilterTabs.map((tab) => {
+                  const isActive = filter === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => handleFilterSelect(tab.key)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '5px 12px',
+                        borderRadius: 20,
+                        fontSize: 12,
+                        fontWeight: isActive ? 600 : 500,
+                        background: isActive ? '#0284c7' : '#f1f5f9',
+                        color: isActive ? '#ffffff' : '#475569',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <span>{tab.label}</span>
+                      {tab.count !== undefined && (
+                        <span
+                          style={{
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                            color: isActive ? '#ffffff' : '#334155',
+                          }}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search Input Bar */}
+              <div style={{ position: 'relative', width: '100%', marginBottom: 12 }}>
+                <Search
+                  size={14}
+                  style={{
+                    position: 'absolute',
+                    left: 10,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#94a3b8',
+                    pointerEvents: 'none',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search by challan #, processor, job order..."
+                  style={{
+                    width: '100%',
+                    height: 34,
+                    padding: '0 32px 0 32px',
+                    fontSize: 13,
+                    borderRadius: 6,
+                    border: '1px solid #d1d5db',
+                    background: '#fff',
+                    outline: 'none',
+                    color: '#1e293b',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.15s, box-shadow 0.15s',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = '#0284c7';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.15)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('');
+                      setSearch('');
+                    }}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      padding: 2,
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
           )}
 
           {/* List Content */}
@@ -868,133 +946,158 @@ export function IssuesList() {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {issues.map((issue) => {
                   const isSelected = selectedId === issue.id;
+                  const sourceName = issue.sourceLocation?.name ?? 'Godown';
+                  const targetName =
+                    issue.processorNameSnapshot ??
+                    (issue.processorType === 'internal' ? 'In-house' : 'Vendor');
+
                   return (
                     <button
                       key={issue.id}
                       type="button"
                       onClick={() => openDetail(issue.id)}
                       style={{
-                        display: 'block',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
                         width: '100%',
                         textAlign: 'left',
-                        padding: '12px 16px',
+                        padding: '12px 14px',
                         borderBottom: '1px solid #f1f5f9',
-                        borderLeft: isSelected
-                          ? '3px solid var(--color-primary, #0284c7)'
-                          : '3px solid transparent',
+                        borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
                         borderRight: 'none',
                         borderTop: 'none',
                         cursor: 'pointer',
-                        background: isSelected ? '#f0f9ff' : 'transparent',
+                        background: isSelected ? '#f0f7fd' : '#fff',
                         font: 'inherit',
-                        transition: 'all 0.12s',
+                        transition: 'background-color 0.15s ease',
                       }}
                       onMouseEnter={(e) => {
                         if (!isSelected) e.currentTarget.style.background = '#f8fafc';
                       }}
                       onMouseLeave={(e) => {
-                        if (!isSelected) e.currentTarget.style.background = 'transparent';
+                        if (!isSelected) e.currentTarget.style.background = '#fff';
                       }}
                     >
+                      {/* Avatar Icon */}
                       <div
                         style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 8,
+                          background: isSelected ? '#0284c7' : '#e0f2fe',
+                          color: isSelected ? '#fff' : '#0284c7',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          marginBottom: 4,
+                          justifyContent: 'center',
+                          flexShrink: 0,
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: 12.5,
-                            fontWeight: 700,
-                            fontFamily:
-                              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                            color: isSelected ? 'var(--color-primary, #0284c7)' : '#1e293b',
-                            background: isSelected ? '#ffffff' : '#f8fafc',
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            border: `1px solid ${isSelected ? '#bae6fd' : '#e2e8f0'}`,
-                          }}
-                        >
-                          {issue.challanNumber}
-                        </span>
-                        <IssueStatusBadge status={issue.status} />
+                        <Send size={15} />
                       </div>
 
-                      {/* Route flow strip */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 11.5,
-                          color: '#475569',
-                          margin: '5px 0',
-                          background: isSelected ? '#ffffff' : '#f8fafc',
-                          padding: '3px 8px',
-                          borderRadius: 4,
-                          border: `1px solid ${isSelected ? '#e0f2fe' : '#f1f5f9'}`,
-                        }}
-                      >
-                        <Warehouse size={11} color="#0284c7" />
-                        <span
+                      {/* Card Content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Row 1: Challan Number & Status Badge */}
+                        <div
                           style={{
-                            maxWidth: 100,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            marginBottom: 3,
                           }}
                         >
-                          {issue.sourceLocation?.name ?? 'Godown'}
-                        </span>
-                        <ArrowRight size={10} color="#94a3b8" />
-                        {issue.processorType === 'internal' ? (
-                          <Warehouse size={11} color="#0284c7" />
-                        ) : (
-                          <Building2 size={11} color="#7c3aed" />
-                        )}
-                        <span
-                          style={{
-                            maxWidth: 110,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {issue.processorNameSnapshot ??
-                            (issue.processorType === 'internal' ? 'In-house' : 'Vendor')}
-                        </span>
-                      </div>
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          fontSize: 11.5,
-                          color: '#64748b',
-                          marginTop: 4,
-                        }}
-                      >
-                        <span style={{ fontWeight: 600, color: '#334155' }}>
-                          {issue.jobOrder?.jobOrderNumber ?? 'Direct Issue'}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span
                             style={{
+                              fontSize: 13,
                               fontWeight: 700,
-                              color: '#0f172a',
-                              background: isSelected ? '#e0f2fe' : '#f1f5f9',
-                              padding: '1px 6px',
-                              borderRadius: 4,
-                              fontVariantNumeric: 'tabular-nums',
+                              color: isSelected ? '#0369a1' : '#0f172a',
                             }}
                           >
-                            {formatQty(issue.totalQty)}
+                            {issue.challanNumber}
                           </span>
-                          <span>{formatDate(issue.issueDate)}</span>
+                          <IssueStatusBadge status={issue.status} size="sm" />
+                        </div>
+
+                        {/* Row 2: Route (Origin -> Destination) */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: 11.5,
+                            color: '#475569',
+                            marginBottom: 3,
+                          }}
+                        >
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: 100,
+                            }}
+                            title={sourceName}
+                          >
+                            {sourceName}
+                          </span>
+                          <ArrowRight size={10} color="#94a3b8" style={{ flexShrink: 0 }} />
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: 115,
+                              fontWeight: 500,
+                              color: issue.processorType === 'internal' ? '#0284c7' : '#7c3aed',
+                            }}
+                            title={targetName}
+                          >
+                            {targetName}
+                          </span>
+                        </div>
+
+                        {/* Row 3: Job Order Reference & Qty / Date */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: 11.5,
+                            color: '#64748b',
+                          }}
+                        >
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: 115,
+                              color: '#334155',
+                              fontWeight: 500,
+                            }}
+                            title={issue.jobOrder?.jobOrderNumber ?? 'Direct Issue'}
+                          >
+                            {issue.jobOrder?.jobOrderNumber ?? 'Direct Issue'}
+                          </span>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              flexShrink: 0,
+                              marginLeft: 6,
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                              {formatQty(issue.totalQty)}
+                            </span>
+                            <span style={{ color: '#cbd5e1' }}>·</span>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                              {formatDate(issue.issueDate)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </button>
