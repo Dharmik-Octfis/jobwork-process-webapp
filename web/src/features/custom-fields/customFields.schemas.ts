@@ -115,6 +115,11 @@ export const CUSTOM_FIELD_MODULES: Array<{
     description: 'Add fields to the sales order create & edit form.',
   },
   {
+    entityType: 'invoice',
+    label: 'Invoice',
+    description: 'Add fields to the invoice create & edit form.',
+  },
+  {
     entityType: 'vendor',
     label: 'Vendor',
     description: 'Add fields to the vendor create & edit form.',

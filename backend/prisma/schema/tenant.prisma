@@ -223,6 +223,14 @@ model User {
   requestedApprovals             ApprovalRequest[]         @relation("ApprovalRequestRequester")
   assignedApprovals              ApprovalRequestApprover[]
   approvalHistories              ApprovalHistory[]
+  createdInvoices         Invoice[]             @relation("InvoiceCreatedBy")
+  updatedInvoices         Invoice[]             @relation("InvoiceUpdatedBy")
+  createdInvoiceItems     InvoiceItem[]         @relation("InvoiceItemCreatedBy")
+  updatedInvoiceItems     InvoiceItem[]         @relation("InvoiceItemUpdatedBy")
+  createdInvoiceActivities InvoiceActivity[]    @relation("InvoiceActivityCreatedBy")
+  updatedInvoiceActivities InvoiceActivity[]    @relation("InvoiceActivityUpdatedBy")
+  createdInvoiceComments  InvoiceComment[]      @relation("InvoiceCommentCreatedBy")
+  updatedInvoiceComments  InvoiceComment[]      @relation("InvoiceCommentUpdatedBy")
 
   @@map("users")
 }
@@ -439,6 +447,7 @@ model Organization {
   approvalRequestApprovers ApprovalRequestApprover[]
   approvalHistories        ApprovalHistory[]
   approvalExecutedActions  ApprovalExecutedAction[]
+  invoices                 Invoice[]
 
   @@map("organizations")
 }
@@ -806,6 +815,7 @@ model Location {
   stockAdjustments         StockAdjustment[]        @relation("StockAdjustmentLocation")
   itemOpeningStockRows     ItemOpeningStockRow[]
   jobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchLocation")
+  invoices                 Invoice[]                @relation("InvoiceSourceLocation")
 
   @@unique([organizationId, name])
   @@map("locations")

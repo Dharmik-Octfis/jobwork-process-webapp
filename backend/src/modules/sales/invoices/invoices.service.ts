@@ -1,21 +1,21 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
-import type { CreateSalesOrderPayload, UpdateSalesOrderPayload } from './sales-orders.schemas.ts';
+import type { CreateInvoicePayload, UpdateInvoicePayload } from './invoices.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { priceLines } from '../../../lib/linePricing.ts';
 
-const DUPLICATE_NUMBER = 'A sales order with this SO number already exists.';
+const DUPLICATE_NUMBER = 'A Invoice with this Invoice Number already exists.';
 
-function soListWhere(organizationId: string, opts: ListQuery): Prisma.SalesOrderWhereInput {
-  const baseWhere: Prisma.SalesOrderWhereInput = {
+function invoiceListWhere(organizationId: string, opts: ListQuery): Prisma.InvoiceWhereInput {
+  const baseWhere: Prisma.InvoiceWhereInput = {
     organizationId: organizationId,
     isDeleted: false,
-    ...filterWhere<Prisma.SalesOrderWhereInput>('sales_order', opts.filter),
-    ...searchWhere<Prisma.SalesOrderWhereInput>(opts.search, [
-      'soNumber',
+    ...filterWhere<Prisma.InvoiceWhereInput>('invoice', opts.filter),
+    ...searchWhere<Prisma.InvoiceWhereInput>(opts.search, [
+      'invoiceNumber',
       'notes',
       'paymentTerms',
       'status',
@@ -36,11 +36,11 @@ function soListWhere(organizationId: string, opts: ListQuery): Prisma.SalesOrder
   return baseWhere;
 }
 
-export async function getSalesOrdersList(organizationId: string, opts: ListQuery) {
+export async function getInvoicesList(organizationId: string, opts: ListQuery) {
   const { page, perPage } = opts;
   return runAsTenant(organizationId, async (tx) => {
-    const rows = await tx.salesOrder.findMany({
-      where: soListWhere(organizationId, opts),
+    const rows = await tx.invoice.findMany({
+      where: invoiceListWhere(organizationId, opts),
       orderBy: { date: 'desc' },
       skip: (page - 1) * perPage,
       take: takeForPage(perPage),
@@ -54,15 +54,15 @@ export async function getSalesOrdersList(organizationId: string, opts: ListQuery
   });
 }
 
-export async function countSalesOrders(organizationId: string, opts: ListQuery): Promise<number> {
+export async function countInvoices(organizationId: string, opts: ListQuery): Promise<number> {
   return runAsTenant(organizationId, (tx) =>
-    tx.salesOrder.count({ where: soListWhere(organizationId, opts) }),
+    tx.invoice.count({ where: invoiceListWhere(organizationId, opts) }),
   );
 }
 
-export async function getSalesOrderById(orgId: string, id: string) {
+export async function getInvoiceById(orgId: string, id: string) {
   return runAsTenant(orgId, (tx) =>
-    tx.salesOrder.findFirst({
+    tx.invoice.findFirst({
       where: { id, organizationId: orgId, isDeleted: false },
       include: {
         lineItems: {
@@ -71,16 +71,15 @@ export async function getSalesOrderById(orgId: string, id: string) {
         },
         customer: { select: { contactName: true, email: true, phone: true, addresses: true } },
         location: true,
-        invoices: { where: { isDeleted: false } },
       },
     }),
   );
 }
 
-export async function createSalesOrder(
+export async function createInvoice(
   orgId: string,
   userId: string,
-  data: CreateSalesOrderPayload,
+  data: CreateInvoicePayload,
 ) {
   const { lineItems: rawLineItems, ...soData } = data;
   const { lines: lineItems, subTotal, totalAmount } = priceLines(rawLineItems);
@@ -89,7 +88,7 @@ export async function createSalesOrder(
       organizationId: orgId,
       date: soData.date,
       field: 'date',
-      label: 'sales order',
+      label: 'Invoice',
     });
 
     let performedBy = 'System';
@@ -102,12 +101,12 @@ export async function createSalesOrder(
 
     const seq = await tx.numberSequence.findUnique({
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      where: { organizationId_entityType: { organizationId: orgId, entityType: 'sales_order' } },
+      where: { organizationId_entityType: { organizationId: orgId, entityType: 'invoice' } },
     });
 
     if (seq) {
-      if (soData.soNumber.startsWith(seq.prefix)) {
-        const suffixPart = soData.soNumber.slice(seq.prefix.length);
+      if (soData.invoiceNumber.startsWith(seq.prefix)) {
+        const suffixPart = soData.invoiceNumber.slice(seq.prefix.length);
         const match = suffixPart.match(/^0*(\d+)/);
         let newNextNumber = seq.nextNumber + 1;
         if (match && match[1]) {
@@ -124,7 +123,7 @@ export async function createSalesOrder(
     }
 
     return withUniqueViolation(DUPLICATE_NUMBER, () =>
-      tx.salesOrder.create({
+      tx.invoice.create({
         data: {
           ...soData,
           subTotal,
@@ -145,8 +144,8 @@ export async function createSalesOrder(
           activities: {
             create: [
               {
-                title: 'Sales Order Created',
-                description: `Sales order "${soData.soNumber}" created.`,
+                title: 'Invoice Created',
+                description: `Invoice "${soData.invoiceNumber}" created.`,
                 performedBy,
                 createdBy: userId,
                 updatedBy: userId,
@@ -160,11 +159,11 @@ export async function createSalesOrder(
   });
 }
 
-export async function updateSalesOrder(
+export async function updateInvoice(
   orgId: string,
   id: string,
   userId: string,
-  data: UpdateSalesOrderPayload,
+  data: UpdateInvoicePayload,
 ) {
   // totals move only with the lines they are summed from
   const { lineItems: rawLineItems, subTotal: _s, totalAmount: _t, ...soData } = data;
@@ -176,7 +175,7 @@ export async function updateSalesOrder(
         organizationId: orgId,
         date: soData.date,
         field: 'date',
-        label: 'sales order',
+        label: 'Invoice',
       });
     }
 
@@ -189,7 +188,7 @@ export async function updateSalesOrder(
     }
 
     return withUniqueViolation(DUPLICATE_NUMBER, async () => {
-      const so = await tx.salesOrder.updateMany({
+      const so = await tx.invoice.updateMany({
         where: { id, organizationId: orgId, isDeleted: false },
         data: {
           ...soData,
@@ -208,16 +207,16 @@ export async function updateSalesOrder(
       });
 
       if (lineItems) {
-        await tx.salesOrderItem.updateMany({
-          where: { salesOrderId: id },
+        await tx.invoiceItem.updateMany({
+          where: { invoiceId: id },
           data: { isDeleted: true, updatedBy: userId },
         });
         for (const item of lineItems) {
-          await tx.salesOrderItem.create({
+          await tx.invoiceItem.create({
             data: {
               ...item,
               id: undefined,
-              salesOrderId: id,
+              invoiceId: id,
               createdBy: userId,
               updatedBy: userId,
               customFields: (item.customFields ?? {}) as Prisma.InputJsonObject,
@@ -226,11 +225,11 @@ export async function updateSalesOrder(
         }
       }
 
-      await tx.salesOrderActivity.create({
+      await tx.invoiceActivity.create({
         data: {
-          salesOrderId: id,
-          title: 'Sales Order Updated',
-          description: `Sales order ${soData.soNumber || ''} updated.`,
+          invoiceId: id,
+          title: 'Invoice Updated',
+          description: `Invoice ${soData.invoiceNumber || ''} updated.`,
           performedBy,
           createdBy: userId,
           updatedBy: userId,
@@ -242,13 +241,13 @@ export async function updateSalesOrder(
   });
 }
 
-export async function getSalesOrderActivities(organizationId: string, id: string) {
+export async function getInvoiceActivities(organizationId: string, id: string) {
   return runAsTenant(organizationId, (tx) =>
-    tx.salesOrderActivity.findMany({
+    tx.invoiceActivity.findMany({
       where: {
-        salesOrderId: id,
+        invoiceId: id,
         isDeleted: false,
-        salesOrder: {
+        invoice: {
           organizationId: organizationId,
           isDeleted: false,
         },
@@ -258,27 +257,27 @@ export async function getSalesOrderActivities(organizationId: string, id: string
   );
 }
 
-export async function deleteSalesOrder(orgId: string, id: string) {
+export async function deleteInvoice(orgId: string, id: string) {
   return runAsTenant(orgId, (tx) =>
-    tx.salesOrder.updateMany({
+    tx.invoice.updateMany({
       where: { id, organizationId: orgId, isDeleted: false },
       data: { isDeleted: true },
     }),
   );
 }
 
-export async function getSalesOrderNumberPreference(organizationId: string) {
+export async function getInvoiceNumberPreference(organizationId: string) {
   return runAsTenant(organizationId, async (tx) => {
     let seq = await tx.numberSequence.findUnique({
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      where: { organizationId_entityType: { organizationId, entityType: 'sales_order' } },
+      where: { organizationId_entityType: { organizationId, entityType: 'invoice' } },
     });
 
     if (!seq) {
       seq = await tx.numberSequence.create({
         data: {
           organizationId,
-          entityType: 'sales_order',
+          entityType: 'invoice',
           prefix: 'SO-',
           nextNumber: 1,
         },
@@ -289,7 +288,7 @@ export async function getSalesOrderNumberPreference(organizationId: string) {
   });
 }
 
-export async function updateSalesOrderNumberPreference(
+export async function updateInvoiceNumberPreference(
   organizationId: string,
   prefix: string,
   nextNumber: number,
@@ -297,10 +296,10 @@ export async function updateSalesOrderNumberPreference(
   return runAsTenant(organizationId, async (tx) => {
     return tx.numberSequence.upsert({
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      where: { organizationId_entityType: { organizationId, entityType: 'sales_order' } },
+      where: { organizationId_entityType: { organizationId, entityType: 'invoice' } },
       create: {
         organizationId,
-        entityType: 'sales_order',
+        entityType: 'invoice',
         prefix,
         nextNumber,
       },
@@ -312,13 +311,13 @@ export async function updateSalesOrderNumberPreference(
   });
 }
 
-export async function getSalesOrderComments(organizationId: string, id: string) {
+export async function getInvoiceComments(organizationId: string, id: string) {
   return runAsTenant(organizationId, (tx) =>
-    tx.salesOrderComment.findMany({
+    tx.invoiceComment.findMany({
       where: {
-        salesOrderId: id,
+        invoiceId: id,
         isDeleted: false,
-        salesOrder: {
+        invoice: {
           organizationId: organizationId,
           isDeleted: false,
         },
@@ -328,7 +327,7 @@ export async function getSalesOrderComments(organizationId: string, id: string) 
   );
 }
 
-export async function createSalesOrderComment(
+export async function createInvoiceComment(
   organizationId: string,
   id: string,
   content: string,
@@ -343,9 +342,9 @@ export async function createSalesOrderComment(
       }
     }
 
-    return tx.salesOrderComment.create({
+    return tx.invoiceComment.create({
       data: {
-        salesOrderId: id,
+        invoiceId: id,
         content,
         performedBy,
         createdBy: userId ?? null,
@@ -355,19 +354,19 @@ export async function createSalesOrderComment(
   });
 }
 
-export async function deleteSalesOrderComment(
+export async function deleteInvoiceComment(
   organizationId: string,
-  salesOrderId: string,
+  invoiceId: string,
   commentId: string,
   userId?: string,
 ) {
   return runAsTenant(organizationId, async (tx) => {
-    const existingComment = await tx.salesOrderComment.findFirst({
+    const existingComment = await tx.invoiceComment.findFirst({
       where: {
         id: commentId,
-        salesOrderId,
+        invoiceId,
         isDeleted: false,
-        salesOrder: { organizationId: organizationId },
+        invoice: { organizationId: organizationId },
       },
     });
 
@@ -375,9 +374,11 @@ export async function deleteSalesOrderComment(
       throw ApiError.notFound('Comment not found');
     }
 
-    return tx.salesOrderComment.update({
+    return tx.invoiceComment.update({
       where: { id: commentId },
       data: { isDeleted: true, updatedBy: userId ?? null },
     });
   });
 }
+
+
