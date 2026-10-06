@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, X, Clock, ChevronRight, Package, Layers, Info } from 'lucide-react';
+import { ArrowLeft, X, Clock, ChevronRight, Package, Layers } from 'lucide-react';
 import { fetchJobOrderOverview, fetchJobOrderWithStepsById } from '../job-orders/jobOrders.api';
 import { Spinner } from '../../../components/ui/Spinner';
 import { LocalComboBox } from '../../../components/ui/LocalComboBox';
@@ -446,60 +446,163 @@ export function CreateIssuePage() {
             style={{
               background: '#ffffff',
               borderRadius: 8,
-              border: '1px dashed #cbd5e1',
-              padding: '48px 32px',
+              border: '1px solid #e2e8f0',
+              padding: '36px 32px',
               textAlign: 'center',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
             }}
           >
             <div
               style={{
-                width: 60,
-                height: 60,
+                width: 56,
+                height: 56,
                 borderRadius: '50%',
-                background: '#f0f9ff',
+                background: '#e0f2fe',
                 color: '#0284c7',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 16,
+                marginBottom: 14,
               }}
             >
-              <Layers size={28} />
+              <Layers size={26} />
             </div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: '0 0 6px 0' }}>
-              {!effectiveJobOrderId ? 'Select a Job Order to Begin' : 'Select the Process Step'}
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 6px 0' }}>
+              {!effectiveJobOrderId
+                ? 'Select a Job Order to Begin Dispatch'
+                : 'Select the Target Process Step'}
             </h3>
             <p
               style={{
                 fontSize: 13,
                 color: '#64748b',
-                maxWidth: 480,
+                maxWidth: 520,
                 lineHeight: 1.5,
-                margin: '0 0 16px 0',
+                margin: '0 0 24px 0',
               }}
             >
               {!effectiveJobOrderId
-                ? 'Material issue challans dispatch inventory items from your godowns to in-house work centres or external jobworkers for a designated Job Order.'
-                : 'Choose which process step of this Job Order you are issuing materials for. The form will load planned input items, stock availability, and batch selections.'}
+                ? 'Delivery challans record material sent from your storage godowns to internal workshops or external jobworkers. Pick a Job Order above to load its planned inputs and stages.'
+                : 'Choose the process step where material needs to be dispatched. Stock availability and batch pickers will automatically populate based on the step configuration.'}
             </p>
+
+            {/* 3 Step Workflow Preview Cards */}
             <div
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 12,
-                color: '#0284c7',
-                background: '#f0f9ff',
-                padding: '6px 12px',
-                borderRadius: 20,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 16,
+                width: '100%',
+                maxWidth: 820,
+                textAlign: 'left',
               }}
             >
-              <Info size={14} />
-              <span>Goods cannot legally travel without an official delivery challan</span>
+              <div
+                style={{
+                  padding: '16px',
+                  borderRadius: 6,
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: '#0284c7',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    1
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                    Pick Job Order & Step
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                  Select which active order and sequential process stage is ready to receive goods.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  padding: '16px',
+                  borderRadius: 6,
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: '#64748b',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    2
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                    Origin Godown & Logistics
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                  Specify which godown or vendor premise the material physically ships from.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  padding: '16px',
+                  borderRadius: 6,
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: '#64748b',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    3
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                    Allocate Lots & Issue
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                  Choose exact batches or rolls, print the GST delivery challan, and deduct ledger
+                  stock.
+                </p>
+              </div>
             </div>
           </div>
         )}

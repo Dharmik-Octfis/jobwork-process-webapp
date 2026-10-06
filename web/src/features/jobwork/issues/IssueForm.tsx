@@ -1907,7 +1907,24 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                       </td>
 
                       <td style={{ ...lineTd, color: '#64748b' }}>
-                        <div style={lineCell}>{input.uomLabel || '—'}</div>
+                        <div style={lineCell}>
+                          {input.uomLabel ? (
+                            <span
+                              style={{
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                                color: '#475569',
+                                background: '#f1f5f9',
+                                padding: '2px 7px',
+                                borderRadius: 4,
+                              }}
+                            >
+                              {input.uomLabel}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </div>
                       </td>
 
                       <td style={{ ...lineTd, borderRight: 'none' }}>
