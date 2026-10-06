@@ -12,10 +12,20 @@ import {
   saveSelectedOrganization,
   disconnectZoho,
   refreshZohoToken,
+  getEntityFields,
+  getSyncSettings,
+  saveSyncConfig,
+  toggleSync,
+  instantSync,
+  syncAllModules,
+  getSyncHistory,
 } from './zoho.controller.ts';
 import {
   configureZohoCredentialsSchema,
   selectZohoOrganizationSchema,
+  saveZohoSyncConfigSchema,
+  toggleZohoSyncSchema,
+  instantZohoSyncSchema,
 } from './zoho.schemas.ts';
 
 /**
@@ -50,6 +60,34 @@ zohoRouter.post(
 );
 zohoRouter.post('/disconnect', requirePermission('integration:delete'), disconnectZoho);
 zohoRouter.post('/refresh', requirePermission('integration:update'), refreshZohoToken);
+
+// Synchronize & Field Mapping Routes
+zohoRouter.get('/fields', requirePermission('integration:read'), getEntityFields);
+zohoRouter.get('/sync', requirePermission('integration:read'), getSyncSettings);
+zohoRouter.post(
+  '/sync/configure',
+  requirePermission('integration:update'),
+  validateBody(saveZohoSyncConfigSchema),
+  saveSyncConfig,
+);
+zohoRouter.post(
+  '/sync/toggle',
+  requirePermission('integration:update'),
+  validateBody(toggleZohoSyncSchema),
+  toggleSync,
+);
+zohoRouter.post(
+  '/sync/instant',
+  requirePermission('integration:update'),
+  validateBody(instantZohoSyncSchema),
+  instantSync,
+);
+zohoRouter.post(
+  '/sync/all',
+  requirePermission('integration:update'),
+  syncAllModules,
+);
+zohoRouter.get('/sync/history', requirePermission('integration:read'), getSyncHistory);
 
 /**
  * Public OAuth callback router.

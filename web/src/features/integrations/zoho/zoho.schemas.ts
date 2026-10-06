@@ -53,3 +53,121 @@ export const configureZohoCredentialsSchema = z.object({
 });
 
 export type ConfigureZohoCredentialsInput = z.infer<typeof configureZohoCredentialsSchema>;
+
+export interface ZohoField {
+  field_id?: string;
+  field_name: string;
+  label: string;
+  data_type: string;
+  is_mandatory: boolean;
+  is_custom_field?: boolean;
+}
+
+export interface AppFieldDefinition {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'select' | 'object';
+  required?: boolean;
+  isSystem?: boolean;
+  isCustomField?: boolean;
+  description?: string;
+}
+
+export interface ZohoFieldMappingItem {
+  id: string;
+  zohoField: string;
+  zohoFieldLabel: string;
+  appField: string;
+  appFieldLabel: string;
+  isRequired?: boolean;
+  isSystem?: boolean;
+  dataType?: string;
+}
+
+export type ZohoSyncModuleKey = 'item' | 'customer' | 'vendor';
+export type ZohoSyncStatus = 'ACTIVE' | 'PAUSED' | 'INACTIVE' | 'NOT_CONFIGURED';
+export type ZohoSyncDirection = 'TWO_WAY' | 'APP_TO_ZOHO' | 'ZOHO_TO_APP';
+
+export interface ZohoModuleSyncConfig {
+  module: ZohoSyncModuleKey;
+  moduleLabel: string;
+  status: ZohoSyncStatus;
+  syncDirection: ZohoSyncDirection;
+  duplicationPreference: string;
+  conflictResolution: string;
+  fieldMappings: ZohoFieldMappingItem[];
+  lastSyncAt: string | null;
+  lastPushAt: string | null;
+  autoSyncInterval: string;
+  syncAddresses?: boolean;
+  syncContactPersons?: boolean;
+  stats?: {
+    totalSynced?: number;
+    lastSyncedCount?: number;
+    failedCount?: number;
+    lastError?: string | null;
+  };
+}
+
+export interface ZohoSyncSettings {
+  modules: Record<ZohoSyncModuleKey, ZohoModuleSyncConfig>;
+}
+
+export interface ZohoEntityFieldsResponse {
+  zohoFields: ZohoField[];
+  appFields: AppFieldDefinition[];
+  defaultMappings: ZohoFieldMappingItem[];
+}
+
+export type ZohoSyncMode = 'incremental' | 'full';
+
+export interface ZohoSyncOptions {
+  fullSync?: boolean;
+  syncMode?: ZohoSyncMode;
+  syncAddresses?: boolean;
+  syncContactPersons?: boolean;
+}
+
+export interface InstantZohoSyncInput {
+  module?: ZohoSyncModuleKey | 'all';
+  fullSync?: boolean;
+  syncMode?: ZohoSyncMode;
+  syncAddresses?: boolean;
+  syncContactPersons?: boolean;
+}
+
+export interface ZohoSyncLog {
+  id: string;
+  module: ZohoSyncModuleKey;
+  syncType: 'INSTANT' | 'AUTO' | 'SCHEDULED' | 'FULL_SYNC' | 'INCREMENTAL';
+  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'IN_PROGRESS';
+  syncedCount: number;
+  failedCount: number;
+  details?: string;
+  createdAt: string;
+}
+
+export const saveZohoSyncConfigSchema = z.object({
+  module: z.enum(['item', 'customer', 'vendor']),
+  syncDirection: z.enum(['TWO_WAY', 'APP_TO_ZOHO', 'ZOHO_TO_APP']).default('TWO_WAY'),
+  duplicationPreference: z.string().trim().min(1, 'Duplication preference is required'),
+  conflictResolution: z.string().trim().min(1, 'Conflict resolution is required'),
+  fieldMappings: z.array(
+    z.object({
+      id: z.string().optional(),
+      zohoField: z.string().trim().min(1),
+      zohoFieldLabel: z.string().trim().min(1),
+      appField: z.string().trim().min(1),
+      appFieldLabel: z.string().trim().min(1),
+      isRequired: z.boolean().optional(),
+      isSystem: z.boolean().optional(),
+      dataType: z.string().optional(),
+    }),
+  ).min(1, 'At least one field mapping is required'),
+  status: z.enum(['ACTIVE', 'PAUSED', 'INACTIVE', 'NOT_CONFIGURED']).optional(),
+  autoSyncInterval: z.string().optional(),
+  syncAddresses: z.boolean().optional(),
+  syncContactPersons: z.boolean().optional(),
+});
+
+export type SaveZohoSyncConfigInput = z.infer<typeof saveZohoSyncConfigSchema>;

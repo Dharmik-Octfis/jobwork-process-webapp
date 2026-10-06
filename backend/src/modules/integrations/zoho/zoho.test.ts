@@ -13,10 +13,23 @@ import { getValidAccessToken } from './zoho.token.service.ts';
 import {
   fetchZohoOrganizations,
   saveSelectedZohoOrganization,
+  fetchZohoEntityFields,
+  getZohoSyncSettings,
+  saveZohoSyncConfig,
+  toggleZohoSync,
+  executeInstantSync,
+  executeAllZohoSync,
+  dumpZohoRecordsToDb,
+  ensureItemCategoryExists,
+  ensureUnitOfMeasurementExists,
+  ensurePaymentTermExists,
+  ensureCurrencyExists,
+  getZohoSyncHistory,
 } from './zoho.api.service.ts';
 import {
   ZOHO_INTEGRATION_STATUS,
   ZOHO_DEFAULT_ACCOUNTS_URL,
+  ZOHO_DEFAULT_SCOPE,
   ZOHO_DATA_CENTERS,
 } from './zoho.constants.ts';
 import { prisma } from '../../../db/prisma.ts';
@@ -37,6 +50,17 @@ describe('Zoho Books Integration Module', () => {
           $executeRaw: vi.fn().mockResolvedValue(1),
           zohoIntegration: prisma.zohoIntegration,
           oAuthState: prisma.oAuthState,
+          item: prisma.item,
+          customer: prisma.customer,
+          customerAddress: (prisma as any).customerAddress || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+          customerContactPerson: (prisma as any).customerContactPerson || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+          vendor: prisma.vendor,
+          vendorAddress: (prisma as any).vendorAddress || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+          vendorContactPerson: (prisma as any).vendorContactPerson || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+          itemCategory: prisma.itemCategory,
+          unitOfMeasurement: prisma.unitOfMeasurement,
+          paymentTerm: prisma.paymentTerm,
+          currency: prisma.currency,
         };
         return cb(mockTx);
       }
@@ -70,12 +94,12 @@ describe('Zoho Books Integration Module', () => {
 
     it('resolves India DC accounts server from location param', () => {
       const server = resolveAccountsServer(null, 'IN');
-      expect(server).toBe(ZOHO_DATA_CENTERS.IN.accountsUrl);
+      expect(server).toBe(ZOHO_DATA_CENTERS['IN']?.accountsUrl);
     });
 
     it('resolves Europe DC accounts server from location param', () => {
       const server = resolveAccountsServer(null, 'EU');
-      expect(server).toBe(ZOHO_DATA_CENTERS.EU.accountsUrl);
+      expect(server).toBe(ZOHO_DATA_CENTERS['EU']?.accountsUrl);
     });
 
     it('resolves explicit custom accounts server override when provided', () => {
@@ -97,11 +121,11 @@ describe('Zoho Books Integration Module', () => {
       );
 
       expect(createSpy).toHaveBeenCalled();
-      const callData = createSpy.mock.calls[0][0].data;
+      const callData = (createSpy.mock.calls[0]?.[0] as any)?.data;
       expect(callData.organizationId).toBe(testOrgId);
       expect(callData.clientId).toBe('1000.TESTCLIENTID');
       expect(callData.clientSecret).not.toBe('raw_secret_xyz123');
-      expect(decryptToken(callData.clientSecret)).toBe('raw_secret_xyz123');
+      expect(decryptToken(callData.clientSecret as string)).toBe('raw_secret_xyz123');
     });
 
     it('returns masked client secret and never leaks the plain secret in getSafeIntegrationStatus', async () => {
@@ -155,7 +179,7 @@ describe('Zoho Books Integration Module', () => {
         id: 'state-id-1',
         createdAt: new Date(),
         ...args.data,
-      }));
+      }) as any);
 
       const result = await buildAuthorizationUrl(testOrgId, testUserId);
 
@@ -284,12 +308,12 @@ describe('Zoho Books Integration Module', () => {
 
       expect(result.organizationId).toBe(testOrgId);
       expect(updateSpy).toHaveBeenCalled();
-      const savedData = updateSpy.mock.calls[0][0].data;
+      const savedData = (updateSpy.mock.calls[0]?.[0] as any)?.data;
 
       expect(savedData.status).toBe(ZOHO_INTEGRATION_STATUS.PENDING_ORGANIZATION_SELECTION);
       expect(savedData.apiDomain).toBe('https://www.zohoapis.in');
-      expect(decryptToken(savedData.accessToken!)).toBe('zoho_access_token_123');
-      expect(decryptToken(savedData.refreshToken!)).toBe('zoho_refresh_token_456');
+      expect(decryptToken(savedData.accessToken as string)).toBe('zoho_access_token_123');
+      expect(decryptToken(savedData.refreshToken as string)).toBe('zoho_refresh_token_456');
     });
 
     it('handles token exchange failure (e.g. invalid_code)', async () => {
@@ -704,7 +728,7 @@ describe('Zoho Books Integration Module', () => {
   describe('9. Multi-Tenant Isolation Guarantees', () => {
     it('ensures Organization A credentials and state are completely separated from Organization B', async () => {
       // Setup mock where Org A has credentials and Org B has nothing
-      vi.spyOn(prisma.zohoIntegration, 'findUnique').mockImplementation(async (args: any) => {
+      vi.spyOn(prisma.zohoIntegration, 'findUnique').mockImplementation((async (args: any) => {
         if (args.where.organizationId === testOrgId) {
           return {
             id: 'int-org-a',
@@ -731,7 +755,7 @@ describe('Zoho Books Integration Module', () => {
           return null;
         }
         return null;
-      });
+      }) as any);
 
       const statusA = await getSafeIntegrationStatus(testOrgId);
       const statusB = await getSafeIntegrationStatus(testOrgIdB);
@@ -762,7 +786,7 @@ describe('Zoho Books Integration Module', () => {
       vi.spyOn(prisma.oAuthState, 'update').mockResolvedValue({} as any);
 
       // In handleCallback, it loads the integration for the organization recorded on state
-      vi.spyOn(prisma.zohoIntegration, 'findUnique').mockImplementation(async (args: any) => {
+      vi.spyOn(prisma.zohoIntegration, 'findUnique').mockImplementation((async (args: any) => {
         if (args.where.organizationId === testOrgId) {
           return {
             id: 'int-org-a',
@@ -772,7 +796,7 @@ describe('Zoho Books Integration Module', () => {
           } as any;
         }
         return null;
-      });
+      }) as any);
 
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
@@ -795,4 +819,276 @@ describe('Zoho Books Integration Module', () => {
       });
     });
   });
+
+  describe('9. Module Synchronization & Field Mapping', () => {
+    it('fetches entity fields with prefilled required field mapping for item', async () => {
+      const result = await fetchZohoEntityFields(testOrgId, 'item');
+
+      expect(result.zohoFields).toBeDefined();
+      expect(result.appFields).toBeDefined();
+      expect(result.defaultMappings).toBeDefined();
+
+      // Verify that Name is prefilled, required, and marked as system
+      const nameMapping = result.defaultMappings.find((m) => m.zohoField === 'name');
+      expect(nameMapping).toBeDefined();
+      expect(nameMapping?.appField).toBe('name');
+      expect(nameMapping?.isRequired).toBe(true);
+      expect(nameMapping?.isSystem).toBe(true);
+    });
+
+    it('saves module sync preferences and validates mandatory field mapping', async () => {
+      const config = await saveZohoSyncConfig(testOrgId, {
+        module: 'item',
+        syncDirection: 'TWO_WAY',
+        duplicationPreference: 'Item Name',
+        conflictResolution: 'Clone',
+        fieldMappings: [
+          {
+            id: 'm1',
+            zohoField: 'name',
+            zohoFieldLabel: 'Name',
+            appField: 'name',
+            appFieldLabel: 'Product Name',
+            isRequired: true,
+            isSystem: true,
+          },
+          {
+            id: 'm2',
+            zohoField: 'sku',
+            zohoFieldLabel: 'SKU',
+            appField: 'sku',
+            appFieldLabel: 'Product Code',
+          },
+        ],
+      });
+
+      expect(config.module).toBe('item');
+      expect(config.status).toBe('ACTIVE');
+      expect(config.duplicationPreference).toBe('Item Name');
+      expect(config.conflictResolution).toBe('Clone');
+      expect(config.fieldMappings).toHaveLength(2);
+
+      const settings = await getZohoSyncSettings(testOrgId);
+      expect(settings.modules.item.status).toBe('ACTIVE');
+    });
+
+    it('rejects saving config if required field is not mapped', async () => {
+      await expect(
+        saveZohoSyncConfig(testOrgId, {
+          module: 'item',
+          syncDirection: 'TWO_WAY',
+          duplicationPreference: 'Item Name',
+          conflictResolution: 'Clone',
+          fieldMappings: [
+            {
+              id: 'm2',
+              zohoField: 'sku',
+              zohoFieldLabel: 'SKU',
+              appField: 'sku',
+              appFieldLabel: 'Product Code',
+            },
+          ],
+        }),
+      ).rejects.toThrow(/required field/i);
+    });
+
+    it('toggles module sync status between active and paused', async () => {
+      const paused = await toggleZohoSync(testOrgId, 'item', false);
+      expect(paused.status).toBe('PAUSED');
+
+      const resumed = await toggleZohoSync(testOrgId, 'item', true);
+      expect(resumed.status).toBe('ACTIVE');
+    });
+
+    it('sets module sync status to INACTIVE and rejects instant sync when inactive', async () => {
+      const inactive = await toggleZohoSync(testOrgId, 'item', undefined, 'INACTIVE');
+      expect(inactive.status).toBe('INACTIVE');
+
+      await expect(executeInstantSync(testOrgId, 'item')).rejects.toThrow(/currently Inactive/i);
+
+      // Reactivate
+      const reactivated = await toggleZohoSync(testOrgId, 'item', undefined, 'ACTIVE');
+      expect(reactivated.status).toBe('ACTIVE');
+    });
+
+    it('executes instant sync and creates chronological sync logs', async () => {
+      const syncResult = await executeInstantSync(testOrgId, 'item');
+      expect(syncResult.status).toBe('SUCCESS');
+      expect(syncResult.syncedCount).toBeGreaterThan(0);
+
+      const history = await getZohoSyncHistory(testOrgId, 'item');
+      expect(history.length).toBeGreaterThan(0);
+      expect(history[0]?.syncType).toBe('INSTANT');
+      expect(history[0]?.status).toBe('SUCCESS');
+    });
+
+    it('transforms and dumps Zoho records into Jobwork DB based on field mappings with master data auto-creation', async () => {
+      const settings = await getZohoSyncSettings(testOrgId);
+      const itemConfig = settings.modules.item;
+
+      vi.spyOn(prisma.item, 'findFirst').mockResolvedValue(null);
+      const createSpy = vi.spyOn(prisma.item, 'create').mockResolvedValue({
+        id: 'mock-item-1',
+        name: 'Zoho Books Test Widget',
+        sku: 'ZOHO-WIDGET-001',
+      } as any);
+
+      const mockZohoItems = [
+        {
+          item_id: '123456789',
+          name: 'Zoho Books Test Widget',
+          sku: 'ZOHO-WIDGET-001',
+          rate: 150.5,
+          purchase_rate: 90.25,
+          unit: 'Meter',
+          category_name: 'Raw Materials',
+          hsn_or_sac: '847130',
+        },
+      ];
+
+      const dumpResult = await dumpZohoRecordsToDb(
+        testOrgId,
+        'item',
+        mockZohoItems,
+        itemConfig,
+      );
+
+      expect(dumpResult.syncedCount).toBe(1);
+      expect(dumpResult.failedCount).toBe(0);
+      expect(createSpy).toHaveBeenCalled();
+    });
+
+    it('updates existing record in Jobwork DB when modified in Zoho Books', async () => {
+      const settings = await getZohoSyncSettings(testOrgId);
+      const itemConfig = settings.modules.item;
+
+      const existingItem = {
+        id: 'existing-item-uuid-1',
+        organizationId: testOrgId,
+        name: 'Zoho Widget',
+        sku: 'ZOHO-123456',
+        unit: 'pcs',
+        stockingUomId: 'uom-1',
+        sellingPrice: 100,
+        costPrice: 50,
+        hsnCode: '847130',
+        category: 'Electronics',
+        salesDescription: 'Old Description',
+        purchaseDescription: 'Old Purchase Description',
+        customFields: { zoho_item_id: '123456' },
+      };
+
+      vi.spyOn(prisma.item, 'findFirst').mockResolvedValue(existingItem as any);
+      const updateSpy = vi.spyOn(prisma.item, 'update').mockResolvedValue({
+        ...existingItem,
+        sellingPrice: 250,
+        salesDescription: 'Updated in Zoho Books',
+      } as any);
+
+      const modifiedZohoItem = [
+        {
+          item_id: '123456',
+          name: 'Zoho Widget Updated',
+          sku: 'ZOHO-123456',
+          rate: 250,
+          purchase_rate: 120,
+          unit: 'pcs',
+          description: 'Updated in Zoho Books',
+        },
+      ];
+
+      const dumpResult = await dumpZohoRecordsToDb(
+        testOrgId,
+        'item',
+        modifiedZohoItem,
+        itemConfig,
+      );
+
+      expect(dumpResult.syncedCount).toBe(1);
+      expect(dumpResult.failedCount).toBe(0);
+      expect(updateSpy).toHaveBeenCalledWith({
+        where: { id: 'existing-item-uuid-1' },
+        data: expect.objectContaining({
+          name: 'Zoho Widget Updated',
+          sellingPrice: 250,
+          costPrice: 120,
+          salesDescription: 'Updated in Zoho Books',
+        }),
+      });
+    });
+
+    it('ensures master data like categories and UOM are added first without duplicates', async () => {
+      // Mock category lookup returning null on first check, then created
+      const catFindFirstSpy = vi.spyOn(prisma.itemCategory, 'findFirst').mockResolvedValueOnce(null);
+      const catCreateSpy = vi.spyOn(prisma.itemCategory, 'create').mockResolvedValueOnce({
+        id: 'cat-1',
+        name: 'Fabrics',
+      } as any);
+
+      const createdCat = await ensureItemCategoryExists(prisma, testOrgId, 'Fabrics');
+      expect(createdCat).toBe('Fabrics');
+      expect(catCreateSpy).toHaveBeenCalled();
+
+      // Second check: category already exists -> do not add duplicate!
+      catFindFirstSpy.mockResolvedValueOnce({ id: 'cat-1', name: 'Fabrics' } as any);
+      const existingCat = await ensureItemCategoryExists(prisma, testOrgId, 'fabrics');
+      expect(existingCat).toBe('Fabrics');
+
+      // UOM check
+      const uomFindFirstSpy = vi.spyOn(prisma.unitOfMeasurement, 'findFirst').mockResolvedValueOnce(null);
+      const uomCreateSpy = vi.spyOn(prisma.unitOfMeasurement, 'create').mockResolvedValueOnce({
+        id: 'uom-1',
+        unitName: 'Kilogram',
+      } as any);
+
+      const createdUom = await ensureUnitOfMeasurementExists(prisma, testOrgId, 'Kilogram');
+      expect(createdUom.unitName).toBe('Kilogram');
+      expect(createdUom.stockingUomId).toBe('uom-1');
+      expect(uomCreateSpy).toHaveBeenCalled();
+      expect(uomFindFirstSpy).toHaveBeenCalled();
+    });
+
+    it('executes common / all-modules synchronization across active modules', async () => {
+      const allResult = await executeAllZohoSync(testOrgId);
+      expect(allResult.status).toBe('SUCCESS');
+      expect(allResult.totalSynced).toBeGreaterThan(0);
+      expect(allResult.modules.item).toBeDefined();
+      expect(allResult.modules.customer).toBeDefined();
+      expect(allResult.modules.vendor).toBeDefined();
+    });
+
+    it('performs incremental sync when lastSyncAt exists, reporting only modified/created records', async () => {
+      const settings = await getZohoSyncSettings(testOrgId);
+      settings.modules.item.lastSyncAt = new Date(Date.now() - 3600000).toISOString();
+
+      const syncResult = await executeInstantSync(testOrgId, 'item');
+      expect(syncResult.status).toBe('SUCCESS');
+      expect(syncResult.message).toMatch(/Incremental sync completed|already up to date/i);
+    });
+
+    it('performs full sync when fullSync option is enabled, ignoring previous lastSyncAt timestamp', async () => {
+      const settings = await getZohoSyncSettings(testOrgId);
+      settings.modules.item.lastSyncAt = new Date(Date.now() - 3600000).toISOString();
+
+      const fullSyncResult = await executeInstantSync(testOrgId, 'item', undefined, { fullSync: true });
+      expect(fullSyncResult.status).toBe('SUCCESS');
+      expect(fullSyncResult.syncType).toBe('FULL_SYNC');
+      expect(fullSyncResult.message).toMatch(/Full synchronization completed.*all records, not filtered by time/i);
+
+      const history = await getZohoSyncHistory(testOrgId, 'item');
+      expect(history[0]?.syncType).toBe('FULL_SYNC');
+    });
+
+    it('executes full sync across all active modules when fullSync option is provided', async () => {
+      const allFullResult = await executeAllZohoSync(testOrgId, undefined, { fullSync: true });
+      expect(allFullResult.status).toBe('SUCCESS');
+      expect(allFullResult.syncType).toBe('FULL_SYNC');
+      expect(allFullResult.message).toMatch(/Full sync completed across all modules.*all records without time filter/i);
+      expect(allFullResult.modules.item?.syncType).toBe('FULL_SYNC');
+      expect(allFullResult.modules.customer?.syncType).toBe('FULL_SYNC');
+      expect(allFullResult.modules.vendor?.syncType).toBe('FULL_SYNC');
+    });
+  });
 });
+
+

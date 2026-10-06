@@ -139,3 +139,146 @@ export function useRefreshZoho(orgId: string) {
     },
   });
 }
+
+export const ZOHO_FIELDS_QUERY_KEY = 'zoho-entity-fields';
+export const ZOHO_SYNC_SETTINGS_QUERY_KEY = 'zoho-sync-settings';
+export const ZOHO_SYNC_HISTORY_QUERY_KEY = 'zoho-sync-history';
+
+/**
+ * Fetch Zoho Books fields and application fields for mapping.
+ */
+export function useZohoEntityFields(orgId: string, entity: string, enabled = true) {
+  return useQuery({
+    queryKey: [ZOHO_FIELDS_QUERY_KEY, orgId, entity],
+    queryFn: async (): Promise<any> => {
+      const res = await apiClient.get(
+        `/organizations/${orgId}/settings/integrations/zoho/fields?entity=${encodeURIComponent(entity)}`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(orgId) && Boolean(entity) && enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Fetch module synchronization settings and statuses.
+ */
+export function useZohoSyncSettings(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId],
+    queryFn: async (): Promise<any> => {
+      const res = await apiClient.get(`/organizations/${orgId}/settings/integrations/zoho/sync`);
+      return res.data;
+    },
+    enabled: Boolean(orgId) && enabled,
+    staleTime: 30 * 1000,
+  });
+}
+
+/**
+ * Save module synchronization preferences and field mappings.
+ */
+export function useSaveZohoSyncConfig(orgId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiClient.post(
+        `/organizations/${orgId}/settings/integrations/zoho/sync/configure`,
+        data,
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId] });
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_HISTORY_QUERY_KEY, orgId] });
+    },
+  });
+}
+
+/**
+ * Toggle module sync active / paused / inactive status.
+ */
+export function useToggleZohoSync(orgId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { module: string; active?: boolean; status?: string }) => {
+      const res = await apiClient.post(
+        `/organizations/${orgId}/settings/integrations/zoho/sync/toggle`,
+        data,
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId] });
+    },
+  });
+}
+
+/**
+ * Trigger manual Instant or Full Sync for a specific module or all modules.
+ */
+export function useInstantZohoSync(orgId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { module: string; fullSync?: boolean; syncMode?: 'incremental' | 'full' }) => {
+      const res = await apiClient.post(
+        `/organizations/${orgId}/settings/integrations/zoho/sync/instant`,
+        data,
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId] });
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_HISTORY_QUERY_KEY, orgId] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+    },
+  });
+}
+
+/**
+ * Trigger common synchronization for ALL active Zoho modules (supports fullSync/syncMode).
+ */
+export function useSyncAllZohoModules(orgId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data?: { fullSync?: boolean; syncMode?: 'incremental' | 'full' }) => {
+      const res = await apiClient.post(
+        `/organizations/${orgId}/settings/integrations/zoho/sync/all`,
+        data || {},
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId] });
+      queryClient.invalidateQueries({ queryKey: [ZOHO_SYNC_HISTORY_QUERY_KEY, orgId] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+    },
+  });
+}
+
+/**
+ * Fetch Sync History logs.
+ */
+export function useZohoSyncHistory(orgId: string, module?: string, enabled = true) {
+  return useQuery({
+    queryKey: [ZOHO_SYNC_HISTORY_QUERY_KEY, orgId, module || 'all'],
+    queryFn: async (): Promise<any[]> => {
+      const qs = module ? `?module=${encodeURIComponent(module)}` : '';
+      const res = await apiClient.get(
+        `/organizations/${orgId}/settings/integrations/zoho/sync/history${qs}`,
+      );
+      return res.data;
+    },
+    enabled: Boolean(orgId) && enabled,
+    staleTime: 15 * 1000,
+  });
+}

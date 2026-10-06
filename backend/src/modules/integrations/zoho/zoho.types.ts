@@ -48,3 +48,90 @@ export interface ZohoConnectUrlResult {
   url: string;
   state: string;
 }
+
+export interface ZohoField {
+  field_id?: string;
+  field_name: string;
+  label: string;
+  data_type: string;
+  is_mandatory: boolean;
+  is_custom_field?: boolean;
+  max_length?: number;
+  default_value?: any;
+  options?: Array<{ label: string; value: string }>;
+}
+
+export interface ZohoFieldsApiResponse {
+  code: number;
+  message: string;
+  fields?: ZohoField[];
+}
+
+export interface AppFieldDefinition {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'select' | 'object';
+  required?: boolean;
+  isSystem?: boolean;
+  isCustomField?: boolean;
+  description?: string;
+}
+
+export interface ZohoFieldMappingItem {
+  id: string;
+  zohoField: string;
+  zohoFieldLabel: string;
+  appField: string;
+  appFieldLabel: string;
+  isRequired?: boolean;
+  isSystem?: boolean;
+  dataType?: string;
+}
+
+export type ZohoSyncModuleKey = 'item' | 'customer' | 'vendor';
+export type ZohoSyncStatus = 'ACTIVE' | 'PAUSED' | 'INACTIVE' | 'NOT_CONFIGURED';
+export type ZohoSyncDirection = 'TWO_WAY' | 'APP_TO_ZOHO' | 'ZOHO_TO_APP';
+export type ZohoSyncMode = 'incremental' | 'full';
+
+export interface ZohoSyncOptions {
+  fullSync?: boolean;
+  syncMode?: ZohoSyncMode;
+  syncAddresses?: boolean;
+  syncContactPersons?: boolean;
+}
+
+export interface ZohoModuleSyncConfig {
+  module: ZohoSyncModuleKey;
+  moduleLabel: string;
+  status: ZohoSyncStatus;
+  syncDirection: ZohoSyncDirection;
+  duplicationPreference: string;
+  conflictResolution: string;
+  fieldMappings: ZohoFieldMappingItem[];
+  lastSyncAt: string | null;
+  lastPushAt: string | null;
+  autoSyncInterval: string;
+  syncAddresses?: boolean;
+  syncContactPersons?: boolean;
+  stats?: {
+    totalSynced?: number;
+    lastSyncedCount?: number;
+    failedCount?: number;
+    lastError?: string | null;
+  };
+}
+
+export interface ZohoSyncSettings {
+  modules: Record<ZohoSyncModuleKey, ZohoModuleSyncConfig>;
+}
+
+export interface ZohoSyncLog {
+  id: string;
+  module: ZohoSyncModuleKey;
+  syncType: 'INSTANT' | 'AUTO' | 'SCHEDULED' | 'FULL_SYNC' | 'INCREMENTAL';
+  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'IN_PROGRESS';
+  syncedCount: number;
+  failedCount: number;
+  details?: string;
+  createdAt: string;
+}

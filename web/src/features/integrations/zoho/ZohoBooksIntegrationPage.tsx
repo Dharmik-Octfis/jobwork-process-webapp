@@ -28,6 +28,9 @@ import {
   useDisconnectZoho,
   useRefreshZoho,
 } from './zoho.api';
+import type { ZohoSyncModuleKey } from './zoho.schemas';
+import { ModuleSyncHub } from './components/ModuleSyncHub';
+import { ModuleFieldMappingView } from './components/ModuleFieldMappingView';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { toApiErrorMessage } from '../../../api/client';
 
@@ -48,6 +51,15 @@ export function ZohoBooksIntegrationPage() {
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPopupAuthorizing, setIsPopupAuthorizing] = useState(false);
+  const [activeMappingModule, setActiveMappingModule] = useState<ZohoSyncModuleKey | null>(null);
+
+  // Check URL query param for direct module opening (e.g. ?module=item)
+  useEffect(() => {
+    const modParam = searchParams.get('module');
+    if (modParam === 'item' || modParam === 'customer' || modParam === 'vendor') {
+      setActiveMappingModule(modParam);
+    }
+  }, [searchParams]);
 
   // Queries and mutations
   const {
@@ -451,9 +463,24 @@ export function ZohoBooksIntegrationPage() {
 
       {/* Main Content */}
       <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
-        <div style={{ maxWidth: '840px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Error Banner */}
-          {errorMessage && (
+        {activeMappingModule ? (
+          <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+            <ModuleFieldMappingView
+              orgId={orgId || ''}
+              module={activeMappingModule}
+              onBack={() => {
+                setActiveMappingModule(null);
+                setSearchParams((p) => {
+                  p.delete('module');
+                  return p;
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <div style={{ maxWidth: '840px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Error Banner */}
+            {errorMessage && (
             <div
               style={{
                 display: 'flex',
@@ -493,7 +520,7 @@ export function ZohoBooksIntegrationPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
+              gridTemplateColumns: isConnected ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
               gap: '12px',
               backgroundColor: '#fff',
               padding: '16px 20px',
@@ -587,10 +614,41 @@ export function ZohoBooksIntegrationPage() {
                   3. Organization
                 </div>
                 <div style={{ fontSize: '11px', color: isConnected ? '#16a34a' : '#64748b' }}>
-                  {isConnected ? 'Connected & Mapped' : 'Select Zoho Org'}
+                  {isConnected ? 'Connected' : 'Select Zoho Org'}
                 </div>
               </div>
             </div>
+
+            {/* Step 4 Indicator (when connected) */}
+            {isConnected && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    backgroundColor: 'var(--navy-900)',
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}
+                >
+                  4
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--navy-900)' }}>
+                    4. Module Sync
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#16a34a' }}>
+                    Mapping & Auto-sync
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* STEP 1: OAuth Application Credentials Card */}
@@ -1407,7 +1465,22 @@ export function ZohoBooksIntegrationPage() {
               )}
             </div>
           </div>
+
+          {/* STEP 4: Synchronize & Configure Modules Hub matching Screenshot 2 */}
+          {isConnected && (
+            <ModuleSyncHub
+              orgId={orgId || ''}
+              onConfigureModule={(moduleKey) => {
+                setActiveMappingModule(moduleKey);
+                setSearchParams((p) => {
+                  p.set('module', moduleKey);
+                  return p;
+                });
+              }}
+            />
+          )}
         </div>
+        )}
       </main>
 
       {/* Disconnect Confirmation Dialog */}

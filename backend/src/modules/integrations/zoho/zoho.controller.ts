@@ -13,10 +13,20 @@ import { getValidAccessToken } from './zoho.token.service.ts';
 import {
   fetchZohoOrganizations,
   saveSelectedZohoOrganization,
+  fetchZohoEntityFields,
+  getZohoSyncSettings,
+  saveZohoSyncConfig,
+  toggleZohoSync,
+  executeInstantSync,
+  executeAllZohoSync,
+  getZohoSyncHistory,
 } from './zoho.api.service.ts';
 import type {
   SelectZohoOrganizationInput,
   ConfigureZohoCredentialsInput,
+  SaveZohoSyncConfigInput,
+  ToggleZohoSyncInput,
+  InstantZohoSyncInput,
 } from './zoho.schemas.ts';
 
 /**
@@ -174,4 +184,91 @@ export async function disconnectZoho(req: Request, res: Response): Promise<void>
 export async function refreshZohoToken(req: Request, res: Response): Promise<void> {
   await getValidAccessToken(req.tenantId!);
   sendSuccess(res, null, 'Zoho Books connection verified and refreshed successfully.');
+}
+
+/**
+ * GET /organizations/:orgId/settings/integrations/zoho/fields?entity=:entity
+ * Fetch Zoho Books fields and application fields for mapping.
+ */
+export async function getEntityFields(req: Request, res: Response): Promise<void> {
+  const entity = typeof req.query['entity'] === 'string' ? req.query['entity'] : 'item';
+  const result = await fetchZohoEntityFields(req.tenantId!, entity);
+  sendSuccess(res, result);
+}
+
+/**
+ * GET /organizations/:orgId/settings/integrations/zoho/sync
+ * Fetch current synchronization settings and module statuses.
+ */
+export async function getSyncSettings(req: Request, res: Response): Promise<void> {
+  const settings = await getZohoSyncSettings(req.tenantId!);
+  sendSuccess(res, settings);
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/sync/configure
+ * Save / Update synchronization preferences and field mappings.
+ */
+export async function saveSyncConfig(req: Request, res: Response): Promise<void> {
+  const body = req.body as SaveZohoSyncConfigInput;
+  const result = await saveZohoSyncConfig(req.tenantId!, body, req.user?.id);
+  sendSuccess(res, result, `${result.moduleLabel} sync settings saved successfully.`);
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/sync/toggle
+ * Toggle Pause / Resume for module synchronization.
+ */
+export async function toggleSync(req: Request, res: Response): Promise<void> {
+  const { module, active, status } = req.body as ToggleZohoSyncInput;
+  const result = await toggleZohoSync(req.tenantId!, module, active, status, req.user?.id);
+  const statusMsg = result.status === 'ACTIVE' ? 'activated' : result.status === 'PAUSED' ? 'paused' : 'set to inactive';
+  sendSuccess(
+    res,
+    result,
+    `Sync for ${result.moduleLabel} has been ${statusMsg}.`,
+  );
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/sync/instant
+ * Trigger manual instant or full sync for a specific module or all active modules.
+ */
+export async function instantSync(req: Request, res: Response): Promise<void> {
+  const { module, fullSync, syncMode, syncAddresses, syncContactPersons } = req.body as InstantZohoSyncInput;
+  const syncOptions = { fullSync, syncMode, syncAddresses, syncContactPersons };
+
+  if (!module || module === 'all') {
+    const result = await executeAllZohoSync(req.tenantId!, req.user?.id, syncOptions);
+    sendSuccess(res, result, result.message);
+    return;
+  }
+  const result = await executeInstantSync(req.tenantId!, module, req.user?.id, syncOptions);
+  sendSuccess(res, result, result.message);
+}
+
+/**
+ * POST /organizations/:orgId/settings/integrations/zoho/sync/all
+ * Trigger common / all-modules synchronization (supports fullSync/syncMode in body).
+ */
+export async function syncAllModules(req: Request, res: Response): Promise<void> {
+  const body = (req.body || {}) as InstantZohoSyncInput;
+  const syncOptions = {
+    fullSync: body.fullSync,
+    syncMode: body.syncMode,
+    syncAddresses: body.syncAddresses,
+    syncContactPersons: body.syncContactPersons,
+  };
+  const result = await executeAllZohoSync(req.tenantId!, req.user?.id, syncOptions);
+  sendSuccess(res, result, result.message);
+}
+
+/**
+ * GET /organizations/:orgId/settings/integrations/zoho/sync/history
+ * Fetch sync logs and history.
+ */
+export async function getSyncHistory(req: Request, res: Response): Promise<void> {
+  const module = typeof req.query['module'] === 'string' ? (req.query['module'] as any) : undefined;
+  const logs = await getZohoSyncHistory(req.tenantId!, module);
+  sendSuccess(res, logs);
 }
