@@ -6,6 +6,8 @@ export const batchReportQuerySchema = z.object({
   batchText: z.string().trim().optional(),
   state: z.string().trim().optional(),
   asOnDate: z.string().datetime().optional(),
+  fromDate: z.string().datetime().optional(),
+  toDate: z.string().datetime().optional(),
   minAgeDays: z.coerce.number().int().min(0).optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   perPage: z.coerce.number().int().min(1).max(100).optional().default(25),

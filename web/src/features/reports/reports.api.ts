@@ -377,6 +377,8 @@ export interface BatchReportQuery {
   batchText?: string;
   state?: string;
   asOnDate?: string;
+  fromDate?: string;
+  toDate?: string;
   minAgeDays?: number;
 }
 
@@ -418,6 +420,8 @@ export interface TakaReportQuery {
   batchText?: string;
   onlyAtJobWorkers?: boolean;
   asOnDate?: string;
+  fromDate?: string;
+  toDate?: string;
   minAgeDays?: number;
 }
 

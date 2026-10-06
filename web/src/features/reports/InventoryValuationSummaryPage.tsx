@@ -24,6 +24,8 @@ import { fetchLocations, isOwnLocation } from '../configuration/locations/locati
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 const STOCK_OPTIONS = [
   { label: 'No criteria', value: 'none' },
   { label: 'Greater than zero', value: 'gt' },
@@ -301,6 +303,7 @@ export function InventoryValuationSummaryPage() {
   }, [orgId, page, perPage, appliedFilters]);
 
   const rows = data?.results || [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const totalQty = data?.grandTotalQty || 0;
   const totalValue = data?.grandTotalValue || 0;
   const total = data?.total || 0;
@@ -588,66 +591,25 @@ export function InventoryValuationSummaryPage() {
                   {visibleColumns.map((colKey) => {
                     switch (colKey) {
                       case 'itemName':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            ITEM NAME{' '}
-                            <ChevronDown
-                              size={12}
-                              color="#9ca3af"
-                              style={{
-                                display: 'inline',
-                                verticalAlign: 'middle',
-                                marginLeft: '4px',
-                              }}
-                            />
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'categoryName':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            CATEGORY NAME
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="CATEGORY NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'sku':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            SKU
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="SKU" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'hsnCode':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            HSN CODE
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="HSN CODE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'uomName':
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            UNIT
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="UNIT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                       case 'stockOnHand':
-                        return (
-                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                            STOCK ON HAND
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="STOCK ON HAND" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
                       case 'inventoryAssetValue':
-                        return (
-                          <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                            INVENTORY ASSET VALUE
-                          </th>
-                        );
+                        return <SortableHeader key={colKey} sortKey={colKey} label="INVENTORY ASSET VALUE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
                       default:
                         if (colKey.startsWith('cf_')) {
                           const cfKey = colKey.replace('cf_', '');
                           const cfLabel =
                             customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
-                          return (
-                            <th key={colKey} style={thStyle}>
-                              {cfLabel.toUpperCase()}
-                            </th>
-                          );
+                          return <SortableHeader key={colKey} sortKey={colKey} label={cfLabel.toUpperCase()} currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
                         }
                         return null;
                     }
@@ -664,7 +626,7 @@ export function InventoryValuationSummaryPage() {
                       Loading...
                     </td>
                   </tr>
-                ) : rows.length === 0 ? (
+                ) : sortedRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={visibleColumns.length}
@@ -674,7 +636,7 @@ export function InventoryValuationSummaryPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr
                       key={row.itemId}
                       className="table-row-hover"
@@ -789,7 +751,7 @@ export function InventoryValuationSummaryPage() {
                     </tr>
                   ))
                 )}
-                {rows.length > 0 && (
+                {sortedRows.length > 0 && (
                   <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                     {visibleColumns.map((colKey, index) => {
                       if (index === 0) {

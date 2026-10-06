@@ -182,51 +182,61 @@ export function evaluateCondition(
           ? d.getUTCHours() * 60 + d.getUTCMinutes()
           : d.getHours() * 60 + d.getMinutes();
       }
-      
+
       // Fallback for raw ISO time parts
       const isoMatch = str.match(/T(\d{2}):(\d{2})/i);
       if (isoMatch) {
         return parseInt(isoMatch[1], 10) * 60 + parseInt(isoMatch[2], 10);
       }
-      
+
       return null;
     };
 
     const valMinsLocal = extractMinutes(itemValue, false);
     const valMinsUTC = extractMinutes(itemValue, true);
-    
+
     if (operator === 'between') {
       const fromMins = extractMinutes((filterValue as Record<string, unknown>)?.from);
       const toMins = extractMinutes((filterValue as Record<string, unknown>)?.to);
       if (fromMins === null || toMins === null) return false;
-      
-      const matchLocal = valMinsLocal !== null && valMinsLocal >= fromMins && valMinsLocal <= toMins;
+
+      const matchLocal =
+        valMinsLocal !== null && valMinsLocal >= fromMins && valMinsLocal <= toMins;
       const matchUTC = valMinsUTC !== null && valMinsUTC >= fromMins && valMinsUTC <= toMins;
       return matchLocal || matchUTC;
     }
 
     const filterMins = extractMinutes(filterValue);
     if (filterMins === null) return false;
-    
+
     const check = (valMins: number | null) => {
       if (valMins === null) return false;
       switch (operator) {
-        case 'equals': return valMins === filterMins;
-        case 'not_equals': return valMins !== filterMins;
+        case 'equals':
+          return valMins === filterMins;
+        case 'not_equals':
+          return valMins !== filterMins;
         case 'before':
-        case 'lt': return valMins < filterMins;
+        case 'lt':
+          return valMins < filterMins;
         case 'after':
-        case 'gt': return valMins > filterMins;
+        case 'gt':
+          return valMins > filterMins;
         case 'on_or_before':
-        case 'lte': return valMins <= filterMins;
+        case 'lte':
+          return valMins <= filterMins;
         case 'on_or_after':
-        case 'gte': return valMins >= filterMins;
-        default: return false;
+        case 'gte':
+          return valMins >= filterMins;
+        default:
+          return false;
       }
     };
 
     const finalResult = check(valMinsLocal) || check(valMinsUTC);
-    console.log(`[TimeFilter Debug] item=${itemValue} | filter=${filterValue} | localMins=${valMinsLocal} | utcMins=${valMinsUTC} | filterMins=${filterMins} | operator=${operator} -> match=${finalResult}`);
+    console.log(
+      `[TimeFilter Debug] item=${itemValue} | filter=${filterValue} | localMins=${valMinsLocal} | utcMins=${valMinsUTC} | filterMins=${filterMins} | operator=${operator} -> match=${finalResult}`,
+    );
     return finalResult;
   }
 

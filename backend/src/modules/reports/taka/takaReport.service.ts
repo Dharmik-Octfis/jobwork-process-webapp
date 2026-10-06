@@ -41,6 +41,8 @@ export async function getTakaReport(
     batchText,
     onlyAtJobWorkers,
     asOnDate,
+    fromDate,
+    toDate,
     minAgeDays,
     page,
     perPage,
@@ -57,6 +59,8 @@ export async function getTakaReport(
       minAgeDays !== undefined
         ? Prisma.sql`(EXTRACT(DAY FROM CURRENT_TIMESTAMP - bal.last_in_here) >= ${minAgeDays})`
         : null,
+      fromDate ? Prisma.sql`ins.first_in_anywhere >= ${new Date(fromDate)}` : null,
+      toDate ? Prisma.sql`ins.first_in_anywhere <= ${new Date(toDate)}` : null,
       Prisma.sql`b.state != 'draft'`,
       Prisma.sql`b.is_deleted = false`,
       Prisma.sql`i.is_deleted = false`,

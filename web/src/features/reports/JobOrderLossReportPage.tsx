@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
-import { format, endOfDay, startOfMonth } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
@@ -14,6 +14,8 @@ import type { Item } from '../items/items.schemas';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type JobOrderLossQuery, type JobOrderLossRow } from './reports.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 /**
  * Every write-off a completed or short-closed job order step made — what the
@@ -140,8 +142,8 @@ export function JobOrderLossReportPage() {
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
     return {
-      fromDate: applied.fromDate.toISOString(),
-      toDate: endOfDay(applied.toDate).toISOString(),
+      fromDate: format(applied.fromDate, 'yyyy-MM-dd'),
+      toDate: format(applied.toDate, 'yyyy-MM-dd'),
       itemName: valueOf('itemName'),
       processorName: valueOf('processorName'),
       jobOrderNumber: valueOf('jobOrderNumber'),
@@ -157,6 +159,7 @@ export function JobOrderLossReportPage() {
   });
 
   const rows = data?.results ?? [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.total ?? 0;
   const formattedFromDate = format(applied.fromDate, 'dd-MM-yyyy');
   const formattedToDate = format(applied.toDate, 'dd-MM-yyyy');
@@ -429,17 +432,21 @@ export function JobOrderLossReportPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th
+                    <SortableHeader
                       key={key}
-                      style={{ ...thStyle, textAlign: RIGHT_ALIGNED.has(key) ? 'right' : 'left' }}
-                    >
-                      {COLUMN_CATALOG.find((col) => col.key === key)?.label}
-                    </th>
+                      label={COLUMN_CATALOG.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align={RIGHT_ALIGNED.has(key) ? 'right' : 'left'}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={visibleColumns.length}
@@ -453,7 +460,7 @@ export function JobOrderLossReportPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr
                       key={row.id}
                       className="table-row-hover"

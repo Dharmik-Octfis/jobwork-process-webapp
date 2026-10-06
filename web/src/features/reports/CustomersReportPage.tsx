@@ -11,6 +11,8 @@ import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type CustomersReportQuery, type CustomersReportRow } from './reports.api';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
   { key: 'contactName', label: 'DISPLAY NAME', defaultVisible: true },
@@ -147,6 +149,7 @@ export function CustomersReportPage() {
   });
 
   const rows = useMemo(() => data?.items || [], [data?.items]);
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.pagination.totalCount || 0;
 
   const cell = (row: CustomersReportRow, key: string) => {
@@ -362,21 +365,28 @@ export function CustomersReportPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th key={key} style={{ ...thStyle, textAlign: RIGHT_ALIGNED.has(key) ? 'right' : 'left' }}>
-                      {allColumns.find((col) => col.key === key)?.label}
-                    </th>
+                    <SortableHeader
+                      key={key}
+                      label={allColumns.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align={RIGHT_ALIGNED.has(key) ? 'right' : 'left'}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td colSpan={visibleColumns.length} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
                       {isLoading ? 'Loading...' : isError ? 'Could not load the report.' : 'No customers found'}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr key={row.id} className="table-row-hover">
                       {visibleColumns.map((key) => (
                         <td

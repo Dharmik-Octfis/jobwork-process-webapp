@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Columns, Filter, X } from 'lucide-react';
+import { format, startOfMonth } from 'date-fns';
 import { formatDate } from '../../lib/formatDate';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
 import { Pagination } from '../../components/ui/Pagination';
+import { ReportDateFilter } from './components/ReportDateFilter';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
@@ -14,6 +16,8 @@ import { reportsApi, type PurchaseOrdersReportQuery, type PurchaseOrdersReportRo
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { fetchPaymentTerms } from '../purchases/purchase-orders/payment-terms.api';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
   { key: 'poNumber', label: 'PO NUMBER', locked: true, defaultVisible: true },
@@ -32,6 +36,8 @@ const RIGHT_ALIGNED = new Set<string>(['total']);
 
 interface Applied {
   conditions: FilterCondition[];
+  fromDate: Date;
+  toDate: Date;
 }
 
 export function PurchaseOrdersReportPage() {
@@ -46,10 +52,20 @@ export function PurchaseOrdersReportPage() {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
       if (!stored) return null;
       const parsed = JSON.parse(stored);
+      const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+        if (!val) return fallback;
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? fallback : d;
+      };
       return {
+        dateRange: parsed.dateRange || 'This Month',
+        fromDate: safeDate(parsed.fromDate, startOfMonth(new Date())),
+        toDate: safeDate(parsed.toDate, new Date()),
         conditions: (parsed.conditions as FilterCondition[]) || [],
         applied: {
           conditions: (parsed.applied?.conditions as FilterCondition[]) || [],
+          fromDate: safeDate(parsed.applied?.fromDate, startOfMonth(new Date())),
+          toDate: safeDate(parsed.applied?.toDate, new Date()),
         } satisfies Applied,
       };
     } catch {
@@ -57,16 +73,19 @@ export function PurchaseOrdersReportPage() {
     }
   }, [orgId, storageKey]);
 
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || startOfMonth(new Date()));
+  const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
-  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [] });
+  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() });
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(storageKey, JSON.stringify({ conditions, applied }));
-  }, [orgId, storageKey, conditions, applied]);
+    sessionStorage.setItem(storageKey, JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }));
+  }, [orgId, storageKey, dateRange, fromDate, toDate, conditions, applied]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => 
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() =>
     COLUMN_CATALOG.filter((col) => col.defaultVisible).map((col) => col.key)
   );
 
@@ -145,7 +164,6 @@ export function PurchaseOrdersReportPage() {
       { key: 'vendorName', label: 'Vendor Name', dataType: 'select', options: vendorOptions, group: 'Report' },
       { key: 'status', label: 'Status', dataType: 'select', options: statusOptions, group: 'Report' },
       { key: 'deliveryType', label: 'Delivery Type', dataType: 'select', options: deliveryTypeOptions, group: 'Report' },
-      { key: 'date', label: 'Date', dataType: 'date', group: 'Report' },
       ...customFilterFields,
     ];
   }, [customFilterFields, vendors]);
@@ -158,25 +176,6 @@ export function PurchaseOrdersReportPage() {
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
 
-    const dateOf = (field: string, target: 'from' | 'to') => {
-      const condition = applied.conditions.find((c) => c.field === field);
-      if (!condition) return undefined;
-
-      if (condition.operator === 'between') {
-        const val = condition.value as { from?: string; to?: string };
-        const res = target === 'from' ? val?.from : val?.to;
-        return typeof res === 'string' && res.trim() ? res.trim() : undefined;
-      }
-
-      const valStr = typeof condition.value === 'string' && condition.value.trim() ? condition.value.trim() : undefined;
-      
-      if (['before', 'on_or_before', 'lt', 'lte'].includes(condition.operator) && target === 'to') return valStr;
-      if (['after', 'on_or_after', 'gt', 'gte'].includes(condition.operator) && target === 'from') return valStr;
-      if (['equals', 'contains'].includes(condition.operator)) return valStr;
-
-      return undefined;
-    };
-
     const q: PurchaseOrdersReportQuery = {
       page,
       perPage,
@@ -184,10 +183,10 @@ export function PurchaseOrdersReportPage() {
       deliveryType: valueOf('deliveryType'),
       poNumber: valueOf('poNumber'),
       vendorName: valueOf('vendorName'),
-      fromDate: dateOf('date', 'from'),
-      toDate: dateOf('date', 'to'),
+      fromDate: format(applied.fromDate, 'yyyy-MM-dd'),
+      toDate: format(applied.toDate, 'yyyy-MM-dd'),
     };
-    
+
     // Process custom fields
     const customFields: Record<string, unknown> = {};
     applied.conditions.forEach((c) => {
@@ -216,6 +215,7 @@ export function PurchaseOrdersReportPage() {
   });
 
   const rows = useMemo(() => data?.items || [], [data?.items]);
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.pagination.totalCount || 0;
 
   const cell = (row: PurchaseOrdersReportRow, key: string) => {
@@ -230,7 +230,7 @@ export function PurchaseOrdersReportPage() {
         </Link>
       );
     }
-    
+
     if (key === 'vendorName') {
       return (
         <Link
@@ -242,7 +242,7 @@ export function PurchaseOrdersReportPage() {
         </Link>
       );
     }
-    
+
     if (key.startsWith('cf_')) {
       const cfKey = key.replace('cf_', '');
       const val = (row.customFields as Record<string, unknown>)?.[cfKey];
@@ -264,7 +264,7 @@ export function PurchaseOrdersReportPage() {
       const val = row[key as keyof PurchaseOrdersReportRow];
       return val ? formatDate(val as string) : '-';
     }
-    
+
     const val = row[key as keyof PurchaseOrdersReportRow];
     if (val === null || val === undefined || val === '') return '-';
     return String(val);
@@ -296,6 +296,9 @@ export function PurchaseOrdersReportPage() {
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Purchases</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
             Purchase Order Report
+            <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+              • From {format(applied.fromDate, 'dd-MM-yyyy')} To {format(applied.toDate, 'dd-MM-yyyy')}
+            </span>
           </div>
         </div>
 
@@ -347,6 +350,16 @@ export function PurchaseOrdersReportPage() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', flex: 1 }}>
+          <ReportDateFilter
+            isRange={true}
+            value={dateRange}
+            onChangeRange={(label, start, end) => {
+              setDateRange(label);
+              setFromDate(start!);
+              setToDate(end!);
+            }}
+            labelPrefix=""
+          />
           <AdvancedFilter
             fields={filterFields}
             conditions={conditions}
@@ -363,7 +376,7 @@ export function PurchaseOrdersReportPage() {
             type="button"
             onClick={() => {
               setPage(1);
-              setApplied({ conditions });
+              setApplied({ conditions, fromDate, toDate });
             }}
             style={{
               padding: '6px 12px',
@@ -452,6 +465,9 @@ export function PurchaseOrdersReportPage() {
             <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}>
               Purchase Order Report
             </h2>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>
+              From {format(applied.fromDate, 'dd-MM-yyyy')} To {format(applied.toDate, 'dd-MM-yyyy')}
+            </div>
           </div>
 
           <div className="responsive-table-wrapper" style={{ overflowX: 'auto' }}>
@@ -459,21 +475,28 @@ export function PurchaseOrdersReportPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th key={key} style={{ ...thStyle, textAlign: RIGHT_ALIGNED.has(key) ? 'right' : 'left' }}>
-                      {allColumns.find((col) => col.key === key)?.label}
-                    </th>
+                    <SortableHeader
+                      key={key}
+                      label={allColumns.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align={RIGHT_ALIGNED.has(key) ? 'right' : 'left'}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td colSpan={visibleColumns.length} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
                       {isLoading ? 'Loading...' : isError ? 'Could not load the report.' : 'No Purchase Orders found'}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr key={row.id} className="table-row-hover">
                       {visibleColumns.map((key) => (
                         <td

@@ -818,3 +818,8 @@ input[type='number'] {
 .hover-underline:hover {
   text-decoration: underline !important;
 }
+
+.required {
+  color: var(--color-danger);
+  margin-left: 2px;
+}

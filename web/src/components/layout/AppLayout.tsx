@@ -758,7 +758,7 @@ export function AppLayout() {
             borderTop: '1px solid rgba(255,255,255,0.1)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+            justifyContent: isSidebarCollapsed ? 'center' : 'flex-end',
           }}
         >
           <button
@@ -768,7 +768,7 @@ export function AppLayout() {
               display: 'flex',
               flexDirection: isSidebarCollapsed ? 'column' : 'row',
               alignItems: 'center',
-              justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-end',
               gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
               padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
               borderRadius: 'var(--radius-md)',
@@ -786,9 +786,8 @@ export function AppLayout() {
             {isSidebarCollapsed ? (
               <PanelLeftOpen size={22} />
             ) : (
-              <PanelLeftClose size={18} />
+              <PanelLeftClose size={22} />
             )}
-            {!isSidebarCollapsed && <span style={{ fontSize: 13 }}>Collapse</span>}
           </button>
         </div>
       </aside>

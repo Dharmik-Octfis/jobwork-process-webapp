@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
 import { Pagination } from '../../components/ui/Pagination';
+import { ReportDateFilter } from './components/ReportDateFilter';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
@@ -16,6 +17,8 @@ import { JOB_ORDER_STATUS_META } from '../jobwork/jobwork.schemas';
 import { fetchProcesses } from '../jobwork/processes/processes.api';
 import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchRoutes } from '../jobwork/process-routes/processRoutes.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
   { key: 'jobOrderNumber', label: 'JOB ORDER#', locked: true, defaultVisible: true },
@@ -33,6 +36,8 @@ const RIGHT_ALIGNED = new Set<string>();
 
 interface Applied {
   conditions: FilterCondition[];
+  fromDate: Date;
+  toDate: Date;
 }
 
 export function JobOrdersReportPage() {
@@ -47,10 +52,20 @@ export function JobOrdersReportPage() {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
       if (!stored) return null;
       const parsed = JSON.parse(stored);
+      const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+        if (!val) return fallback;
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? fallback : d;
+      };
       return {
+        dateRange: parsed.dateRange || 'This Month',
+        fromDate: safeDate(parsed.fromDate, startOfMonth(new Date())),
+        toDate: safeDate(parsed.toDate, new Date()),
         conditions: (parsed.conditions as FilterCondition[]) || [],
         applied: {
           conditions: (parsed.applied?.conditions as FilterCondition[]) || [],
+          fromDate: safeDate(parsed.applied?.fromDate, startOfMonth(new Date())),
+          toDate: safeDate(parsed.applied?.toDate, new Date()),
         } satisfies Applied,
       };
     } catch {
@@ -58,13 +73,16 @@ export function JobOrdersReportPage() {
     }
   }, [orgId, storageKey]);
 
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || startOfMonth(new Date()));
+  const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
-  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [] });
+  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() });
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(storageKey, JSON.stringify({ conditions, applied }));
-  }, [orgId, storageKey, conditions, applied]);
+    sessionStorage.setItem(storageKey, JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }));
+  }, [orgId, storageKey, dateRange, fromDate, toDate, conditions, applied]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
@@ -119,14 +137,13 @@ export function JobOrdersReportPage() {
       label: meta.label,
       value: key,
     }));
-    
+
     const processOptions = processes.map((p) => ({ label: p.name, value: p.name }));
     const processorOptions = processors.map((v) => ({ label: v.contactName, value: v.contactName }));
     const routeOptions = availableRoutes.map((r) => ({ label: r.name, value: r.name }));
 
     return [
       { key: 'jobOrderNumber', label: 'Job Order#', dataType: 'string', group: 'Report' },
-      { key: 'orderDate', label: 'Order Date', dataType: 'date', group: 'Report' },
       { key: 'targetDate', label: 'Target Date', dataType: 'date', group: 'Report' },
       { key: 'routeName', label: 'Route', dataType: 'select', options: routeOptions, group: 'Report' },
       { key: 'ownership', label: 'Material Belongs To', dataType: 'select', options: [{label: 'Ours', value: 'own'}, {label: 'Customer’s', value: 'customer'}], group: 'Report' },
@@ -145,7 +162,7 @@ export function JobOrdersReportPage() {
       const value = applied.conditions.find((c) => c.field === field)?.value;
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
-    
+
     const dateOf = (field: string, target: 'from' | 'to') => {
       const condition = applied.conditions.find((c) => c.field === field);
       if (!condition) return undefined;
@@ -157,17 +174,17 @@ export function JobOrdersReportPage() {
       }
 
       const valStr = typeof condition.value === 'string' && condition.value.trim() ? condition.value.trim() : undefined;
-      
+
       if (['before', 'on_or_before', 'lt', 'lte'].includes(condition.operator) && target === 'to') return valStr;
       if (['after', 'on_or_after', 'gt', 'gte'].includes(condition.operator) && target === 'from') return valStr;
       if (['equals', 'contains'].includes(condition.operator)) return valStr;
 
       return undefined;
     };
-    
+
     const customFieldKeys = new Set(customFields.map((cf) => cf.key));
     const jobOrderCustomFields: Record<string, unknown> = {};
-    
+
     for (const c of applied.conditions) {
       const cfKey = c.field.replace('cf_', '');
       if (customFieldKeys.has(cfKey)) {
@@ -180,8 +197,8 @@ export function JobOrdersReportPage() {
       processorName: valueOf('processorName'),
       processName: valueOf('processName'),
       status: valueOf('status'),
-      fromDate: dateOf('orderDate', 'from'),
-      toDate: dateOf('orderDate', 'to'),
+      fromDate: format(applied.fromDate, 'yyyy-MM-dd'),
+      toDate: format(applied.toDate, 'yyyy-MM-dd'),
       targetDateFrom: dateOf('targetDate', 'from'),
       targetDateTo: dateOf('targetDate', 'to'),
       routeName: valueOf('routeName'),
@@ -190,11 +207,11 @@ export function JobOrdersReportPage() {
       page,
       perPage,
     };
-    
+
     if (Object.keys(jobOrderCustomFields).length > 0) {
       q.jobOrderCustomFields = jobOrderCustomFields;
     }
-    
+
     return q;
   }, [applied, page, perPage, customFields]);
 
@@ -205,6 +222,7 @@ export function JobOrdersReportPage() {
   });
 
   const rows = data?.results ?? [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.totalCount ?? 0;
 
   const cell = (row: JobOrdersReportRow, key: string, rowIndex: number = 0) => {
@@ -266,6 +284,9 @@ export function JobOrdersReportPage() {
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Job Work</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
             Job Order Report (Ledger View)
+            <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
+              • From {format(applied.fromDate, 'dd-MM-yyyy')} To {format(applied.toDate, 'dd-MM-yyyy')}
+            </span>
           </div>
         </div>
 
@@ -317,6 +338,16 @@ export function JobOrdersReportPage() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', flex: 1 }}>
+          <ReportDateFilter
+            isRange={true}
+            value={dateRange}
+            onChangeRange={(label, start, end) => {
+              setDateRange(label);
+              setFromDate(start!);
+              setToDate(end!);
+            }}
+            labelPrefix=""
+          />
           <AdvancedFilter
             fields={filterFields}
             conditions={conditions}
@@ -333,7 +364,7 @@ export function JobOrdersReportPage() {
             type="button"
             onClick={() => {
               setPage(1);
-              setApplied({ conditions });
+              setApplied({ conditions, fromDate, toDate });
             }}
             style={{
               padding: '6px 12px',
@@ -425,6 +456,9 @@ export function JobOrdersReportPage() {
             >
               Job Order Report (Ledger View)
             </h2>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>
+              From {format(applied.fromDate, 'dd-MM-yyyy')} To {format(applied.toDate, 'dd-MM-yyyy')}
+            </div>
           </div>
 
           {/* Data Table */}
@@ -433,17 +467,21 @@ export function JobOrdersReportPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th
+                    <SortableHeader
                       key={key}
-                      style={{ ...thStyle, textAlign: RIGHT_ALIGNED.has(key) ? 'right' : 'left' }}
-                    >
-                      {COLUMN_CATALOG.find((col) => col.key === key)?.label}
-                    </th>
+                      label={COLUMN_CATALOG.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align={RIGHT_ALIGNED.has(key) ? 'right' : 'left'}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={visibleColumns.length}
@@ -457,7 +495,7 @@ export function JobOrdersReportPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.flatMap((row) => {
+                  sortedRows.flatMap((row) => {
                     const rowSpanCount = Math.max(1, row.process.length);
                     return Array.from({ length: rowSpanCount }).map((_, rowIndex) => (
                       <tr
