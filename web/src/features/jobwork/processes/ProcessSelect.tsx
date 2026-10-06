@@ -79,8 +79,9 @@ export function ProcessSelect({
       setNewName('');
       setIsCreating(false);
       onChange(created.id, created);
-      // Focus goes back where it came from, not to the top of the document.
-      triggerRef.current?.querySelector('button')?.focus();
+      setTimeout(() => {
+        triggerRef.current?.querySelector('button')?.focus();
+      }, 0);
     },
     onError: (error: { response?: { data?: { message?: string } } }) => {
       alert(error.response?.data?.message || 'Could not create that process');
@@ -94,11 +95,95 @@ export function ProcessSelect({
   const cancelCreate = () => {
     setIsCreating(false);
     setNewName('');
-    triggerRef.current?.querySelector('button')?.focus();
+    setTimeout(() => {
+      triggerRef.current?.querySelector('button')?.focus();
+    }, 0);
   };
 
+  if (isCreating) {
+    return (
+      <div
+        style={{
+          display: 'inline-flex',
+          width: '100%',
+          minWidth,
+          gap: 6,
+          alignItems: 'flex-start',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (canCreate) createMutation.mutate(trimmed);
+              }
+              if (e.key === 'Escape') cancelCreate();
+            }}
+            placeholder="New process name"
+            aria-label="New process name"
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '0 10px',
+              height: 32,
+              fontSize: 13,
+              border: `1px solid ${isDuplicate ? '#e54d4d' : '#d1d5db'}`,
+              borderRadius: 4,
+              boxSizing: 'border-box',
+            }}
+          />
+          {isDuplicate && (
+            <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: '#e54d4d' }}>
+              A process with that name already exists.
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={!canCreate}
+          onClick={() => createMutation.mutate(trimmed)}
+          style={{
+            height: 32,
+            padding: '0 12px',
+            fontSize: 12,
+            fontWeight: 500,
+            border: '1px solid #0062ff',
+            borderRadius: 4,
+            background: canCreate ? '#0062ff' : '#f1f5f9',
+            color: canCreate ? '#fff' : '#94a3b8',
+            cursor: canCreate ? 'pointer' : 'not-allowed',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {createMutation.isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={cancelCreate}
+          style={{
+            height: 32,
+            padding: '0 12px',
+            fontSize: 12,
+            border: '1px solid #d1d5db',
+            borderRadius: 4,
+            background: '#fff',
+            color: '#64748b',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: 'inline-block', minWidth }}>
+    <div style={{ display: 'inline-block', width: '100%', minWidth }}>
       <div ref={triggerRef}>
         <Select
           value={value ?? ''}
@@ -112,12 +197,13 @@ export function ProcessSelect({
           ariaLabel={ariaLabel ?? 'Process'}
           minWidth={minWidth}
           portal={portal}
-          actionItem={
+          actionItem={({ closeMenu }) => (
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                closeMenu();
                 setIsCreating(true);
               }}
               style={{
@@ -136,80 +222,9 @@ export function ProcessSelect({
             >
               <Plus size={14} /> New Process
             </button>
-          }
+          )}
         />
       </div>
-
-      {isCreating && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  // The select sits inside a form; Enter here must create a
-                  // process, not submit the form behind it.
-                  e.preventDefault();
-                  if (canCreate) createMutation.mutate(trimmed);
-                }
-                if (e.key === 'Escape') cancelCreate();
-              }}
-              placeholder="New process name"
-              aria-label="New process name"
-              autoFocus
-              style={{
-                width: '100%',
-                padding: '5px 8px',
-                fontSize: 13,
-                border: '1px solid #d1d5db',
-                borderRadius: 4,
-                minHeight: 30,
-              }}
-            />
-            {isDuplicate && (
-              <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: '#e54d4d' }}>
-                A process with that name already exists.
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            disabled={!canCreate}
-            onClick={() => createMutation.mutate(trimmed)}
-            style={{
-              padding: '5px 10px',
-              fontSize: 12,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: canCreate ? '#fff' : '#f1f5f9',
-              color: canCreate ? '#0062ff' : '#94a3b8',
-              cursor: canCreate ? 'pointer' : 'not-allowed',
-              whiteSpace: 'nowrap',
-              minHeight: 30,
-            }}
-          >
-            {createMutation.isPending ? 'Creating…' : 'Create'}
-          </button>
-          <button
-            type="button"
-            onClick={cancelCreate}
-            style={{
-              padding: '5px 10px',
-              fontSize: 12,
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              background: '#fff',
-              color: '#64748b',
-              cursor: 'pointer',
-              minHeight: 30,
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      )}
     </div>
   );
 }

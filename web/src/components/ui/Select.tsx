@@ -45,7 +45,7 @@ export function Select({
   containerStyle?: React.CSSProperties;
   buttonStyle?: React.CSSProperties;
   buttonClassName?: string;
-  actionItem?: React.ReactNode;
+  actionItem?: React.ReactNode | ((helpers: { closeMenu: () => void }) => React.ReactNode);
   menuWidth?: number | string;
   /**
    * 🔴 REQUIRED WHENEVER THIS SITS INSIDE A `Modal` (CLAUDE.md).
@@ -118,12 +118,15 @@ export function Select({
       const above = rect.top - 12;
       // Flip up only when below is genuinely too tight AND above is roomier
       const openUp = dropUp || (below < MENU_MIN_HEIGHT && above > below);
-      
+
       setMenuPosition({
         left: rect.left,
         minWidth: minW,
         width: menuWidth || 'max-content',
-        maxWidth: typeof menuWidth === 'number' ? menuWidth : Math.min(400, window.innerWidth - rect.left - 16),
+        maxWidth:
+          typeof menuWidth === 'number'
+            ? menuWidth
+            : Math.min(400, window.innerWidth - rect.left - 16),
         maxHeight: Math.min(MENU_MAX_HEIGHT, Math.max(openUp ? above : below, MENU_MIN_HEIGHT)),
         ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
       });
@@ -268,7 +271,7 @@ export function Select({
               </div>
               {actionItem && (
                 <div style={{ borderTop: '1px solid var(--color-border)', padding: '4px' }}>
-                  {actionItem}
+                  {typeof actionItem === 'function' ? actionItem({ closeMenu }) : actionItem}
                 </div>
               )}
             </>
