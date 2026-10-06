@@ -103,8 +103,8 @@ export const ISSUE_STATUS_META: Record<string, { label: string; color: string; b
   // here that describes paperwork rather than goods, so it must not read as a
   // stage of the material's journey.
   draft: { label: 'Draft', color: '#475569', bg: '#f1f5f9' },
-  issued: { label: 'Out', color: '#1d4ed8', bg: '#eff6ff' },
-  cancelled: { label: 'Cancelled', color: '#b91c1c', bg: '#fef2f2' },
+  issued: { label: 'Issued', color: '#0284c7', bg: '#f0f9ff' },
+  cancelled: { label: 'Cancelled', color: '#dc2626', bg: '#fff1f2' },
   /**
    * 🔴 `partially_received` and `closed` were removed on 2026-09-07 with challan
    * closing itself — a challan is parked, out, or withdrawn. How much of it has

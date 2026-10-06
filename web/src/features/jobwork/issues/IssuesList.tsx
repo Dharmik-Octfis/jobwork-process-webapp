@@ -27,7 +27,7 @@ import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
-import { ISSUE_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
+import { formatQty } from '../jobwork.schemas';
 import {
   fetchIssuesForStep,
   fetchJobIssueCount,
@@ -48,40 +48,49 @@ const tableHeaderStyle: React.CSSProperties = {
 };
 
 function IssueStatusBadge({ status, size = 'md' }: { status: string; size?: 'sm' | 'md' }) {
-  const meta = statusMeta(ISSUE_STATUS_META, status);
+  const norm = (status || 'draft').toLowerCase().trim();
   const isSm = size === 'sm';
-  const getIcon = () => {
-    switch (status) {
-      case 'issued':
-        return <CheckCircle2 size={isSm ? 10 : 12} />;
-      case 'draft':
-        return <Clock size={isSm ? 10 : 12} />;
-      case 'cancelled':
-        return <CircleSlash size={isSm ? 10 : 12} />;
-      default:
-        return null;
-    }
-  };
+
+  let label = 'Draft';
+  let color = '#475569';
+  let bg = '#f1f5f9';
+  let border = '#cbd5e1';
+  let icon = <Clock size={isSm ? 10 : 12} />;
+
+  if (norm === 'issued') {
+    label = 'Issued';
+    color = '#0284c7';
+    bg = '#f0f9ff';
+    border = '#bae6fd';
+    icon = <CheckCircle2 size={isSm ? 10 : 12} />;
+  } else if (norm === 'cancelled') {
+    label = 'Cancelled';
+    color = '#dc2626';
+    bg = '#fff1f2';
+    border = '#fecdd3';
+    icon = <CircleSlash size={isSm ? 10 : 12} />;
+  }
 
   return (
     <span
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: isSm ? 3.5 : 5,
-        padding: isSm ? '2px 7px' : '3px 10px',
+        gap: isSm ? 4 : 5,
+        padding: isSm ? '2px 8px' : '3px 10px',
         borderRadius: 12,
-        fontSize: isSm ? 11 : 11.5,
+        fontSize: isSm ? 11 : 12,
         fontWeight: 600,
-        color: meta.color,
-        background: meta.bg,
-        border: `1px solid ${meta.color}25`,
+        color,
+        background: bg,
+        border: `1px solid ${border}`,
         letterSpacing: '0.01em',
-        lineHeight: 1.2,
+        lineHeight: 1.3,
+        whiteSpace: 'nowrap',
       }}
     >
-      {getIcon()}
-      <span>{meta.label}</span>
+      {icon}
+      <span>{label}</span>
     </span>
   );
 }
@@ -417,6 +426,15 @@ export function IssuesList() {
     { key: 'cancelled', label: 'Cancelled', count: cancelledCount },
   ];
 
+  const defaultIssueFilters = [
+    { key: 'all', label: 'All Challans' },
+    { key: 'issued', label: 'Issued Challans' },
+    { key: 'draft', label: 'Drafts' },
+    { key: 'rework', label: 'Rework Issues' },
+    { key: 'cancelled', label: 'Cancelled' },
+  ];
+  const effectiveFilters = filters.length > 0 ? filters : defaultIssueFilters;
+
   const openDetail = (id: string) => {
     setSelectedIds([]);
     const next = new URLSearchParams(searchParams);
@@ -512,7 +530,7 @@ export function IssuesList() {
         <div
           className="master-pane"
           style={{
-            flex: selectedId ? '0 0 340px' : 1,
+            flex: selectedId ? '0 0 350px' : 1,
             borderRight: selectedId ? '1px solid #e2e8f0' : 'none',
             display: 'flex',
             flexDirection: 'column',
@@ -538,7 +556,7 @@ export function IssuesList() {
                 padding: selectedId ? '12px 14px' : '14px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
-                gap: 8,
+                gap: 12,
                 flexWrap: 'nowrap',
               }}
             >
@@ -554,13 +572,13 @@ export function IssuesList() {
               >
                 {!stepId ? (
                   <ListFilterDropdown
-                    filters={filters}
+                    filters={effectiveFilters}
                     value={filter}
                     onChange={handleFilterSelect}
                     fallbackLabel="All Challans"
                   />
                 ) : (
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>
                     Challans for Step
                   </span>
                 )}
@@ -572,7 +590,76 @@ export function IssuesList() {
               </div>
 
               {!stepId && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  {!selectedId && (
+                    <div style={{ position: 'relative', width: 260 }}>
+                      <Search
+                        size={14}
+                        style={{
+                          position: 'absolute',
+                          left: 10,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          color: '#94a3b8',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search challans, processor..."
+                        style={{
+                          width: '100%',
+                          height: 32,
+                          padding: '0 28px 0 32px',
+                          fontSize: 12.5,
+                          borderRadius: 6,
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          outline: 'none',
+                          color: '#1e293b',
+                          boxSizing: 'border-box',
+                          transition: 'border-color 0.15s, box-shadow 0.15s',
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = '#0284c7';
+                          e.currentTarget.style.background = '#fff';
+                          e.currentTarget.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.12)';
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = '#e2e8f0';
+                          e.currentTarget.style.background = '#f8fafc';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      />
+                      {searchInput && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchInput('');
+                            setSearch('');
+                          }}
+                          style={{
+                            position: 'absolute',
+                            right: 8,
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {!selectedId && (
                     <button
                       type="button"
@@ -595,10 +682,12 @@ export function IssuesList() {
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = '#f8fafc';
                         e.currentTarget.style.borderColor = '#cbd5e1';
+                        e.currentTarget.style.color = '#0284c7';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = '#fff';
                         e.currentTarget.style.borderColor = '#e2e8f0';
+                        e.currentTarget.style.color = '#475569';
                       }}
                     >
                       <SlidersHorizontal size={15} />
@@ -613,7 +702,7 @@ export function IssuesList() {
                       })
                     }
                     style={{
-                      background: '#0284c7',
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                       color: 'white',
                       border: 'none',
                       padding: selectedId ? '6px 12px' : '7px 16px',
@@ -629,10 +718,10 @@ export function IssuesList() {
                       transition: 'all 0.15s ease',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#0369a1';
+                      e.currentTarget.style.boxShadow = '0 4px 10px rgba(2, 132, 199, 0.35)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#0284c7';
+                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.25)';
                     }}
                   >
                     <Plus size={16} /> {selectedId ? 'New' : 'New Issue'}
@@ -709,133 +798,60 @@ export function IssuesList() {
             </div>
           )}
 
-          {/* Full View Filter tabs and search bar */}
+          {/* Full View Filter tabs bar */}
           {!selectedId && !stepId && (
             <div
               style={{
-                padding: '12px 24px 0 24px',
+                padding: '10px 24px',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
+                alignItems: 'center',
+                gap: 8,
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
+                overflowX: 'auto',
               }}
             >
-              {/* Quick Filter Tabs Bar */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  overflowX: 'auto',
-                }}
-              >
-                {quickFilterTabs.map((tab) => {
-                  const isActive = filter === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => handleFilterSelect(tab.key)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '5px 12px',
-                        borderRadius: 20,
-                        fontSize: 12,
-                        fontWeight: isActive ? 600 : 500,
-                        background: isActive ? '#0284c7' : '#f1f5f9',
-                        color: isActive ? '#ffffff' : '#475569',
-                        border: 'none',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <span>{tab.label}</span>
-                      {tab.count !== undefined && (
-                        <span
-                          style={{
-                            padding: '1px 6px',
-                            borderRadius: 10,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            background: isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
-                            color: isActive ? '#ffffff' : '#334155',
-                          }}
-                        >
-                          {tab.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Search Input Bar */}
-              <div style={{ position: 'relative', width: '100%', marginBottom: 12 }}>
-                <Search
-                  size={14}
-                  style={{
-                    position: 'absolute',
-                    left: 10,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: '#94a3b8',
-                    pointerEvents: 'none',
-                  }}
-                />
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search by challan #, processor, job order..."
-                  style={{
-                    width: '100%',
-                    height: 34,
-                    padding: '0 32px 0 32px',
-                    fontSize: 13,
-                    borderRadius: 6,
-                    border: '1px solid #d1d5db',
-                    background: '#fff',
-                    outline: 'none',
-                    color: '#1e293b',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s, box-shadow 0.15s',
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#0284c7';
-                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.15)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
-                {searchInput && (
+              {quickFilterTabs.map((tab) => {
+                const isActive = filter === tab.key;
+                return (
                   <button
+                    key={tab.key}
                     type="button"
-                    onClick={() => {
-                      setSearchInput('');
-                      setSearch('');
-                    }}
+                    onClick={() => handleFilterSelect(tab.key)}
                     style={{
-                      position: 'absolute',
-                      right: 8,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '5px 12px',
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontWeight: isActive ? 600 : 500,
+                      background: isActive ? '#0284c7' : '#f1f5f9',
+                      color: isActive ? '#ffffff' : '#475569',
                       border: 'none',
-                      color: '#94a3b8',
                       cursor: 'pointer',
-                      padding: 2,
+                      transition: 'all 0.15s ease',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <X size={14} />
+                    <span>{tab.label}</span>
+                    {tab.count !== undefined && (
+                      <span
+                        style={{
+                          padding: '1px 6px',
+                          borderRadius: 10,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                          color: isActive ? '#ffffff' : '#334155',
+                        }}
+                      >
+                        {tab.count}
+                      </span>
+                    )}
                   </button>
-                )}
-              </div>
+                );
+              })}
             </div>
           )}
 
@@ -958,19 +974,19 @@ export function IssuesList() {
                       onClick={() => openDetail(issue.id)}
                       style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
+                        flexDirection: 'column',
+                        gap: 6,
                         width: '100%',
                         textAlign: 'left',
-                        padding: '12px 14px',
-                        borderBottom: '1px solid #f1f5f9',
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #eef2f6',
                         borderLeft: isSelected ? '3px solid #0284c7' : '3px solid transparent',
                         borderRight: 'none',
                         borderTop: 'none',
                         cursor: 'pointer',
                         background: isSelected ? '#f0f7fd' : '#fff',
                         font: 'inherit',
-                        transition: 'background-color 0.15s ease',
+                        transition: 'background-color 0.12s ease',
                       }}
                       onMouseEnter={(e) => {
                         if (!isSelected) e.currentTarget.style.background = '#f8fafc';
@@ -979,125 +995,147 @@ export function IssuesList() {
                         if (!isSelected) e.currentTarget.style.background = '#fff';
                       }}
                     >
-                      {/* Avatar Icon */}
+                      {/* Row 1: Challan Number & Status Badge */}
                       <div
                         style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 8,
-                          background: isSelected ? '#0284c7' : '#e0f2fe',
-                          color: isSelected ? '#fff' : '#0284c7',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
+                          justifyContent: 'space-between',
+                          gap: 8,
                         }}
                       >
-                        <Send size={15} />
+                        <span
+                          style={{
+                            fontSize: 13.5,
+                            fontWeight: 700,
+                            color: isSelected ? '#0284c7' : '#0f172a',
+                          }}
+                        >
+                          {issue.challanNumber}
+                        </span>
+                        <IssueStatusBadge status={issue.status} size="sm" />
                       </div>
 
-                      {/* Card Content */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        {/* Row 1: Challan Number & Status Badge */}
-                        <div
+                      {/* Row 2: Route (Origin -> Destination) */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          color: '#475569',
+                        }}
+                      >
+                        <span
                           style={{
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 8,
-                            marginBottom: 3,
+                            gap: 4,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: 130,
                           }}
+                          title={sourceName}
                         >
-                          <span
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: isSelected ? '#0369a1' : '#0f172a',
-                            }}
-                          >
-                            {issue.challanNumber}
-                          </span>
-                          <IssueStatusBadge status={issue.status} size="sm" />
-                        </div>
+                          <Warehouse size={12} color="#94a3b8" />
+                          <span>{sourceName}</span>
+                        </span>
+                        <ArrowRight size={11} color="#94a3b8" style={{ flexShrink: 0 }} />
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: 140,
+                            fontWeight: 500,
+                            color: issue.processorType === 'internal' ? '#0284c7' : '#7c3aed',
+                          }}
+                          title={targetName}
+                        >
+                          {issue.processorType === 'internal' ? (
+                            <Warehouse size={12} />
+                          ) : (
+                            <Building2 size={12} />
+                          )}
+                          <span>{targetName}</span>
+                        </span>
+                      </div>
 
-                        {/* Row 2: Route (Origin -> Destination) */}
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            fontSize: 11.5,
-                            color: '#475569',
-                            marginBottom: 3,
-                          }}
-                        >
+                      {/* Row 3: Job Order Reference & Total Qty + Date */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          fontSize: 11.5,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                           <span
                             style={{
+                              display: 'inline-block',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              background: isSelected ? '#e0f2fe' : '#f1f5f9',
+                              color: isSelected ? '#0369a1' : '#334155',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              letterSpacing: '0.02em',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
-                              maxWidth: 100,
-                            }}
-                            title={sourceName}
-                          >
-                            {sourceName}
-                          </span>
-                          <ArrowRight size={10} color="#94a3b8" style={{ flexShrink: 0 }} />
-                          <span
-                            style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              maxWidth: 115,
-                              fontWeight: 500,
-                              color: issue.processorType === 'internal' ? '#0284c7' : '#7c3aed',
-                            }}
-                            title={targetName}
-                          >
-                            {targetName}
-                          </span>
-                        </div>
-
-                        {/* Row 3: Job Order Reference & Qty / Date */}
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: 11.5,
-                            color: '#64748b',
-                          }}
-                        >
-                          <span
-                            style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              maxWidth: 115,
-                              color: '#334155',
-                              fontWeight: 500,
+                              maxWidth: 120,
                             }}
                             title={issue.jobOrder?.jobOrderNumber ?? 'Direct Issue'}
                           >
                             {issue.jobOrder?.jobOrderNumber ?? 'Direct Issue'}
                           </span>
-                          <div
+                          {issue.isRework && (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '1px 5px',
+                                borderRadius: 4,
+                                fontSize: 10.5,
+                                fontWeight: 600,
+                                background: '#fffbeb',
+                                color: '#b45309',
+                                border: '1px solid #fde68a',
+                                flexShrink: 0,
+                              }}
+                            >
+                              Rework #{issue.attemptNo}
+                            </span>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            flexShrink: 0,
+                            color: '#64748b',
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                            {formatQty(issue.totalQty)} {issue.totalQty === 1 ? 'unit' : 'units'}
+                          </span>
+                          <span style={{ color: '#cbd5e1' }}>•</span>
+                          <span
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              flexShrink: 0,
-                              marginLeft: 6,
+                              fontSize: 11,
+                              color: '#94a3b8',
+                              fontVariantNumeric: 'tabular-nums',
                             }}
                           >
-                            <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                              {formatQty(issue.totalQty)}
-                            </span>
-                            <span style={{ color: '#cbd5e1' }}>·</span>
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                              {formatDate(issue.issueDate)}
-                            </span>
-                          </div>
+                            {formatDate(issue.issueDate)}
+                          </span>
                         </div>
                       </div>
                     </button>
@@ -1135,39 +1173,6 @@ export function IssuesList() {
                           {col.label}
                         </th>
                       ))}
-                      <th style={{ width: 44, textAlign: 'center', padding: '8px 12px' }}>
-                        <button
-                          type="button"
-                          onClick={() => setIsColumnsOpen(true)}
-                          title="Customize Columns"
-                          aria-label="Customize Columns"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            borderRadius: 4,
-                            border: '1px solid #cbd5e1',
-                            background: '#fff',
-                            cursor: 'pointer',
-                            color: '#475569',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#f0f7fd';
-                            e.currentTarget.style.color = '#0284c7';
-                            e.currentTarget.style.borderColor = '#0284c7';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#fff';
-                            e.currentTarget.style.color = '#475569';
-                            e.currentTarget.style.borderColor = '#cbd5e1';
-                          }}
-                        >
-                          <SlidersHorizontal size={14} />
-                        </button>
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1250,7 +1255,6 @@ export function IssuesList() {
                               )}
                             </td>
                           ))}
-                          <td style={{ width: 44, textAlign: 'center', padding: '12px 16px' }} />
                         </tr>
                       );
                     })}

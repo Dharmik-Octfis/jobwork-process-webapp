@@ -263,7 +263,8 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 fontWeight: 600,
                 color: status.color,
                 background: status.bg,
-                border: `1px solid ${status.color}25`,
+                border: `1px solid ${issue.status === 'issued' ? '#bae6fd' : issue.status === 'cancelled' ? '#fecdd3' : '#cbd5e1'}`,
+                lineHeight: 1.3,
               }}
             >
               {getStatusIcon()}
