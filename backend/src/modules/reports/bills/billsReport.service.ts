@@ -138,10 +138,11 @@ export async function getBillsReport(
     }
 
     const formattedItems = items.map((bill) => {
-      let locationName = bill.location?.name;
+      const locationName = bill.location?.name;
 
       return {
         id: bill.id,
+        vendorId: bill.vendorId,
         billNumber: bill.billNumber,
         vendorName: bill.vendor?.contactName || bill.vendor?.companyName || '-',
         locationName: locationName || '-',

@@ -1,17 +1,17 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { Plus, SlidersHorizontal, Trash2, Workflow } from 'lucide-react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Plus, SlidersHorizontal, Trash2, Workflow, Pencil } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
+import { Tooltip } from '../../../components/ui/Tooltip';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
 import { deleteProcess, fetchProcessCount, fetchProcesses } from './processes.api';
-import { ProcessDetail } from './ProcessDetail';
 import type { Process } from './processes.schemas';
 
 /**
@@ -21,11 +21,29 @@ import type { Process } from './processes.schemas';
  * No `cf:` branch here — `process` is list-only now (LIST_ONLY_ENTITY_TYPES), so
  * the server never merges a custom-field column into this catalog.
  */
-function renderProcessCell(process: Process, key: string): string {
+function renderProcessCell(process: Process, key: string): ReactNode {
   switch (key) {
     case 'createdAt':
     case 'updatedAt':
       return formatDate(process[key]);
+    case 'description': {
+      const value = process.description;
+      if (!value) return '-';
+      return (
+        <Tooltip content={value}>
+          <div
+            style={{
+              maxWidth: 250,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {value}
+          </div>
+        </Tooltip>
+      );
+    }
     default: {
       const value = (process as unknown as Record<string, unknown>)[key];
       if (value === null || value === undefined || value === '') return '-';
@@ -46,8 +64,6 @@ export function ProcessesList() {
   const navigate = useNavigate();
   const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const selectedId = searchParams.get('id');
 
   // Search term (from the global top-bar box, via `?search=`), preset view and
   // page cursor, all from the shared hook so every list wires this the same way.
@@ -86,15 +102,11 @@ export function ProcessesList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteProcess(orgId!, id),
-    onSuccess: (_result, id) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes', orgId] });
       setToDelete(null);
-      // The detail pane was showing the row that just went away.
-      if (selectedId === id) setSearchParams(prev => { prev.delete('id'); return prev; });
     },
   });
-
-  const openDetail = (id: string) => setSearchParams(prev => { prev.set('id', id); return prev; });
 
   return (
     <div
@@ -107,14 +119,13 @@ export function ProcessesList() {
       }}
     >
       <div
-        className={`master-detail-container ${selectedId ? 'has-selection' : ''}`}
+        className="master-detail-container"
         style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
       >
         <div
           className="master-pane"
           style={{
-            flex: selectedId ? '0 0 320px' : 1,
-            borderRight: selectedId ? '1px solid #eef0f3' : 'none',
+            flex: 1,
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
@@ -138,28 +149,26 @@ export function ProcessesList() {
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {!selectedId && (
-                <button
-                  type="button"
-                  onClick={() => setIsColumnsOpen(true)}
-                  title="Customize Columns"
-                  aria-label="Customize Columns"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 30,
-                    height: 30,
-                    borderRadius: 4,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    color: '#64748b',
-                  }}
-                >
-                  <SlidersHorizontal size={15} />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsColumnsOpen(true)}
+                title="Customize Columns"
+                aria-label="Customize Columns"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 30,
+                  height: 30,
+                  borderRadius: 4,
+                  border: '1px solid #e2e8f0',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                <SlidersHorizontal size={15} />
+              </button>
               <button
                 type="button"
                 onClick={() =>
@@ -252,58 +261,6 @@ export function ProcessesList() {
                   Create Process
                 </button>
               </div>
-            ) : selectedId ? (
-              /* Narrow master pane beside the detail. Each row is a real button,
-                 so Tab walks the list and Enter opens a row. */
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#64748b',
-                    background: '#f9f9fb',
-                    borderBottom: '1px solid #eef0f3',
-                  }}
-                >
-                  Processes
-                </div>
-                {processes.map((process) => (
-                  <button
-                    key={process.id}
-                    type="button"
-                    onClick={() => openDetail(process.id)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '12px 16px',
-                      borderBottom: '1px solid #eef0f3',
-                      borderLeft: 'none',
-                      borderRight: 'none',
-                      borderTop: 'none',
-                      cursor: 'pointer',
-                      background: selectedId === process.id ? '#f1f5f9' : 'transparent',
-                      font: 'inherit',
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: 'block',
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: '#1e293b',
-                        marginBottom: process.code ? 4 : 0,
-                      }}
-                    >
-                      {process.name}
-                    </span>
-                    {process.code && (
-                      <span style={{ fontSize: 12, color: '#64748b' }}>{process.code}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
             ) : (
               <div className="responsive-table-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -335,8 +292,7 @@ export function ProcessesList() {
                        */
                       <tr
                         key={process.id}
-                        onClick={() => openDetail(process.id)}
-                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        style={{ borderBottom: '1px solid #eef0f3' }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       >
@@ -348,7 +304,12 @@ export function ProcessesList() {
                             {col.locked ? (
                               <button
                                 type="button"
-                                onClick={() => openDetail(process.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, {
+                                    state: { returnUrl: location.pathname + location.search },
+                                  });
+                                }}
                                 style={{
                                   background: 'none',
                                   border: 'none',
@@ -368,30 +329,56 @@ export function ProcessesList() {
                           </td>
                         ))}
                         <td style={{ padding: '12px 16px' }}>
-                          <button
-                            type="button"
-                            // Deleting must not also open the row underneath it.
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setToDelete(process);
-                            }}
-                            title={`Delete ${process.name}`}
-                            aria-label={`Delete ${process.name}`}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 28,
-                              height: 28,
-                              border: '1px solid #e2e8f0',
-                              borderRadius: 4,
-                              background: '#fff',
-                              cursor: 'pointer',
-                              color: '#94a3b8',
-                            }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/organizations/${orgId}/settings/jobwork/processes/${process.id}/edit`, {
+                                  state: { returnUrl: location.pathname + location.search },
+                                });
+                              }}
+                              title={`Edit ${process.name}`}
+                              aria-label={`Edit ${process.name}`}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 28,
+                                height: 28,
+                                border: '1px solid #e2e8f0',
+                                borderRadius: 4,
+                                background: '#fff',
+                                cursor: 'pointer',
+                                color: '#64748b',
+                              }}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setToDelete(process);
+                              }}
+                              title={`Delete ${process.name}`}
+                              aria-label={`Delete ${process.name}`}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 28,
+                                height: 28,
+                                border: '1px solid #e2e8f0',
+                                borderRadius: 4,
+                                background: '#fff',
+                                cursor: 'pointer',
+                                color: '#94a3b8',
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -412,12 +399,6 @@ export function ProcessesList() {
               onRequestCount={() => void requestCount()}
             />
         </div>
-
-        {selectedId && (
-          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <ProcessDetail processId={selectedId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
-          </div>
-        )}
       </div>
 
       <CustomizeColumnsModal

@@ -266,7 +266,7 @@ export function CreateOrganizationForm() {
 
           <div className="org-form-grid">
             <div className="org-form-field">
-              <label className="org-form-label">
+              <label className="org-form-label" style={{ color: 'var(--color-danger)' }}>
                 Name <span className="required">*</span>
               </label>
               <input
@@ -278,7 +278,7 @@ export function CreateOrganizationForm() {
             </div>
 
             <div className="org-form-field">
-              <label className="org-form-label">
+              <label className="org-form-label" style={{ color: 'var(--color-danger)' }}>
                 Industry Type <span className="required">*</span>
               </label>
               <Controller

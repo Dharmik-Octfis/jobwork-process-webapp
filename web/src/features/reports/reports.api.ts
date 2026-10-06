@@ -181,6 +181,7 @@ export interface StockMovementRow {
   source: string;
   destination: string;
   quantity: number;
+  sourceDocId?: string | null;
 }
 
 export interface PaginatedStockMovementResponse {
@@ -308,6 +309,7 @@ export interface JobworkChallanRow {
   jobOrderId: string;
   lines: {
     id: string;
+    itemId: string;
     items: string;
     plannedQty: number;
     issuedQty: number;
@@ -348,6 +350,7 @@ export interface JobworkReceiptRow {
   jobOrderId: string;
   lines: {
     id: string;
+    itemId: string;
     items: string;
     plannedQty: number;
     receivedQty: number;
@@ -374,12 +377,15 @@ export interface BatchReportQuery {
   batchText?: string;
   state?: string;
   asOnDate?: string;
+  fromDate?: string;
+  toDate?: string;
   minAgeDays?: number;
 }
 
 export interface BatchReportRow {
   id: string;
   batch: string | null;
+  itemId: string;
   itemName: string;
   locationName: string;
   qty: number;
@@ -414,12 +420,15 @@ export interface TakaReportQuery {
   batchText?: string;
   onlyAtJobWorkers?: boolean;
   asOnDate?: string;
+  fromDate?: string;
+  toDate?: string;
   minAgeDays?: number;
 }
 
 export interface TakaReportRow {
   id: string;
   label: string;
+  itemId: string;
   itemName: string;
   batch: string;
   locationName: string;
@@ -666,6 +675,7 @@ export interface PurchaseOrdersReportQuery {
 
 export interface PurchaseOrdersReportRow {
   id: string;
+  vendorId: string;
   poNumber: string;
   vendorName: string;
   locationName: string;
@@ -708,6 +718,7 @@ export interface BillsReportQuery {
 
 export interface BillsReportRow {
   id: string;
+  vendorId: string;
   billNumber: string;
   vendorName: string;
   locationName: string;

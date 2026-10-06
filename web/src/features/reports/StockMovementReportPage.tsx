@@ -9,6 +9,8 @@ import {
   type PaginatedStockMovementResponse,
   type StockMovementRow,
 } from './reports.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 export function StockMovementReportPage() {
   const navigate = useNavigate();
@@ -45,6 +47,8 @@ export function StockMovementReportPage() {
   });
 
   const [data, setData] = useState<PaginatedStockMovementResponse | null>(null);
+  const rows = data?.results || [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -76,15 +80,15 @@ export function StockMovementReportPage() {
     // Basic mapping, assuming standard routes
     switch (row.source.toLowerCase().replace(/ /g, '_')) {
       case 'bill':
-        return `/organizations/${orgId}/purchases/bills`;
+        return `/organizations/${orgId}/purchases/bills?id=${row.sourceDocId}`;
       case 'job_receipt':
-        return `/organizations/${orgId}/jobwork/receipts`;
+        return `/organizations/${orgId}/jobwork/receipts?id=${row.sourceDocId}`;
       case 'job_issue':
-        return `/organizations/${orgId}/jobwork/issues`;
+        return `/organizations/${orgId}/jobwork/issues?id=${row.sourceDocId}`;
       case 'purchase_order':
-        return `/organizations/${orgId}/purchases/purchase-orders`;
+        return `/organizations/${orgId}/purchases/purchase-orders?id=${row.sourceDocId}`;
       case 'inventory_adjustment':
-        return `/organizations/${orgId}/inventory/adjustments`;
+        return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
       default:
         return null;
     }
@@ -292,14 +296,14 @@ export function StockMovementReportPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
                 <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
-                  <th style={thStyle}>TRANSACTION DATE</th>
-                  <th style={thStyle}>TRANSACTION NUMBER</th>
-                  <th style={thStyle}>ITEM NAME</th>
-                  <th style={thStyle}>TRANSACTION</th>
-                  <th style={thStyle}>MOVEMENT TYPE</th>
-                  <th style={thStyle}>SOURCE</th>
-                  <th style={thStyle}>DESTINATION</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>QUANTITY</th>
+                  <SortableHeader sortKey="transactionDate" label="TRANSACTION DATE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="transactionNumber" label="TRANSACTION NUMBER" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="itemName" label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="transactionType" label="TRANSACTION" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="movementType" label="MOVEMENT TYPE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="source" label="SOURCE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="destination" label="DESTINATION" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
+                  <SortableHeader sortKey="quantity" label="QUANTITY" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />
                 </tr>
               </thead>
               <tbody>
@@ -309,14 +313,14 @@ export function StockMovementReportPage() {
                       Loading...
                     </td>
                   </tr>
-                ) : (data?.results?.length || 0) === 0 ? (
+                ) : sortedRows.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}>
                       No data found
                     </td>
                   </tr>
                 ) : (
-                  data?.results.map((row) => (
+                  sortedRows.map((row) => (
                     <tr
                       key={row.id}
                       className="table-row-hover"

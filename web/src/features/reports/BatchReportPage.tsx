@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
+import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import { useListSearch } from '../../hooks/useListSearch';
@@ -15,6 +16,8 @@ import type { Item } from '../items/items.schemas';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type BatchReportQuery, type BatchReportRow } from './reports.api';
 import { fetchLocations } from '../configuration/locations/locations.api';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
   { key: 'batch', label: 'BATCH', locked: true, defaultVisible: true },
@@ -40,6 +43,8 @@ const money = (value: number) =>
 
 interface Applied {
   conditions: FilterCondition[];
+  fromDate: Date;
+  toDate: Date;
 }
 
 export function BatchReportPage() {
@@ -65,10 +70,25 @@ export function BatchReportPage() {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
       if (!stored) return null;
       const parsed = JSON.parse(stored);
+
+      const firstOfMonth = () => startOfMonth(new Date());
+
+      const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+        if (!val) return fallback;
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? fallback : d;
+      };
+
+
       return {
+        dateRange: parsed.dateRange || 'This Month',
+        fromDate: safeDate(parsed.fromDate, firstOfMonth()),
+        toDate: safeDate(parsed.toDate, new Date()),
         conditions: (parsed.conditions as FilterCondition[]) || [],
         applied: {
           conditions: (parsed.applied?.conditions as FilterCondition[]) || [],
+          fromDate: safeDate(parsed.applied?.fromDate, firstOfMonth()),
+          toDate: safeDate(parsed.applied?.toDate, new Date()),
         } satisfies Applied,
       };
     } catch {
@@ -76,13 +96,16 @@ export function BatchReportPage() {
     }
   }, [orgId, storageKey]);
 
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
+  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || startOfMonth(new Date()));
+  const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
-  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [] });
+  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() });
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(storageKey, JSON.stringify({ conditions, applied }));
-  }, [orgId, storageKey, conditions, applied]);
+    sessionStorage.setItem(storageKey, JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }));
+  }, [orgId, storageKey, dateRange, fromDate, toDate, conditions, applied]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
@@ -138,7 +161,6 @@ export function BatchReportPage() {
         ],
       },
       { key: 'minAgeDays', label: 'Min Age (Days)', dataType: 'number', group: 'Report' },
-      { key: 'asOnDate', label: 'As On Date', dataType: 'date', group: 'Report' },
     ],
     [orgId, locations, trackingLabel.singular],
   );
@@ -150,9 +172,6 @@ export function BatchReportPage() {
       const value = applied.conditions.find((c) => c.field === field)?.value;
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
     };
-    const asOnDateStr = applied.conditions.find((c) => c.field === 'asOnDate')?.value as
-      | string
-      | undefined;
     const minAgeDaysStr = applied.conditions.find((c) => c.field === 'minAgeDays')?.value;
 
     return {
@@ -161,7 +180,8 @@ export function BatchReportPage() {
       batchText: valueOf('batchText'),
       state: valueOf('state'),
       minAgeDays: minAgeDaysStr ? Number(minAgeDaysStr) : undefined,
-      asOnDate: asOnDateStr ? new Date(asOnDateStr).toISOString() : undefined,
+      fromDate: applied.fromDate.toISOString(),
+      toDate: applied.toDate.toISOString(),
       page,
       perPage,
     };
@@ -174,21 +194,48 @@ export function BatchReportPage() {
   });
 
   const rows = data?.results ?? [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.total ?? 0;
 
-  const asOnDateStr = applied.conditions.find((c) => c.field === 'asOnDate')?.value as
-    | string
-    | undefined;
-  const asOnText = asOnDateStr
-    ? format(new Date(asOnDateStr), 'dd-MM-yyyy')
-    : format(new Date(), 'dd-MM-yyyy');
+  const formattedFromDate = format(applied.fromDate, 'dd-MM-yyyy');
+  const formattedToDate = format(applied.toDate, 'dd-MM-yyyy');
 
   const cell = (row: BatchReportRow, key: string) => {
     switch (key) {
       case 'batch':
+        if (row.batch && row.takaCount && row.takaCount > 0) {
+          return (
+            <Link
+              to={`/organizations/${orgId}/reports/taka`}
+              className="text-blue-600 hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                const conditions = [
+                  { field: 'batchText', operator: 'equals', value: row.batch }
+                ];
+                sessionStorage.setItem(`takaReportState_${orgId}`, JSON.stringify({
+                  conditions,
+                  applied: { conditions }
+                }));
+              }}
+              style={{ color: '#0062ff' }}
+            >
+              {row.batch}
+            </Link>
+          );
+        }
         return row.batch || '-';
       case 'itemName':
-        return row.itemName;
+        return (
+          <Link
+            to={`/organizations/${orgId}/items?id=${row.itemId}`}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: '#0062ff' }}
+          >
+            {row.itemName}
+          </Link>
+        );
       case 'locationName':
         return row.locationName;
       case 'qty':
@@ -239,7 +286,7 @@ export function BatchReportPage() {
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
             {trackingLabel.singular} Report
             <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
-              • As on {asOnText}
+              • From {formattedFromDate} To {formattedToDate}
             </span>
           </div>
         </div>
@@ -292,6 +339,16 @@ export function BatchReportPage() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', flex: 1 }}>
+          <ReportDateFilter
+            isRange={true}
+            value={dateRange}
+            onChangeRange={(label, start, end) => {
+              setDateRange(label);
+              setFromDate(start!);
+              setToDate(end!);
+            }}
+            labelPrefix=""
+          />
           <AdvancedFilter
             fields={filterFields}
             conditions={conditions}
@@ -308,7 +365,7 @@ export function BatchReportPage() {
             type="button"
             onClick={() => {
               setPage(1);
-              setApplied({ conditions });
+              setApplied({ conditions, fromDate, toDate });
             }}
             style={{
               padding: '6px 12px',
@@ -394,7 +451,9 @@ export function BatchReportPage() {
             >
               {trackingLabel.singular} Report
             </h2>
-            <div style={{ fontSize: '13px', color: '#4b5563' }}>As on {asOnText}</div>
+            <div style={{ fontSize: '13px', color: '#4b5563' }}>
+              From {formattedFromDate} To {formattedToDate}
+            </div>
           </div>
 
           {/* Data Table */}
@@ -403,17 +462,21 @@ export function BatchReportPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th
+                    <SortableHeader
                       key={key}
-                      style={{ ...thStyle, textAlign: 'center' }}
-                    >
-                      {catalog.find((col) => col.key === key)?.label}
-                    </th>
+                      label={catalog.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align="center"
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={visibleColumns.length}
@@ -427,7 +490,7 @@ export function BatchReportPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <tr
                       key={row.id}
                       className="table-row-hover"
@@ -448,7 +511,7 @@ export function BatchReportPage() {
                     </tr>
                   ))
                 )}
-                {rows.length > 0 && (
+                {sortedRows.length > 0 && (
                   <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                     {visibleColumns.map((key, index) => (
                       <td

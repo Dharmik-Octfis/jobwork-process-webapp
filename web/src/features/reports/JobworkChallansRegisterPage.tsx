@@ -15,6 +15,8 @@ import { ReportDateFilter } from './components/ReportDateFilter';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type JobworkChallansQuery, type JobworkChallanRow } from './reports.api';
 import { ISSUE_STATUS_META } from '../jobwork/jobwork.schemas';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
   { key: 'issueDate', label: 'DATE', locked: true, defaultVisible: true },
@@ -150,6 +152,7 @@ export function JobworkChallansRegisterPage() {
   });
 
   const rows = data?.results ?? [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.total ?? 0;
   const formattedFromDate = format(applied.fromDate, 'dd-MM-yyyy');
   const formattedToDate = format(applied.toDate, 'dd-MM-yyyy');
@@ -183,7 +186,16 @@ export function JobworkChallansRegisterPage() {
           </Link>
         );
       case 'items':
-        return line.items;
+        return (
+          <Link
+            to={`/organizations/${orgId}/items?id=${line.itemId}`}
+            className="text-blue-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: '#0062ff' }}
+          >
+            {line.items}
+          </Link>
+        );
       case 'plannedQty':
         return line.plannedQty.toFixed(2);
       case 'issuedQty':
@@ -409,17 +421,21 @@ export function JobworkChallansRegisterPage() {
               <thead>
                 <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
                   {visibleColumns.map((key) => (
-                    <th
+                    <SortableHeader
                       key={key}
-                      style={{ ...thStyle, textAlign: RIGHT_ALIGNED.has(key) ? 'right' : 'left' }}
-                    >
-                      {COLUMN_CATALOG.find((col) => col.key === key)?.label}
-                    </th>
+                      label={COLUMN_CATALOG.find((col) => col.key === key)?.label}
+                      sortKey={key}
+                      currentSortField={sortField as string}
+                      currentSortDirection={sortDirection}
+                      onSort={handleSort}
+                      style={thStyle}
+                      align={RIGHT_ALIGNED.has(key) ? 'right' : 'left'}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading || isError || rows.length === 0 ? (
+                {isLoading || isError || sortedRows.length === 0 ? (
                   <tr>
                     <td
                       colSpan={visibleColumns.length}
@@ -433,7 +449,7 @@ export function JobworkChallansRegisterPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  sortedRows.map((row) => (
                     <React.Fragment key={row.id}>
                       {row.lines.map((line, lineIndex) => (
                         <tr

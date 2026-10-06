@@ -24,6 +24,7 @@ export interface StockMovementRow {
   source: string;
   destination: string;
   quantity: number;
+  sourceDocId?: string | null;
 }
 
 export interface PaginatedStockMovementResponse {

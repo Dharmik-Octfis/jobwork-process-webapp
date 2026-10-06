@@ -163,6 +163,7 @@ export async function getJobworkReceipts(
 
         return {
           id: output.id,
+          itemId: output.itemId,
           items: itemNameWithUom,
           plannedQty,
           receivedQty,

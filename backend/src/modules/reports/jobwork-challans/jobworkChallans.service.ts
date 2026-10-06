@@ -139,6 +139,7 @@ export async function getJobworkChallans(
 
         return {
           id: line.id,
+          itemId: line.itemId,
           items: itemNameWithUom,
           plannedQty,
           issuedQty,

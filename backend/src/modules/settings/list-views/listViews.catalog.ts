@@ -172,7 +172,7 @@ export const LIST_COLUMNS: Record<ListEntityType, readonly ColumnDef[]> = {
   process: [
     { key: 'name', label: 'Process Name', locked: true },
     { key: 'code', label: 'Code', defaultVisible: true },
-    { key: 'description', label: 'Description' },
+    { key: 'description', label: 'Description', defaultVisible: true },
     { key: 'createdAt', label: 'Created At' },
     { key: 'updatedAt', label: 'Last Modified' },
   ],
