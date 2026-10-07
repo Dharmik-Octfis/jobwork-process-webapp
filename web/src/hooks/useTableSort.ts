@@ -2,11 +2,11 @@ import { useState, useMemo } from 'react';
 
 export type SortDirection = 'asc' | 'desc' | null;
 
-export function useTableSort<T>(rows: T[], defaultSortField?: keyof T, defaultDirection: SortDirection = null) {
-  const [sortField, setSortField] = useState<keyof T | undefined>(defaultSortField);
+export function useTableSort<T>(rows: T[], defaultSortField?: Extract<keyof T, string> | string, defaultDirection: SortDirection = null) {
+  const [sortField, setSortField] = useState<Extract<keyof T, string> | string | undefined>(defaultSortField);
   const [sortDirection, setSortDirection] = useState<SortDirection>(defaultDirection);
 
-  const handleSort = (field: keyof T) => {
+  const handleSort = (field: Extract<keyof T, string> | string) => {
     if (sortField === field) {
       if (sortDirection === 'asc') setSortDirection('desc');
       else if (sortDirection === 'desc') {
@@ -23,9 +23,9 @@ export function useTableSort<T>(rows: T[], defaultSortField?: keyof T, defaultDi
   const sortedRows = useMemo(() => {
     if (!sortField || !sortDirection) return rows;
 
-    return [...rows].sort((a, b) => {
-      const aVal = a[sortField];
-      const bVal = b[sortField];
+    return [...rows].sort((a: T, b: T) => {
+      const aVal = a[sortField as keyof T];
+      const bVal = b[sortField as keyof T];
 
       if (aVal === bVal) return 0;
       
