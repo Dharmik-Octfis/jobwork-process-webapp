@@ -17,7 +17,12 @@ export async function fetchSalesOrders(
   params: PageParams = {},
 ): Promise<SalesOrdersPage> {
   const response = await apiClient.get(endpoints.sales.salesOrders(orgId), { params });
-  return salesOrdersPageSchema.parse(response.data);
+  const parsed = salesOrdersPageSchema.safeParse(response.data);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  console.warn('Sales orders schema parse failed, falling back to raw data:', parsed.error);
+  return response.data as SalesOrdersPage;
 }
 
 export async function fetchSalesOrderCount(

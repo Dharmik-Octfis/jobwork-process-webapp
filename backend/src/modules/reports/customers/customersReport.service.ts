@@ -5,6 +5,7 @@ export async function getCustomersReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     contactNumber?: string;
     companyName?: string;
@@ -13,15 +14,16 @@ export async function getCustomersReport(
   }
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     contactNumber,
     companyName,
     status,
     customerType,
   } = params;
   
-  const skip = (page - 1) * pageSize;
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.CustomerWhereInput = {
@@ -45,8 +47,7 @@ export async function getCustomersReport(
     const [items, totalCount] = await Promise.all([
       tx.customer.findMany({
         where,
-        skip,
-        take: pageSize,
+        ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { createdAt: 'desc' },
         include: {
           _count: {
@@ -62,7 +63,7 @@ export async function getCustomersReport(
     if (items.length === 0) {
       return {
         items: [],
-        pagination: { page, pageSize, totalCount, totalPages: 0 },
+        pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
 
@@ -90,7 +91,7 @@ export async function getCustomersReport(
         page,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages: pageSize ? Math.ceil(totalCount / pageSize) : 1,
       },
     };
   });

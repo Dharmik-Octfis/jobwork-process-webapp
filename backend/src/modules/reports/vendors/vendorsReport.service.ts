@@ -5,6 +5,7 @@ export async function getVendorsReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     contactNumber?: string;
     companyName?: string;
@@ -13,15 +14,16 @@ export async function getVendorsReport(
   }
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     contactNumber,
     companyName,
     status,
     vendorType,
   } = params;
   
-  const skip = (page - 1) * pageSize;
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.VendorWhereInput = {
@@ -45,8 +47,7 @@ export async function getVendorsReport(
     const [items, totalCount] = await Promise.all([
       tx.vendor.findMany({
         where,
-        skip,
-        take: pageSize,
+        ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { createdAt: 'desc' },
       }),
       tx.vendor.count({ where }),
@@ -55,7 +56,7 @@ export async function getVendorsReport(
     if (items.length === 0) {
       return {
         items: [],
-        pagination: { page, pageSize, totalCount, totalPages: 0 },
+        pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
 
@@ -82,7 +83,7 @@ export async function getVendorsReport(
         page,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages: pageSize ? Math.ceil(totalCount / pageSize) : 1,
       },
     };
   });

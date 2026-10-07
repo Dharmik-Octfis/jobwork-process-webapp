@@ -39,7 +39,7 @@ export async function getStockMovementReport(
       toDate,
       movementType = 'all',
       page = 1,
-      perPage = 25,
+      perPage,
     } = query;
 
     const fromDateFilter = fromDate
@@ -132,7 +132,7 @@ export async function getStockMovementReport(
       FROM (${netted}) n
       JOIN items i ON n.item_id = i.id
       ORDER BY n.posted_at DESC, n.created_at DESC
-      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
+      ${perPage ? Prisma.sql`LIMIT ${perPage} OFFSET ${(page - 1) * perPage}` : Prisma.empty}
     `;
 
     const mappedRows = rawRows.map((row) => ({
@@ -150,13 +150,13 @@ export async function getStockMovementReport(
       quantity: Number(row.quantity),
     }));
 
-    const totalPages = Math.ceil(total / perPage);
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
 
     return {
       results: mappedRows,
       total,
-      page,
-      perPage,
+      page: perPage ? page : 1,
+      perPage: perPage ?? total,
       totalPages,
       grandTotalQuantity,
     };

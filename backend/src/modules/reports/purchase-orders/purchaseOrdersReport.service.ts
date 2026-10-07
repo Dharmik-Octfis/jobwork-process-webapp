@@ -5,6 +5,7 @@ export async function getPurchaseOrdersReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     vendorId?: string;
     status?: string;
@@ -17,8 +18,9 @@ export async function getPurchaseOrdersReport(
   }
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     vendorId,
     status,
     deliveryType,
@@ -29,7 +31,7 @@ export async function getPurchaseOrdersReport(
     purchaseOrderCustomFields,
   } = params;
   
-  const skip = (page - 1) * pageSize;
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.PurchaseOrderWhereInput = {
@@ -94,8 +96,7 @@ export async function getPurchaseOrdersReport(
     const [items, totalCount] = await Promise.all([
       tx.purchaseOrder.findMany({
         where,
-        skip,
-        take: pageSize,
+        ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { date: 'desc' },
         include: {
           vendor: { select: { contactName: true, companyName: true, paymentTerms: true } },
@@ -110,7 +111,7 @@ export async function getPurchaseOrdersReport(
     if (items.length === 0) {
       return {
         items: [],
-        pagination: { page, pageSize, totalCount, totalPages: 0 },
+        pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
 
@@ -150,7 +151,7 @@ export async function getPurchaseOrdersReport(
         page,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages: pageSize ? Math.ceil(totalCount / pageSize) : 1,
       },
     };
   });

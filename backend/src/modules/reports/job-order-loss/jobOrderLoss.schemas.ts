@@ -6,8 +6,8 @@ export const jobOrderLossQuerySchema = z.object({
   itemName: z.string().trim().optional(),
   processorName: z.string().trim().optional(),
   jobOrderNumber: z.string().trim().optional(),
-  page: z.coerce.number().int().min(1).optional().default(1),
-  perPage: z.coerce.number().int().min(1).max(100).optional().default(25),
+  page: z.coerce.number().int().min(1).optional(),
+  perPage: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export type JobOrderLossQuery = z.infer<typeof jobOrderLossQuerySchema>;

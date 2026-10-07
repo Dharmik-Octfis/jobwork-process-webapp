@@ -28,6 +28,21 @@ export const listQuerySchema = z.object({
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
 /**
+ * Report query base schema.
+ * When exporting or fetching all records, perPage is not passed (optional),
+ * returning all records. When paginating in UI, perPage is capped at max 500.
+ */
+export const reportListQuerySchema = z.object({
+  search: z.string().trim().min(1).max(100).optional(),
+  filter: z.string().trim().min(1).max(50).optional(),
+  fieldFilters: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce.number().int().positive().max(500).optional(),
+});
+
+export type ReportListQuery = z.infer<typeof reportListQuerySchema>;
+
+/**
  * NOTE: no `total`. Counting is deliberately NOT part of a list request — on a
  * large tenant `COUNT(*)` over a filtered set is the most expensive part of the
  * page, and it is only needed when someone actually wants the number. The client

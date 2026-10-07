@@ -1,7 +1,7 @@
-﻿import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
-import { ClipboardList, Plus, SlidersHorizontal } from 'lucide-react';
+import { ClipboardList, Plus, SlidersHorizontal, MoreVertical, Download } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -10,6 +10,7 @@ import { useListCount } from '../../../hooks/useListCount';
 import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
@@ -17,6 +18,7 @@ import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { JOB_ORDER_STATUS_META, statusMeta } from '../jobwork.schemas';
 import { fetchJobOrderCount, fetchJobOrders } from './jobOrders.api';
 import { JobOrderOverview } from './JobOrderOverview';
+import { exportJobOrdersToExcel, fetchAllJobOrdersForExport } from './utils/exportJobOrders';
 import type { JobOrder } from './jobOrders.schemas';
 
 const headerStyle: React.CSSProperties = {
@@ -119,10 +121,57 @@ export function JobOrdersList() {
     save: saveColumns,
   } = useListColumns(orgId, 'job_order');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleExportAll = async () => {
+    if (!orgId) return;
+    try {
+      setIsExporting(true);
+      const allOrders = await fetchAllJobOrdersForExport(orgId, {
+        search: search || undefined,
+        filter,
+      });
+
+      if (allOrders.length === 0) {
+        notify.error('No job orders found to export.');
+        return;
+      }
+
+      exportJobOrdersToExcel({
+        orders: allOrders,
+        filename: `Job_Orders_${new Date().toISOString().split('T')[0]}`,
+        customFieldsDef,
+        visibleColumnKeys: visible,
+        exportAllFields: true,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allOrders.length} job orders as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export job orders:', err);
+      notify.error('Failed to export job orders. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // The `cf:` columns carry no type in the catalog, so the definitions are what
   // turn a stored option id or `YYYY-MM-DD` into something readable.
   const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'job_order');
+  const customFieldsDef = customFieldDefs;
 
   const newPath = `/organizations/${orgId}/jobwork/job-orders/new`;
 
@@ -184,7 +233,7 @@ export function JobOrdersList() {
               fallbackLabel="Open Job Orders"
             />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               {/* No columns to customise while the master pane is 320px wide. */}
               {!selectedId && (
                 <button
@@ -230,6 +279,76 @@ export function JobOrdersList() {
               >
                 <Plus size={16} /> New
               </button>
+
+              {!selectedId && (
+                <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                    title="More Actions"
+                    aria-label="More Actions"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 30,
+                      height: 30,
+                      borderRadius: 4,
+                      border: '1px solid #e2e8f0',
+                      background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                    }}
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                  {isMoreMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: 4,
+                        background: '#fff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 6,
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                        minWidth: 200,
+                        zIndex: 50,
+                        padding: '4px 0',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          handleExportAll();
+                        }}
+                        disabled={isExporting}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 14px',
+                          background: 'none',
+                          border: 'none',
+                          fontSize: 13,
+                          color: '#1e293b',
+                          cursor: isExporting ? 'not-allowed' : 'pointer',
+                          textAlign: 'left',
+                          opacity: isExporting ? 0.6 : 1,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                      >
+                        <Download size={15} color="#166534" />
+                        Export Job Orders (XLSX)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </header>
 
@@ -404,15 +523,15 @@ export function JobOrdersList() {
 
           {/* Hidden while an order is selected — the master pane is 320px wide. */}
           <Pagination
-              pageContext={pageContext}
-              page={page}
-              onPageChange={setPage}
-              perPage={perPage}
-              onPerPageChange={setPerPage}
-              total={total}
-              isCounting={isCounting}
-              onRequestCount={() => void requestCount()}
-            />
+            pageContext={pageContext}
+            page={page}
+            onPageChange={setPage}
+            perPage={perPage}
+            onPerPageChange={setPerPage}
+            total={total}
+            isCounting={isCounting}
+            onRequestCount={() => void requestCount()}
+          />
         </div>
 
         {selectedId && (

@@ -89,8 +89,7 @@ export async function getJobworkChallans(
         },
       },
       orderBy: { issueDate: 'desc' },
-      skip: (page - 1) * perPage,
-      take: perPage,
+      ...(perPage ? { skip: ((page || 1) - 1) * perPage, take: perPage } : {}),
     });
 
     const stepIds = Array.from(new Set(issues.map((i) => i.jobOrderStepId)));
@@ -170,9 +169,9 @@ export async function getJobworkChallans(
     return {
       results,
       total: finalTotal,
-      page,
-      perPage,
-      totalPages: Math.ceil(finalTotal / perPage),
+      page: perPage ? (page || 1) : 1,
+      perPage: perPage ?? finalTotal,
+      totalPages: perPage ? Math.ceil(finalTotal / perPage) : 1,
     };
   });
 }

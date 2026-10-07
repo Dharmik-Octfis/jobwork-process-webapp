@@ -152,15 +152,17 @@ export async function getInventoryValuationSummary(
 
     const total = mappedRows.length;
     const page = _query.page || 1;
-    const perPage = _query.perPage || 25;
-    const totalPages = Math.ceil(total / perPage);
-    const paginatedRows = mappedRows.slice((page - 1) * perPage, page * perPage);
+    const perPage = _query.perPage;
+    const paginatedRows = perPage
+      ? mappedRows.slice((page - 1) * perPage, page * perPage)
+      : mappedRows;
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
 
     return {
       results: paginatedRows,
       total,
-      page,
-      perPage,
+      page: perPage ? page : 1,
+      perPage: perPage ?? total,
       totalPages,
       grandTotalQty: totalQty,
       grandTotalValue: totalValue,

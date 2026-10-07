@@ -16,8 +16,9 @@ import type {
   ZohoModuleSyncConfig,
   ZohoSyncSettings,
   ZohoSyncLog,
+  ZohoSyncOptions,
 } from './zoho.types.ts';
-import type { SaveZohoSyncConfigInput } from './zoho.schemas.ts';
+import { saveZohoSyncConfigSchema, type SaveZohoSyncConfigInput } from './zoho.schemas.ts';
 
 // In-memory tenant store for sync configurations & history
 // This provides fast and persistent in-process state for sync preferences and logs
@@ -41,7 +42,8 @@ export const APP_ITEM_FIELDS: AppFieldDefinition[] = [
 ];
 
 export const APP_CUSTOMER_FIELDS: AppFieldDefinition[] = [
-  { key: 'displayName', label: 'Customer Name', type: 'string', required: true, isSystem: true, description: 'Customer display name' },
+  { key: 'displayName', label: 'Display Name', type: 'string', required: true, isSystem: true, description: 'Customer primary display name' },
+  { key: 'contactNumber', label: 'Customer Number', type: 'string', description: 'Unique customer sequence identifier' },
   { key: 'companyName', label: 'Company Name', type: 'string', description: 'Company / Business legal name' },
   { key: 'email', label: 'Email Address', type: 'string', description: 'Primary contact email' },
   { key: 'phone', label: 'Phone', type: 'string', description: 'Work telephone number' },
@@ -53,7 +55,8 @@ export const APP_CUSTOMER_FIELDS: AppFieldDefinition[] = [
 ];
 
 export const APP_VENDOR_FIELDS: AppFieldDefinition[] = [
-  { key: 'displayName', label: 'Vendor Name', type: 'string', required: true, isSystem: true, description: 'Vendor display name' },
+  { key: 'displayName', label: 'Display Name', type: 'string', required: true, isSystem: true, description: 'Vendor primary display name' },
+  { key: 'contactNumber', label: 'Vendor Number', type: 'string', description: 'Unique vendor sequence identifier' },
   { key: 'companyName', label: 'Company Name', type: 'string', description: 'Company / Business legal name' },
   { key: 'email', label: 'Email Address', type: 'string', description: 'Primary contact email' },
   { key: 'phone', label: 'Phone', type: 'string', description: 'Work telephone number' },
@@ -66,7 +69,7 @@ export const APP_VENDOR_FIELDS: AppFieldDefinition[] = [
 
 // Standard Zoho Fields Fallback
 export const DEFAULT_ZOHO_ITEM_FIELDS: ZohoField[] = [
-  { field_name: 'name', label: 'Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
+  { field_name: 'name', label: 'Item Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
   { field_name: 'sku', label: 'SKU', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'rate', label: 'Rate', data_type: 'currency', is_mandatory: false, is_custom_field: false },
   { field_name: 'purchase_rate', label: 'Purchase Rate', data_type: 'currency', is_mandatory: false, is_custom_field: false },
@@ -79,7 +82,8 @@ export const DEFAULT_ZOHO_ITEM_FIELDS: ZohoField[] = [
 ];
 
 export const DEFAULT_ZOHO_CUSTOMER_FIELDS: ZohoField[] = [
-  { field_name: 'contact_name', label: 'Contact Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
+  { field_name: 'contact_name', label: 'Display Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
+  { field_name: 'customer_number', label: 'Customer Number', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'company_name', label: 'Company Name', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'email', label: 'Email', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'phone', label: 'Phone', data_type: 'string', is_mandatory: false, is_custom_field: false },
@@ -91,7 +95,8 @@ export const DEFAULT_ZOHO_CUSTOMER_FIELDS: ZohoField[] = [
 ];
 
 export const DEFAULT_ZOHO_VENDOR_FIELDS: ZohoField[] = [
-  { field_name: 'contact_name', label: 'Vendor Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
+  { field_name: 'contact_name', label: 'Display Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
+  { field_name: 'vendor_number', label: 'Vendor Number', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'company_name', label: 'Company Name', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'email', label: 'Email', data_type: 'string', is_mandatory: false, is_custom_field: false },
   { field_name: 'phone', label: 'Phone', data_type: 'string', is_mandatory: false, is_custom_field: false },
@@ -204,11 +209,21 @@ export function getDefaultFieldMappings(module: ZohoSyncModuleKey): ZohoFieldMap
       {
         id: 'map_cust_name',
         zohoField: 'contact_name',
-        zohoFieldLabel: 'Contact Name',
+        zohoFieldLabel: 'Display Name',
         appField: 'displayName',
-        appFieldLabel: 'Customer Name',
+        appFieldLabel: 'Display Name',
         isRequired: true,
         isSystem: true,
+        dataType: 'string',
+      },
+      {
+        id: 'map_cust_number',
+        zohoField: 'customer_number',
+        zohoFieldLabel: 'Customer Number',
+        appField: 'contactNumber',
+        appFieldLabel: 'Customer Number',
+        isRequired: false,
+        isSystem: false,
         dataType: 'string',
       },
       {
@@ -278,11 +293,21 @@ export function getDefaultFieldMappings(module: ZohoSyncModuleKey): ZohoFieldMap
     {
       id: 'map_vend_name',
       zohoField: 'contact_name',
-      zohoFieldLabel: 'Vendor Name',
+      zohoFieldLabel: 'Display Name',
       appField: 'displayName',
-      appFieldLabel: 'Vendor Name',
+      appFieldLabel: 'Display Name',
       isRequired: true,
       isSystem: true,
+      dataType: 'string',
+    },
+    {
+      id: 'map_vend_number',
+      zohoField: 'vendor_number',
+      zohoFieldLabel: 'Vendor Number',
+      appField: 'contactNumber',
+      appFieldLabel: 'Vendor Number',
+      isRequired: false,
+      isSystem: false,
       dataType: 'string',
     },
     {
@@ -344,20 +369,20 @@ export function getInitialSyncSettings(): ZohoSyncSettings {
     modules: {
       customer: {
         module: 'customer',
-        moduleLabel: 'Accounts <-> Customers',
+        moduleLabel: 'Customers',
         status: 'ACTIVE',
-        syncDirection: 'TWO_WAY',
-        duplicationPreference: 'Contact Name',
+        syncDirection: 'ZOHO_TO_APP',
+        duplicationPreference: 'Display Name',
         conflictResolution: 'Overwrite with Zoho Books',
         fieldMappings: getDefaultFieldMappings('customer'),
-        lastSyncAt: new Date(Date.now() - 3600 * 1000 * 1.5).toISOString(),
-        lastPushAt: new Date(Date.now() - 3600 * 1000 * 1.4).toISOString(),
+        lastSyncAt: null,
+        lastPushAt: null,
         autoSyncInterval: '2_HOURS',
         syncAddresses: true,
         syncContactPersons: true,
         stats: {
-          totalSynced: 24,
-          lastSyncedCount: 4,
+          totalSynced: 0,
+          lastSyncedCount: 0,
           failedCount: 0,
         },
       },
@@ -365,8 +390,8 @@ export function getInitialSyncSettings(): ZohoSyncSettings {
         module: 'vendor',
         moduleLabel: 'Vendors',
         status: 'ACTIVE',
-        syncDirection: 'TWO_WAY',
-        duplicationPreference: 'Vendor Name',
+        syncDirection: 'ZOHO_TO_APP',
+        duplicationPreference: 'Display Name',
         conflictResolution: 'Overwrite with Zoho Books',
         fieldMappings: getDefaultFieldMappings('vendor'),
         lastSyncAt: null,
@@ -384,7 +409,7 @@ export function getInitialSyncSettings(): ZohoSyncSettings {
         module: 'item',
         moduleLabel: 'Item',
         status: 'ACTIVE',
-        syncDirection: 'TWO_WAY',
+        syncDirection: 'ZOHO_TO_APP',
         duplicationPreference: 'Item Name',
         conflictResolution: 'Overwrite with Zoho Books',
         fieldMappings: getDefaultFieldMappings('item'),
@@ -603,7 +628,7 @@ export async function fetchZohoEntityFields(
         const data = (await res.json()) as ZohoFieldsApiResponse;
         if (data.fields && Array.isArray(data.fields) && data.fields.length > 0) {
           // Merge custom fields with default fields
-          const returnedFields = data.fields.map((f) => ({
+          const returnedFields: ZohoField[] = data.fields.map((f) => ({
             field_id: f.field_id,
             field_name: f.field_name,
             label: f.label || f.field_name,
@@ -613,7 +638,7 @@ export async function fetchZohoEntityFields(
           }));
 
           // Ensure mandatory name field is always at top
-          const mergedFields = [...returnedFields];
+          const mergedFields: ZohoField[] = [...returnedFields];
           for (const defField of defaultZohoFields) {
             if (!mergedFields.some((f) => f.field_name === defField.field_name)) {
               mergedFields.push(defField);
@@ -654,27 +679,17 @@ export async function getZohoSyncSettings(organizationId: string): Promise<ZohoS
 
 /**
  * Save / Update sync preferences and field mappings for a module (e.g. item).
+ * Validates mandatory fields using the Zod API validation schema (saveZohoSyncConfigSchema).
  */
 export async function saveZohoSyncConfig(
   organizationId: string,
   input: SaveZohoSyncConfigInput,
   _userId?: string,
 ): Promise<ZohoModuleSyncConfig> {
+  const validatedInput = saveZohoSyncConfigSchema.parse(input);
   const currentSettings = await getZohoSyncSettings(organizationId);
-  const moduleKey = input.module;
-
-  // Validate required prefilled mapping (e.g. Name -> Product Name)
+  const moduleKey = validatedInput.module;
   const requiredZohoField = moduleKey === 'item' ? 'name' : 'contact_name';
-  const hasRequiredMapping = input.fieldMappings.some(
-    (m) => m.zohoField === requiredZohoField && m.appField && m.appField.trim().length > 0,
-  );
-
-  if (!hasRequiredMapping) {
-    throw new ApiError(
-      400,
-      `The required field "${requiredZohoField}" must be mapped to a valid App field and cannot be empty.`,
-    );
-  }
 
   const updatedModuleConfig: ZohoModuleSyncConfig = {
     module: moduleKey,
@@ -797,6 +812,12 @@ function extractZohoValue(zohoRecord: Record<string, any>, zohoField: string): a
   }
   if (zohoField === 'gst_no' && (zohoRecord.gstin || zohoRecord.tax_number)) {
     return zohoRecord.gstin || zohoRecord.tax_number;
+  }
+  if (
+    (zohoField === 'vendor_number' || zohoField === 'customer_number' || zohoField === 'contact_number') &&
+    (zohoRecord.contact_number || zohoRecord.vendor_number || zohoRecord.customer_number || zohoRecord.reference_id)
+  ) {
+    return zohoRecord.contact_number || zohoRecord.vendor_number || zohoRecord.customer_number || zohoRecord.reference_id;
   }
   return undefined;
 }
@@ -1142,10 +1163,19 @@ async function syncCustomerAddresses(
 ): Promise<void> {
   if (!tx.customerAddress) return;
 
-  const billing = zRec.billing_address;
+  let billing = zRec.billing_address;
+  let shipping = zRec.shipping_address;
+
+  if (!billing && Array.isArray(zRec.addresses)) {
+    billing = zRec.addresses.find((a: any) => a.address_type === 'billing' || a.address_type === 'billing_address') || null;
+  }
+  if (!shipping && Array.isArray(zRec.addresses)) {
+    shipping = zRec.addresses.find((a: any) => a.address_type === 'shipping' || a.address_type === 'shipping_address') || null;
+  }
+
   if (
     billing &&
-    (billing.address || billing.street2 || billing.city || billing.state || billing.zip || billing.country || billing.phone || billing.attention)
+    (typeof billing === 'string' || billing.address || billing.street1 || billing.street2 || billing.city || billing.state || billing.zip || billing.pin_code || billing.country || billing.phone || billing.attention)
   ) {
     const existing = await tx.customerAddress.findFirst({
       where: {
@@ -1154,17 +1184,22 @@ async function syncCustomerAddresses(
       },
     });
 
-    const data = {
-      attention: billing.attention || null,
-      street1: billing.address || billing.street1 || null,
-      street2: billing.street2 || null,
-      city: billing.city || null,
-      state: billing.state || null,
-      pinCode: billing.zip || billing.pin_code || null,
-      country: billing.country || null,
-      phone: billing.phone || null,
-      isDeleted: false,
-    };
+    const data = typeof billing === 'string'
+      ? {
+          street1: billing,
+          isDeleted: false,
+        }
+      : {
+          attention: billing.attention || null,
+          street1: billing.address || billing.street1 || null,
+          street2: billing.street2 || null,
+          city: billing.city || null,
+          state: billing.state || null,
+          pinCode: billing.zip || billing.pin_code || null,
+          country: billing.country || null,
+          phone: billing.phone || null,
+          isDeleted: false,
+        };
 
     if (existing) {
       await tx.customerAddress.update({
@@ -1178,10 +1213,9 @@ async function syncCustomerAddresses(
     }
   }
 
-  const shipping = zRec.shipping_address;
   if (
     shipping &&
-    (shipping.address || shipping.street2 || shipping.city || shipping.state || shipping.zip || shipping.country || shipping.phone || shipping.attention)
+    (typeof shipping === 'string' || shipping.address || shipping.street1 || shipping.street2 || shipping.city || shipping.state || shipping.zip || shipping.pin_code || shipping.country || shipping.phone || shipping.attention)
   ) {
     const existing = await tx.customerAddress.findFirst({
       where: {
@@ -1190,17 +1224,22 @@ async function syncCustomerAddresses(
       },
     });
 
-    const data = {
-      attention: shipping.attention || null,
-      street1: shipping.address || shipping.street1 || null,
-      street2: shipping.street2 || null,
-      city: shipping.city || null,
-      state: shipping.state || null,
-      pinCode: shipping.zip || shipping.pin_code || null,
-      country: shipping.country || null,
-      phone: shipping.phone || null,
-      isDeleted: false,
-    };
+    const data = typeof shipping === 'string'
+      ? {
+          street1: shipping,
+          isDeleted: false,
+        }
+      : {
+          attention: shipping.attention || null,
+          street1: shipping.address || shipping.street1 || null,
+          street2: shipping.street2 || null,
+          city: shipping.city || null,
+          state: shipping.state || null,
+          pinCode: shipping.zip || shipping.pin_code || null,
+          country: shipping.country || null,
+          phone: shipping.phone || null,
+          isDeleted: false,
+        };
 
     if (existing) {
       await tx.customerAddress.update({
@@ -1297,10 +1336,19 @@ async function syncVendorAddresses(
 ): Promise<void> {
   if (!tx.vendorAddress) return;
 
-  const billing = zRec.billing_address;
+  let billing = zRec.billing_address;
+  let shipping = zRec.shipping_address;
+
+  if (!billing && Array.isArray(zRec.addresses)) {
+    billing = zRec.addresses.find((a: any) => a.address_type === 'billing' || a.address_type === 'billing_address') || null;
+  }
+  if (!shipping && Array.isArray(zRec.addresses)) {
+    shipping = zRec.addresses.find((a: any) => a.address_type === 'shipping' || a.address_type === 'shipping_address') || null;
+  }
+
   if (
     billing &&
-    (billing.address || billing.street2 || billing.city || billing.state || billing.zip || billing.country || billing.phone || billing.attention)
+    (typeof billing === 'string' || billing.address || billing.street1 || billing.street2 || billing.city || billing.state || billing.zip || billing.pin_code || billing.country || billing.phone || billing.attention)
   ) {
     const existing = await tx.vendorAddress.findFirst({
       where: {
@@ -1309,17 +1357,22 @@ async function syncVendorAddresses(
       },
     });
 
-    const data = {
-      attention: billing.attention || null,
-      street1: billing.address || billing.street1 || null,
-      street2: billing.street2 || null,
-      city: billing.city || null,
-      state: billing.state || null,
-      pinCode: billing.zip || billing.pin_code || null,
-      country: billing.country || null,
-      phone: billing.phone || null,
-      isDeleted: false,
-    };
+    const data = typeof billing === 'string'
+      ? {
+          street1: billing,
+          isDeleted: false,
+        }
+      : {
+          attention: billing.attention || null,
+          street1: billing.address || billing.street1 || null,
+          street2: billing.street2 || null,
+          city: billing.city || null,
+          state: billing.state || null,
+          pinCode: billing.zip || billing.pin_code || null,
+          country: billing.country || null,
+          phone: billing.phone || null,
+          isDeleted: false,
+        };
 
     if (existing) {
       await tx.vendorAddress.update({
@@ -1333,10 +1386,9 @@ async function syncVendorAddresses(
     }
   }
 
-  const shipping = zRec.shipping_address;
   if (
     shipping &&
-    (shipping.address || shipping.street2 || shipping.city || shipping.state || shipping.zip || shipping.country || shipping.phone || shipping.attention)
+    (typeof shipping === 'string' || shipping.address || shipping.street1 || shipping.street2 || shipping.city || shipping.state || shipping.zip || billing?.pin_code || shipping.country || shipping.phone || shipping.attention)
   ) {
     const existing = await tx.vendorAddress.findFirst({
       where: {
@@ -1345,17 +1397,22 @@ async function syncVendorAddresses(
       },
     });
 
-    const data = {
-      attention: shipping.attention || null,
-      street1: shipping.address || shipping.street1 || null,
-      street2: shipping.street2 || null,
-      city: shipping.city || null,
-      state: shipping.state || null,
-      pinCode: shipping.zip || shipping.pin_code || null,
-      country: shipping.country || null,
-      phone: shipping.phone || null,
-      isDeleted: false,
-    };
+    const data = typeof shipping === 'string'
+      ? {
+          street1: shipping,
+          isDeleted: false,
+        }
+      : {
+          attention: shipping.attention || null,
+          street1: shipping.address || shipping.street1 || null,
+          street2: shipping.street2 || null,
+          city: shipping.city || null,
+          state: shipping.state || null,
+          pinCode: shipping.zip || shipping.pin_code || null,
+          country: shipping.country || null,
+          phone: shipping.phone || null,
+          isDeleted: false,
+        };
 
     if (existing) {
       await tx.vendorAddress.update({
@@ -1464,8 +1521,55 @@ export async function dumpZohoRecordsToDb(
   const shouldSyncAddresses = config.syncAddresses !== false;
   const shouldSyncContactPersons = config.syncContactPersons !== false;
 
-  for (const zRec of zohoRecords) {
+  let accessToken = '';
+  let domain = 'https://www.zohoapis.com';
+  let zohoOrgId = '';
+  if (module === 'customer' || module === 'vendor') {
     try {
+      const integration = await runAsTenant(organizationId, (tx) =>
+        tx.zohoIntegration.findUnique({ where: { organizationId } }),
+      );
+      if (integration && integration.selectedOrganizationId) {
+        const tokenObj = await getValidAccessToken(organizationId);
+        accessToken = tokenObj.accessToken;
+        domain = (tokenObj.apiDomain || integration.apiDomain || 'https://www.zohoapis.com').replace(/\/+$/, '');
+        zohoOrgId = integration.selectedOrganizationId;
+      }
+    } catch (err) {
+      console.warn(`Token fetch skipped for contact detail in ${module}:`, err);
+    }
+  }
+
+  for (const rawZRec of zohoRecords) {
+    try {
+      let zRec = rawZRec;
+      if (
+        (module === 'customer' || module === 'vendor') &&
+        zRec.contact_id &&
+        accessToken &&
+        zohoOrgId &&
+        (!zRec.billing_address || !zRec.shipping_address)
+      ) {
+        try {
+          const detailUrl = `${domain}/books/v3/contacts/${encodeURIComponent(zRec.contact_id)}?organization_id=${encodeURIComponent(zohoOrgId)}`;
+          const detailRes = await fetch(detailUrl, {
+            method: 'GET',
+            headers: {
+              Authorization: `Zoho-oauthtoken ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (detailRes.ok) {
+            const detailJson: any = await detailRes.json();
+            if (detailJson.contact) {
+              zRec = { ...zRec, ...detailJson.contact };
+            }
+          }
+        } catch (detailErr) {
+          console.warn(`Failed to fetch contact detail for ${zRec.contact_id}:`, detailErr);
+        }
+      }
+
       // Map fields from Zoho record into Jobwork entity object
       const mappedData: Record<string, any> = { customFields: {} };
 
@@ -1583,7 +1687,8 @@ export async function dumpZohoRecordsToDb(
         const contactName = mappedData.displayName || mappedData.contactName || zRec.contact_name || zRec.company_name || 'Zoho Customer';
         const companyName = mappedData.companyName || zRec.company_name || null;
         const zohoContactId = zRec.contact_id ? String(zRec.contact_id) : null;
-        let contactNumber = mappedData.contactNumber || (zohoContactId ? `ZC-${zohoContactId}` : `CUST-${Date.now().toString().slice(-6)}`);
+        const rawZohoNumber = zRec.contact_number || zRec.customer_number || zRec.reference_id || null;
+        let contactNumber = mappedData.contactNumber || rawZohoNumber || (zohoContactId ? `ZC-${zohoContactId}` : `CUST-${Date.now().toString().slice(-6)}`);
         const email = mappedData.email || zRec.email || null;
         const phone = mappedData.phone || zRec.phone || null;
         const mobile = mappedData.mobile || zRec.mobile || null;
@@ -1607,8 +1712,8 @@ export async function dumpZohoRecordsToDb(
               OR: [
                 ...(zohoContactId ? [{ contactNumber: `ZC-${zohoContactId}` }] : []),
                 ...(contactNumber ? [{ contactNumber }] : []),
-                { contactName: { equals: contactName, mode: 'insensitive' } },
-                ...(email ? [{ email: { equals: email, mode: 'insensitive' } }] : []),
+                { contactName: { equals: contactName, mode: 'insensitive' as const } },
+                ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
               ],
             },
           });
@@ -1623,6 +1728,7 @@ export async function dumpZohoRecordsToDb(
                 where: { id: existing.id },
                 data: {
                   contactName,
+                  contactNumber: (contactNumber && !contactNumber.startsWith('ZC-')) ? contactNumber : (existing.contactNumber?.startsWith('ZC-') ? contactNumber : existing.contactNumber),
                   companyName: companyName !== null ? companyName : existing.companyName,
                   email: email !== null ? email : existing.email,
                   phone: phone !== null ? phone : existing.phone,
@@ -1691,7 +1797,8 @@ export async function dumpZohoRecordsToDb(
         const contactName = mappedData.displayName || mappedData.contactName || zRec.contact_name || zRec.company_name || 'Zoho Vendor';
         const companyName = mappedData.companyName || zRec.company_name || null;
         const zohoContactId = zRec.contact_id ? String(zRec.contact_id) : null;
-        let contactNumber = mappedData.contactNumber || (zohoContactId ? `ZV-${zohoContactId}` : `VEND-${Date.now().toString().slice(-6)}`);
+        const rawZohoNumber = zRec.contact_number || zRec.vendor_number || zRec.reference_id || null;
+        let contactNumber = mappedData.contactNumber || rawZohoNumber || (zohoContactId ? `ZV-${zohoContactId}` : `VEND-${Date.now().toString().slice(-6)}`);
         const email = mappedData.email || zRec.email || null;
         const phone = mappedData.phone || zRec.phone || null;
         const mobile = mappedData.mobile || zRec.mobile || null;
@@ -1715,8 +1822,8 @@ export async function dumpZohoRecordsToDb(
               OR: [
                 ...(zohoContactId ? [{ contactNumber: `ZV-${zohoContactId}` }] : []),
                 ...(contactNumber ? [{ contactNumber }] : []),
-                { contactName: { equals: contactName, mode: 'insensitive' } },
-                ...(email ? [{ email: { equals: email, mode: 'insensitive' } }] : []),
+                { contactName: { equals: contactName, mode: 'insensitive' as const } },
+                ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
               ],
             },
           });
@@ -1731,6 +1838,7 @@ export async function dumpZohoRecordsToDb(
                 where: { id: existing.id },
                 data: {
                   contactName,
+                  contactNumber: (contactNumber && !contactNumber.startsWith('ZV-')) ? contactNumber : (existing.contactNumber?.startsWith('ZV-') ? contactNumber : existing.contactNumber),
                   companyName: companyName !== null ? companyName : existing.companyName,
                   email: email !== null ? email : existing.email,
                   phone: phone !== null ? phone : existing.phone,
@@ -1834,7 +1942,7 @@ export async function executeInstantSync(
       module,
       moduleLabel: module === 'item' ? 'Item' : module === 'customer' ? 'Accounts <-> Customers' : 'Vendors',
       status: 'ACTIVE',
-      syncDirection: 'TWO_WAY',
+      syncDirection: 'ZOHO_TO_APP',
       duplicationPreference: module === 'item' ? 'Item Name' : module === 'customer' ? 'Contact Name' : 'Vendor Name',
       conflictResolution: 'Clone',
       fieldMappings: getDefaultFieldMappings(module),
@@ -1860,6 +1968,16 @@ export async function executeInstantSync(
 
   if (moduleConfig.status === 'INACTIVE') {
     throw new ApiError(400, `Module ${module} is currently Inactive. Please activate sync before running an instant sync.`);
+  }
+
+  // Validate that all required field mappings are present and non-empty via the API validation schema
+  const parseResult = saveZohoSyncConfigSchema.safeParse(moduleConfig);
+  if (!parseResult.success) {
+    const errorMsg = parseResult.error.issues.map((i) => i.message).join(' ');
+    throw new ApiError(
+      400,
+      `Cannot perform synchronization for module "${module}": ${errorMsg}`,
+    );
   }
 
   const isFullSync = Boolean(options?.fullSync || options?.syncMode === 'full');

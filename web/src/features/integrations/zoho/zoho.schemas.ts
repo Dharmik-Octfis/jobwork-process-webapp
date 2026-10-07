@@ -147,27 +147,49 @@ export interface ZohoSyncLog {
   createdAt: string;
 }
 
-export const saveZohoSyncConfigSchema = z.object({
-  module: z.enum(['item', 'customer', 'vendor']),
-  syncDirection: z.enum(['TWO_WAY', 'APP_TO_ZOHO', 'ZOHO_TO_APP']).default('TWO_WAY'),
-  duplicationPreference: z.string().trim().min(1, 'Duplication preference is required'),
-  conflictResolution: z.string().trim().min(1, 'Conflict resolution is required'),
-  fieldMappings: z.array(
-    z.object({
-      id: z.string().optional(),
-      zohoField: z.string().trim().min(1),
-      zohoFieldLabel: z.string().trim().min(1),
-      appField: z.string().trim().min(1),
-      appFieldLabel: z.string().trim().min(1),
-      isRequired: z.boolean().optional(),
-      isSystem: z.boolean().optional(),
-      dataType: z.string().optional(),
-    }),
-  ).min(1, 'At least one field mapping is required'),
-  status: z.enum(['ACTIVE', 'PAUSED', 'INACTIVE', 'NOT_CONFIGURED']).optional(),
-  autoSyncInterval: z.string().optional(),
-  syncAddresses: z.boolean().optional(),
-  syncContactPersons: z.boolean().optional(),
-});
+export const saveZohoSyncConfigSchema = z
+  .object({
+    module: z.enum(['item', 'customer', 'vendor']),
+    syncDirection: z.enum(['TWO_WAY', 'APP_TO_ZOHO', 'ZOHO_TO_APP']).default('TWO_WAY'),
+    duplicationPreference: z.string().trim().min(1, 'Duplication preference is required'),
+    conflictResolution: z.string().trim().min(1, 'Conflict resolution is required'),
+    fieldMappings: z.array(
+      z.object({
+        id: z.string().optional(),
+        zohoField: z.string().trim().min(1),
+        zohoFieldLabel: z.string().trim().min(1),
+        appField: z.string().trim().min(1),
+        appFieldLabel: z.string().trim().min(1),
+        isRequired: z.boolean().optional(),
+        isSystem: z.boolean().optional(),
+        dataType: z.string().optional(),
+      }),
+    ).min(1, 'At least one field mapping is required'),
+    status: z.enum(['ACTIVE', 'PAUSED', 'INACTIVE', 'NOT_CONFIGURED']).optional(),
+    autoSyncInterval: z.string().optional(),
+    syncAddresses: z.boolean().optional(),
+    syncContactPersons: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const requiredZohoField = data.module === 'item' ? 'name' : 'contact_name';
+    const requiredAppField = data.module === 'item' ? 'name' : 'displayName';
+    const fieldLabel = data.module === 'item' ? 'Item Name' : 'Display Name';
+
+    const hasRequiredMapping = data.fieldMappings.some(
+      (m) =>
+        (m.appField === requiredAppField || m.appField === 'name' || m.appField === 'displayName' || m.appField === 'contactName') &&
+        (m.zohoField === requiredZohoField || m.zohoField === 'name' || m.zohoField === 'contact_name') &&
+        m.appField.trim().length > 0 &&
+        m.zohoField.trim().length > 0,
+    );
+
+    if (!hasRequiredMapping) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `The required field "${fieldLabel}" must be mapped to a valid Zoho Books field and cannot be empty.`,
+        path: ['fieldMappings'],
+      });
+    }
+  });
 
 export type SaveZohoSyncConfigInput = z.infer<typeof saveZohoSyncConfigSchema>;

@@ -1,11 +1,14 @@
-﻿import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, MoreVertical, Download } from 'lucide-react';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { useListCount } from '../../../hooks/useListCount';
 import { Pagination } from '../../../components/ui/Pagination';
 import { NewButton } from '../../../components/ui/NewButton';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
 import { formatMoney, formatQty, toNumber } from '../../jobwork/jobwork.schemas';
 import { AdjustmentDetail } from './AdjustmentDetail';
 import { fetchAdjustmentCount, fetchAdjustments } from './adjustments.api';
@@ -14,6 +17,10 @@ import {
   adjustmentStatusMeta,
   type StockAdjustmentRow,
 } from './adjustments.schemas';
+import {
+  exportAdjustmentsToExcel,
+  fetchAllAdjustmentsForExport,
+} from './utils/exportAdjustments';
 
 const headerStyle: React.CSSProperties = {
   padding: '12px 16px',
@@ -87,6 +94,25 @@ export function AdjustmentsList() {
   const selectedId = searchParams.get('id');
   const { search, perPage, setPerPage, page, setPage } = useListSearch();
 
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    if (isMoreMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['stockAdjustments', orgId, search, page, perPage],
     queryFn: () => fetchAdjustments(orgId!, { search: search || undefined, page, perPage }),
@@ -102,6 +128,59 @@ export function AdjustmentsList() {
   } = useListCount(['stockAdjustments-count', orgId, search], () =>
     fetchAdjustmentCount(orgId!, { search: search || undefined }),
   );
+
+  const handleExportAll = async () => {
+    setIsExporting(true);
+    try {
+      notify.success('Exporting adjustments to XLSX...');
+      const allAdjustments = await fetchAllAdjustmentsForExport(orgId!, {});
+      if (allAdjustments.length === 0) {
+        notify.error('No adjustments found to export.');
+        return;
+      }
+      exportAdjustmentsToExcel({
+        adjustments: allAdjustments,
+        filename: `Inventory_Adjustments_${new Date().toISOString().split('T')[0]}`,
+        format: 'xlsx',
+      });
+      notify.success(
+        `Successfully exported ${allAdjustments.length} adjustments as XLSX file.`,
+      );
+    } catch (err) {
+      console.error('Failed to export adjustments:', err);
+      notify.error('Failed to export adjustments. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedAdjustments = rows.filter((r) => selectedIds.includes(r.id));
+    if (selectedAdjustments.length === 0) {
+      notify.error('No selected adjustments to export.');
+      return;
+    }
+    exportAdjustmentsToExcel({
+      adjustments: selectedAdjustments,
+      filename: `Inventory_Adjustments_Selected_${new Date().toISOString().split('T')[0]}`,
+      format: 'xlsx',
+    });
+    notify.success(
+      `Successfully exported ${selectedAdjustments.length} selected adjustments as XLSX file.`,
+    );
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === rows.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(rows.map((r) => r.id));
+    }
+  };
 
   const open = (id: string) =>
     setSearchParams((prev) => {
@@ -155,24 +234,104 @@ export function AdjustmentsList() {
             minWidth: 0,
           }}
         >
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              padding: '16px 24px',
-              background: '#fff',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            <span style={{ fontSize: 16, fontWeight: 600, color: '#111', minWidth: 0 }}>
-              Inventory Adjustments
-            </span>
-            <NewButton
-              onClick={() => navigate(`/organizations/${orgId}/inventory/adjustments/new`)}
+          {!selectedId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onExport={handleExportSelected}
+              isProcessing={isExporting}
             />
-          </header>
+          ) : (
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                padding: '16px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+              }}
+            >
+              <span style={{ fontSize: 16, fontWeight: 600, color: '#111', minWidth: 0 }}>
+                Inventory Adjustments
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <NewButton
+                  onClick={() => navigate(`/organizations/${orgId}/inventory/adjustments/new`)}
+                />
+                {!selectedId && (
+                  <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                      title="More Actions"
+                      aria-label="More Actions"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 30,
+                        height: 30,
+                        borderRadius: 4,
+                        border: '1px solid #e2e8f0',
+                        background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                        cursor: 'pointer',
+                        color: '#64748b',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isMoreMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 4,
+                          background: '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                          minWidth: 220,
+                          zIndex: 50,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleExportAll();
+                          }}
+                          disabled={isExporting}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 13,
+                            color: '#1e293b',
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            textAlign: 'left',
+                            opacity: isExporting ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          <Download size={15} color="#166534" />
+                          Export Adjustments (XLSX)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </header>
+          )}
 
           <div style={{ flex: 1, overflow: 'auto' }}>
             {isLoading ? (
@@ -240,6 +399,21 @@ export function AdjustmentsList() {
                 >
                   <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                     <tr>
+                      <th
+                        style={{
+                          width: 48,
+                          ...headerStyle,
+                          paddingRight: 0,
+                          textAlign: 'center',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={rows.length > 0 && selectedIds.length === rows.length}
+                          onChange={toggleAll}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </th>
                       <th style={headerStyle}>Date</th>
                       <th style={headerStyle}>Adjustment#</th>
                       <th style={headerStyle}>Type</th>
@@ -255,8 +429,28 @@ export function AdjustmentsList() {
                       <tr
                         key={row.id}
                         onClick={() => open(row.id)}
-                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        style={{
+                          borderBottom: '1px solid #eef0f3',
+                          cursor: 'pointer',
+                          background: selectedIds.includes(row.id) ? '#f8fafc' : 'transparent',
+                        }}
                       >
+                        <td
+                          style={{
+                            width: 48,
+                            padding: '12px 16px',
+                            paddingRight: 0,
+                            textAlign: 'center',
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(row.id)}
+                            onChange={() => toggleSelection(row.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
                         <td style={cellStyle}>{formatDate(row.adjustmentDate)}</td>
                         <td style={cellStyle}>
                           {/* The keyboard's way into the row — the row click is the mouse's. */}

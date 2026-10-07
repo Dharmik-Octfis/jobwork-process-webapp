@@ -118,7 +118,7 @@ export async function getJobOrderLossReport(
         w.remarks
       ${from}
       ORDER BY w.written_off_at DESC, jo.job_order_number DESC, s.seq ASC, ji.challan_number ASC
-      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
+      ${perPage ? Prisma.sql`LIMIT ${perPage} OFFSET ${((page || 1) - 1) * perPage}` : Prisma.empty}`;
 
     const results: JobOrderLossRow[] = rows.map(({ remarks, qty, value, ...row }) => ({
       ...row,
@@ -127,12 +127,14 @@ export async function getJobOrderLossReport(
       reason: reasonFrom(remarks),
     }));
 
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
+
     return {
       results,
       total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
+      page: perPage ? (page || 1) : 1,
+      perPage: perPage ?? total,
+      totalPages,
       grandTotalValue: Number(totals[0]?.value ?? 0),
     };
   });

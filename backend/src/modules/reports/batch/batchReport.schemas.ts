@@ -9,8 +9,8 @@ export const batchReportQuerySchema = z.object({
   fromDate: z.string().datetime().optional(),
   toDate: z.string().datetime().optional(),
   minAgeDays: z.coerce.number().int().min(0).optional(),
-  page: z.coerce.number().int().min(1).optional().default(1),
-  perPage: z.coerce.number().int().min(1).max(100).optional().default(25),
+  page: z.coerce.number().int().min(1).optional(),
+  perPage: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export type BatchReportQuery = z.infer<typeof batchReportQuerySchema>;

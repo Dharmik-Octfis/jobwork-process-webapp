@@ -13,6 +13,7 @@ import { reportsApi, type VendorsReportQuery, type VendorsReportRow } from './re
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const COLUMN_CATALOG = [
   { key: 'contactName', label: 'DISPLAY NAME', defaultVisible: true },
@@ -176,6 +177,53 @@ export function VendorsReportPage() {
     return String(val);
   };
 
+  const exportColumns = useMemo(() => {
+    return visibleColumns.map((colKey) => {
+      const colDef = allColumns.find((c) => c.key === colKey);
+      return {
+        key: colKey,
+        label: colDef ? colDef.label : colKey.toUpperCase(),
+        align: 'left' as const,
+      };
+    });
+  }, [visibleColumns, allColumns]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        if (col.key.startsWith('cf_')) {
+          const cfKey = col.key.replace('cf_', '');
+          const val = (row.customFields as Record<string, unknown>)?.[cfKey];
+          return val !== undefined && val !== null && val !== '' ? String(val) : '-';
+        }
+        const val = row[col.key as keyof VendorsReportRow];
+        return val !== null && val !== undefined && val !== '' ? String(val) : '-';
+      })
+    );
+  }, [sortedRows, exportColumns]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getVendorsReport(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const allRows = allRes?.items || [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        if (col.key.startsWith('cf_')) {
+          const cfKey = col.key.replace('cf_', '');
+          const val = (row.customFields as Record<string, unknown>)?.[cfKey];
+          return val !== undefined && val !== null && val !== '' ? String(val) : '-';
+        }
+        const val = row[col.key as keyof VendorsReportRow];
+        return val !== null && val !== undefined && val !== '' ? String(val) : '-';
+      })
+    );
+    return { data: allExportRows };
+  };
+
   return (
     <div
       style={{
@@ -205,25 +253,35 @@ export function VendorsReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Vendor Report"
+            columns={exportColumns}
+            data={exportRows}
+            fetchExportData={fetchExportData}
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '44px',
+              minHeight: '44px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

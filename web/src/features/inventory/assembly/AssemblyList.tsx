@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, SlidersHorizontal, Settings } from 'lucide-react';
+import {
+  Plus,
+  SlidersHorizontal,
+  Settings,
+  MoreVertical,
+  Download,
+} from 'lucide-react';
 import { assembliesApi, type ItemAssembly } from './assemblies.api';
 
 import { AssemblyDetail } from './AssemblyDetail';
@@ -14,10 +20,15 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import {
+  exportAssembliesToExcel,
+  fetchAllAssembliesForExport,
+} from './utils/exportAssemblies';
 
 function renderAssemblyCell(
   assembly: ItemAssembly,
@@ -120,9 +131,72 @@ export function AssemblyList() {
   } = useListColumns(orgId, 'item_assembly');
   const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'item_assembly');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    if (isMoreMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+
+  const handleExportAll = async () => {
+    setIsExporting(true);
+    try {
+      notify.success('Exporting assemblies to XLSX...');
+      const allAssemblies = await fetchAllAssembliesForExport(orgId!, {});
+      if (allAssemblies.length === 0) {
+        notify.error('No assemblies found to export.');
+        return;
+      }
+      exportAssembliesToExcel({
+        assemblies: allAssemblies,
+        filename: `Assemblies_${new Date().toISOString().split('T')[0]}`,
+        customFieldsDef: customFieldDefs,
+        visibleColumnKeys: visible,
+        exportAllFields: true,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allAssemblies.length} assemblies as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export assemblies:', err);
+      notify.error('Failed to export assemblies. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedAssemblies = assemblies.filter((a) => selectedIds.includes(a.id));
+    if (selectedAssemblies.length === 0) {
+      notify.error('No selected assemblies to export.');
+      return;
+    }
+    exportAssembliesToExcel({
+      assemblies: selectedAssemblies,
+      filename: `Assemblies_Selected_${new Date().toISOString().split('T')[0]}`,
+      customFieldsDef: customFieldDefs,
+      visibleColumnKeys: visible,
+      exportAllFields: true,
+      format: 'xlsx',
+    });
+    notify.success(
+      `Successfully exported ${selectedAssemblies.length} selected assemblies as XLSX file.`,
+    );
+  };
 
   const headerStyle = {
     padding: '12px 16px',
@@ -177,8 +251,9 @@ export function AssemblyList() {
             <BulkActionBar
               selectedCount={selectedIds.length}
               onClearSelection={() => setSelectedIds([])}
+              onExport={handleExportSelected}
               onDelete={handleDeleteSelected}
-              isProcessing={isProcessing}
+              isProcessing={isProcessing || isExporting}
             />
           ) : (
             <header
@@ -198,7 +273,7 @@ export function AssemblyList() {
                 fallbackLabel="All Assemblies"
               />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {!selectedId && (
                   <button
                     type="button"
@@ -245,6 +320,76 @@ export function AssemblyList() {
                   <Plus size={16} />
                   <span>New</span>
                 </button>
+
+                {!selectedId && (
+                  <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                      title="More Actions"
+                      aria-label="More Actions"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 30,
+                        height: 30,
+                        borderRadius: 4,
+                        border: '1px solid #e2e8f0',
+                        background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                        cursor: 'pointer',
+                        color: '#64748b',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isMoreMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 4,
+                          background: '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                          minWidth: 220,
+                          zIndex: 50,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleExportAll();
+                          }}
+                          disabled={isExporting}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 13,
+                            color: '#1e293b',
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            textAlign: 'left',
+                            opacity: isExporting ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          <Download size={15} color="#166534" />
+                          Export Assemblies (XLSX)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </header>
           )}

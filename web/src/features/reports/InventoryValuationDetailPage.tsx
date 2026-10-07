@@ -6,6 +6,8 @@ import { ReportDateFilter } from './components/ReportDateFilter';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { reportsApi, type ItemLedgerResponse, type ItemLedgerRow } from './reports.api';
 
+import { ReportExportMenu } from './components/ReportExportMenu';
+
 export function InventoryValuationDetailPage() {
   const navigate = useNavigate();
   const { orgId, itemId } = useParams<{ orgId: string; itemId: string }>();
@@ -70,6 +72,38 @@ export function InventoryValuationDetailPage() {
     }
   };
 
+  const exportColumns = [
+    { key: 'date', label: 'DATE', align: 'left' as const },
+    { key: 'transactionDetails', label: 'TRANSACTION DETAILS', align: 'left' as const },
+    { key: 'quantity', label: 'QUANTITY', align: 'right' as const },
+    { key: 'unitCost', label: 'UNIT COST', align: 'right' as const },
+    { key: 'totalCost', label: 'TOTAL COST', align: 'right' as const },
+    { key: 'stockOnHand', label: 'STOCK ON HAND', align: 'right' as const },
+    { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', align: 'right' as const },
+  ];
+
+  const exportRows = (data?.rows || []).map((row) => [
+    row.date
+      ? format(new Date(row.date), 'dd-MM-yyyy')
+      : row.isOpeningStock
+        ? format(appliedFilters.fromDate, 'dd-MM-yyyy')
+        : row.isClosingStock
+          ? format(appliedFilters.toDate, 'dd-MM-yyyy')
+          : '-',
+    row.transactionDetails +
+      (row.sourceDocNumber
+        ? ' # ' + row.sourceDocNumber
+        : row.sourceDocId
+          ? ' # ' + row.sourceDocId.substring(0, 8)
+          : '') +
+      (row.isCancellation ? ' (cancelled)' : ''),
+    Number(row.quantity || 0).toFixed(2),
+    Number(row.unitCost || 0).toFixed(2),
+    Number(row.totalCost || 0).toFixed(2),
+    Number(row.stockOnHand || 0).toFixed(2),
+    Number(row.inventoryAssetValue || 0).toFixed(2),
+  ]);
+
   return (
     <div
       style={{
@@ -126,22 +160,33 @@ export function InventoryValuationDetailPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle={`Inventory Valuation for ${data?.itemInfo?.itemName || 'Item'} (${data?.itemInfo?.sku || 'N/A'})`}
+            dateSubtitle={`From ${format(fromDate, 'dd-MM-yyyy')} To ${format(toDate, 'dd-MM-yyyy')}`}
+            columns={exportColumns}
+            data={exportRows}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

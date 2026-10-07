@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { listQuerySchema } from '../../../lib/pagination.ts';
+import { reportListQuerySchema } from '../../../lib/pagination.ts';
 
-export const takaReportQuerySchema = listQuerySchema.extend({
+export const takaReportQuerySchema = reportListQuerySchema.extend({
   itemName: z.string().optional(),
   locationName: z.string().optional(),
   batchText: z.string().optional(),

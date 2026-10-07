@@ -7,6 +7,7 @@ interface BulkActionBarProps {
   onMarkActive?: () => void;
   onMarkInactive?: () => void;
   onDelete?: () => void;
+  onExport?: () => void;
   isProcessing?: boolean;
 }
 
@@ -16,6 +17,7 @@ export function BulkActionBar({
   onMarkActive,
   onMarkInactive,
   onDelete,
+  onExport,
   isProcessing,
 }: BulkActionBarProps) {
   useEffect(() => {
@@ -95,6 +97,26 @@ export function BulkActionBar({
           }}
         >
           Mark as Inactive
+        </button>
+      )}
+
+      {onExport && (
+        <button
+          onClick={onExport}
+          disabled={isProcessing}
+          style={{
+            background: '#fff',
+            color: '#1e293b',
+            border: '1px solid #e2e8f0',
+            padding: '6px 12px',
+            borderRadius: '4px',
+            fontWeight: 500,
+            fontSize: '13px',
+            cursor: isProcessing ? 'not-allowed' : 'pointer',
+            opacity: isProcessing ? 0.5 : 1,
+          }}
+        >
+          Export
         </button>
       )}
 

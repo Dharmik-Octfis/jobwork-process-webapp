@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { listQuerySchema } from '../../../lib/pagination.ts';
+import { reportListQuerySchema } from '../../../lib/pagination.ts';
 
-export const vendorsReportQuerySchema = listQuerySchema.extend({
+export const vendorsReportQuerySchema = reportListQuerySchema.extend({
   contactNumber: z.string().optional(),
   companyName: z.string().optional(),
   status: z.string().optional(),

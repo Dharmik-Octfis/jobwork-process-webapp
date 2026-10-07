@@ -5,6 +5,7 @@ export async function getBillsReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     vendorId?: string;
     status?: string;
@@ -21,8 +22,9 @@ export async function getBillsReport(
   }
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     vendorId,
     status,
     fromDate,
@@ -37,7 +39,7 @@ export async function getBillsReport(
     billCustomFields,
   } = params;
   
-  const skip = (page - 1) * pageSize;
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.BillWhereInput = {
@@ -119,8 +121,7 @@ export async function getBillsReport(
     const [items, totalCount] = await Promise.all([
       tx.bill.findMany({
         where,
-        skip,
-        take: pageSize,
+        ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { billDate: 'desc' },
         include: {
           vendor: { select: { contactName: true, companyName: true, paymentTerms: true } },
@@ -133,7 +134,7 @@ export async function getBillsReport(
     if (items.length === 0) {
       return {
         items: [],
-        pagination: { page, pageSize, totalCount, totalPages: 0 },
+        pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
 
@@ -163,7 +164,7 @@ export async function getBillsReport(
         page,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages: pageSize ? Math.ceil(totalCount / pageSize) : 1,
       },
     };
   });

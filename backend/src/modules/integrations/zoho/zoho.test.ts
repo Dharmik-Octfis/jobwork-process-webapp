@@ -22,8 +22,6 @@ import {
   dumpZohoRecordsToDb,
   ensureItemCategoryExists,
   ensureUnitOfMeasurementExists,
-  ensurePaymentTermExists,
-  ensureCurrencyExists,
   getZohoSyncHistory,
 } from './zoho.api.service.ts';
 import {
@@ -175,11 +173,11 @@ describe('Zoho Books Integration Module', () => {
       } as any);
 
       vi.spyOn(prisma.oAuthState, 'deleteMany').mockResolvedValue({ count: 0 });
-      vi.spyOn(prisma.oAuthState, 'create').mockImplementation(async (args: any) => ({
+      (prisma.oAuthState.create as any) = vi.fn().mockImplementation(async (args: any) => ({
         id: 'state-id-1',
         createdAt: new Date(),
         ...args.data,
-      }) as any);
+      }));
 
       const result = await buildAuthorizationUrl(testOrgId, testUserId);
 

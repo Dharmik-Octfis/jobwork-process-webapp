@@ -53,7 +53,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
 
   const [duplicationPref, setDuplicationPref] = useState('Item Name');
   const [conflictResolution, setConflictResolution] = useState('Clone');
-  const [syncDirection, setSyncDirection] = useState<ZohoSyncDirection>('TWO_WAY');
+  const [syncDirection, setSyncDirection] = useState<ZohoSyncDirection>('ZOHO_TO_APP');
   const [syncStatus, setSyncStatus] = useState<ZohoSyncStatus>('ACTIVE');
   const [syncAddresses, setSyncAddresses] = useState(true);
   const [syncContactPersons, setSyncContactPersons] = useState(true);
@@ -151,7 +151,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
     if (existingConfig && existingConfig.fieldMappings && existingConfig.fieldMappings.length > 0) {
       setDuplicationPref(existingConfig.duplicationPreference || (module === 'item' ? 'Item Name' : 'Contact Name'));
       setConflictResolution(existingConfig.conflictResolution || 'Clone');
-      setSyncDirection(existingConfig.syncDirection || 'TWO_WAY');
+      setSyncDirection(existingConfig.syncDirection || 'ZOHO_TO_APP');
       setSyncStatus(existingConfig.status || 'ACTIVE');
       setSyncAddresses(existingConfig.syncAddresses !== undefined ? existingConfig.syncAddresses : true);
       setSyncContactPersons(existingConfig.syncContactPersons !== undefined ? existingConfig.syncContactPersons : true);
@@ -221,13 +221,18 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
 
   const handleSave = async () => {
     // Validate required fields
-    const reqAppKey = module === 'item' ? 'name' : 'displayName';
-    const reqZohoKey = module === 'item' ? 'name' : 'contact_name';
+    const missingRequired = allAppFields.filter(
+      (f) => (f.required || f.isSystem) && (!fieldMappingDict[f.key] || fieldMappingDict[f.key].trim() === ''),
+    );
 
-    if (!fieldMappingDict[reqAppKey]) {
-      toast.error(`The required field (${reqAppKey}) must be mapped to a Zoho Books field.`);
+    if (missingRequired.length > 0) {
+      const names = missingRequired.map((f) => f.label).join(', ');
+      toast.error(`Required field mapping(s) missing: ${names}. Please map all required fields before saving.`);
       return;
     }
+
+    const reqAppKey = module === 'item' ? 'name' : 'displayName';
+    const reqZohoKey = module === 'item' ? 'name' : 'contact_name';
 
     // Convert dictionary to ZohoFieldMappingItem array
     const fieldMappingsToSave: ZohoFieldMappingItem[] = [];
@@ -254,9 +259,9 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
       fieldMappingsToSave.unshift({
         id: `map_${reqAppKey}`,
         zohoField: reqZohoKey,
-        zohoFieldLabel: module === 'item' ? 'Name' : 'Contact Name',
+        zohoFieldLabel: module === 'item' ? 'Item Name' : 'Display Name',
         appField: reqAppKey,
-        appFieldLabel: module === 'item' ? 'Name' : 'Contact Name',
+        appFieldLabel: module === 'item' ? 'Item Name' : 'Display Name',
         isRequired: true,
         isSystem: true,
         dataType: 'string',
@@ -284,6 +289,17 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   const [syncingType, setSyncingType] = useState<'incremental' | 'full' | null>(null);
 
   const handleSync = async (fullSync = false) => {
+    // Validate required fields before syncing
+    const missingRequired = allAppFields.filter(
+      (f) => (f.required || f.isSystem) && (!fieldMappingDict[f.key] || fieldMappingDict[f.key].trim() === ''),
+    );
+
+    if (missingRequired.length > 0) {
+      const names = missingRequired.map((f) => f.label).join(', ');
+      toast.error(`Cannot sync: Required field mapping(s) missing: ${names}. Please map all required fields first.`);
+      return;
+    }
+
     setSyncingType(fullSync ? 'full' : 'incremental');
     try {
       const res = await instantSyncMutation.mutateAsync({
@@ -535,8 +551,6 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
             >
               <option value="Clone">Clone</option>
               <option value="Overwrite with Zoho Books">Overwrite with Zoho Books</option>
-              <option value="Overwrite with App record">Overwrite with App record</option>
-              <option value="Keep latest modified">Keep latest modified</option>
             </select>
           </div>
 
@@ -571,8 +585,6 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                 outline: 'none',
               }}
             >
-              <option value="TWO_WAY">Two-way Sync (⇄ Both Directions)</option>
-              <option value="APP_TO_ZOHO">Push Only (App → Zoho Books)</option>
               <option value="ZOHO_TO_APP">Pull Only (Zoho Books → App)</option>
             </select>
           </div>
@@ -964,6 +976,20 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                             <Lock size={10} /> System Required
                           </span>
                         )}
+                        {!currentMappedZoho && (field.required || isMandatorySystem) && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: '#fee2e2',
+                              color: '#dc2626',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Required (Unmapped)
+                          </span>
+                        )}
                         {isUserCustomField && (
                           <span
                             style={{
@@ -981,7 +1007,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                       </div>
 
                       {/* Middle: Mapping Connector Arrow */}
-                      <div style={{ textAlign: 'center', color: currentMappedZoho ? '#2563eb' : '#cbd5e1' }}>
+                      <div style={{ textAlign: 'center', color: currentMappedZoho ? '#2563eb' : (field.required ? '#ef4444' : '#cbd5e1') }}>
                         <ArrowRightLeft size={16} />
                       </div>
 
@@ -995,7 +1021,11 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                             width: '100%',
                             padding: '8px 12px',
                             fontSize: '14px',
-                            border: currentMappedZoho ? '1px solid #93c5fd' : '1px solid #d1d5db',
+                            border: !currentMappedZoho && (field.required || isMandatorySystem)
+                              ? '1px solid #ef4444'
+                              : currentMappedZoho
+                              ? '1px solid #93c5fd'
+                              : '1px solid #d1d5db',
                             borderRadius: '6px',
                             backgroundColor: isMandatorySystem ? '#f1f5f9' : '#fff',
                             color: currentMappedZoho ? '#1e293b' : '#9ca3af',

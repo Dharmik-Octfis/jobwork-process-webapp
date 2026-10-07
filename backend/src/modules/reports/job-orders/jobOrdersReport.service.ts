@@ -6,6 +6,7 @@ export async function getJobOrdersReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     jobOrderNumber?: string;
     processorName?: string;
@@ -22,8 +23,9 @@ export async function getJobOrdersReport(
   }
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     jobOrderNumber,
     processorName,
     processName,
@@ -37,7 +39,7 @@ export async function getJobOrdersReport(
     processorType,
     jobOrderCustomFields,
   } = params;
-  const skip = (page - 1) * pageSize;
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.JobOrderWhereInput = {
@@ -127,8 +129,7 @@ export async function getJobOrdersReport(
     const jobOrders = await tx.jobOrder.findMany({
       where,
       orderBy: { orderDate: 'desc' },
-      skip,
-      take: pageSize,
+      ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
       include: {
         route: { select: { name: true } },
         steps: {

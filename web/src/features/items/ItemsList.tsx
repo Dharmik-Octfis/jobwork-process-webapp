@@ -2,9 +2,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notify } from '../../lib/notify';
 import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api.ts';
-import { Plus, Package, SlidersHorizontal, ShoppingBag } from 'lucide-react';
+import {
+  Plus,
+  Package,
+  SlidersHorizontal,
+  ShoppingBag,
+  MoreVertical,
+  Download,
+} from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ItemDetail } from './ItemDetail';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Pagination } from '../../components/ui/Pagination';
@@ -20,6 +27,7 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { formatDate } from '../../lib/formatDate';
 import type { CustomFieldDefinition } from '../custom-fields/customFields.schemas';
 import { BulkActionBar } from '../../components/ui/BulkActionBar';
+import { exportItemsToExcel, fetchAllItemsForExport } from './utils/exportItems';
 
 /**
  * How each selectable column renders. Keys match the backend catalog
@@ -129,6 +137,23 @@ export function ItemsList() {
   // Column layout ("Customize Columns") — per user, per org, per module.
   const { catalog, visible, filters, columns, save: saveColumns } = useListColumns(orgId, 'item');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    if (isMoreMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
 
   const queryClient = useQueryClient();
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
@@ -154,6 +179,49 @@ export function ItemsList() {
     fontSize: 11,
     color: '#64748b',
     textTransform: 'uppercase' as const,
+  };
+
+  const handleExportAllItems = async () => {
+    setIsExporting(true);
+    try {
+      notify.success('Exporting items to XLSX...');
+      const allItems = await fetchAllItemsForExport(orgId!, {});
+      if (allItems.length === 0) {
+        notify.error('No items found to export.');
+        return;
+      }
+      exportItemsToExcel({
+        items: allItems,
+        filename: `Items_${new Date().toISOString().split('T')[0]}`,
+        customFieldsDef,
+        visibleColumnKeys: visible,
+        exportAllFields: true,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allItems.length} items as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export items:', err);
+      notify.error('Failed to export items. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedItems = items.filter((i) => selectedIds.includes(i.id));
+    if (selectedItems.length === 0) {
+      notify.error('No selected items to export.');
+      return;
+    }
+    exportItemsToExcel({
+      items: selectedItems,
+      filename: `Items_Selected_${new Date().toISOString().split('T')[0]}`,
+      customFieldsDef,
+      visibleColumnKeys: visible,
+      exportAllFields: true,
+      format: 'xlsx',
+    });
+    notify.success(`Successfully exported ${selectedItems.length} selected items as XLSX file.`);
   };
 
   const setActiveForSelected = async (isActive: boolean) => {
@@ -225,8 +293,9 @@ export function ItemsList() {
               onClearSelection={() => setSelectedIds([])}
               onMarkActive={handleMarkActive}
               onMarkInactive={handleMarkInactive}
+              onExport={handleExportSelected}
               onDelete={handleDeleteSelected}
-              isProcessing={isProcessing}
+              isProcessing={isProcessing || isExporting}
             />
           ) : (
             <header
@@ -246,7 +315,7 @@ export function ItemsList() {
                 fallbackLabel="All Items"
               />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {!selectedItemId && (
                   <button
                     onClick={() => setIsColumnsOpen(true)}
@@ -291,6 +360,75 @@ export function ItemsList() {
                 >
                   <Plus size={16} /> New
                 </button>
+
+                {!selectedItemId && (
+                  <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                    <button
+                      onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                      title="More Actions"
+                      aria-label="More Actions"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 30,
+                        height: 30,
+                        borderRadius: 4,
+                        border: '1px solid #e2e8f0',
+                        background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                        cursor: 'pointer',
+                        color: '#64748b',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isMoreMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 4,
+                          background: '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                          minWidth: 200,
+                          zIndex: 50,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleExportAllItems();
+                          }}
+                          disabled={isExporting}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 13,
+                            color: '#1e293b',
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            textAlign: 'left',
+                            opacity: isExporting ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          <Download size={15} color="#166534" />
+                          Export Items (XLSX)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </header>
           )}

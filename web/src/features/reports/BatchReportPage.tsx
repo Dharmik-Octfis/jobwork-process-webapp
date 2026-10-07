@@ -18,6 +18,7 @@ import { reportsApi, type BatchReportQuery, type BatchReportRow } from './report
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const COLUMN_CATALOG = [
   { key: 'batch', label: 'BATCH', locked: true, defaultVisible: true },
@@ -259,6 +260,125 @@ export function BatchReportPage() {
     }
   };
 
+  const exportColumns = useMemo(() => {
+    return catalog.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
+      key: c.key,
+      label: c.label,
+      align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
+    }));
+  }, [catalog, visibleColumns]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'batch':
+            return row.batch || '-';
+          case 'itemName':
+            return row.itemName || '-';
+          case 'locationName':
+            return row.locationName || '-';
+          case 'qty':
+            return Number(row.qty || 0).toFixed(2);
+          case 'takaCount':
+            return String(row.takaCount || 0);
+          case 'receivedOn':
+            return row.receivedOn ? format(new Date(row.receivedOn), 'dd-MM-yyyy') : '-';
+          case 'ageDays':
+            return String(row.ageDays ?? '-');
+          case 'state':
+            return row.state || '-';
+          case 'batchNumber':
+            return row.batchNumber || '-';
+          case 'value':
+            return Number(row.value || 0).toFixed(2);
+          case 'avgRate':
+            return Number(row.avgRate || 0).toFixed(2);
+          default:
+            return '-';
+        }
+      })
+    );
+  }, [sortedRows, exportColumns]);
+
+  const totalBatchQty = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0), [rows]);
+  const totalBatchTakas = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.takaCount) || 0), 0), [rows]);
+  const calculatedBatchValue = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.value) || 0), 0), [rows]);
+  const grandTotalBatchValue = data?.grandTotalValue ?? calculatedBatchValue;
+
+  const exportTotalRow = useMemo(() => {
+    return exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'qty':
+          return Number(totalBatchQty).toFixed(2);
+        case 'takaCount':
+          return String(totalBatchTakas);
+        case 'value':
+          return Number(grandTotalBatchValue).toFixed(2);
+        default:
+          return '';
+      }
+    });
+  }, [exportColumns, totalBatchQty, totalBatchTakas, grandTotalBatchValue]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getBatchReport(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const allRows = allRes?.results ?? [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'batch':
+            return row.batch || '-';
+          case 'itemName':
+            return row.itemName || '-';
+          case 'locationName':
+            return row.locationName || '-';
+          case 'qty':
+            return Number(row.qty || 0).toFixed(2);
+          case 'takaCount':
+            return String(row.takaCount || 0);
+          case 'receivedOn':
+            return row.receivedOn ? format(new Date(row.receivedOn), 'dd-MM-yyyy') : '-';
+          case 'ageDays':
+            return String(row.ageDays ?? '-');
+          case 'state':
+            return row.state || '-';
+          case 'batchNumber':
+            return row.batchNumber || '-';
+          case 'value':
+            return Number(row.value || 0).toFixed(2);
+          case 'avgRate':
+            return Number(row.avgRate || 0).toFixed(2);
+          default:
+            return '-';
+        }
+      })
+    );
+    const allTotalBatchQty = allRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
+    const allTotalBatchTakas = allRows.reduce((acc, r) => acc + (Number(r.takaCount) || 0), 0);
+    const allGrandTotalBatchValue = allRes?.grandTotalValue ?? allRows.reduce((acc, r) => acc + (Number(r.value) || 0), 0);
+    const allTotalRow = exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'qty':
+          return Number(allTotalBatchQty).toFixed(2);
+        case 'takaCount':
+          return String(allTotalBatchTakas);
+        case 'value':
+          return Number(allGrandTotalBatchValue).toFixed(2);
+        default:
+          return '';
+      }
+    });
+    return { data: allExportRows, totalRow: allTotalRow };
+  };
+
   return (
     <div
       style={{
@@ -291,25 +411,38 @@ export function BatchReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle={`${trackingLabel.singular} Report`}
+            dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '44px',
+              minHeight: '44px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
