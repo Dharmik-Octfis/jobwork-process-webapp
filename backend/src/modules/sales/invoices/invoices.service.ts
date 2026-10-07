@@ -1,4 +1,6 @@
 import { runAsTenant } from '../../../db/prisma.ts';
+import { approvalExecutionService } from '../../automation/approval-processes/approvalExecution.service.ts';
+import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
 import type { Prisma } from '../../../../generated/prisma/client.ts';
 import type { CreateInvoicePayload, UpdateInvoicePayload } from './invoices.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
@@ -122,8 +124,8 @@ export async function createInvoice(
       }
     }
 
-    return withUniqueViolation(DUPLICATE_NUMBER, () =>
-      tx.invoice.create({
+    return withUniqueViolation(DUPLICATE_NUMBER, async () => {
+      const invoice = await tx.invoice.create({
         data: {
           ...soData,
           subTotal,
@@ -154,8 +156,25 @@ export async function createInvoice(
           },
         },
         include: { lineItems: true },
-      }),
-    );
+      });
+
+      if (invoice.status === 'Pending Approval') {
+        await ensureApprovalTables();
+        const outcome = await approvalExecutionService.evaluateAndTriggerApproval(
+          orgId,
+          'invoices',
+          invoice.id,
+          `Invoice #${invoice.invoiceNumber}`,
+          null,
+          invoice as unknown as Record<string, unknown>,
+          userId ?? undefined,
+        );
+        if (!outcome.triggered && !outcome.requestId) {
+          throw ApiError.badRequest('No matching active approval rule found for this invoice.');
+        }
+      }
+      return invoice;
+    });
   });
 }
 
@@ -236,6 +255,28 @@ export async function updateInvoice(
         },
       });
 
+      if (soData.status === 'Pending Approval') {
+        const fullInvoice = await tx.invoice.findUnique({
+          where: { id },
+          include: { lineItems: true },
+        });
+        if (fullInvoice) {
+          await ensureApprovalTables();
+          const outcome = await approvalExecutionService.evaluateAndTriggerApproval(
+            orgId,
+            'invoices',
+            id,
+            `Invoice #${fullInvoice.invoiceNumber}`,
+            null,
+            fullInvoice as unknown as Record<string, unknown>,
+            userId ?? undefined,
+          );
+          if (!outcome.triggered && !outcome.requestId) {
+            throw ApiError.badRequest('No matching active approval rule found for this invoice.');
+          }
+        }
+      }
+
       return so;
     });
   });
@@ -278,7 +319,7 @@ export async function getInvoiceNumberPreference(organizationId: string) {
         data: {
           organizationId,
           entityType: 'invoice',
-          prefix: 'SO-',
+          prefix: 'INV-',
           nextNumber: 1,
         },
       });

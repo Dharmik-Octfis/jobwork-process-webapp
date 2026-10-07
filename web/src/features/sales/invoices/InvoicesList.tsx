@@ -395,19 +395,23 @@ export default function InvoicesList() {
                                     background:
                                       inv.status === 'Draft'
                                         ? '#f1f5f9'
-                                        : inv.status === 'Sent'
-                                          ? '#e0f2fe'
-                                          : inv.status === 'Paid'
-                                            ? '#dcfce7'
-                                            : '#f1f5f9',
+                                        : inv.status === 'Pending Approval'
+                                          ? '#fef3c7'
+                                          : inv.status === 'Approved'
+                                            ? '#e0f2fe'
+                                            : inv.status === 'Paid'
+                                              ? '#dcfce7'
+                                              : '#f1f5f9',
                                     color:
                                       inv.status === 'Draft'
                                         ? '#475569'
-                                        : inv.status === 'Sent'
-                                          ? '#0284c7'
-                                          : inv.status === 'Paid'
-                                            ? '#166534'
-                                            : '#475569',
+                                        : inv.status === 'Pending Approval'
+                                          ? '#92400e'
+                                          : inv.status === 'Approved'
+                                            ? '#0284c7'
+                                            : inv.status === 'Paid'
+                                              ? '#166534'
+                                              : '#475569',
                                   }}
                                 >
                                   {inv.status}

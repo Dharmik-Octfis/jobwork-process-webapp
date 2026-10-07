@@ -159,6 +159,7 @@ model SalesOrderItem {
   id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   salesOrderId       String        @map("sales_order_id") @db.Uuid
   itemId             String        @map("item_id") @db.Uuid
+  batchId            String?       @map("batch_id") @db.Uuid
   quantity           Decimal       @default(1) @db.Decimal(15, 2)
   rate               Decimal       @default(0) @db.Decimal(15, 2)
   discountPercentage Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
@@ -172,6 +173,7 @@ model SalesOrderItem {
   updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdByUser      User?         @relation("SoItemCreatedBy", fields: [createdBy], references: [id])
   item               Item          @relation(fields: [itemId], references: [id])
+  batch              Batch?        @relation(fields: [batchId], references: [id])
   salesOrder         SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   updatedByUser      User?         @relation("SoItemUpdatedBy", fields: [updatedBy], references: [id])
 
@@ -257,6 +259,7 @@ model InvoiceItem {
   id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   invoiceId          String        @map("invoice_id") @db.Uuid
   itemId             String        @map("item_id") @db.Uuid
+  batchId            String?       @map("batch_id") @db.Uuid
   quantity           Decimal       @default(1) @db.Decimal(15, 2)
   rate               Decimal       @default(0) @db.Decimal(15, 2)
   discountPercentage Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
@@ -270,6 +273,7 @@ model InvoiceItem {
   updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdByUser      User?         @relation("InvoiceItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   item               Item          @relation(fields: [itemId], references: [id])
+  batch              Batch?        @relation(fields: [batchId], references: [id])
   invoice            Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   updatedByUser      User?         @relation("InvoiceItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 

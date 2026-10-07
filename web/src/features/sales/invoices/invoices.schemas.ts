@@ -5,12 +5,36 @@ import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 export const invoiceItemSchema = z.object({
   id: z.string().optional(),
   itemId: z.string().min(1, 'Item is required'),
+  batchId: z.string().nullable().optional(),
   quantity: z.number().or(z.string()).optional(),
   rate: z.number().or(z.string()).optional(),
   discountPercentage: z.number().or(z.string()).nullable().optional(),
   discount: z.number().or(z.string()).nullable().optional(),
   itemTotal: z.number().or(z.string()).optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
+  batches: z
+    .array(
+      z.object({
+        batchId: z.string().optional(),
+        supplierBatchRef: z.string().optional(),
+        manufacturerBatch: z.string().nullable().optional(),
+        manufacturedDate: z.string().nullable().optional(),
+        expiryDate: z.string().nullable().optional(),
+        mrp: z.number().or(z.string()).nullable().optional(),
+        sellingPrice: z.number().or(z.string()).nullable().optional(),
+        quantity: z.number().or(z.string()),
+        units: z
+          .array(
+            z.object({
+              unitId: z.string(),
+              label: z.string(),
+              quantity: z.number().or(z.string()),
+            }),
+          )
+          .optional(),
+      }),
+    )
+    .optional(),
   // Frontend virtual fields for display
   description: z.string().nullable().optional(),
   item: z.any().optional(),

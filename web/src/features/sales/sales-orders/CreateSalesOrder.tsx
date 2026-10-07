@@ -40,15 +40,20 @@ import {
   type SOAttachment,
 } from './sales-orders.api';
 
+
 import { itemsApi } from '../../items/items.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
 import { fetchCustomers, updateCustomer, type Customer } from '../customers/customers.api';
 import { SalesOrderNumberConfigModal } from './SalesOrderNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { DeliveryAddressModal } from './DeliveryAddressModal';
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
 import { CreateCustomerModal } from '../customers/CreateCustomerModal';
 import { AdditionalAddressModal } from '../customers/AdditionalAddressModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
+import { AddBillBatchesModal } from '../../purchases/bills/AddBillBatchesModal'
+import { ItemStockAndBatchDisplay } from '../../items/components/ItemStockAndBatchDisplay';
+
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -126,9 +131,13 @@ export function CreateSalesOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+  const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
 
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'sales_order');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
+
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['salesOrder', orgId, poIdToFetch],
@@ -1152,8 +1161,8 @@ export function CreateSalesOrder() {
                                   if (selected) {
                                     setValue(
                                       `lineItems.${index}.rate`,
-                                      (selected.costPrice ||
-                                        selected.sellingPrice ||
+                                      (selected.sellingPrice ||
+                                        selected.costPrice ||
                                         '') as unknown as number,
                                     );
                                     setValue(`lineItems.${index}.quantity`, 1 as unknown as number);
@@ -1273,6 +1282,23 @@ export function CreateSalesOrder() {
                               borderRadius: '6px',
                             }}
                           />
+                          {selectedItem?.id && (
+                            <ItemStockAndBatchDisplay
+                              orgId={orgId!}
+                              itemId={selectedItem.id}
+                              unit={selectedItem.stockingUom?.symbol}
+                              deliveryLocationId={watchLocationId || watchDeliveryLocationId || ''}
+                              locations={locations}
+                              trackInventory={selectedItem.trackInventory}
+                              inventoryTracking={selectedItem.inventoryTracking}
+                              batchButtonLabel={
+                                curItem?.batches && curItem.batches.length > 0
+                                  ? `${curItem.batches.length} Batch${curItem.batches.length > 1 ? 'es' : ''} Selected`
+                                  : '+ Add Batches'
+                              }
+                              onBatchClick={() => setBatchModalIndex(index)}
+                            />
+                          )}
                         </td>
                         <td
                           style={{
@@ -1759,26 +1785,49 @@ export function CreateSalesOrder() {
         >
           {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
         </button>
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => {
-            setValue('status', 'Approved');
-            handleSubmit(onSubmit, onInvalid)();
-          }}
-          style={{
-            padding: '6px 20px',
-            background: '#16a34a',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watch('status') === 'Approved' ? 'Saving...' : 'Save as Open'}
-        </button>
+        {isApprovalEnabled ? (
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => {
+              setValue('status', 'Pending Approval');
+              handleSubmit(onSubmit, onInvalid)();
+            }}
+            style={{
+              padding: '6px 20px',
+              background: '#0062ff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => {
+              setValue('status', 'Approved');
+              handleSubmit(onSubmit, onInvalid)();
+            }}
+            style={{
+              padding: '6px 20px',
+              background: '#16a34a',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending && watch('status') === 'Approved' ? 'Saving...' : 'Save as Open'}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -1889,7 +1938,7 @@ export function CreateSalesOrder() {
             const isEmptyRow = !targetRow?.itemId;
 
             const qty = item._quantity ?? 1;
-            const rate = item._rate ?? (item.costPrice || item.sellingPrice || '');
+            const rate = item._rate ?? (item.sellingPrice || item.costPrice || '');
             const disc = item._discount ?? '';
 
             if (isFirst && isEmptyRow) {
@@ -1933,6 +1982,49 @@ export function CreateSalesOrder() {
           setMultiSelectTargetIndex(null);
         }}
       />
+
+      {batchModalIndex !== null && watchItems?.[batchModalIndex]?.item && (
+        <AddBillBatchesModal
+          isOpen={true}
+          onClose={() => setBatchModalIndex(null)}
+          orgId={orgId!}
+          itemId={watchItems[batchModalIndex].item.id}
+          itemName={watchItems[batchModalIndex].item.name || 'Unknown Item'}
+          locationId={watchLocationId || watchDeliveryLocationId || ''}
+          uomLabel={watchItems[batchModalIndex].item.stockingUom?.symbol}
+          locationName={locations.find(l => l.id === (watchLocationId || watchDeliveryLocationId))?.name || null}
+          lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
+          defaultSellingPrice={watchItems[batchModalIndex].rate?.toString() || watchItems[batchModalIndex].item.sellingPrice?.toString() || ''}
+          initialBatches={watchItems[batchModalIndex].batches || []}
+          onSave={(batches, overwriteQty) => {
+            setValue(
+              `lineItems.${batchModalIndex}.batches`,
+              batches.map((b) => ({
+                ...b,
+                manufacturedDate:
+                  b.manufacturedDate instanceof Date
+                    ? b.manufacturedDate.toISOString()
+                    : b.manufacturedDate,
+                expiryDate:
+                  b.expiryDate instanceof Date ? b.expiryDate.toISOString() : b.expiryDate,
+                units: b.units?.map((u) => ({ ...u, label: u.label || '' })),
+              })),
+              {
+                shouldValidate: true,
+                shouldDirty: true,
+              },
+            );
+            if (overwriteQty) {
+              const total = batches.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
+              setValue(`lineItems.${batchModalIndex}.quantity`, total || ('' as unknown as number), {
+                shouldValidate: true,
+                shouldDirty: true,
+              });
+            }
+          }}
+        />
+      )}
+
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}

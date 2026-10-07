@@ -39,16 +39,18 @@ import {
   updateInvoiceNumberPreference,
 } from './invoices.api';
 import { fetchSalesOrderById, updateSalesOrder } from '../sales-orders/sales-orders.api';
+import { AddBillBatchesModal } from '../../purchases/bills/AddBillBatchesModal';
 
 import { itemsApi } from '../../items/items.api';
 import { fetchLocations, isOwnLocation, type Location } from '../../configuration/locations/locations.api';
 import { fetchCustomers, updateCustomer, type Customer } from '../customers/customers.api';
 import { InvoiceNumberConfigModal } from './InvoiceNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
-
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
 import { CreateCustomerModal } from '../customers/CreateCustomerModal';
 import { AdditionalAddressModal } from '../customers/AdditionalAddressModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
+import { ItemStockAndBatchDisplay } from '../../items/components/ItemStockAndBatchDisplay';
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -109,6 +111,7 @@ function ItemImage({
   );
 }
 
+
 export function CreateInvoice() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -127,9 +130,13 @@ export function CreateInvoice() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+  const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
 
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'invoice');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
+
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'invoices', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['invoice', orgId, invoiceIdToFetch],
@@ -161,6 +168,12 @@ export function CreateInvoice() {
   const { data: paymentTerms } = useQuery({
     queryKey: ['payment-terms', orgId],
     queryFn: () => fetchPaymentTerms(orgId!),
+  });
+
+  const { data: preference } = useQuery({
+    queryKey: ['po-number-preference', orgId],
+    queryFn: () => fetchInvoiceNumberPreference(orgId!),
+    enabled: !!orgId,
   });
 
   const {
@@ -211,7 +224,9 @@ export function CreateInvoice() {
 
       const resetData: CreateInvoiceData = {
         customerId: sourceData.customerId || '',
-        invoiceNumber: isClone || convertFromSo ? '' : (sourceData as Invoice).invoiceNumber || '',
+        invoiceNumber: isClone || convertFromSo 
+          ? (preference ? `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}` : '') 
+          : (sourceData as Invoice).invoiceNumber || '',
         date: isClone || convertFromSo
           ? new Date().toISOString().split('T')[0]
           : sourceData.date
@@ -224,7 +239,7 @@ export function CreateInvoice() {
         notes: sourceData.notes || '',
         termsAndConditions: sourceData.termsAndConditions || '',
         status: isClone || convertFromSo ? 'Draft' : sourceData.status || 'Draft',
-        customFields: sourceData.customFields || null,
+        customFields: sourceData.customFields || {},
         lineItems:
           formattedLineItems.length > 0
             ? (formattedLineItems as unknown as InvoiceItem[])
@@ -252,7 +267,7 @@ export function CreateInvoice() {
         setAttachedFiles(sourceData.documents);
       }
     }
-  }, [sourceData, isClone, convertFromSo, reset]);
+  }, [sourceData, isClone, convertFromSo, reset, preference]);
 
   const {
     fields: itemFields,
@@ -282,7 +297,7 @@ export function CreateInvoice() {
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
 
-  const [poPrefix, setPoPrefix] = useState('SO-');
+  const [poPrefix, setPoPrefix] = useState('INV-');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<InvoiceAttachment[]>([]);
@@ -395,12 +410,6 @@ export function CreateInvoice() {
     setValue('totalAmount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
-  const { data: preference } = useQuery({
-    queryKey: ['po-number-preference', orgId],
-    queryFn: () => fetchInvoiceNumberPreference(orgId!),
-    enabled: !!orgId,
-  });
-
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
 
   useEffect(() => {
@@ -437,7 +446,7 @@ export function CreateInvoice() {
       }
       const newInvoice = await createInvoice(orgId!, data);
       if (convertFromSo) {
-        await updateSalesOrder({ orgId: orgId!, id: convertFromSo, data: { status: 'Invoiced' } });
+        await updateSalesOrder({ orgId: orgId!, id: convertFromSo, data: { status: 'Closed' } });
       }
       return newInvoice;
     },
@@ -518,7 +527,7 @@ export function CreateInvoice() {
       subTotal: computedSubTotal,
       totalAmount: computedTotalAmount,
       documents: attachedFiles,
-      customFields: data.customFields || null,
+      customFields: data.customFields || {},
     };
     console.log('Submitting Invoice data:', finalData);
     mutation.mutate(finalData);
@@ -1152,8 +1161,8 @@ export function CreateInvoice() {
                                   if (selected) {
                                     setValue(
                                       `lineItems.${index}.rate`,
-                                      (selected.costPrice ||
-                                        selected.sellingPrice ||
+                                      (selected.sellingPrice ||
+                                        selected.costPrice ||
                                         '') as unknown as number,
                                     );
                                     setValue(`lineItems.${index}.quantity`, 1 as unknown as number);
@@ -1244,6 +1253,7 @@ export function CreateInvoice() {
                                 )}
                               </div>
                             )}
+
                           </div>
                         </td>
                         <td
@@ -1273,6 +1283,23 @@ export function CreateInvoice() {
                               borderRadius: '6px',
                             }}
                           />
+                          {selectedItem?.id && (
+                            <ItemStockAndBatchDisplay
+                              orgId={orgId!}
+                              itemId={selectedItem.id}
+                              unit={selectedItem.stockingUom?.symbol}
+                              deliveryLocationId={watchLocationId || ''}
+                              locations={locations}
+                              trackInventory={selectedItem.trackInventory}
+                              inventoryTracking={selectedItem.inventoryTracking}
+                              batchButtonLabel={
+                                curItem?.batches && curItem.batches.length > 0
+                                  ? `${curItem.batches.length} Batch${curItem.batches.length > 1 ? 'es' : ''} Selected`
+                                  : '+ Add Batches'
+                              }
+                              onBatchClick={() => setBatchModalIndex(index)}
+                            />
+                          )}
                         </td>
                         <td
                           style={{
@@ -1759,26 +1786,49 @@ export function CreateInvoice() {
         >
           {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
         </button>
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => {
-            setValue('status', 'Approved');
-            handleSubmit(onSubmit, onInvalid)();
-          }}
-          style={{
-            padding: '6px 20px',
-            background: '#16a34a',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watch('status') === 'Approved' ? 'Saving...' : 'Save as Open'}
-        </button>
+        {isApprovalEnabled ? (
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => {
+              setValue('status', 'Pending Approval');
+              handleSubmit(onSubmit, onInvalid)();
+            }}
+            style={{
+              padding: '6px 20px',
+              background: '#0062ff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => {
+              setValue('status', 'Paid');
+              handleSubmit(onSubmit, onInvalid)();
+            }}
+            style={{
+              padding: '6px 20px',
+              background: '#16a34a',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending && watch('status') === 'Paid' ? 'Saving...' : 'Save as Paid'}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -1879,7 +1929,7 @@ export function CreateInvoice() {
             const isEmptyRow = !targetRow?.itemId;
 
             const qty = item._quantity ?? 1;
-            const rate = item._rate ?? (item.costPrice || item.sellingPrice || '');
+            const rate = item._rate ?? (item.sellingPrice || item.costPrice || '');
             const disc = item._discount ?? '';
 
             if (isFirst && isEmptyRow) {
@@ -1923,6 +1973,50 @@ export function CreateInvoice() {
           setMultiSelectTargetIndex(null);
         }}
       />
+
+      {batchModalIndex !== null && watchItems?.[batchModalIndex]?.item && (
+        <AddBillBatchesModal
+          isOpen={true}
+          onClose={() => setBatchModalIndex(null)}
+          orgId={orgId!}
+          itemId={watchItems[batchModalIndex].item.id}
+          itemName={watchItems[batchModalIndex].item.name || 'Unknown Item'}
+          locationId={watchLocationId || ''}
+          uomLabel={watchItems[batchModalIndex].item.stockingUom?.symbol}
+          locationName={locations.find(l => l.id === watchLocationId)?.name || null}
+          lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
+          defaultSellingPrice={watchItems[batchModalIndex].rate?.toString() || watchItems[batchModalIndex].item.sellingPrice?.toString() || ''}
+          initialBatches={watchItems[batchModalIndex].batches || []}
+          onSave={(batches, overwriteQty) => {
+            setValue(
+              `lineItems.${batchModalIndex}.batches`,
+              batches.map((b) => ({
+                ...b,
+                manufacturedDate:
+                  b.manufacturedDate instanceof Date
+                    ? b.manufacturedDate.toISOString()
+                    : b.manufacturedDate,
+                expiryDate:
+                  b.expiryDate instanceof Date ? b.expiryDate.toISOString() : b.expiryDate,
+                units: b.units?.map((u) => ({ ...u, unitId: u.batchUnitId || '', label: u.label || '' })),
+              })),
+              {
+                shouldValidate: true,
+                shouldDirty: true,
+              },
+            );
+            if (overwriteQty) {
+              const total = batches.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
+              setValue(`lineItems.${batchModalIndex}.quantity`, total || ('' as unknown as number), {
+                shouldValidate: true,
+                shouldDirty: true,
+              });
+            }
+            setBatchModalIndex(null);
+          }}
+        />
+      )}
+
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}

@@ -25,7 +25,10 @@ import {
   type InvoiceAttachment,
 } from './invoices.api';
 import { fetchPaymentTerms } from '../customers/payment-terms.api';
-
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
@@ -75,6 +78,15 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
+  
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'invoices', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
+
+  useRecordApproval(
+    orgId,
+    'invoices',
+    invoiceId,
+  );
 
   const handleDownloadPdf = async () => {
     setIsPdfMenuOpen(false);
@@ -135,8 +147,24 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
     },
   });
 
-  const markAsOpenMutation = useMutation({
-    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Open' } }),
+  const submitForApprovalMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Pending Approval' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+    },
+  });
+
+  const markAsApprovedMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Approved' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+    },
+  });
+
+  const markAsPaidMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Paid' } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
@@ -190,7 +218,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Comments', 'Activity', 'Approvals'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -229,7 +257,16 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               // Lowercased: the column stores "Draft", not "draft" (the filter
               // presets match it capitalised), so the bare compare was never true
               // and a draft SO was painted with the issued colour.
-              background: inv.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
+              background:
+                inv.status?.toLowerCase() === 'draft'
+                  ? '#94a3b8'
+                  : inv.status?.toLowerCase() === 'pending approval'
+                    ? '#d97706'
+                    : inv.status?.toLowerCase() === 'approved'
+                      ? '#0284c7'
+                      : inv.status?.toLowerCase() === 'paid'
+                        ? '#16a34a'
+                        : '#94a3b8',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -379,10 +416,52 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
         {/* Mark as Open / PDF Print Dropdown next to Activity tab */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
           {inv?.status?.toLowerCase() === 'draft' && (
+            isApprovalEnabled ? (
+              <button
+                className="action-btn"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d97706',
+                  background: '#d97706',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                className="action-btn"
+                onClick={() => markAsPaidMutation.mutate()}
+                disabled={markAsPaidMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #16a34a',
+                  background: '#16a34a',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: markAsPaidMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
+              </button>
+            )
+          )}
+
+          {isApprovalEnabled && inv?.status?.toLowerCase() === 'pending approval' && (
             <button
               className="action-btn"
-              onClick={() => markAsOpenMutation.mutate()}
-              disabled={markAsOpenMutation.isPending}
+              onClick={() => markAsApprovedMutation.mutate()}
+              disabled={markAsApprovedMutation.isPending}
               style={{
                 padding: '6px 12px',
                 border: '1px solid #0062ff',
@@ -390,14 +469,16 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
                 color: 'white',
                 borderRadius: '4px',
                 fontSize: '13px',
-                cursor: markAsOpenMutation.isPending ? 'not-allowed' : 'pointer',
+                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
-                opacity: markAsOpenMutation.isPending ? 0.7 : 1,
+                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
               }}
             >
-              {markAsOpenMutation.isPending ? 'Saving...' : 'Mark as Open'}
+              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
             </button>
           )}
+
+
 
           <div ref={pdfMenuRef}>
             <button
@@ -474,11 +555,46 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               </div>
             )}
           </div>
+    {inv?.status?.toLowerCase() === 'approved' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsPaidMutation.mutate()}
+              disabled={markAsPaidMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #16a34a',
+                background: '#16a34a',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsPaidMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
+            </button>
+          )}
+
         </div>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && invoiceId && activeTab !== 'Approvals' && (
+          <div style={{ padding: '24px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="invoices"
+              recordId={invoiceId}
+              onActionComplete={() =>
+                queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] })
+              }
+            />
+          </div>
+        )}
+
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -635,7 +751,16 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
                       <span style={{ fontSize: '12px', color: '#475569' }}>Invoice:</span>
                       <span
                         style={{
-                          background: inv.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
+                          background:
+                            inv.status?.toLowerCase() === 'draft'
+                              ? '#94a3b8'
+                              : inv.status?.toLowerCase() === 'pending approval'
+                                ? '#d97706'
+                                : inv.status?.toLowerCase() === 'approved'
+                                  ? '#0284c7'
+                                  : inv.status?.toLowerCase() === 'paid'
+                                    ? '#16a34a'
+                                    : '#94a3b8',
                           color: 'white',
                           fontSize: '10px',
                           padding: '1px 6px',
@@ -1416,6 +1541,11 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
         </div>
         <div style={{ display: activeTab === 'Activity' ? 'block' : 'none', padding: '16px' }}>
           <InvoiceActivityTimeline orgId={orgId!} invoiceId={invoiceId} />
+        </div>
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '16px' }}>
+          {orgId && invoiceId && (
+            <RecordApprovalHistoryTimeline organizationId={orgId} moduleId="invoices" recordId={invoiceId} />
+          )}
         </div>
       </div>
 

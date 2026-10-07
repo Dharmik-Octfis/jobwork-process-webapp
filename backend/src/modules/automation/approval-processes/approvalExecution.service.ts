@@ -392,7 +392,7 @@ export class ApprovalExecutionService {
     moduleId: string,
     recordId: string,
     recordTitle: string,
-    triggerType: 'CREATE' | 'EDIT',
+    triggerType: 'CREATE' | 'EDIT' | null,
     record: Record<string, unknown>,
     actorUserId?: string,
   ): Promise<{ triggered: boolean; requestId?: string }> {
@@ -1752,7 +1752,7 @@ export class ApprovalExecutionService {
         LEFT JOIN "users" u ON u."id" = r."requester_id"
         WHERE r."organization_id" = ${organizationId}::uuid
           AND (${statusFilter ? statusFilter : null}::text[] IS NULL OR r."status" = ANY(${statusFilter}::text[]))
-          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule})
+          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule} OR r."module_id" || 's' = ${normalizedModule} OR r."module_id" = ${normalizedModule} || 's')
           AND (
             ${searchPattern}::text IS NULL OR
             r."record_title" ILIKE ${searchPattern} OR
@@ -1801,7 +1801,7 @@ export class ApprovalExecutionService {
         LEFT JOIN "users" u ON u."id" = r."requester_id"
         WHERE r."organization_id" = ${organizationId}::uuid
           AND (${statusFilter ? statusFilter : null}::text[] IS NULL OR r."status" = ANY(${statusFilter}::text[]))
-          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule})
+          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule} OR r."module_id" || 's' = ${normalizedModule} OR r."module_id" = ${normalizedModule} || 's')
           AND (
             ${searchPattern}::text IS NULL OR
             r."record_title" ILIKE ${searchPattern} OR

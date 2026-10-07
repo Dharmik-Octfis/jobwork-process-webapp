@@ -21,8 +21,13 @@ import {
   fetchSalesOrderById,
   getSOSignedUrl,
   deleteSalesOrder,
+  updateSalesOrder,
   type SOAttachment,
 } from './sales-orders.api';
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { fetchPaymentTerms } from '../customers/payment-terms.api';
 
 import { organizationsApi } from '../../organizations/organizations.api';
@@ -136,6 +141,38 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
     },
   });
 
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
+
+  useRecordApproval(
+    orgId,
+    'sales_orders',
+    poId,
+  );
+
+  const submitForApprovalMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Pending Approval' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+    },
+  });
+
+  const markAsApprovedMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Approved' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+    },
+  });
+
+  const markAsOpenMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Approved' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+    },
+  });
 
 
 
@@ -185,7 +222,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Comments', 'Activity', 'Approvals'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -374,6 +411,69 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         {/* Convert to Invoice / PDF Print Dropdown next to Activity tab */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
 
+          {po?.status?.toLowerCase() === 'draft' && (
+            isApprovalEnabled ? (
+              <button
+                className="action-btn"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d97706',
+                  background: '#d97706',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                className="action-btn"
+                onClick={() => markAsOpenMutation.mutate()}
+                disabled={markAsOpenMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #16a34a',
+                  background: '#16a34a',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: markAsOpenMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: markAsOpenMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {markAsOpenMutation.isPending ? 'Saving...' : 'Mark as Open'}
+              </button>
+            )
+          )}
+
+          {isApprovalEnabled && po?.status?.toLowerCase() === 'pending approval' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsApprovedMutation.mutate()}
+              disabled={markAsApprovedMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #0062ff',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
+            </button>
+          )}
+
 
           <div ref={pdfMenuRef}>
             <button
@@ -480,6 +580,20 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && activeTab !== 'Approvals' && (
+          <div style={{ padding: '24px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="sales_orders"
+              recordId={poId}
+              onActionComplete={() =>
+                queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] })
+              }
+            />
+          </div>
+        )}
+
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -1601,6 +1715,11 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         </div>
         <div style={{ display: activeTab === 'Activity' ? 'block' : 'none', padding: '16px' }}>
           <SalesOrderActivityTimeline orgId={orgId!} poId={poId} />
+        </div>
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '16px' }}>
+          {orgId && poId && (
+            <RecordApprovalHistoryTimeline organizationId={orgId} moduleId="sales_orders" recordId={poId} />
+          )}
         </div>
       </div>
 
