@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import {
@@ -137,6 +138,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonMissing, setCancelReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const takaLabel = useBatchUnitLabel();
@@ -823,19 +825,34 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               processor and the output batches are un-made. It is refused if those batches have
               already been used — there is no way to un-post stock that has moved on.
             </p>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-              Reason
+            <label
+              htmlFor="cancel-receipt-reason"
+              style={{
+                display: 'block',
+                fontSize: 12,
+                color: '#ef4444',
+                fontWeight: 500,
+                marginBottom: 4,
+              }}
+            >
+              Reason*
             </label>
             <input
+              id="cancel-receipt-reason"
               type="text"
+              required
+              aria-required="true"
               value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              aria-label="Reason for cancelling"
+              aria-invalid={cancelReasonMissing}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                if (e.target.value.trim()) setCancelReasonMissing(false);
+              }}
               style={{
                 width: '100%',
                 padding: '6px 8px',
                 fontSize: 13,
-                border: '1px solid #d1d5db',
+                border: `1px solid ${cancelReasonMissing ? '#ef4444' : '#d1d5db'}`,
                 borderRadius: 4,
                 minHeight: 32,
               }}
@@ -845,11 +862,17 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
         confirmText={cancelMutation.isPending ? 'Cancelling…' : 'Cancel receipt'}
         cancelText="Keep it"
         onConfirm={() => {
-          if (cancelReason.trim()) cancelMutation.mutate();
+          if (!cancelReason.trim()) {
+            setCancelReasonMissing(true);
+            notify.error('Enter a reason for cancelling.');
+            return;
+          }
+          cancelMutation.mutate();
         }}
         onCancel={() => {
           setCancelOpen(false);
           setCancelReason('');
+          setCancelReasonMissing(false);
         }}
       />
 

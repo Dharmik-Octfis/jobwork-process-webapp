@@ -437,8 +437,8 @@ function ItemList({
               color: '#64748b',
             }}
           >
-            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0 }}>
-              Item
+            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0, color: '#ef4444' }}>
+              Item*
             </span>
             <span aria-hidden="true" style={{ flex: '0 0 62px' }}>
               Unit
