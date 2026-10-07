@@ -159,7 +159,10 @@ export async function createInvoice(
         include: { lineItems: true },
       });
 
-      if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval' && invoice.locationId) {
+      if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval') {
+        if (!invoice.locationId) {
+          throw ApiError.badRequest('Location is required for an active invoice to deduct stock.');
+        }
         const requests = invoice.lineItems.map((item, index) => ({
           itemId: item.itemId,
           name: `Invoice Line ${index + 1}`,
@@ -319,9 +322,15 @@ export async function updateInvoice(
         include: { lineItems: { where: { isDeleted: false } } },
       });
       const checkStatus = soData.status ?? fullInvoice?.status ?? 'Draft';
-      const locId = fullInvoice?.locationId;
-      if (checkStatus !== 'Draft' && checkStatus !== 'Pending Approval' && fullInvoice && locId && fullInvoice.lineItems.length > 0) {
-          const requests = fullInvoice.lineItems.map((item, index) => ({
+      const locId = soData.locationId !== undefined ? soData.locationId : fullInvoice?.locationId;
+      
+      if (checkStatus !== 'Draft' && checkStatus !== 'Pending Approval') {
+        if (!locId) {
+          throw ApiError.badRequest('Location is required for an active invoice to deduct stock.');
+        }
+        const currentLines = lineItems ?? fullInvoice?.lineItems ?? [];
+        if (currentLines.length > 0) {
+          const requests = currentLines.map((item, index) => ({
             itemId: item.itemId,
             name: `Invoice Line ${index + 1}`,
             required: new Prisma.Decimal(item.quantity)
@@ -337,7 +346,7 @@ export async function updateInvoice(
 
           const movementInputs = [];
           for (const alloc of allocations) {
-            const line = fullInvoice.lineItems[alloc.requestIndex];
+            const line = currentLines[alloc.requestIndex];
             if (!line) continue;
             movementInputs.push({
               organizationId: orgId,
@@ -349,7 +358,7 @@ export async function updateInvoice(
               qtyOut: alloc.qty,
               sourceDocType: 'invoice' as const,
               sourceDocId: id,
-              sourceDocLineId: line.id,
+              sourceDocLineId: line.id ?? id, // fallback if new line
               userId: userId
             });
           }
@@ -357,6 +366,7 @@ export async function updateInvoice(
             await postMovements(tx, movementInputs);
           }
         }
+      }
 
       if (soData.status === 'Pending Approval') {
         if (fullInvoice) {

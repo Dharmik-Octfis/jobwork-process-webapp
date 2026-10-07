@@ -616,7 +616,7 @@ export class ItemsService {
               salesOrder: {
                 organizationId,
                 locationId: primaryLoc.id,
-                status: 'Approved',
+                status: { in: ['Approved', 'Confirmed'] },
                 isDeleted: false,
               },
             },
@@ -664,7 +664,7 @@ export class ItemsService {
           salesOrder: {
             organizationId,
             locationId,
-            status: 'Approved',
+            status: { in: ['Approved', 'Confirmed'] },
             isDeleted: false,
           },
         },
