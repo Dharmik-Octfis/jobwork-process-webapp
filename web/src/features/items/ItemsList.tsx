@@ -1205,7 +1205,6 @@ export function ItemsList() {
 
                         {/* 4. Preferences */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             navigate(`/organizations/${orgId}/settings/modules/item`);
                             setIsMoreMenuOpen(false);
@@ -1221,7 +1220,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f0f9ff';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <Settings size={15} color="#0284c7" />
@@ -1230,7 +1232,6 @@ export function ItemsList() {
 
                         {/* 5. Refresh List */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             queryClient.invalidateQueries({ queryKey: ['items', orgId] });
                             setIsMoreMenuOpen(false);
@@ -1246,7 +1247,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f0f9ff';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <RefreshCw size={15} color="#0284c7" />
@@ -1255,7 +1259,6 @@ export function ItemsList() {
 
                         {/* 6. Reset Column Width */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             saveColumns.mutate(
                               DEFAULT_ZOHO_ITEM_COLUMNS.map((c) => c.key),
@@ -1280,7 +1283,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f0f9ff';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <RotateCcw size={15} color="#0284c7" />
@@ -1289,7 +1295,6 @@ export function ItemsList() {
 
                         {/* 7. Validate HSN/SAC */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             setIsMoreMenuOpen(false);
                             setActiveSubmenu(null);
@@ -1304,7 +1309,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f0f9ff';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <CheckCircle2 size={15} color="#0284c7" />
@@ -1313,7 +1321,6 @@ export function ItemsList() {
 
                         {/* 8. HSN/SAC Update History */}
                         <div
-                          onMouseEnter={() => setActiveSubmenu(null)}
                           onClick={() => {
                             setIsMoreMenuOpen(false);
                             setActiveSubmenu(null);
@@ -1328,7 +1335,10 @@ export function ItemsList() {
                             fontSize: 13,
                             fontWeight: 500,
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                          onMouseEnter={(e) => {
+                            setActiveSubmenu(null);
+                            e.currentTarget.style.background = '#f0f9ff';
+                          }}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           <History size={15} color="#0284c7" />
@@ -1967,21 +1977,29 @@ export function ItemsList() {
 
           {/* Pagination — hidden while an item is selected (narrow master pane) */}
           <Pagination
-              pageContext={pageContext}
-              page={page}
-              onPageChange={setPage}
-              perPage={perPage}
-              onPerPageChange={setPerPage}
-              total={total}
-              isCounting={isCounting}
-              onRequestCount={() => void requestCount()}
-            />
+            pageContext={pageContext}
+            page={page}
+            onPageChange={setPage}
+            perPage={perPage}
+            onPerPageChange={setPerPage}
+            total={total}
+            isCounting={isCounting}
+            onRequestCount={() => void requestCount()}
+          />
         </div>
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
+            <ItemDetail
+              itemId={selectedItemId}
+              onClose={() =>
+                setSearchParams((prev) => {
+                  prev.delete('id');
+                  return prev;
+                })
+              }
+            />
           </div>
         )}
       </div>

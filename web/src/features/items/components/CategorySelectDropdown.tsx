@@ -200,7 +200,6 @@ export function CategorySelectDropdown({
                   <Search size={14} color="#64748b" style={{ flexShrink: 0 }} />
                   <input
                     {...getInputProps({
-                      className: 'no-global-focus',
                       placeholder: 'Search category...',
                       autoFocus: true,
                       className: 'no-global-focus',

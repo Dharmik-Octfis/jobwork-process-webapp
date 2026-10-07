@@ -126,6 +126,7 @@ apiClient.interceptors.response.use(
     if (isApiEnvelope(response.data)) {
       const message = response.data.message;
       const method = response.config.method?.toLowerCase();
+      const isRefresh = response.config.url?.includes(endpoints.auth.refresh);
       // A screen that toasts its own success replaces this one — see lib/notify.ts.
       if (
         ['post', 'put', 'patch', 'delete'].includes(method || '') &&
