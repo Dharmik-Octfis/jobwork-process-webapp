@@ -38,6 +38,10 @@ const TENANT_TABLES = [
   'vendor_addresses',
   'customer_contact_persons',
   'customer_activities',
+  'sales_orders',
+  'sales_order_items',
+  'sales_order_activities',
+  'sales_order_comments',
   'customer_comments',
   'customer_addresses',
   'units_of_measurement',
@@ -47,6 +51,9 @@ const TENANT_TABLES = [
   'roles',
   'permission_templates',
   'list_view_preferences',
+  // Per-user report history (last visited, favourite), added in
+  // 20260924100000_add_report_user_states. Direct form — own organization_id.
+  'report_user_states',
   // Jobwork / inventory, added in 20260804120247_jobwork_sprint1_foundation.
   // `batches` kept its policy through the 2026-08-12 rename from `lots` — a
   // policy is attached to the table, not to its name, and this one compares
@@ -62,6 +69,8 @@ const TENANT_TABLES = [
   // would notice its policy going missing.
   'stock_cost_layers',
   'stock_layer_draws',
+  // What a value adjustment did to each layer, 20261002120013_value_adjustment.
+  'stock_layer_revaluations',
   // The optional level below a batch — a taka/roll/bale — added in
   // 20260901120700_add_batch_units. It carries its own `organization_id`
   // (denormalised from the parent batch) precisely so it can hold its own
@@ -123,6 +132,26 @@ const TENANT_TABLES = [
   'purchase_order_items',
   'purchase_order_activities',
   'purchase_order_comments',
+  // Approval Processes & Workflow Execution tables
+  'approval_processes',
+  'approval_process_versions',
+  'approval_process_rules',
+  'approval_stages',
+  'approval_actions',
+  'approval_process_admins',
+  'approval_requests',
+  'approval_request_stages',
+  'approval_request_approvers',
+  'approval_history',
+  'approval_action_executions',
+  // Stock adjustments, added in 20261002051832_add_stock_adjustments, and their
+  // lines in 20261002063459_stock_adjustment_lines. All three carry their own
+  // `organization_id` (direct form).
+  'stock_adjustments',
+  'stock_adjustment_lines',
+  'stock_adjustment_batches',
+  // 20261003050033_stock_adjustment_reasons — direct form.
+  'stock_adjustment_reasons',
 ] as const;
 
 /**

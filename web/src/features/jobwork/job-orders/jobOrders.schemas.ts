@@ -4,7 +4,9 @@ import {
   decimalString,
   itemRefSchema,
   namedRefSchema,
+  planGaps,
   stepItemRowSchema,
+  toNumber,
   uomRefSchema,
   type StepItemRow,
 } from '../jobwork.schemas';
@@ -80,6 +82,41 @@ export const jobOrderSchema = z.object({
 
 export type JobOrder = z.infer<typeof jobOrderSchema>;
 
+/**
+ * Why a saved order's pending steps cannot be issued yet (V4) — a warning at save,
+ * not a refusal: a half-planned order must still save (landed-cost plan D11). Read
+ * off the SAVED order, after the server filled blank rows from the step above, so
+ * only gaps nobody can derive are named. `null` when every pending step is ready.
+ */
+export function unissuablePlanMessage(order: JobOrder): string | null {
+  const nullable = (value: string | number | null | undefined) =>
+    value === null || value === undefined ? null : toNumber(value);
+  const problems = order.steps
+    .filter((step) => step.status === 'pending')
+    .flatMap((step) => {
+      const gaps = planGaps(
+        step.inputs.map((row) => ({ itemId: row.itemId, plannedQty: nullable(row.plannedQty) })),
+        step.outputs.map((row) => ({ itemId: row.itemId, expectedQty: nullable(row.expectedQty) })),
+      );
+      const name = (itemId: string) =>
+        [...step.inputs, ...step.outputs].find((row) => row.itemId === itemId)?.item?.name ??
+        'an item';
+      const missing = [
+        ...(gaps.noOutputs ? ['nothing it produces'] : []),
+        ...(gaps.noPlanned.length
+          ? [`no planned quantity for ${gaps.noPlanned.map(name).join(', ')}`]
+          : []),
+        ...(gaps.noExpected.length
+          ? [`no expected quantity for ${gaps.noExpected.map(name).join(', ')}`]
+          : []),
+      ];
+      return missing.length ? [`Step ${step.seq}: ${missing.join(', ')}`] : [];
+    });
+  return problems.length
+    ? `Saved, but it can't be issued until the plan is filled in. ${problems.join('. ')}.`
+    : null;
+}
+
 export const jobOrderWithStepsSchema = z.object({
   id: z.string(),
   steps: z
@@ -89,6 +126,7 @@ export const jobOrderWithStepsSchema = z.object({
         seq: z.number(),
         processNameSnapshot: z.string(),
         processorNameSnapshot: z.string().nullable(),
+        status: z.string(),
       }),
     )
     .default([]),
@@ -105,7 +143,10 @@ export const stepTotalsSchema = z.object({
   consumedQty: z.string(),
   receivedQty: z.string(),
   acceptedQty: z.string(),
+  /** Every rework ever received — history, it never goes down. */
   reworkQty: z.string(),
+  /** Rework still on our premises waiting to be issued back. What every prompt reads. */
+  pendingReworkQty: z.string().default('0'),
   scrapQty: z.string(),
   returnedQty: z.string(),
   outstandingQty: z.string(),
@@ -170,8 +211,9 @@ export const overviewStepSchema = jobOrderStepSchema.extend({
   }),
   availableQty: z.string(),
   canIssue: z.boolean(),
-  /** Why the Issue button is off, in words. Null when it is on. */
-  blockedReason: z.string().nullable().default(null),
+  /** Inputs an earlier step produces and has not returned yet. Issuing them is
+   * allowed — it draws on stock already on hand — so this informs, never blocks. */
+  chainWarnings: z.array(z.object({ itemId: z.string(), message: z.string() })).default([]),
   canReceive: z.boolean(),
 });
 

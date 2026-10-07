@@ -332,7 +332,15 @@ export function DateInput({
     // from what was typed.
     if (!isValid(parsed) || format(parsed, DISPLAY) !== next) return;
     if (isBlocked(parsed, minDate, maxDate)) return;
-    onChange(format(parsed, ISO));
+    if (type === 'datetime') {
+      let h = parseInt(timeState.hour, 10);
+      if (timeState.ampm === 'PM' && h < 12) h += 12;
+      if (timeState.ampm === 'AM' && h === 12) h = 0;
+      const hh = String(h).padStart(2, '0');
+      onChange(`${format(parsed, ISO)}T${hh}:${timeState.minute}`);
+    } else {
+      onChange(format(parsed, ISO));
+    }
     moveTo(parsed);
   };
 
@@ -416,7 +424,9 @@ export function DateInput({
           {days.map((day) => {
             const iso = format(day, ISO);
             const isActive = iso === format(activeDay, ISO);
-            const isSelected = Boolean(selected) && iso === format(selected!, ISO);
+            const isSelected = type === 'datetime'
+              ? iso === format(activeDay, ISO)
+              : Boolean(selected) && iso === format(selected!, ISO);
             const isOutside = day.getMonth() !== viewMonth.getMonth();
             const blocked = isBlocked(day, minDate, maxDate);
             return (
@@ -461,7 +471,20 @@ export function DateInput({
           }}
         >
           <FooterButton
-            onClick={() => commit(clamp(new Date(), minDate, maxDate))}
+            onClick={() => {
+              const now = clamp(new Date(), minDate, maxDate);
+              if (type === 'datetime') {
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                const isoTime = `${format(now, ISO)}T${hh}:${mm}`;
+                onChange(isoTime);
+                setText(displayFrom(isoTime, 'datetime'));
+                setTimeState(parseTime(isoTime));
+                close(true);
+              } else {
+                commit(now);
+              }
+            }}
             disabled={isBlocked(new Date(), minDate, maxDate)}
           >
             Today
@@ -513,7 +536,7 @@ export function DateInput({
                 cursor: 'pointer',
               }}
             >
-              Apply Time
+              Apply
             </button>
           </div>
         </div>

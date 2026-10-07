@@ -84,6 +84,7 @@ model Item {
   usedInComposites      CompositeItemComponent[] @relation("CompositeUsage")
   assembliesAsComposite ItemAssembly[]           @relation("ItemAssemblyComposite")
   assemblyLines         ItemAssemblyLine[]       @relation("ItemAssemblyLineItem")
+  stockAdjustmentLines  StockAdjustmentLine[]    @relation("StockAdjustmentLineItem")
 
   activities         ItemActivity[]
   openingStockRows   ItemOpeningStockRow[]
@@ -92,6 +93,7 @@ model Item {
   updatedByUser      User?                 @relation("ItemUpdatedBy", fields: [updatedBy], references: [id])
   stockingUom        UnitOfMeasurement?    @relation("ItemStockingUom", fields: [stockingUomId], references: [id])
   purchaseOrderItems PurchaseOrderItem[]
+  salesOrderItems    SalesOrderItem[]
   billItems          BillItem[]
   batches            Batch[]
   ledgerEntries      StockLedgerEntry[]

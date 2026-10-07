@@ -29,8 +29,9 @@ export function Select({
   buttonStyle,
   actionItem,
   menuWidth,
-  portal = false,
+  portal = true,
   buttonClassName,
+  hideIcon = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -47,6 +48,7 @@ export function Select({
   buttonClassName?: string;
   actionItem?: React.ReactNode;
   menuWidth?: number | string;
+  hideIcon?: boolean;
   /**
    * 🔴 REQUIRED WHENEVER THIS SITS INSIDE A `Modal` (CLAUDE.md).
    *
@@ -177,15 +179,17 @@ export function Select({
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {selected?.label ?? placeholder}
         </span>
-        <ChevronDown
-          size={14}
-          color="var(--color-text-muted)"
-          style={{
-            flexShrink: 0,
-            transform: isOpen ? 'rotate(180deg)' : undefined,
-            transition: 'transform 0.15s',
-          }}
-        />
+        {!hideIcon && (
+          <ChevronDown
+            size={14}
+            color="var(--color-text-muted)"
+            style={{
+              flexShrink: 0,
+              transform: isOpen ? 'rotate(180deg)' : undefined,
+              transition: 'transform 0.15s',
+            }}
+          />
+        )}
       </button>
 
       {/* 🔴 Kept mounted while closed in BOTH modes — downshift needs

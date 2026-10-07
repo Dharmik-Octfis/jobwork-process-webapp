@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
+import { Menu, X, Filter, Columns } from 'lucide-react';
 import { format, endOfDay } from 'date-fns';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
@@ -9,11 +9,13 @@ import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
+import { useOrganizationName } from '../../hooks/useOrganizationName';
 import {
   reportsApi,
   type InventoryValuationQuery,
   type PaginatedInventoryValuationResponse,
 } from './reports.api';
+import { useRecordReportVisit } from './useRecordReportVisit';
 import { ItemComboBox } from '../../components/ui/ItemComboBox';
 import type { Item } from '../items/items.schemas';
 import { CategorySelectDropdown } from '../items/components/CategorySelectDropdown';
@@ -22,6 +24,8 @@ import { fetchLocations, isOwnLocation } from '../configuration/locations/locati
 import { LocalComboBox } from '../../components/ui/LocalComboBox';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
+import { useTableSort } from '../../hooks/useTableSort';
+import { SortableHeader } from '../../components/ui/SortableHeader';
 const STOCK_OPTIONS = [
   { label: 'No criteria', value: 'none' },
   { label: 'Greater than zero', value: 'gt' },
@@ -42,18 +46,72 @@ const STATUS_OPTIONS = [
 export function InventoryValuationSummaryPage() {
   const navigate = useNavigate();
 
-  const [dateRange, setDateRange] = useState('Today');
-  const [asOfDate, setAsOfDate] = useState<Date>(new Date());
-  const [stockFilter, setStockFilter] = useState('none');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [conditions, setConditions] = useState<FilterCondition[]>([]);
+  const { orgId } = useParams<{ orgId: string }>();
+  const organizationName = useOrganizationName();
+  useRecordReportVisit(orgId, 'inventory_valuation_summary');
 
-  const [appliedFilters, setAppliedFilters] = useState({
-    asOfDate: new Date(),
-    stockFilter: 'none',
-    statusFilter: 'all',
-    conditions: [] as FilterCondition[],
-  });
+  const initialState = useMemo(() => {
+    if (!orgId) return null;
+    const key = `inventoryValuationSummaryState_${orgId}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+
+        const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+          if (!val) return fallback;
+          const d = new Date(val);
+          return isNaN(d.getTime()) ? fallback : d;
+        };
+
+        parsed.asOfDate = safeDate(parsed.asOfDate, new Date());
+
+        if (parsed.appliedFilters) {
+          parsed.appliedFilters.asOfDate = safeDate(parsed.appliedFilters.asOfDate, new Date());
+        }
+
+        return parsed;
+      }
+    } catch (_e) {
+      // ignore parse errors and fallback to default state
+    }
+    return null;
+  }, [orgId]);
+
+  const [dateRange, setDateRange] = useState(initialState?.dateRange || 'Today');
+  const [asOfDate, setAsOfDate] = useState<Date>(initialState?.asOfDate || new Date());
+  const [stockFilter, setStockFilter] = useState(initialState?.stockFilter || 'none');
+  const [statusFilter, setStatusFilter] = useState(initialState?.statusFilter || 'all');
+  const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions || []);
+
+  const [appliedFilters, setAppliedFilters] = useState<{
+    asOfDate: Date;
+    stockFilter: string;
+    statusFilter: string;
+    conditions: FilterCondition[];
+  }>(
+    initialState?.appliedFilters || {
+      asOfDate: new Date(),
+      stockFilter: 'none',
+      statusFilter: 'all',
+      conditions: [] as FilterCondition[],
+    },
+  );
+
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.setItem(
+      `inventoryValuationSummaryState_${orgId}`,
+      JSON.stringify({
+        dateRange,
+        asOfDate,
+        stockFilter,
+        statusFilter,
+        conditions,
+        appliedFilters,
+      }),
+    );
+  }, [dateRange, asOfDate, stockFilter, statusFilter, conditions, appliedFilters, orgId]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
@@ -64,8 +122,6 @@ export function InventoryValuationSummaryPage() {
 
   const formattedAsOfDate = format(appliedFilters.asOfDate, 'dd-MM-yyyy');
 
-  const { orgId } = useParams<{ orgId: string }>();
-
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId!),
@@ -75,8 +131,8 @@ export function InventoryValuationSummaryPage() {
   const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
 
   const locationOptions = useMemo(
-    () => locations.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })),
-    [locations]
+    () => locations.filter(loc => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })),
+    [locations],
   );
 
   const customFilterFields = useMemo(() => {
@@ -168,7 +224,7 @@ export function InventoryValuationSummaryPage() {
       },
       ...customFilterFields,
     ],
-    [orgId, locationOptions, customFilterFields]
+    [orgId, locationOptions, customFilterFields],
   );
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
@@ -181,7 +237,8 @@ export function InventoryValuationSummaryPage() {
     try {
       const query: InventoryValuationQuery = {
         asOfDate: endOfDay(appliedFilters.asOfDate).toISOString(),
-        stockAvailability: appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
+        stockAvailability:
+          appliedFilters.stockFilter as InventoryValuationQuery['stockAvailability'],
         status: appliedFilters.statusFilter as InventoryValuationQuery['status'],
         page,
         perPage,
@@ -216,7 +273,12 @@ export function InventoryValuationSummaryPage() {
       const customFieldKeys = new Set(customFields.map((cf) => cf.key));
       const itemCustomFields: Record<string, unknown> = {};
       appliedFilters.conditions.forEach((c) => {
-        if (customFieldKeys.has(c.field) && c.value !== undefined && c.value !== null && c.value !== '') {
+        if (
+          customFieldKeys.has(c.field) &&
+          c.value !== undefined &&
+          c.value !== null &&
+          c.value !== ''
+        ) {
           itemCustomFields[c.field] = c.value;
         }
       });
@@ -234,9 +296,6 @@ export function InventoryValuationSummaryPage() {
   };
 
   useEffect(() => {
-    // Record visit time for ReportsPage
-    localStorage.setItem(`lastVisited_inventoryValuation_${orgId}`, new Date().toISOString());
-
     const init = async () => {
       await fetchData();
     };
@@ -244,6 +303,7 @@ export function InventoryValuationSummaryPage() {
   }, [orgId, page, perPage, appliedFilters]);
 
   const rows = data?.results || [];
+  const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const totalQty = data?.grandTotalQty || 0;
   const totalValue = data?.grandTotalValue || 0;
   const total = data?.total || 0;
@@ -255,7 +315,7 @@ export function InventoryValuationSummaryPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -363,6 +423,8 @@ export function InventoryValuationSummaryPage() {
             options={STOCK_OPTIONS}
             value={stockFilter}
             onChange={setStockFilter}
+            keepOpenOnSelect={true}
+            showIndicator={stockFilter !== 'none'}
             style={{ width: 'max-content' }}
             triggerStyle={{
               border: '1px solid #d1d5db',
@@ -387,6 +449,8 @@ export function InventoryValuationSummaryPage() {
             options={STATUS_OPTIONS}
             value={statusFilter}
             onChange={setStatusFilter}
+            keepOpenOnSelect={true}
+            showIndicator={statusFilter !== 'all'}
             style={{ width: 'max-content' }}
             triggerStyle={{
               border: '1px solid #d1d5db',
@@ -439,7 +503,6 @@ export function InventoryValuationSummaryPage() {
           >
             Run Report
           </button>
-
         </div>
       </div>
 
@@ -510,7 +573,7 @@ export function InventoryValuationSummaryPage() {
                 fontWeight: 500,
               }}
             >
-              OCTFIS TECHNO llp
+              {organizationName}
             </div>
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
@@ -521,232 +584,220 @@ export function InventoryValuationSummaryPage() {
           </div>
 
           {/* Data Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
-                {visibleColumns.map((colKey) => {
-                  switch (colKey) {
-                    case 'itemName':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          ITEM NAME{' '}
-                          <ChevronDown
-                            size={12}
-                            color="#9ca3af"
-                            style={{
-                              display: 'inline',
-                              verticalAlign: 'middle',
-                              marginLeft: '4px',
-                            }}
-                          />
-                        </th>
-                      );
-                    case 'categoryName':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          CATEGORY NAME
-                        </th>
-                      );
-                    case 'sku':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          SKU
-                        </th>
-                      );
-                    case 'hsnCode':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          HSN CODE
-                        </th>
-                      );
-                    case 'uomName':
-                      return (
-                        <th key={colKey} style={thStyle}>
-                          UNIT
-                        </th>
-                      );
-                    case 'stockOnHand':
-                      return (
-                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                          STOCK ON HAND
-                        </th>
-                      );
-                    case 'inventoryAssetValue':
-                      return (
-                        <th key={colKey} style={{ ...thStyle, textAlign: 'right' }}>
-                          INVENTORY ASSET VALUE
-                        </th>
-                      );
-                    default:
-                      if (colKey.startsWith('cf_')) {
-                        const cfKey = colKey.replace('cf_', '');
-                        const cfLabel = customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
-                        return (
-                          <th key={colKey} style={thStyle}>
-                            {cfLabel.toUpperCase()}
-                          </th>
-                        );
-                      }
-                      return null;
-                  }
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={visibleColumns.length}
-                    style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
-                  >
-                    Loading...
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={visibleColumns.length}
-                    style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
-                  >
-                    No data found
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr
-                    key={row.itemId}
-                    className="table-row-hover"
-                    style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
-                    onClick={() =>
-                      navigate(`/organizations/${orgId}/reports/inventory-valuation/${row.itemId}`)
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+              <thead>
+                <tr style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
+                  {visibleColumns.map((colKey) => {
+                    switch (colKey) {
+                      case 'itemName':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                      case 'categoryName':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="CATEGORY NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                      case 'sku':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="SKU" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                      case 'hsnCode':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="HSN CODE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                      case 'uomName':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="UNIT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                      case 'stockOnHand':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="STOCK ON HAND" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                      case 'inventoryAssetValue':
+                        return <SortableHeader key={colKey} sortKey={colKey} label="INVENTORY ASSET VALUE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                      default:
+                        if (colKey.startsWith('cf_')) {
+                          const cfKey = colKey.replace('cf_', '');
+                          const cfLabel =
+                            customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
+                          return <SortableHeader key={colKey} sortKey={colKey} label={cfLabel.toUpperCase()} currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        }
+                        return null;
                     }
-                  >
-                    {visibleColumns.map((colKey) => {
-                      switch (colKey) {
-                        case 'itemName':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              <span style={{ color: '#111827', fontWeight: 500 }}>
-                                {row.itemName}
-                              </span>{' '}
-                              <span style={{ color: '#9ca3af', fontSize: '12px' }}>
-                                ({row.uomName || 'unit'})
-                              </span>
-                            </td>
-                          );
-                        case 'categoryName':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.categoryName || '-'}
-                            </td>
-                          );
-                        case 'sku':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.sku || '-'}
-                            </td>
-                          );
-                        case 'hsnCode':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.hsnCode || '-'}
-                            </td>
-                          );
-                        case 'uomName':
-                          return (
-                            <td key={colKey} style={tdStyle}>
-                              {row.uomName || '-'}
-                            </td>
-                          );
-                        case 'stockOnHand':
-                          return (
-                            <td
-                              key={colKey}
-                              style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
-                            >
-                              {row.stockOnHand.toFixed(2)}
-                            </td>
-                          );
-                        case 'inventoryAssetValue':
-                          return (
-                            <td
-                              key={colKey}
-                              style={{
-                                ...tdStyle,
-                                textAlign: 'right',
-                                color: '#111827',
-                                fontWeight: 600,
-                              }}
-                            >
-                              ₹{row.inventoryAssetValue < 0 ? '-' : ''}
-                              {Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                          );
-                        default:
-                          if (colKey.startsWith('cf_')) {
-                            const cfKey = colKey.replace('cf_', '');
-                            const cfValue = row.customFields?.[cfKey];
-                            return (
-                              <td key={colKey} style={tdStyle}>
-                                {cfValue !== undefined && cfValue !== null ? String(cfValue) : '-'}
-                              </td>
-                            );
-                          }
-                          return null;
-                      }
-                    })}
-                  </tr>
-                ))
-              )}
-              {rows.length > 0 && (
-                <tr style={{ borderTop: '1px solid #e5e7eb' }}>
-                  {visibleColumns.map((colKey, index) => {
-                    if (index === 0) {
-                      return (
-                        <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
-                          Total
-                        </td>
-                      );
-                    }
-                    if (colKey === 'stockOnHand') {
-                      return (
-                        <td
-                          key={colKey}
-                          style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}
-                        >
-                          {totalQty.toFixed(2)}
-                        </td>
-                      );
-                    }
-                    if (colKey === 'inventoryAssetValue') {
-                      return (
-                        <td
-                          key={colKey}
-                          style={{
-                            ...tdStyle,
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            color: '#111827',
-                          }}
-                        >
-                          ₹{totalValue < 0 ? '-' : ''}
-                          {Math.abs(totalValue).toLocaleString('en-IN', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                      );
-                    }
-                    return <td key={colKey} style={tdStyle} />; // Empty cell for non-total columns
                   })}
                 </tr>
-              )}
-            </tbody>
-          </table>
-          
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={visibleColumns.length}
+                      style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
+                    >
+                      Loading...
+                    </td>
+                  </tr>
+                ) : sortedRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={visibleColumns.length}
+                      style={{ ...tdStyle, textAlign: 'center', color: '#6b7280' }}
+                    >
+                      No data found
+                    </td>
+                  </tr>
+                ) : (
+                  sortedRows.map((row) => (
+                    <tr
+                      key={row.itemId}
+                      className="table-row-hover"
+                      style={{ borderTop: '1px solid #f9fafb', cursor: 'pointer' }}
+                      onClick={() => {
+                        const locationCond = appliedFilters.conditions.find(
+                          (c) => c.field === 'locationId',
+                        );
+                        const queryStr = locationCond?.value
+                          ? `?locationId=${locationCond.value}`
+                          : '';
+                        navigate(
+                          `/organizations/${orgId}/reports/inventory-valuation/${row.itemId}${queryStr}`,
+                        );
+                      }}
+                    >
+                      {visibleColumns.map((colKey) => {
+                        switch (colKey) {
+                          case 'itemName':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                <span
+                                  style={{
+                                    color: '#2563eb',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/organizations/${orgId}/items?id=${row.itemId}`);
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.textDecoration = 'underline';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.textDecoration = 'none';
+                                  }}
+                                >
+                                  {row.itemName}
+                                </span>{' '}
+                                <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                                  ({row.uomName || 'unit'})
+                                </span>
+                              </td>
+                            );
+                          case 'categoryName':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.categoryName || '-'}
+                              </td>
+                            );
+                          case 'sku':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.sku || '-'}
+                              </td>
+                            );
+                          case 'hsnCode':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.hsnCode || '-'}
+                              </td>
+                            );
+                          case 'uomName':
+                            return (
+                              <td key={colKey} style={tdStyle}>
+                                {row.uomName || '-'}
+                              </td>
+                            );
+                          case 'stockOnHand':
+                            return (
+                              <td
+                                key={colKey}
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                              >
+                                {row.stockOnHand.toFixed(2)}
+                              </td>
+                            );
+                          case 'inventoryAssetValue':
+                            return (
+                              <td
+                                key={colKey}
+                                style={{
+                                  ...tdStyle,
+                                  textAlign: 'right',
+                                  color: '#111827',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ₹{row.inventoryAssetValue < 0 ? '-' : ''}
+                                {Math.abs(row.inventoryAssetValue).toLocaleString('en-IN', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                            );
+                          default:
+                            if (colKey.startsWith('cf_')) {
+                              const cfKey = colKey.replace('cf_', '');
+                              const cfValue = row.customFields?.[cfKey];
+                              return (
+                                <td key={colKey} style={tdStyle}>
+                                  {cfValue !== undefined && cfValue !== null
+                                    ? String(cfValue)
+                                    : '-'}
+                                </td>
+                              );
+                            }
+                            return null;
+                        }
+                      })}
+                    </tr>
+                  ))
+                )}
+                {sortedRows.length > 0 && (
+                  <tr style={{ borderTop: '1px solid #e5e7eb' }}>
+                    {visibleColumns.map((colKey, index) => {
+                      if (index === 0) {
+                        return (
+                          <td key={colKey} style={{ ...tdStyle, fontWeight: 600 }}>
+                            Total
+                          </td>
+                        );
+                      }
+                      if (colKey === 'stockOnHand') {
+                        return (
+                          <td
+                            key={colKey}
+                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                          >
+                            {totalQty.toFixed(2)}
+                          </td>
+                        );
+                      }
+                      if (colKey === 'inventoryAssetValue') {
+                        return (
+                          <td
+                            key={colKey}
+                            style={{
+                              ...tdStyle,
+                              textAlign: 'right',
+                              fontWeight: 600,
+                              color: '#111827',
+                            }}
+                          >
+                            ₹{totalValue < 0 ? '-' : ''}
+                            {Math.abs(totalValue).toLocaleString('en-IN', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                        );
+                      }
+                      return <td key={colKey} style={tdStyle} />; // Empty cell for non-total columns
+                    })}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
           <Pagination
             pageContext={{
               page: data?.page || page,
@@ -778,8 +829,13 @@ export function InventoryValuationSummaryPage() {
               defaultVisible: false,
             })),
             { key: 'uomName', label: 'UNIT', defaultVisible: false },
-            { key: 'stockOnHand', label: 'STOCK ON HAND', defaultVisible: true },
-            { key: 'inventoryAssetValue', label: 'INVENTORY ASSET VALUE', defaultVisible: true },
+            { key: 'stockOnHand', label: 'STOCK ON HAND', locked: true, defaultVisible: true },
+            {
+              key: 'inventoryAssetValue',
+              label: 'INVENTORY ASSET VALUE',
+              locked: true,
+              defaultVisible: true,
+            },
           ]}
           visible={visibleColumns}
           onSave={(newCols) => {

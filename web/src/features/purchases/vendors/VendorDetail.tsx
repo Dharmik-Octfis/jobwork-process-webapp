@@ -5,8 +5,8 @@ import {
   type UpdateVendorData,
   type VendorAddress,
   type VendorContactPerson,
-  type VendorsPage,
 } from './vendors.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, User, Settings, Plus } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -15,6 +15,10 @@ import { VendorActivityTimeline } from './VendorActivityTimeline';
 import { VendorComments } from './VendorComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { VendorTransactions } from './VendorTransactions';
 
 interface VendorDetailProps {
   vendorId: string;
@@ -26,6 +30,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'vendors', vendorId);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -71,6 +76,12 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     enabled: Boolean(orgId && vendorId),
   });
 
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    (vendor as Vendor & { approvalStatus?: string })?.approvalStatus === 'REJECTED' ||
+    vendor?.status?.toLowerCase() === 'rejected',
+  );
+
   const { data: activities, isLoading: isActivitiesLoading } = useQuery({
     queryKey: ['vendor-activities', orgId, vendorId],
     queryFn: () => fetchVendorActivities(orgId!, vendorId),
@@ -80,6 +91,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteVendor(orgId!, vendorId),
     onSuccess: () => {
+      releaseListRow(['vendors', orgId], vendorId);
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       onClose();
     },
@@ -100,16 +112,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       return updateVendor({ orgId: orgId!, id: vendorId, data: dataToUpdate as UpdateVendorData });
     },
     onSuccess: (_, newStatus) => {
-      queryClient.setQueriesData({ queryKey: ['vendors', orgId], type: 'active' }, (old: VendorsPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: Vendor) =>
-            item.id === vendorId ? { ...item, status: newStatus } : item
-          ),
-        };
-      });
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId], type: 'inactive' });
+      patchListRow<Vendor>(queryClient, ['vendors', orgId], vendorId, { status: newStatus });
       queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] });
     },
   });
@@ -408,7 +411,9 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { vendorToClone , returnUrl: location.pathname + location.search } });
+    navigate(`/organizations/${orgId}/purchases/vendors/new`, {
+      state: { vendorToClone, returnUrl: location.pathname + location.search },
+    });
   };
 
   if (isLoading) {
@@ -427,7 +432,7 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Transactions'];
+  const tabs = ['Overview', 'Comments', 'Transactions', 'Approvals'];
 
   const sectionHeaderStyle = {
     fontSize: '13px',
@@ -474,31 +479,52 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
             {vendor.contactName}
           </h2>
           <span
             onClick={() => {
+              if (isUnderApproval || isRejected || (vendor as { isPendingApproval?: boolean })?.isPendingApproval) return;
               statusMutation.mutate(vendor.status === 'inactive' ? 'active' : 'inactive');
             }}
             style={{
-              background: vendor.status === 'inactive' ? '#94a3b8' : '#3b82f6',
+              background: isUnderApproval || (vendor as { isPendingApproval?: boolean })?.isPendingApproval
+                ? '#f59e0b'
+                : isRejected
+                ? '#ef4444'
+                : vendor.status === 'inactive'
+                ? '#94a3b8'
+                : '#3b82f6',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
               fontWeight: 500,
-              cursor: 'pointer',
+              cursor: isUnderApproval || isRejected || (vendor as { isPendingApproval?: boolean })?.isPendingApproval ? 'default' : 'pointer',
               transition: 'background 0.2s',
             }}
           >
-            {vendor.status === 'inactive' ? 'Inactive' : 'Active'}
+            {isUnderApproval || (vendor as { isPendingApproval?: boolean })?.isPendingApproval
+              ? 'Pending Approval'
+              : isRejected
+              ? 'Rejected'
+              : vendor.status === 'inactive'
+              ? 'Inactive'
+              : 'Active'}
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button className="action-btn"
-            onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
+          <button
+            className="action-btn"
+            onClick={() =>
+              navigate(`/organizations/${orgId}/purchases/vendors/${vendorId}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
+            }
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -515,7 +541,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button className="action-btn"
+            <button
+              className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -551,19 +578,21 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={handleClone}
-                >
-                  Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={handleClone}
+                  >
+                    Clone
+                  </div>
+                )}
                 <div
                   style={{
                     padding: '8px 12px',
@@ -580,22 +609,24 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                 >
                   Delete
                 </div>
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    statusMutation.mutate(vendor.status === 'inactive' ? 'active' : 'inactive');
-                  }}
-                >
-                  {vendor.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      statusMutation.mutate(vendor.status === 'inactive' ? 'active' : 'inactive');
+                    }}
+                  >
+                    {vendor.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -629,6 +660,17 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && vendorId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="vendors"
+              recordId={vendorId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['vendor', orgId, vendorId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -758,7 +800,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                         }}
                         onMouseLeave={() => setHoveredContactSetting('Edit')}
                       >
-                        <button className="action-btn"
+                        <button
+                          className="action-btn"
                           style={{
                             display: 'block',
                             width: '100%',
@@ -1294,7 +1337,8 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
                                       overflow: 'hidden',
                                     }}
                                   >
-                                    <button className="action-btn"
+                                    <button
+                                      className="action-btn"
                                       onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
                                       onClick={() => {
                                         setContactPersonEditIndex(index);
@@ -1463,7 +1507,11 @@ export function VendorDetail({ vendorId, onClose }: VendorDetailProps) {
             padding: '16px',
           }}
         >
-          No transactions found.
+          <VendorTransactions orgId={orgId!} vendorId={vendorId} />
+        </div>
+
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="vendors" recordId={vendorId} />
         </div>
       </div>
 

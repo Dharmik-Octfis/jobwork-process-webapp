@@ -14,6 +14,7 @@
   cursor: pointer;
   color: #64748b;
   transition: all 0.2s;
+  position: relative;
 }
 
 .filter-trigger-btn:hover {

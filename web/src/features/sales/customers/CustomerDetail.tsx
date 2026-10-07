@@ -7,11 +7,11 @@ import {
 } from './customers.api';
 import {
   type Customer,
-  type CustomersPage,
   type UpdateCustomerData,
   type CustomerAddress,
   type CustomerContactPerson,
 } from './customers.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, ChevronUp, Pencil, Trash, Settings, User, Plus } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -20,6 +20,12 @@ import { CustomerActivityTimeline } from './CustomerActivityTimeline';
 import { CustomerComments } from './CustomerComments';
 import { AdditionalAddressModal } from './AdditionalAddressModal';
 import { PrimaryContactModal } from './PrimaryContactModal';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+import { CustomerTransactions } from './CustomerTransactions';
 
 interface CustomerDetailProps {
   customerId: string;
@@ -31,6 +37,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(orgId, 'customers', customerId);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -41,6 +49,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
   const [isOtherDetailsOpen, setIsOtherDetailsOpen] = useState(true);
   const [isAddressOpen, setIsAddressOpen] = useState(true);
   const [isContactPersonOpen, setIsContactPersonOpen] = useState(true);
+  const [isCustomFieldsOpen, setIsCustomFieldsOpen] = useState(true);
   const [isContactSettingsOpen, setIsContactSettingsOpen] = useState(false);
   const [hoveredContactSetting, setHoveredContactSetting] = useState<'Edit' | 'Delete'>('Edit');
   const [isPrimaryContactModalOpen, setIsPrimaryContactModalOpen] = useState(false);
@@ -77,15 +86,24 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     enabled: Boolean(orgId && customerId),
   });
 
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    (customer as Customer & { approvalStatus?: string })?.approvalStatus === 'REJECTED' ||
+    customer?.status?.toLowerCase() === 'rejected',
+  );
+
   const { data: activities, isLoading: isActivitiesLoading } = useQuery({
     queryKey: ['customer-activities', orgId, customerId],
     queryFn: () => fetchCustomerActivities(orgId!, customerId),
     enabled: Boolean(orgId && customerId),
   });
 
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'customer');
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteCustomer(orgId!, customerId),
     onSuccess: () => {
+      releaseListRow(['customers', orgId], customerId);
       queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
       onClose();
     },
@@ -110,16 +128,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       });
     },
     onSuccess: (_, newStatus) => {
-      queryClient.setQueriesData({ queryKey: ['customers', orgId], type: 'active' }, (old: CustomersPage | undefined) => {
-        if (!old || !old.results) return old;
-        return {
-          ...old,
-          results: old.results.map((item: Customer) =>
-            item.id === customerId ? { ...item, status: newStatus } : item
-          ),
-        };
-      });
-      queryClient.invalidateQueries({ queryKey: ['customers', orgId], type: 'inactive' });
+      patchListRow<Customer>(queryClient, ['customers', orgId], customerId, { status: newStatus });
       queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] });
     },
   });
@@ -448,7 +457,9 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       contactNumber: '',
     };
 
-    navigate(`/organizations/${orgId}/sales/customers/new`, { state: { customerToClone , returnUrl: location.pathname + location.search } });
+    navigate(`/organizations/${orgId}/sales/customers/new`, {
+      state: { customerToClone, returnUrl: location.pathname + location.search },
+    });
   };
 
   if (isLoading) {
@@ -467,7 +478,7 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Transactions'];
+  const tabs = ['Overview', 'Comments', 'Transactions', 'Approvals'];
 
   const sectionHeaderStyle = {
     fontSize: '13px',
@@ -511,31 +522,52 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
       {/* Header */}
       <div className="detail-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 className="detail-title" style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
             {customer.contactName}
           </h2>
           <span
             onClick={() => {
+              if (isUnderApproval || isRejected || (customer as Record<string, unknown>)?.isPendingApproval) return;
               statusMutation.mutate(customer.status === 'inactive' ? 'active' : 'inactive');
             }}
             style={{
-              background: customer.status === 'inactive' ? '#94a3b8' : '#3b82f6',
+              background: isUnderApproval || (customer as Record<string, unknown>)?.isPendingApproval
+                ? '#f59e0b'
+                : isRejected
+                ? '#ef4444'
+                : customer.status === 'inactive'
+                ? '#94a3b8'
+                : '#3b82f6',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
               fontWeight: 500,
-              cursor: 'pointer',
+              cursor: isUnderApproval || isRejected || (customer as Record<string, unknown>)?.isPendingApproval ? 'default' : 'pointer',
               transition: 'background 0.2s',
             }}
           >
-            {customer.status === 'inactive' ? 'Inactive' : 'Active'}
+            {isUnderApproval || (customer as Record<string, unknown>)?.isPendingApproval
+              ? 'Pending Approval'
+              : isRejected
+              ? 'Rejected'
+              : customer.status === 'inactive'
+              ? 'Inactive'
+              : 'Active'}
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button className="action-btn"
-            onClick={() => navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`, { state: { returnUrl: location.pathname + location.search } })}
+          <button
+            className="action-btn"
+            onClick={() =>
+              navigate(`/organizations/${orgId}/sales/customers/${customerId}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
+            }
             style={{
               padding: '6px 12px',
               border: '1px solid #d1d5db',
@@ -552,7 +584,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
           </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
-            <button className="action-btn"
+            <button
+              className="action-btn"
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               style={{
                 padding: '6px 12px',
@@ -588,19 +621,21 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={handleClone}
-                >
-                  Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={handleClone}
+                  >
+                    Clone
+                  </div>
+                )}
                 <div
                   style={{
                     padding: '8px 12px',
@@ -617,22 +652,24 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 >
                   Delete
                 </div>
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    statusMutation.mutate(customer.status === 'inactive' ? 'active' : 'inactive');
-                  }}
-                >
-                  {customer.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#333',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      statusMutation.mutate(customer.status === 'inactive' ? 'active' : 'inactive');
+                    }}
+                  >
+                    {customer.status === 'inactive' ? 'Mark as Active' : 'Mark as Inactive'}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -666,6 +703,17 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && customerId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="customers"
+              recordId={customerId}
+              onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['customer', orgId, customerId] })}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -795,7 +843,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                         }}
                         onMouseLeave={() => setHoveredContactSetting('Edit')}
                       >
-                        <button className="action-btn"
+                        <button
+                          className="action-btn"
                           style={{
                             display: 'block',
                             width: '100%',
@@ -1181,6 +1230,53 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                 )}
               </div>
 
+              {customFieldDefs.length > 0 && (
+                <div>
+                  <div
+                    onClick={() => setIsCustomFieldsOpen(!isCustomFieldsOpen)}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      paddingTop: '10px',
+                      paddingBottom: '8px',
+                      marginBottom: isCustomFieldsOpen ? '12px' : 0,
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div
+                      style={{
+                        ...sectionHeaderStyle,
+                        borderBottom: 'none',
+                        marginBottom: 0,
+                        paddingBottom: 0,
+                      }}
+                    >
+                      Custom Fields
+                    </div>
+                    {isCustomFieldsOpen ? (
+                      <ChevronUp size={16} color="#0062ff" />
+                    ) : (
+                      <ChevronDown size={16} color="#0062ff" />
+                    )}
+                  </div>
+
+                  {isCustomFieldsOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {customFieldDefs.map((def) => (
+                        <div key={def.id}>
+                          <div style={labelStyle}>{def.label}</div>
+                          <div style={valueStyle}>
+                            {formatCustomFieldValue(customer.customFields?.[def.key], def) || '-'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <div
                   onClick={() => setIsContactPersonOpen(!isContactPersonOpen)}
@@ -1335,7 +1431,8 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
                                         overflow: 'hidden',
                                       }}
                                     >
-                                      <button className="action-btn"
+                                      <button
+                                        className="action-btn"
                                         onMouseEnter={() => setHoveredContactPersonSetting('Edit')}
                                         onClick={() => {
                                           setContactPersonEditIndex(index);
@@ -1507,7 +1604,11 @@ export function CustomerDetail({ customerId, onClose }: CustomerDetailProps) {
             padding: '16px',
           }}
         >
-          No transactions found.
+          <CustomerTransactions orgId={orgId!} customerId={customerId} />
+        </div>
+
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="customers" recordId={customerId} />
         </div>
       </div>
 

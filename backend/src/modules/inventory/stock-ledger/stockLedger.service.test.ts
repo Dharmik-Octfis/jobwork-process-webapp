@@ -409,6 +409,76 @@ describe('stock ledger — the picker reads the ledger, not the batches table', 
     expect(after.map((l) => l.batchId)).not.toContain(batch.id);
   });
 
+  it('offers a used-up batch only to a caller that opts in, at zero, after live stock', async () => {
+    const emptied = await batchWithStock(50);
+    const live = await batchWithStock(20);
+    await runAsTenant(orgId, (tx) =>
+      postMovement(tx, {
+        organizationId: orgId,
+        batchId: emptied.id,
+        locationId: godownId,
+        movementType: 'issue',
+        qtyOut: 50,
+        sourceDocType: 'job_issue',
+      }),
+    );
+
+    const read = (includeExhausted?: boolean) =>
+      runAsTenant(orgId, (tx) =>
+        getAvailableBatches(tx, {
+          organizationId: orgId,
+          itemId,
+          locationId: godownId,
+          ownership: 'own',
+          includeExhausted,
+        }),
+      );
+
+    // Default: the outward contract — every row holds something.
+    const outward = await read();
+    expect(outward.map((l) => l.batchId)).not.toContain(emptied.id);
+    for (const row of outward) expect(row.availableQty.greaterThan(0)).toBe(true);
+
+    // Inward (a bill topping up a batch): the emptied batch comes back at 0, after every live row.
+    const inward = await read(true);
+    const ids = inward.map((l) => l.batchId);
+    expect(ids).toContain(live.id);
+    expect(ids).toContain(emptied.id);
+    expect(inward.find((l) => l.batchId === emptied.id)!.availableQty.equals(0)).toBe(true);
+    const firstZero = inward.findIndex((l) => l.availableQty.equals(0));
+    expect(inward.slice(firstZero).every((l) => l.availableQty.equals(0))).toBe(true);
+  });
+
+  it('caps used-up batches per item even while searching', async () => {
+    const ref = `cap-${process.hrtime.bigint().toString(36)}`;
+    for (let i = 0; i < 12; i++) {
+      const b = await batchWithStock(1);
+      await runAsTenant(orgId, async (tx) => {
+        await tx.batch.update({ where: { id: b.id }, data: { supplierBatchRef: `${ref}-${i}` } });
+        await postMovement(tx, {
+          organizationId: orgId,
+          batchId: b.id,
+          locationId: godownId,
+          movementType: 'issue',
+          qtyOut: 1,
+          sourceDocType: 'job_issue',
+        });
+      });
+    }
+
+    const rows = await runAsTenant(orgId, (tx) =>
+      getAvailableBatches(tx, {
+        organizationId: orgId,
+        itemId,
+        locationId: godownId,
+        ownership: 'own',
+        search: ref,
+        includeExhausted: true,
+      }),
+    );
+    expect(rows).toHaveLength(10);
+  });
+
   it('never mixes our stock and a customer’s in one picker', async () => {
     const theirs = await runAsTenant(orgId, async (tx) => {
       const created = await newBatch(tx, {

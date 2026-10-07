@@ -6,11 +6,15 @@ export const endpoints = {
     logout: '/auth/logout',
     refresh: '/auth/refresh-token',
     me: '/auth/me',
+    /** Polled: is this session still live, or was it ended somewhere else? */
+    session: '/auth/session',
     location: '/auth/me/location',
     avatar: '/auth/me/avatar',
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
     changePassword: '/auth/change-password',
+    /** Public: what the sign-in screen needs before anyone is signed in. */
+    config: '/auth/config',
   },
   invitations: {
     /** Public: look up an invite by its raw token (for the accept page). */
@@ -139,11 +143,15 @@ export const endpoints = {
     /** Locations that actually hold an item, with balances. Also a ledger query:
      * offering a godown with no stock is how users get stuck. */
     stockLocations: (orgId: string) => `/organizations/${orgId}/inventory/batches/locations`,
+    adjustments: (orgId: string) => `/organizations/${orgId}/inventory/adjustments`,
   },
   sales: {
     customers: (orgId: string) => `/organizations/${orgId}/sales/customers`,
     customerPreferences: (orgId: string) =>
       `/organizations/${orgId}/sales/customers/preferences/number-sequence`,
+    salesOrders: (orgId: string) => `/organizations/${orgId}/sales/sales-orders`,
+    salesOrderPreferences: (orgId: string) =>
+      `/organizations/${orgId}/sales/sales-orders/preferences/number-sequence`,
   },
   configuration: {
     locations: (orgId: string) => `/organizations/${orgId}/configuration/locations`,
@@ -159,7 +167,45 @@ export const endpoints = {
   listViews: (orgId: string, entityType: string) =>
     `/organizations/${orgId}/list-views/${entityType}`,
   reports: {
+    /** Reports Center list, merged with the caller's last-visited + favourite. */
+    list: (orgId: string) => `/organizations/${orgId}/reports`,
+    visit: (orgId: string, reportKey: string) =>
+      `/organizations/${orgId}/reports/${reportKey}/visit`,
+    favorite: (orgId: string, reportKey: string) =>
+      `/organizations/${orgId}/reports/${reportKey}/favorite`,
     inventoryValuation: (orgId: string) => `/organizations/${orgId}/reports/inventory-valuation`,
-    fifoCostLotTracking: (orgId: string) => `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
+    fifoCostLotTracking: (orgId: string) =>
+      `/organizations/${orgId}/reports/fifo-cost-lot-tracking`,
+    jobOrderLoss: (orgId: string) => `/organizations/${orgId}/reports/job-order-loss`,
+    batchReport: (orgId: string) => `/organizations/${orgId}/reports/batch`,
+    takaReport: (orgId: string) => `/organizations/${orgId}/reports/taka`,
+    jobworkChallans: (orgId: string) => `/organizations/${orgId}/reports/jobwork-challans`,
+    jobworkReceipts: (orgId: string) => `/organizations/${orgId}/reports/jobwork-receipts`,
+    jobOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/job-orders`,
+    purchaseOrdersReport: (orgId: string) => `/organizations/${orgId}/reports/purchase-orders`,
+    billsReport: (orgId: string) => `/organizations/${orgId}/reports/bills`,
+  },
+  automation: {
+    approvalProcesses: (orgId: string) => `/organizations/${orgId}/automation/approval-processes`,
+    approvalProcessById: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}`,
+    reorderApprovalProcesses: (orgId: string) =>
+      `/organizations/${orgId}/automation/approval-processes/reorder`,
+    activateApprovalProcess: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}/activate`,
+    deactivateApprovalProcess: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}/deactivate`,
+    duplicateApprovalProcess: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/${id}/duplicate`,
+    modules: (orgId: string) => `/organizations/${orgId}/automation/approval-processes/modules`,
+    moduleFields: (orgId: string, moduleId: string) =>
+      `/organizations/${orgId}/automation/approval-processes/modules/${moduleId}/fields`,
+    requests: (orgId: string) => `/organizations/${orgId}/automation/approval-processes/requests`,
+    requestById: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/requests/${id}`,
+    approveRequest: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/requests/${id}/approve`,
+    rejectRequest: (orgId: string, id: string) =>
+      `/organizations/${orgId}/automation/approval-processes/requests/${id}/reject`,
   },
 } as const;

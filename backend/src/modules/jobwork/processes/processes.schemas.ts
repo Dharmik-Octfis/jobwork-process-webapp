@@ -26,9 +26,7 @@ export const createProcessSchema = openApiRegistry.register(
     code: nullableTrimmed(50),
     description: nullableTrimmed(2000),
 
-    /** The output is a DIFFERENT item from the input (§5.1) — cloth in, shirt out. */
-    itemChanges: z.boolean().optional(),
-
+    // No `itemChanges` (dropped 2026-09-30): a step's outputs are its own rows.
     // No rate basis: the charge is rate × accepted on each output row (landed-cost
     // plan D1–D2). No tolerance either: it is typed per job order input row.
   }),

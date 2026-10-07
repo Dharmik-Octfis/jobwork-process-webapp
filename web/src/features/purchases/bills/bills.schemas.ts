@@ -9,6 +9,8 @@ export const billItemSchema = z.object({
   rate: z.number().or(z.string()).optional(),
   discountPercentage: z.number().or(z.string()).nullable().optional(),
   discountAmount: z.number().or(z.string()).nullable().optional(),
+  // what a saved line comes back with — the column is `discount`, not `discountAmount`
+  discount: z.number().or(z.string()).nullable().optional(),
   amount: z.number().or(z.string()).optional(),
   itemTotal: z.number().or(z.string()).nullable().optional(),
   jobReceiptId: z.string().optional(),
@@ -71,8 +73,12 @@ export const billSchema = z.object({
   termsAndConditions: z.string().nullable().optional(),
   attachments: z.any().nullable().optional(),
   status: z.string().nullable().optional(),
+  // pending | approved | rejected — never in `status`, which is Draft | Open.
+  approvalStatus: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
   lineItems: z.array(billItemSchema).nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+  updatedAt: z.string().nullable().optional(),
   // Frontend virtual fields for display
   deliveryType: z.enum(['Location', 'Customer']).nullable().optional(),
   deliveryLocationId: z.string().nullable().optional(),

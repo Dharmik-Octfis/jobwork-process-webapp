@@ -1,0 +1,89 @@
+import { Prisma } from '../../../../generated/prisma/client.ts';
+import { runAsTenant } from '../../../db/prisma.ts';
+
+export async function getVendorsReport(
+  organizationId: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    contactNumber?: string;
+    companyName?: string;
+    status?: string;
+    vendorType?: string;
+  }
+) {
+  const {
+    page = 1,
+    pageSize = 20,
+    contactNumber,
+    companyName,
+    status,
+    vendorType,
+  } = params;
+  
+  const skip = (page - 1) * pageSize;
+
+  return runAsTenant(organizationId, async (tx) => {
+    const where: Prisma.VendorWhereInput = {
+      organizationId,
+      isDeleted: false,
+    };
+
+    if (contactNumber) {
+      where.contactNumber = { contains: contactNumber, mode: 'insensitive' };
+    }
+    if (companyName) {
+      where.companyName = { contains: companyName, mode: 'insensitive' };
+    }
+    if (status) {
+      where.status = status;
+    }
+    if (vendorType) {
+      where.vendorTypes = { has: vendorType };
+    }
+
+    const [items, totalCount] = await Promise.all([
+      tx.vendor.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { createdAt: 'desc' },
+      }),
+      tx.vendor.count({ where }),
+    ]);
+
+    if (items.length === 0) {
+      return {
+        items: [],
+        pagination: { page, pageSize, totalCount, totalPages: 0 },
+      };
+    }
+
+    const formattedItems = items.map((vendor) => {
+      return {
+        id: vendor.id,
+        contactNumber: vendor.contactNumber,
+        companyName: vendor.companyName,
+        contactName: vendor.contactName,
+        primaryContact: [vendor.primaryContactFirstName, vendor.primaryContactLastName].filter(Boolean).join(' ') || null,
+        email: vendor.email,
+        phone: vendor.phone,
+        currency: vendor.currency,
+        paymentTerms: vendor.paymentTerms,
+        notes: vendor.notes,
+        customFields: vendor.customFields,
+        createdAt: vendor.createdAt,
+      };
+    });
+
+    return {
+      items: formattedItems,
+      pagination: {
+        page,
+        pageSize,
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+      },
+    };
+  });
+}

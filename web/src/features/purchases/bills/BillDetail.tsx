@@ -15,8 +15,6 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
 import {
   fetchBillById,
   getBillSignedUrl,
@@ -24,15 +22,33 @@ import {
   updateBill,
   type BillAttachment,
 } from './bills.api';
+import type { Bill } from './bills.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { organizationsApi } from '../../organizations/organizations.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
+import {
+  X,
+  Edit,
+  ChevronDown,
+  FileText,
+  Paperclip,
+  Copy,
+  Trash2,
+  Printer,
+  Eye,
+} from 'lucide-react';
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillComments } from './BillComments';
 import { BillActivityTimeline } from './BillActivityTimeline';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
+import { APPROVAL_COLOURS, APPROVAL_LABELS, announceOpenOutcome } from './billApproval';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
 function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: BillAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -45,17 +61,85 @@ function BillAttachmentLink({ orgId, attachment }: { orgId: string; attachment: 
 
   const finalUrl = isDirectUrl ? attachment.data || attachment.url : signedUrl;
 
+  const handleView = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!finalUrl) return;
+
+    const name = (attachment.name || '').toLowerCase();
+    const isPdf = name.endsWith('.pdf');
+    const isImage = name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i);
+
+    if (!isPdf && !isImage) {
+      window.open(finalUrl, '_blank');
+      return;
+    }
+
+    try {
+      const res = await fetch(finalUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const newWin = window.open('', '_blank');
+      if (newWin) {
+        newWin.document.title = attachment.name || 'View File';
+        newWin.document.body.style.margin = '0';
+        newWin.document.body.style.background = '#0e0e0e';
+        newWin.document.body.style.display = 'flex';
+        newWin.document.body.style.justifyContent = 'center';
+        newWin.document.body.style.alignItems = 'center';
+        newWin.document.body.style.height = '100vh';
+        if (isImage) {
+          const img = newWin.document.createElement('img');
+          img.src = objectUrl;
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '100%';
+          img.style.objectFit = 'contain';
+          newWin.document.body.appendChild(img);
+        } else if (isPdf) {
+          const iframe = newWin.document.createElement('iframe');
+          iframe.src = objectUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          newWin.document.body.appendChild(iframe);
+        }
+      } else {
+        window.open(finalUrl, '_blank');
+      }
+    } catch (_err) {
+      window.open(finalUrl, '_blank');
+    }
+  };
+
   if (finalUrl) {
     return (
-      <a
-        href={finalUrl}
-        download={attachment.name || 'attachment'}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
-      >
-        {attachment.name || 'Attachment'}
-      </a>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <a
+          href={finalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
+          title="Download file"
+        >
+          {attachment.name || 'Attachment'}
+        </a>
+        <button
+          type="button"
+          onClick={handleView}
+          title="View file"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '2px',
+          }}
+        >
+          <Eye size={16} />
+        </button>
+      </div>
     );
   }
 
@@ -77,6 +161,8 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
+
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'bill');
 
   const handleDownloadPdf = async () => {
     setIsPdfMenuOpen(false);
@@ -131,28 +217,34 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
   const deleteMutation = useMutation({
     mutationFn: () => deleteBill(orgId!, poId),
     onSuccess: () => {
+      releaseListRow(['bills', orgId], poId);
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // The source PO derives its bill status from its live bills.
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       // Deleting a posted bill withdraws its stock.
       invalidateStockQueries(queryClient, orgId);
       setIsConfirmDeleteOpen(false);
       onClose();
     },
-    // A bill whose stock was used is refused, naming the document — say so.
-    onError: (error) => {
-      setIsConfirmDeleteOpen(false);
-      toast.error(toApiErrorMessage(error));
-    },
+    // The refusal (stock already used, naming the document) is toasted globally.
+    onError: () => setIsConfirmDeleteOpen(false),
   });
 
   const updateMutation = useMutation({
     mutationFn: updateBill,
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
-      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
-      // "Open Bill" posts the draft's stock.
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
+      // Patched, not invalidated: the Draft view would drop the bill just opened.
+      patchListRow<Bill>(queryClient, ['bills', orgId], poId, {
+        status: updated.status,
+        approvalStatus: updated.approvalStatus,
+      });
+      // "Open Bill" posts the draft's stock — or sends it for approval.
       invalidateStockQueries(queryClient, orgId);
+      queryClient.invalidateQueries({ queryKey: ['record-approvals', orgId, 'bills', poId] });
+      announceOpenOutcome(updated);
     },
-    onError: (error) => toast.error(toApiErrorMessage(error)),
   });
 
   const { data: po, isLoading } = useQuery({
@@ -160,6 +252,19 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     queryFn: () => fetchBillById(orgId!, poId),
     enabled: Boolean(orgId && poId),
   });
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'bills',
+    poId,
+  );
+  // `approval_status` is the gate's column; a bill rejected before the gate
+  // carries it in `status` instead.
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    po?.approvalStatus?.toLowerCase() === 'rejected' ||
+    po?.status?.toLowerCase() === 'rejected',
+  );
 
   const { data: orgs } = useQuery({
     queryKey: ['organizations'],
@@ -184,7 +289,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -234,10 +339,24 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           >
             {po.status || 'Draft'}
           </span>
+          {po.approvalStatus && APPROVAL_LABELS[po.approvalStatus] && (
+            <span
+              style={{
+                background: APPROVAL_COLOURS[po.approvalStatus],
+                color: 'white',
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontWeight: 500,
+              }}
+            >
+              {APPROVAL_LABELS[po.approvalStatus]}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {po.status?.toLowerCase() === 'draft' && (
+          {po.status?.toLowerCase() === 'draft' && !isUnderApproval && (
             <button
               onClick={() => setIsConfirmOpenBillVisible(true)}
               style={{
@@ -257,27 +376,30 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
             </button>
           )}
 
-          <button
-            className="action-btn"
-            onClick={() =>
-              navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, {
-                state: { returnUrl: location.pathname + location.search },
-              })
-            }
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #d1d5db',
-              background: 'white',
-              borderRadius: '4px',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <Edit size={14} /> <span className="action-btn-text">Edit</span>
-          </button>
+          {/* A bill waiting on an approver cannot change under them (G6). */}
+          {!isUnderApproval && (
+            <button
+              className="action-btn"
+              onClick={() =>
+                navigate(`/organizations/${orgId}/purchases/bills/${poId}/edit`, {
+                  state: { returnUrl: location.pathname + location.search },
+                })
+              }
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              <Edit size={14} /> <span className="action-btn-text">Edit</span>
+            </button>
+          )}
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
@@ -317,44 +439,48 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Copy size={14} /> Clone
-                </div>
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    setIsConfirmDeleteOpen(true);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#ef4444',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Trash2 size={14} /> Delete
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      navigate(`/organizations/${orgId}/purchases/bills/new?cloneFrom=${poId}`);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Copy size={14} /> Clone
+                  </div>
+                )}
+                {!isUnderApproval && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      setIsConfirmDeleteOpen(true);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#ef4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -468,6 +594,22 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="bills"
+              recordId={poId}
+              onActionComplete={() => {
+                queryClient.invalidateQueries({ queryKey: ['bill', orgId, poId] });
+                queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+                // Approving opens the bill, which posts its stock.
+                invalidateStockQueries(queryClient, orgId);
+              }}
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -698,6 +840,31 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                 </div>
               </div>
 
+              {/* Custom Fields Section */}
+              {customFieldDefs.length > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '20px',
+                    marginBottom: '28px',
+                    background: '#fafafa',
+                    padding: '16px 20px',
+                    borderRadius: '6px',
+                    border: '1px solid #f1f5f9',
+                  }}
+                >
+                  {customFieldDefs.map((def) => (
+                    <div key={def.id}>
+                      <div style={labelStyle}>{def.label?.toUpperCase()}</div>
+                      <div style={valueStyle}>
+                        {formatCustomFieldValue(po.customFields?.[def.key], def) || '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Line Items Table */}
               <div className="responsive-table-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
@@ -818,7 +985,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                                 verticalAlign: 'top',
                               }}
                             >
-                              {item.quantity} PCS
+                              {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                             </td>
                             <td
                               style={{
@@ -1308,6 +1475,33 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                         <strong>Terms</strong> : -
                       </td>
                     </tr>
+                    {customFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = customFieldDefs[i * 2];
+                        const def2 = customFieldDefs[i * 2 + 1];
+                        return (
+                          <tr key={i} style={{ borderTop: '1px solid #000' }}>
+                            <td
+                              style={{
+                                width: '50%',
+                                padding: '6px 10px',
+                                borderRight: '1px solid #000',
+                              }}
+                            >
+                              <strong>{def1.label}</strong> :{' '}
+                              {formatCustomFieldValue(po.customFields?.[def1.key], def1) || '-'}
+                            </td>
+                            <td style={{ width: '50%', padding: '6px 10px' }}>
+                              {def2 ? (
+                                <>
+                                  <strong>{def2.label}</strong> :{' '}
+                                  {formatCustomFieldValue(po.customFields?.[def2.key], def2) || '-'}
+                                </>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1491,7 +1685,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
                               textAlign: 'center',
                             }}
                           >
-                            {item.quantity}
+                            {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                           </td>
                           <td
                             style={{
@@ -1756,6 +1950,9 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
           )}
         </div>
 
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline organizationId={orgId!} moduleId="bills" recordId={poId} />
+        </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <BillComments orgId={orgId!} poId={poId} />
         </div>
@@ -1776,7 +1973,7 @@ export function BillDetail({ poId, onClose }: { poId: string; onClose: () => voi
       <ConfirmDialog
         isOpen={isConfirmOpenBillVisible}
         title="Open Bill"
-        message="Are you sure you want to open this bill? Stock will be updated."
+        message="Open this bill? Its stock is posted now — or, if an approval process covers it, once it is approved."
         confirmText={updateMutation.isPending ? 'Opening...' : 'Open Bill'}
         onConfirm={() => {
           updateMutation.mutate({

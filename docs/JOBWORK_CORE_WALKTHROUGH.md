@@ -102,16 +102,16 @@ a dyer is a _transfer_, not a disposal. It changes location; it never leaves you
 **Writes:** `processes`
 
 A Process is a single operation your shop does or buys: Dyeing, Cutting, Stitching, Washing. Defined
-once. It holds _defaults_ and _behavioural flags_ — never quantities, never a price for a specific
-job.
+once. It is a name and nothing more — no behavioural flags, never quantities, never a price for a
+specific job. What a step consumes and produces is the step's own rows.
 
-| Field                     | Source | What it decides                                                                                                                                                 |
-| ------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                    | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key          |
-| `code`, `description`     | typed  | Free text. Nothing derives meaning from either                                                                                                                  |
-| `itemChanges`             | typed  | **Does what comes back differ from what went in?** Cutting: yes (fabric → panels). Washing: no. Drives whether the form seeds the output as a copy of the input |
-| ~~`rateBasis`~~           | —      | **Gone, 2026-09-15.** Every charge is rate × accepted qty on an output row (§4.4). The column is dropped by landed-cost Migration 2                             |
-| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance is typed on each consumed row of the job order (§4.3); the item-level default that briefly replaced it went on 2026-09-16       |
+| Field                     | Source | What it decides                                                                                                                                           |
+| ------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                    | typed  | Unique per organisation. Deleting and re-creating "Dyeing" **revives** the old row rather than failing — a soft-deleted row still holds its unique key    |
+| `code`, `description`     | typed  | Free text. Nothing derives meaning from either                                                                                                            |
+| ~~`itemChanges`~~         | —      | **Gone, 2026-09-30.** It only seeded a step's output from its first input; the step's **Same as consumed** box copies every input, with quantities        |
+| ~~`rateBasis`~~           | —      | **Gone, 2026-09-15.** Every charge is rate × accepted qty on an output row (§4.4). The column is dropped by landed-cost Migration 2                       |
+| ~~`defaultTolerancePct`~~ | —      | **Gone, 2026-09-15.** Tolerance is typed on each consumed row of the job order (§4.3); the item-level default that briefly replaced it went on 2026-09-16 |
 
 ---
 
@@ -261,10 +261,11 @@ the shelf today.
 
 ### 5.3 The guards before it saves
 
-1. **The chain.** A step past the first cannot issue until the step before it has returned
-   _something_. Until then there is physically nothing to send on. **Any amount unblocks it**, so
-   partial progress works normally — cutting returns 40 of 100 panels and stitching can start on
-   those 40 immediately.
+1. **Stock, and the chain as a warning.** A line must be covered by what the ledger holds at the
+   source godown. There is no order between steps: one whose items no earlier step produces can issue
+   at once, in parallel. If an input is produced by an earlier step that has returned none of it yet,
+   the Issue screen **warns** under that item that existing stock will be used — it does not refuse
+   (domain §6.4.1).
 2. **The item set.** Every line must name an item the step declared it consumes. You can send less,
    or skip an item entirely; you cannot invent one.
 3. **The tolerance ceiling.** Per item, cumulative across every challan for that step:

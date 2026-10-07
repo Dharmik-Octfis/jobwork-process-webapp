@@ -42,6 +42,24 @@ export class ItemsController {
     );
   }
 
+  async getItemIssues(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(
+      res,
+      await itemsService.getItemIssues(req.params.id as string, req.tenantId!, parsed.data),
+    );
+  }
+
+  async getItemReceipts(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(
+      res,
+      await itemsService.getItemReceipts(req.params.id as string, req.tenantId!, parsed.data),
+    );
+  }
+
   async createItem(req: Request, res: Response) {
     const item = await itemsService.create(req.tenantId!, req.body as CreateItemDto, req.user?.id);
     sendSuccess(res, item, 'Item created.', 201);
@@ -94,6 +112,10 @@ export class ItemsController {
 
   async getOpeningStock(req: Request, res: Response) {
     sendSuccess(res, await itemsService.getOpeningStock(req.params.id as string, req.tenantId!));
+  }
+
+  async getStockSummary(req: Request, res: Response) {
+    sendSuccess(res, await itemsService.getStockSummary(req.params.id as string, req.tenantId!));
   }
 
   async getItemBatches(req: Request, res: Response) {

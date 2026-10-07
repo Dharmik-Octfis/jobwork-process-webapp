@@ -9,6 +9,8 @@ import { JobOrderComboBox } from '../job-orders/JobOrderComboBox';
 import { IssueForm } from './IssueForm';
 import { fetchJobIssueById } from './jobIssues.api';
 
+const isSettled = (status: string) => status === 'completed' || status === 'short_closed';
+
 export function CreateIssuePage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams] = useSearchParams();
@@ -53,11 +55,14 @@ export function CreateIssuePage() {
 
   const stepOptions = useMemo(() => {
     if (!lightweightJobOrder?.steps) return [];
-    // Show all steps
-    return lightweightJobOrder.steps.map((s) => ({
-      value: s.id,
-      label: `Step ${s.seq}: ${s.processNameSnapshot} (${s.processorNameSnapshot ?? 'Internal'})`,
-    }));
+    // A completed or closed-short step refuses every issue (R9) — offering it
+    // only leads to a 409 after the form is filled.
+    return lightweightJobOrder.steps
+      .filter((s) => !isSettled(s.status))
+      .map((s) => ({
+        value: s.id,
+        label: `Step ${s.seq}: ${s.processNameSnapshot} (${s.processorNameSnapshot ?? 'Internal'})`,
+      }));
   }, [lightweightJobOrder]);
 
   // 2b. Fetch heavy Job Order Overview ONLY when a Step is selected
@@ -189,7 +194,14 @@ export function CreateIssuePage() {
         {/* 🔴 `key` forces a fresh form once the draft has loaded. Its seed effect
             and its initial state both read the draft ONCE, so a form mounted
             before the fetch resolved would stay empty for good. */}
-        {jobOrderData && selectedStep && (!draftId || draft) && (
+        {/* A `?stepId=` link can still name a step completed since it was made. */}
+        {selectedStep && isSettled(selectedStep.status) && (
+          <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+            Step {selectedStep.seq} is completed or closed short — nothing more can be issued
+            against it.
+          </p>
+        )}
+        {jobOrderData && selectedStep && !isSettled(selectedStep.status) && (!draftId || draft) && (
           <IssueForm
             key={draft?.id ?? 'new'}
             draft={draft ?? null}

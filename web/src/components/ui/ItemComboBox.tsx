@@ -59,8 +59,8 @@ export function ItemComboBox({
   selectedImage,
   onOpenMultiSelect,
   footerAction,
-  filter,
-  portal = false,
+  filter = 'active',
+  portal = true,
 }: ItemComboBoxProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
@@ -96,13 +96,13 @@ export function ItemComboBox({
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['items-search', orgId, debouncedValue, filter],
+    queryKey: ['items-search', orgId, debouncedValue, filter || 'active'],
     queryFn: ({ pageParam }) =>
       itemsApi.getItems(orgId, {
         search: debouncedValue || undefined,
         perPage: 10,
         page: pageParam,
-        filter,
+        filter: filter || 'active',
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -113,6 +113,15 @@ export function ItemComboBox({
 
   const fetchedOptions = useMemo(() => {
     let options = itemsData?.pages.flatMap((page) => page.results) || [];
+    // Only active items should be available in transaction dropdowns
+    options = options.filter((opt) => {
+      const item = opt as Item & { isPendingApproval?: boolean; approvalStatus?: string };
+      return (
+        item.isActive !== false &&
+        !item.isPendingApproval &&
+        item.approvalStatus !== 'Pending Approval'
+      );
+    });
     if (excludeItemId) {
       options = options.filter((opt) => opt.id !== excludeItemId);
     }

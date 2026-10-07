@@ -1,5 +1,5 @@
 import { Fragment, useState, useMemo } from 'react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { DateInput } from '../../../components/ui/DateInput';
 import { Modal } from '../../../components/ui/Modal';
 import { Trash2, Plus, Warehouse } from 'lucide-react';
@@ -166,9 +166,22 @@ export function AddBillBatchesModal({
   const { data: availableBatches = [] } = useQuery({
     // `withUnits` rides in the key: without it the two variants share a cache
     // entry and turning the level on serves the unit-less answer back.
-    queryKey: ['availableBatches', orgId, itemId, locationId, unitLabel.enabled],
+    queryKey: [
+      'availableBatches',
+      orgId,
+      itemId,
+      locationId,
+      unitLabel.enabled,
+      'includeExhausted',
+    ],
     queryFn: () =>
-      fetchAvailableBatches(orgId, { itemId: itemId!, locationId, withUnits: unitLabel.enabled }),
+      fetchAvailableBatches(orgId, {
+        itemId: itemId!,
+        locationId,
+        withUnits: unitLabel.enabled,
+        // A bill RECEIVES stock, so topping up a batch that has run out is valid here.
+        includeExhausted: true,
+      }),
     enabled: !!orgId && !!itemId,
   });
 
@@ -417,14 +430,14 @@ export function AddBillBatchesModal({
     const validBatches = batches.filter((b) => parseFloat(b.quantityIn) > 0);
 
     if (validBatches.length === 0 && batches.length > 0) {
-      toast.error(
+      notify.error(
         `Please enter a valid quantity for at least one ${trackingLabel.singular.toLowerCase()}.`,
       );
       return;
     }
 
     if (!matches && !overwrite) {
-      toast.error(
+      notify.error(
         `Please allocate exactly ${formatQty(lineQty)} ${uomLabel} or choose to overwrite the line item quantity.`,
       );
       return;
@@ -451,7 +464,7 @@ export function AddBillBatchesModal({
           uomLabel,
         });
         if (problem) {
-          toast.error(problem);
+          notify.error(problem);
           return;
         }
       }

@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { notify } from '../../lib/notify';
+import { toApiErrorMessage } from '../../api/client';
 import { itemsApi } from './items.api.ts';
 import {
   Plus,
@@ -31,6 +33,7 @@ import { ItemDetail } from './ItemDetail';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
+import { patchListRow, releaseListRow, useListRowRetention } from '../../hooks/useListRowRetention';
 import { useListCount } from '../../hooks/useListCount';
 import { useListColumns } from '../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
@@ -297,12 +300,17 @@ export function ItemsList() {
   // Search term (from the global top-bar box, via `?search=`) + page cursor.
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
+  const structuralSharing = useListRowRetention(
+    ['items', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading } = useQuery({
     queryKey: ['items', orgId, search, filter, page, perPage],
     queryFn: () =>
       itemsApi.getItems(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const items = useMemo(() => data?.results ?? [], [data?.results]);
@@ -416,10 +424,12 @@ export function ItemsList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => itemsApi.deleteItem(orgId!, id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      releaseListRow(['items', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       setItemToDelete(null);
     },
+    onError: () => setItemToDelete(null),
   });
 
   const headerStyle: React.CSSProperties = {
@@ -431,35 +441,26 @@ export function ItemsList() {
     textTransform: 'uppercase',
   };
 
-  const handleMarkActive = async () => {
+  const setActiveForSelected = async (isActive: boolean) => {
     setIsProcessing(true);
     try {
-      await Promise.allSettled(
-        selectedIds.map((id) =>
-          itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }),
-        ),
+      const outcomes = await Promise.allSettled(
+        selectedIds.map((id) => itemsApi.updateItem({ orgId: orgId!, id, data: { isActive } })),
       );
-      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
+      // Patched, not invalidated: "Active Items" would drop every row just marked inactive.
+      selectedIds.forEach((id, index) => {
+        if (outcomes[index]!.status === 'fulfilled') {
+          patchListRow<Item>(queryClient, ['items', orgId], id, { isActive });
+        }
+      });
       setSelectedIds([]);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleMarkInactive = async () => {
-    setIsProcessing(true);
-    try {
-      await Promise.allSettled(
-        selectedIds.map((id) =>
-          itemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }),
-        ),
-      );
-      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      setSelectedIds([]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const handleMarkActive = () => setActiveForSelected(true);
+  const handleMarkInactive = () => setActiveForSelected(false);
 
   const handleDeleteSelected = async () => {
     setIsBulkDeleteDialogOpen(true);
@@ -1965,8 +1966,7 @@ export function ItemsList() {
           </div>
 
           {/* Pagination — hidden while an item is selected (narrow master pane) */}
-          {!selectedItemId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -1976,13 +1976,12 @@ export function ItemsList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
+            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>
@@ -2017,7 +2016,19 @@ export function ItemsList() {
         onConfirm={async () => {
           setIsProcessing(true);
           try {
-            await Promise.allSettled(selectedIds.map((id) => itemsApi.deleteItem(orgId!, id)));
+            const results = await Promise.allSettled(
+              selectedIds.map((id) => itemsApi.deleteItem(orgId!, id)),
+            );
+            selectedIds.forEach((id) => releaseListRow(['items', orgId], id));
+            const refused = results.filter((r) => r.status === 'rejected');
+            if (refused.length > 0) {
+              const first = (refused[0] as PromiseRejectedResult).reason;
+              notify.error(
+                refused.length === 1
+                  ? toApiErrorMessage(first)
+                  : `${refused.length} items were not deleted. ${toApiErrorMessage(first)}`,
+              );
+            }
             queryClient.invalidateQueries({ queryKey: ['items', orgId] });
             setSelectedIds([]);
           } finally {

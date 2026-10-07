@@ -280,9 +280,8 @@ left its expected quantity blank. The note is `overPlanWarning`; the balance it 
 the server walks to fill in the blank rows.
 
 What the old hard rule protected against — an empty batch picker days later — now surfaces at issue
-time, per item, on the screen where someone can act on it. There is one hard rule left at issue time
-and it is new: **a step cannot issue until the step before it has returned something** (domain
-§6.4.1).
+time, per item, on the screen where someone can act on it. The chain is a warning there too: an input
+an earlier step produces but has not returned yet is flagged, not refused (domain §6.4.1).
 
 #### 4.2.3 The route's default quantities (2026-08-10)
 
@@ -396,7 +395,7 @@ The screen the user asked about. Every field, in order.
 | ~~Transporter~~                  | —         | **Gone 2026-08-10.** `transporter_id` survives as an unused column; no screen ever offered a picker for it                                                                                                                     |
 | ~~Vehicle no · LR no · LR date~~ | —         | **Gone 2026-08-10** — see below                                                                                                                                                                                                |
 | ~~E-way bill no~~                | —         | **Gone 2026-08-10** — see below                                                                                                                                                                                                |
-| ~~Custom fields~~                | —         | **Gone 2026-08-10.** `job_issue` is no longer a custom-field module                                                                                                                                                            |
+| Custom fields                    | `INPUT`   | **Back 2026-10-05.** Settings → Customization → Issue. A draft skips the required check; posting enforces it (the receipt rule)                                                                                                |
 
 ⚠️ **The Transport section and the Additional fields section were both removed on 2026-08-10, end to
 end.** `vehicle_no`, `lr_no`, `lr_date` and `eway_bill_no` were **dropped from `job_issues`**
@@ -405,12 +404,10 @@ carries a transport strip and existing challans reprint without those details. T
 (Vehicle No, E-way Bill) and the two search columns went with them. Restoring any of it means
 restoring the columns first — the markup alone is not enough.
 
-`job_issue` moved out of `ENTITY_TYPES` and into `LIST_ONLY_ENTITY_TYPES`, the same treatment
-`process` and `process_route` got on the same day: the `custom_fields` column stays with whatever it
-already holds, the Issues list keeps Customize Columns, but the module is no longer offered in
-Settings → Modules and no `cf:` columns merge into its list. It was the one place "batch-wise pcs /
-cutper / meter" was meant to land (§2.6) — that need now has no home, which is worth remembering if
-it comes back.
+The Additional fields section came back on 2026-10-05: `job_issue` is in `ENTITY_TYPES` again, is
+offered in Settings → Customization, and its list merges `cf:` columns. (From 2026-08-10 until then it
+was list-only, like `process` and `process_route`.) This is where "batch-wise pcs / cutper / meter"
+(§2.6) can land.
 
 ### 5.2 The batch picker — the core query
 

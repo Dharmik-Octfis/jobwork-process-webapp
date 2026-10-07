@@ -10,6 +10,7 @@ import { useTrackingLabel } from '../../hooks/useTrackingLabel';
 import { ItemActivityHistory } from './ItemActivityHistory';
 import { ItemImageGallery } from './components/ItemImageGallery';
 import { CompositeItemsList } from '../inventory/composite-items/CompositeItemsList';
+import { AssociatedItemsView } from '../inventory/composite-items/AssociatedItemsView';
 import { ItemTransactions } from './components/ItemTransactions';
 import {
   fetchLocations,
@@ -17,6 +18,12 @@ import {
   type Location,
 } from '../configuration/locations/locations.api';
 import { availableOf, declaredOpeningOf, stockOnHandOf } from './stockFigures';
+import type { Item } from './items.schemas';
+import { patchListRow, releaseListRow } from '../../hooks/useListRowRetention';
+import { RecordApprovalBanner } from '../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../approvals/useRecordApproval';
+import { AdjustStockPanel } from '../inventory/adjustments/AdjustStockPanel';
 
 interface ItemDetailProps {
   itemId: string;
@@ -28,8 +35,24 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'items',
+    itemId,
+  );
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAdjustStock, setShowAdjustStock] = useState(false);
+  // Closing the Adjust Stock panel puts focus back on the button that opened it.
+  const adjustStockButtonRef = useRef<HTMLButtonElement>(null);
+  const wasAdjustingStock = useRef(false);
+  useEffect(() => {
+    if (showAdjustStock) wasAdjustingStock.current = true;
+    else if (wasAdjustingStock.current) {
+      wasAdjustingStock.current = false;
+      adjustStockButtonRef.current?.focus();
+    }
+  }, [showAdjustStock]);
   const [activeTab, setActiveTab] = useState('Overview');
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +71,16 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     queryFn: () => itemsApi.getItem(orgId!, itemId),
     enabled: Boolean(orgId && itemId),
   });
+
+  // Approval state rides on the item payload without being part of `Item`.
+  const approval = item as
+    (Item & { approvalStatus?: string; status?: string; isPendingApproval?: boolean }) | undefined;
+
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    approval?.approvalStatus === 'REJECTED' ||
+    approval?.status?.toLowerCase() === 'rejected',
+  );
 
   const isInventoryTracked = item?.trackInventory !== false;
 
@@ -81,6 +114,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     enabled: Boolean(orgId && itemId),
   });
 
+  const { data: stockSummary } = useQuery({
+    queryKey: ['itemStockSummary', orgId, itemId],
+    queryFn: () => itemsApi.getStockSummary(orgId!, itemId),
+    enabled: Boolean(orgId && itemId),
+  });
+
   const { data: allLocations = [] } = useQuery({
     queryKey: ['locations', orgId],
     queryFn: () => fetchLocations(orgId!),
@@ -96,13 +135,19 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const { totalOpeningStock, totalStockOnHand } = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
       return {
-        totalOpeningStock: openingStockRows.reduce((acc, row) => acc + declaredOpeningOf(row), 0),
-        totalStockOnHand: openingStockRows.reduce((acc, row) => acc + stockOnHandOf(row), 0),
+        totalOpeningStock: openingStockRows.reduce((acc, row) => {
+          if (!ownLocationIds.has(row.locationId)) return acc;
+          return acc + declaredOpeningOf(row);
+        }, 0),
+        totalStockOnHand: openingStockRows.reduce((acc, row) => {
+          if (!ownLocationIds.has(row.locationId)) return acc;
+          return acc + stockOnHandOf(row);
+        }, 0),
       };
     }
     const declared = Number(item?.openingStock ?? 0);
     return { totalOpeningStock: declared, totalStockOnHand: declared };
-  }, [openingStockRows, item]);
+  }, [openingStockRows, item, ownLocationIds]);
 
   const ownPremisesStock = useMemo(() => {
     if (Array.isArray(openingStockRows) && openingStockRows.length > 0) {
@@ -130,6 +175,8 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const deleteMutation = useMutation({
     mutationFn: () => itemsApi.deleteItem(orgId!, itemId),
     onSuccess: () => {
+      releaseListRow(['items', orgId], itemId);
+      releaseListRow(['compositeItems', orgId], itemId);
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
       onClose();
     },
@@ -138,10 +185,11 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const toggleActiveMutation = useMutation({
     mutationFn: (newIsActive: boolean) =>
       itemsApi.updateItem({ orgId: orgId!, id: itemId, data: { isActive: newIsActive } }),
-    onSuccess: () => {
+    onSuccess: (_, newIsActive) => {
       queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] });
-      queryClient.invalidateQueries({ queryKey: ['items', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
+      // Patched, not invalidated: "Active Items" would drop the row just marked inactive.
+      patchListRow<Item>(queryClient, ['items', orgId], itemId, { isActive: newIsActive });
+      patchListRow<Item>(queryClient, ['compositeItems', orgId], itemId, { isActive: newIsActive });
       setIsMoreOpen(false);
     },
   });
@@ -178,6 +226,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     );
   }
 
+  // In place of the overview, not over it: the item list stays beside it.
+  if (showAdjustStock && orgId && item.id) {
+    return (
+      <AdjustStockPanel
+        orgId={orgId}
+        item={{ ...item, id: item.id }}
+        onClose={() => setShowAdjustStock(false)}
+      />
+    );
+  }
+
   return (
     <div
       style={{
@@ -210,13 +269,17 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                 marginTop: '4px',
               }}
             >
-              {item.isActive !== false ? 'Active' : 'Inactive'}
+              {isUnderApproval || approval?.isPendingApproval
+                ? 'Pending Approval'
+                : item.isActive !== false
+                  ? 'Active'
+                  : 'Inactive'}
             </span>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {item.itemStructure === 'composite' && (
+          {item.itemStructure === 'composite' && !isUnderApproval && !isRejected && (
             <button
               onClick={() =>
                 navigate(`/organizations/${orgId}/inventory/assembly/new?itemId=${item.id}`)
@@ -268,6 +331,27 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           >
             <Edit size={14} />
           </button>
+
+          {isInventoryTracked && item.itemType !== 'service' && item.itemStructure !== 'composite' && (
+            <button
+              type="button"
+              ref={adjustStockButtonRef}
+              onClick={() => setShowAdjustStock(true)}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                background: '#186337',
+                color: 'white',
+                borderRadius: 4,
+                fontWeight: 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Adjust Stock
+            </button>
+          )}
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
@@ -426,6 +510,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
           ...(isBatchTracked ? [batchTabName] : []),
           'Transactions',
           'Related Lists',
+          'Approvals',
           'History',
           ...(showComponentsTab ? ['Components'] : []),
         ].map((tab) => (
@@ -441,7 +526,25 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
       {/* Content */}
       <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-        {effectiveActiveTab === 'History' ? (
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && itemId && (
+          <RecordApprovalBanner
+            organizationId={orgId}
+            moduleId="items"
+            recordId={itemId}
+            onActionComplete={() =>
+              queryClient.invalidateQueries({ queryKey: ['item', orgId, itemId] })
+            }
+          />
+        )}
+
+        {effectiveActiveTab === 'Approvals' ? (
+          <RecordApprovalHistoryTimeline
+            organizationId={orgId!}
+            moduleId="items"
+            recordId={itemId}
+          />
+        ) : effectiveActiveTab === 'History' ? (
           <div style={{ margin: '-24px' }}>
             <ItemActivityHistory activities={activities} isLoading={isLoadingActivities} />
           </div>
@@ -594,6 +697,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                   </div>
                 </div>
               )}
+
+              {item.itemStructure === 'composite' && (
+                <AssociatedItemsView orgId={orgId!} itemId={itemId} />
+              )}
             </div>
 
             {/* Right Column: Images & Stock */}
@@ -659,15 +766,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       Accounting Stock
                     </h3>
                     <span
-                      title="Accounting stock summary"
+                      title="Total opening stock"
                       style={{ display: 'inline-flex', alignItems: 'center' }}
                     >
                       <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                     </span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div
+                    <span
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '140px 12px 1fr',
@@ -756,97 +860,223 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                         fontSize: '15px',
                         fontWeight: 600,
                         color: '#0f172a',
-                        margin: 0,
+                        marginLeft: '2px',
                       }}
                     >
-                      Physical Stock
-                    </h3>
-                    <span
-                      title="Physical stock summary"
-                      style={{ display: 'inline-flex', alignItems: 'center' }}
-                    >
-                      <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
+                      : {totalOpeningStock.toFixed(2)}
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Accounting Stock Section */}
+                  <div>
                     <div
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
+                        display: 'flex',
                         alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '12px',
                       }}
                     >
-                      <span
+                      <h3
                         style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
+                          fontSize: '15px',
+                          fontWeight: 600,
+                          color: '#0f172a',
+                          margin: 0,
                         }}
                       >
-                        Stock on Hand
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.onHand.toFixed(2)}
+                        Accounting Stock
+                      </h3>
+                      <span
+                        title="Accounting stock summary"
+                        style={{ display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                       </span>
                     </div>
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div
                         style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
                         }}
                       >
-                        Committed Stock
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.committed.toFixed(2)}
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Stock on Hand
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                          {ownPremisesStock.onHand.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Committed Stock
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.committed.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Available for Sale
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.available.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Physical Stock Section */}
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '12px',
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: '15px',
+                          fontWeight: 600,
+                          color: '#0f172a',
+                          margin: 0,
+                        }}
+                      >
+                        Physical Stock
+                      </h3>
+                      <span
+                        title="Physical stock summary"
+                        style={{ display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <HelpCircle size={14} color="#64748b" style={{ cursor: 'pointer' }} />
                       </span>
                     </div>
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '140px 12px 1fr',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div
                         style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          borderBottom: '1px dotted #94a3b8',
-                          width: 'fit-content',
-                          paddingBottom: '1px',
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
                         }}
                       >
-                        Available for Sale
-                      </span>
-                      <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
-                        {ownPremisesStock.available.toFixed(2)}
-                      </span>
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Stock on Hand
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.onHand.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Committed Stock
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.committed.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '140px 12px 1fr',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: '#475569',
+                            borderBottom: '1px dotted #94a3b8',
+                            width: 'fit-content',
+                            paddingBottom: '1px',
+                          }}
+                        >
+                          Available for Sale
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#475569' }}>:</span>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>
+                          {ownPremisesStock.available.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Opening Stock (4-box summary) - PLACED LAST */}
-              {isInventoryTracked && (
+              {isInventoryTracked && item.itemType !== 'service' && (
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
                   <div
                     style={{
@@ -911,8 +1141,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                          {stockSummary?.stockIn?.toFixed(2) ?? '0.00'}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          {item.unit || 'Qty'}
+                        </span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock In</div>
                     </div>
@@ -929,8 +1163,12 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>0</span>
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>Qty</span>
+                        <span style={{ fontSize: '20px', fontWeight: 400, color: '#000' }}>
+                          {stockSummary?.stockOut?.toFixed(2) ?? '0.00'}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          {item.unit || 'Qty'}
+                        </span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#1e293b' }}>Stock Out</div>
                     </div>

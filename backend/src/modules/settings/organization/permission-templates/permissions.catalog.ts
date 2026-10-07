@@ -93,20 +93,30 @@ const MODULE_GROUPS: readonly {
   {
     key: 'inventory_management',
     label: 'Inventory',
-    resources: [{ resource: 'assembly', label: 'Assembly' }],
+    resources: [
+      { resource: 'assembly', label: 'Assembly' },
+      // Its own resource: this is the one module that can create stock from
+      // nothing. `update` edits an adjustment that has not posted yet — a posted
+      // one is never edited, only cancelled (`delete`).
+      { resource: 'stock_adjustment', label: 'Stock Adjustments' },
+    ],
   },
   {
     key: 'purchases',
     label: 'Purchases',
     resources: [
       { resource: 'vendor', label: 'Vendors' },
+      { resource: 'purchase_order', label: 'Purchase Orders' },
       { resource: 'bill', label: 'Bills' },
     ],
   },
   {
     key: 'sales',
     label: 'Sales',
-    resources: [{ resource: 'customer', label: 'Customers' }],
+    resources: [
+      { resource: 'customer', label: 'Customers' },
+      { resource: 'sales_order', label: 'Sales Orders' },
+    ],
   },
   {
     /**
@@ -158,7 +168,6 @@ const MODULE_GROUPS: readonly {
       { resource: 'role', label: 'Roles' },
       { resource: 'permission_template', label: 'Permission Templates' },
       { resource: 'uom', label: 'Units of Measurement' },
-      { resource: 'purchase_order', label: 'Purchase Orders' },
       { resource: 'currency', label: 'Currencies' },
       { resource: 'payment_term', label: 'Payment Terms' },
       { resource: 'location', label: 'Locations' },
@@ -166,11 +175,16 @@ const MODULE_GROUPS: readonly {
     ],
   },
   {
+    key: 'automation',
+    label: 'Automation',
+    // No `approval_request`: the My Jobs inbox is open to every member, so the
+    // key gated nothing. Removed 2026-10-05; stored copies are dropped on read.
+    resources: [{ resource: 'approval_process', label: 'Approval Processes' }],
+  },
+  {
     key: 'reports',
     label: 'Reports',
-    resources: [
-      { resource: 'reports', label: 'Reports', actions: ['read'] },
-    ],
+    resources: [{ resource: 'reports', label: 'Reports', actions: ['read'] }],
   },
 ];
 

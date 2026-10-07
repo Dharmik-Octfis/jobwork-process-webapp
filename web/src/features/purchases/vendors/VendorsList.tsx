@@ -7,12 +7,18 @@ import { VendorDetail } from './VendorDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import {
+  patchListRow,
+  releaseListRow,
+  useListRowRetention,
+} from '../../../hooks/useListRowRetention';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { formatDate } from '../../../lib/formatDate';
 import type { Vendor } from './vendors.schemas';
 
 /**
@@ -39,8 +45,7 @@ function renderVendorCell(vendor: Vendor, key: string): string {
 
   const value = (vendor as unknown as Record<string, unknown>)[actualKey];
   if (value === null || value === undefined || value === '') return '-';
-  if (actualKey === 'createdAt' || actualKey === 'updatedAt')
-    return new Date(String(value)).toLocaleDateString();
+  if (actualKey === 'createdAt' || actualKey === 'updatedAt') return formatDate(String(value));
   return String(value);
 }
 
@@ -57,6 +62,10 @@ export function VendorsList() {
   // from the shared hook so every list wires this the same way.
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('active');
 
+  const structuralSharing = useListRowRetention(
+    ['vendors', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading } = useQuery({
     // orgId in the key or an org switch serves the previous tenant's cache;
     // search + page so each term/page is cached separately.
@@ -65,6 +74,7 @@ export function VendorsList() {
     enabled: Boolean(orgId),
     // Keep the current page visible while the next one loads (v5 keepPreviousData).
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const vendors = data?.results ?? [];
@@ -91,7 +101,8 @@ export function VendorsList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteVendor(orgId!, id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      releaseListRow(['vendors', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
       setVendorToDelete(null);
     },
@@ -107,10 +118,10 @@ export function VendorsList() {
   const setStatusForSelected = async (status: 'active' | 'inactive') => {
     setIsProcessing(true);
     try {
-      await Promise.allSettled(
+      const outcomes = await Promise.allSettled(
         selectedIds.map((id) => {
           const vendor = vendors.find((v) => v.id === id);
-          if (!vendor) return Promise.resolve();
+          if (!vendor) return Promise.reject(new Error('Vendor not on this page'));
           return updateVendor({
             orgId: orgId!,
             id,
@@ -118,7 +129,12 @@ export function VendorsList() {
           });
         }),
       );
-      queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
+      // Patched, not invalidated: "Active Vendors" would drop every row just marked inactive.
+      selectedIds.forEach((id, index) => {
+        if (outcomes[index]!.status === 'fulfilled') {
+          patchListRow<Vendor>(queryClient, ['vendors', orgId], id, { status });
+        }
+      });
       setSelectedIds([]);
     } finally {
       setIsProcessing(false);
@@ -155,7 +171,10 @@ export function VendorsList() {
       }}
     >
       {/* Main Content Area */}
-      <div className={`master-detail-container ${selectedVendorId ? 'has-selection' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}>
+      <div
+        className={`master-detail-container ${selectedVendorId ? 'has-selection' : ''}`}
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
+      >
         <div
           className="master-pane"
           style={{
@@ -216,7 +235,11 @@ export function VendorsList() {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/vendors/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#186337',
                     color: 'white',
@@ -283,7 +306,11 @@ export function VendorsList() {
                   purchase orders and bills.
                 </p>
                 <button
-                  onClick={() => navigate(`/organizations/${orgId}/purchases/vendors/new`, { state: { returnUrl: location.pathname + location.search } })}
+                  onClick={() =>
+                    navigate(`/organizations/${orgId}/purchases/vendors/new`, {
+                      state: { returnUrl: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     background: '#28a745',
                     color: 'white',
@@ -317,7 +344,7 @@ export function VendorsList() {
                     {vendors.map((vendor) => (
                       <div
                         key={vendor.id}
-                        onClick={() => setSearchParams({ id: vendor.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', vendor.id ); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -351,100 +378,120 @@ export function VendorsList() {
                             {vendor.companyName || vendor.email || 'No email'}
                           </div>
                         </div>
-                        {vendor.status === 'inactive' && (
+                        {vendor.isPendingApproval ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
+                            <div
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                color: '#b45309',
+                                marginTop: '4px',
+                                background: '#fef3c7',
+                                border: '1px solid #fde68a',
+                                padding: '2px 6px',
+                                borderRadius: '8px',
+                                letterSpacing: '0.02em',
+                              }}
+                            >
+                              PENDING APPROVAL
+                            </div>
+                          </div>
+                        ) : vendor.status === 'inactive' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
                             <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8', marginTop: '4px' }}>
                               INACTIVE
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th
-                          style={{
-                            width: 48,
-                            ...headerStyle,
-                            paddingRight: 0,
-                            textAlign: 'center',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={vendors.length > 0 && selectedIds.length === vendors.length}
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vendors.map((vendor) => (
+                      <thead>
                         <tr
-                          key={vendor.id}
-                          onClick={() => setSearchParams({ id: vendor.id })}
                           style={{
+                            background: '#f9f9fb',
+                            borderTop: '1px solid #eef0f3',
                             borderBottom: '1px solid #eef0f3',
-                            transition: 'background 0.1s',
-                            cursor: 'pointer',
-                            background: selectedIds.includes(vendor.id) ? '#f8fafc' : 'transparent',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onMouseLeave={(e) => {
-                            if (!selectedIds.includes(vendor.id))
-                              e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <td
+                          <th
                             style={{
                               width: 48,
-                              padding: '12px 16px',
+                              ...headerStyle,
                               paddingRight: 0,
                               textAlign: 'center',
                             }}
-                            onClick={(e) => e.stopPropagation()}
                           >
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(vendor.id)}
-                              onChange={() => toggleSelection(vendor.id)}
+                              checked={vendors.length > 0 && selectedIds.length === vendors.length}
+                              onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
-                          </td>
+                          </th>
                           {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                fontSize: 13,
-                                // The locked column is the identity you click through on.
-                                color: col.locked ? '#0062ff' : '#333',
-                                fontWeight: col.locked ? 500 : 400,
-                              }}
-                            >
-                              {renderVendorCell(vendor, col.key)}
-                            </td>
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {vendors.map((vendor) => (
+                          <tr
+                            key={vendor.id}
+                            onClick={() => setSearchParams(prev => { prev.set('id', vendor.id ); return prev; })}
+                            style={{
+                              borderBottom: '1px solid #eef0f3',
+                              transition: 'background 0.1s',
+                              cursor: 'pointer',
+                              background: selectedIds.includes(vendor.id)
+                                ? '#f8fafc'
+                                : 'transparent',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={(e) => {
+                              if (!selectedIds.includes(vendor.id))
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <td
+                              style={{
+                                width: 48,
+                                padding: '12px 16px',
+                                paddingRight: 0,
+                                textAlign: 'center',
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(vendor.id)}
+                                onChange={() => toggleSelection(vendor.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </td>
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '12px 16px',
+                                  fontSize: 13,
+                                  // The locked column is the identity you click through on.
+                                  color: col.locked ? '#0062ff' : '#333',
+                                  fontWeight: col.locked ? 500 : 400,
+                                }}
+                              >
+                                {renderVendorCell(vendor, col.key)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -452,8 +499,7 @@ export function VendorsList() {
           </div>
 
           {/* Pagination — hidden while a vendor is selected (narrow master pane) */}
-          {!selectedVendorId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -463,13 +509,12 @@ export function VendorsList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedVendorId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams({})} />
+            <VendorDetail vendorId={selectedVendorId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>
@@ -505,6 +550,7 @@ export function VendorsList() {
           setIsProcessing(true);
           try {
             await Promise.allSettled(selectedIds.map((id) => deleteVendor(orgId!, id)));
+            selectedIds.forEach((id) => releaseListRow(['vendors', orgId], id));
             queryClient.invalidateQueries({ queryKey: ['vendors', orgId] });
             setSelectedIds([]);
           } finally {

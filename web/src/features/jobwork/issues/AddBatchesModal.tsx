@@ -185,6 +185,8 @@ interface Props {
   /** True once the server returned a full page: more batches exist than are shown,
    * and the only way to reach them is a narrower search. */
   isCapped: boolean;
+  /** The quantity column's heading — "Quantity Out" on a stock adjustment. */
+  quantityHeader?: string;
 }
 
 const th: React.CSSProperties = {
@@ -251,6 +253,7 @@ export function AddBatchesModal({
   onSearchChange,
   isLoading,
   isCapped,
+  quantityHeader = 'Quantity',
 }: Props) {
   const { singular, plural } = useTrackingLabel();
 
@@ -370,7 +373,7 @@ export function AddBatchesModal({
       return next.length > 0 ? next : [blankRow()];
     });
 
-  const canSave = overDrawn.size === 0;
+  const canSave = overDrawn.size === 0 && (matches || overwrite);
 
   const handleSave = () => {
     if (!canSave) return;
@@ -465,11 +468,16 @@ export function AddBatchesModal({
             >
               Cancel
             </button>
-            {overDrawn.size > 0 && (
+            {overDrawn.size > 0 ? (
               <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
                 A quantity is more than the batch holds.
               </span>
-            )}
+            ) : !matches && !overwrite ? (
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b91c1c' }}>
+                Quantities do not match the line total. Tick the box above to overwrite it, or
+                adjust the batches.
+              </span>
+            ) : null}
           </>
         }
       >
@@ -593,7 +601,7 @@ export function AddBatchesModal({
                     style={{ ...th, width: 130, textAlign: 'right', color: '#b91c1c' }}
                     scope="col"
                   >
-                    Quantity*
+                    {quantityHeader}*
                   </th>
                   <th style={{ ...th, width: 40 }} scope="col">
                     <span style={{ position: 'absolute', left: -9999 }}>Clear row</span>
@@ -1152,11 +1160,26 @@ function BatchSelectCell({
                         color: highlightedIndex === index ? '#fff' : '#111',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
                         <div style={{ fontWeight: 500 }}>{batchLabel(batch)}</div>
                         {unitLabel.enabled && batch.units.length > 0 && (
-                          <div style={{ fontSize: 11.5, fontWeight: 500, color: highlightedIndex === index ? '#e0edff' : '#64748b' }}>
-                            {batch.units.length} {batch.units.length === 1 ? unitLabel.singular.toLowerCase() : unitLabel.plural.toLowerCase()}
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              fontWeight: 500,
+                              color: highlightedIndex === index ? '#e0edff' : '#64748b',
+                            }}
+                          >
+                            {batch.units.length}{' '}
+                            {batch.units.length === 1
+                              ? unitLabel.singular.toLowerCase()
+                              : unitLabel.plural.toLowerCase()}
                           </div>
                         )}
                       </div>

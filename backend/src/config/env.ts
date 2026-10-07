@@ -106,6 +106,52 @@ const envSchema = z.object({
     .string()
     .min(32, 'DIAGNOSTICS_TOKEN must be at least 32 characters')
     .optional(),
+
+  /**
+   * SSO — docs/SSO_AND_IDENTITY.md §13 step 4.
+   *
+   * 🔴 The feature flag is the rollback path, not a nicety. Cutting an app over to
+   * a central identity provider is the change that can lock every user out at once,
+   * so local password login stays working for one release and this switches between
+   * them. Off unless explicitly enabled.
+   */
+  SSO_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true'),
+  /** Must match the IdP's `iss` exactly, trailing slash included (there is none). */
+  SSO_ISSUER: z.string().url().optional(),
+  SSO_CLIENT_ID: z.string().optional(),
+  SSO_CLIENT_SECRET: z.string().optional(),
+  /**
+   * 🔴 Matched by the IdP with EXACT string equality — §12. It must be byte-identical
+   * to the row in `oidc_clients.redirect_uris`, including scheme, port and any
+   * trailing slash.
+   */
+  SSO_REDIRECT_URI: z.string().url().optional(),
+  /**
+   * Where the IdP sends the browser after a central logout. Matched by exact string
+   * equality against `oidc_clients.post_logout_redirect_uris`, so it is explicit
+   * config rather than derived from APP_URL — a derived value differing by one
+   * trailing slash produces a logout that ends the session and then dead-ends on an
+   * IdP error page, which reads as "logout is broken".
+   */
+  SSO_POST_LOGOUT_REDIRECT_URI: z.string().url().optional(),
+  /**
+   * The product website's page for this app — where a visitor who is signed in
+   * NOWHERE is sent when a silent sign-in (`prompt=none`) finds no session at
+   * accounts. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.2, §5.6.
+   *
+   * 🔴 Exact, `www` included: production is `https://www.octfis.com/jobwork`. The
+   * bare domain does not serve the site, so dropping `www` sends every signed-out
+   * visitor to a 404.
+   *
+   * Deliberately NOT the same variable as SSO_POST_LOGOUT_REDIRECT_URI, even when the
+   * values match: that one must equal an accounts registry entry, this one is only
+   * where jobwork itself points. Unset (local dev, staging) → jobwork's own `/login`
+   * with its "Access Jobwork" button, so nothing dead-ends.
+   */
+  SSO_WEBSITE_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -118,6 +164,22 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data;
+
+/**
+ * 🔴 Enabling SSO without its settings must not boot. A half-configured cutover is
+ * the shape where `/auth/sso/login` 500s while local login has already been hidden
+ * from the UI — nobody gets in, and the cause is four env vars rather than anything
+ * in the code. Fail here instead.
+ */
+if (raw.SSO_ENABLED) {
+  const missing = (
+    ['SSO_ISSUER', 'SSO_CLIENT_ID', 'SSO_CLIENT_SECRET', 'SSO_REDIRECT_URI'] as const
+  ).filter((key) => !raw[key]);
+
+  if (missing.length > 0) {
+    throw new Error(`SSO_ENABLED is true but these are unset: ${missing.join(', ')}`);
+  }
+}
 
 export const env = {
   nodeEnv: raw.NODE_ENV,
@@ -134,6 +196,16 @@ export const env = {
   appUrl: raw.APP_URL.replace(/\/+$/, ''), // no trailing slash, so link building is predictable
   /** Absent → `/api/diagnostics/*` is never mounted. See the schema comment. */
   diagnosticsToken: raw.DIAGNOSTICS_TOKEN,
+  sso: {
+    /** False → the SSO routes are not mounted and local password login is the only way in. */
+    enabled: raw.SSO_ENABLED,
+    issuer: raw.SSO_ISSUER,
+    clientId: raw.SSO_CLIENT_ID,
+    clientSecret: raw.SSO_CLIENT_SECRET,
+    redirectUri: raw.SSO_REDIRECT_URI,
+    postLogoutRedirectUri: raw.SSO_POST_LOGOUT_REDIRECT_URI,
+    websiteUrl: raw.SSO_WEBSITE_URL,
+  },
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),

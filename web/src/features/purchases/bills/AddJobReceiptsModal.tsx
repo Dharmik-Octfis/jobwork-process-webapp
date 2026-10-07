@@ -11,7 +11,8 @@ interface JobReceiptOutput {
   materialValue: number;
   itemId: string;
   outputBatchId?: string | null;
-  outputBatch?: { batchNumber: string };
+  outputBatch?: { id?: string; batchNumber: string };
+  batches?: { kind: string; qty: string | number; batch: { id: string; supplierBatchRef?: string | null } }[];
 }
 
 export interface OpenJobReceipt {

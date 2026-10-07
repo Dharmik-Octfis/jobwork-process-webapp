@@ -40,10 +40,38 @@ export interface OrgCensus {
 }
 
 /**
- * Every organization, each with its vendor count measured inside its own tenant
+ * Memoised for the life of the worker. Vitest forks one process per test file, so
+ * this is a per-file cache — and every suite that uses it calls it three to five
+ * times while only ever *reading*. The one write in these suites is a probe that
+ * is expected to be refused, and it deletes its own row; nothing re-reads a count
+ * afterwards. Call `resetCensus()` if a future test does mutate tenant data.
+ */
+let cachedCensus: OrgCensus[] | null = null;
+
+/** Drop the memoised census — for a test that deliberately changes tenant data. */
+export function resetCensus(): void {
+  cachedCensus = null;
+}
+
+/**
+ * Every organization, each with its row counts measured inside its own tenant
  * context. This is the only honest way to ask "who has vendors?" under RLS.
+ *
+ * 🔴 **The cost here is transactions, not rows.** `runAsTenant` is an interactive
+ * transaction — BEGIN, `set_config`, the query, COMMIT — so it costs ~148ms against
+ * the dev database where a pooled round trip costs ~27ms. This used to open THREE
+ * of them per organization; at 26 organizations that was 78 transactions and 7.6s,
+ * which blew vitest's 5s default and made four suites look flaky. Worse, it grew
+ * with the dev data, so it got slower every time someone added an organization.
+ *
+ * One transaction per org, one statement inside it, and the result cached. The
+ * per-org transaction cannot be collapsed further without giving up the doctrine
+ * this file exists to enforce: `app.current_tenant` holds one tenant at a time, so
+ * counting another org's rows honestly requires another transaction.
  */
 export async function censusByOrg(): Promise<OrgCensus[]> {
+  if (cachedCensus) return cachedCensus;
+
   const orgs = await prisma.organization.findMany({
     select: { id: true, name: true, memberships: { select: { userId: true } } },
     orderBy: { createdAt: 'asc' },
@@ -51,37 +79,48 @@ export async function censusByOrg(): Promise<OrgCensus[]> {
 
   const census: OrgCensus[] = [];
 
-  // Sequential on purpose: each runAsTenant holds a transaction, and the pool
-  // caps at 5 (db/prisma.ts). Fanning these out with Promise.all wedges on any
-  // database with more organizations than connections.
+  // Sequential on purpose: each runAsTenant holds a transaction and the pool caps
+  // at 2 under vitest (db/prisma.ts). Fanning these out with Promise.all wedges on
+  // any database with more organizations than connections.
   for (const org of orgs) {
-    const vendors = await runAsTenant(org.id, (tx) =>
-      // Both layers, exactly as the app does it: runAsTenant for the policy,
-      // `where` for the app filter. The `where` also keeps this count honest if
-      // it ever runs as a role that bypasses RLS, where the bare count would
-      // silently return every tenant's rows. `isDeleted: false` mirrors the list
-      // endpoints, but this is NOT what a default list read returns: a module whose
-      // first LIST_FILTERS preset narrows (items default to "Active Items") answers
-      // with fewer rows. Compare against such a list only with the matching `?filter=`.
-      tx.vendor.count({ where: { organizationId: org.id, isDeleted: false } }),
-    );
-    const customers = await runAsTenant(org.id, (tx) =>
-      tx.customer.count({ where: { organizationId: org.id, isDeleted: false } }),
-    );
-    const items = await runAsTenant(org.id, (tx) =>
-      tx.item.count({ where: { organizationId: org.id, isDeleted: false } }),
+    // All three counts in ONE transaction, as one statement. Both layers are still
+    // here exactly as the app does it: runAsTenant for the policy, an explicit
+    // `organization_id` for the app filter. That filter also keeps the count honest
+    // if this ever runs as a role that bypasses RLS, where a bare count would
+    // silently total every tenant's rows.
+    //
+    // `is_deleted = false` mirrors the list endpoints, but this is NOT what a
+    // default list read returns: a module whose first LIST_FILTERS preset narrows
+    // (items default to "Active Items") answers with fewer rows. Compare against
+    // such a list only with the matching `?filter=`.
+    //
+    // `::uuid` on every parameter — `organization_id` is uuid and the bind arrives
+    // as text, which Postgres rejects with "operator does not exist: uuid = text".
+    const [counts] = await runAsTenant(
+      org.id,
+      (tx) => tx.$queryRaw<{ vendors: bigint; customers: bigint; items: bigint }[]>`
+        SELECT
+          (SELECT count(*) FROM vendors
+            WHERE organization_id = ${org.id}::uuid AND is_deleted = false) AS vendors,
+          (SELECT count(*) FROM customers
+            WHERE organization_id = ${org.id}::uuid AND is_deleted = false) AS customers,
+          (SELECT count(*) FROM items
+            WHERE organization_id = ${org.id}::uuid AND is_deleted = false) AS items`,
     );
 
     census.push({
       id: org.id,
       name: org.name,
-      vendors,
-      customers,
-      items,
+      // count(*) is bigint, which the driver hands back as a BigInt — every
+      // consumer here compares it against a plain number.
+      vendors: Number(counts?.vendors ?? 0),
+      customers: Number(counts?.customers ?? 0),
+      items: Number(counts?.items ?? 0),
       memberIds: org.memberships.map((m) => m.userId),
     });
   }
 
+  cachedCensus = census;
   return census;
 }
 

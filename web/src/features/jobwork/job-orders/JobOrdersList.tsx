@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { ClipboardList, Plus, SlidersHorizontal } from 'lucide-react';
@@ -7,13 +7,14 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
+import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import { JOB_ORDER_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
+import { JOB_ORDER_STATUS_META, statusMeta } from '../jobwork.schemas';
 import { fetchJobOrderCount, fetchJobOrders } from './jobOrders.api';
 import { JobOrderOverview } from './JobOrderOverview';
 import type { JobOrder } from './jobOrders.schemas';
@@ -63,12 +64,6 @@ function renderCell(
   switch (key) {
     case 'status':
       return <StatusPill status={order.status} />;
-    case 'inputItem':
-      return order.inputItem?.name ?? '-';
-    case 'inputQty':
-      return `${formatQty(order.inputQty)}${
-        order.inputUom ? ` ${order.inputUom.symbol ?? order.inputUom.unitName}` : ''
-      }`;
     case 'stepCount':
       return String(order.steps.length);
     case 'ownership':
@@ -93,11 +88,16 @@ export function JobOrdersList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('all');
 
+  const structuralSharing = useListRowRetention(
+    ['job-orders', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading } = useQuery({
     queryKey: ['job-orders', orgId, search, filter, page, perPage],
     queryFn: () => fetchJobOrders(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const orders = data?.results ?? [];
@@ -210,7 +210,9 @@ export function JobOrdersList() {
               )}
               <button
                 type="button"
-                onClick={() => navigate(newPath, { state: { returnUrl: location.pathname + location.search } })}
+                onClick={() =>
+                  navigate(newPath, { state: { returnUrl: location.pathname + location.search } })
+                }
                 style={{
                   background: '#186337',
                   color: 'white',
@@ -322,17 +324,12 @@ export function JobOrdersList() {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: 8,
-                        marginBottom: 4,
                       }}
                     >
                       <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
                         {order.jobOrderNumber}
                       </span>
                       <StatusPill status={order.status} />
-                    </span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>
-                      {order.inputItem?.name ?? '-'} · {formatQty(order.inputQty)}
-                      {order.inputUom ? ` ${order.inputUom.symbol ?? order.inputUom.unitName}` : ''}
                     </span>
                   </button>
                 ))}
@@ -406,8 +403,7 @@ export function JobOrdersList() {
           </div>
 
           {/* Hidden while an order is selected — the master pane is 320px wide. */}
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -417,7 +413,6 @@ export function JobOrdersList() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && (

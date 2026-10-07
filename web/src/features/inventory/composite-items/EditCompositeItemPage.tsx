@@ -214,13 +214,13 @@ export function EditCompositeItemPage() {
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
-      isSalesInfo: true,
+      isSalesInfo: rawItem.isSalesInfo ?? true,
       sellingPrice:
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
           : (null as unknown as number),
       salesDescription: (rawItem.salesDescription as string) || '',
-      isPurchaseInfo: true,
+      isPurchaseInfo: rawItem.isPurchaseInfo ?? true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
@@ -551,11 +551,11 @@ export function EditCompositeItemPage() {
                 className="form-field-grid"
                 style={{ gridTemplateColumns: '140px 524px', alignItems: 'center', gap: '16px' }}
               >
-                <label style={{ fontSize: 13, color: '#ef4444', fontWeight: 500 }}>SKU*</label>
+                <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>SKU</label>
                 <div>
                   <input
                     name="sku"
-                    value={formData.sku || ''}
+                    value={formData.sku ?? ''}
                     onChange={handleChange}
                     style={{
                       width: '100%',
@@ -682,7 +682,7 @@ export function EditCompositeItemPage() {
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
-                  value={formData.hsnCode || ''}
+                  value={formData.hsnCode ?? ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
@@ -784,7 +784,7 @@ export function EditCompositeItemPage() {
                         <td style={{ padding: '12px', border: '1px solid #cbd5e1' }}>
                           <ItemComboBox
                             orgId={orgId!}
-                            value={comp.componentItemId || ''}
+                            value={comp.componentItemId ?? ''}
                             initialItem={comp.itemDetails}
                             onChange={(item) =>
                               handleComponentChange(
@@ -811,7 +811,7 @@ export function EditCompositeItemPage() {
                             type="number"
                             min="0"
                             step="0.0001"
-                            value={comp.qtyPerUnit || ''}
+                            value={comp.qtyPerUnit ?? ''}
                             onChange={(e) =>
                               handleComponentChange(
                                 idx,
@@ -1074,7 +1074,7 @@ export function EditCompositeItemPage() {
                             <ItemComboBox
                               orgId={orgId!}
                               filter="services"
-                              value={svc.componentItemId || ''}
+                              value={svc.componentItemId ?? ''}
                               initialItem={svc.itemDetails}
                               onChange={(item) =>
                                 handleServiceChange(
@@ -1101,7 +1101,7 @@ export function EditCompositeItemPage() {
                               type="number"
                               min="0"
                               step="0.0001"
-                              value={svc.qtyPerUnit || ''}
+                              value={svc.qtyPerUnit ?? ''}
                               onChange={(e) =>
                                 handleServiceChange(
                                   idx,
@@ -1313,7 +1313,7 @@ export function EditCompositeItemPage() {
                           type="number"
                           step="0.01"
                           name="sellingPrice"
-                          value={formData.sellingPrice || ''}
+                          value={formData.sellingPrice ?? ''}
                           onChange={handleChange}
                           disabled={!formData.isSalesInfo}
                           style={{
@@ -1376,7 +1376,7 @@ export function EditCompositeItemPage() {
                       </label>
                       <textarea
                         name="salesDescription"
-                        value={formData.salesDescription || ''}
+                        value={formData.salesDescription ?? ''}
                         onChange={(e) =>
                           handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                         }
@@ -1444,7 +1444,7 @@ export function EditCompositeItemPage() {
                           type="number"
                           step="0.01"
                           name="costPrice"
-                          value={formData.costPrice || ''}
+                          value={formData.costPrice ?? ''}
                           onChange={handleChange}
                           disabled={!formData.isPurchaseInfo}
                           style={{
@@ -1507,7 +1507,7 @@ export function EditCompositeItemPage() {
                       </label>
                       <textarea
                         name="purchaseDescription"
-                        value={formData.purchaseDescription || ''}
+                        value={formData.purchaseDescription ?? ''}
                         onChange={(e) =>
                           handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                         }
@@ -1653,7 +1653,7 @@ export function EditCompositeItemPage() {
                           type="number"
                           step="0.01"
                           name="openingStock"
-                          value={formData.openingStock || ''}
+                          value={formData.openingStock ?? ''}
                           onChange={handleChange}
                           style={{
                             width: '140px',
@@ -1680,7 +1680,7 @@ export function EditCompositeItemPage() {
                           type="number"
                           step="0.01"
                           name="openingStockValuePerUnit"
-                          value={formData.openingStockValuePerUnit || ''}
+                          value={formData.openingStockValuePerUnit ?? ''}
                           onChange={handleChange}
                           style={{
                             width: '140px',
@@ -1893,3 +1893,5 @@ export function EditCompositeItemPage() {
     </div>
   );
 }
+
+

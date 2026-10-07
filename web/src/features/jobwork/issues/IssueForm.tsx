@@ -30,6 +30,10 @@ import type { JobIssue, JobIssueLineData } from './jobIssues.schemas';
 import { AddBatchesModal } from './AddBatchesModal';
 import { selectionKey, type BatchSelection } from './batchSelection';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
+import { notify } from '../../../lib/notify';
 
 interface Props {
   jobOrder: JobOrder;
@@ -136,11 +140,10 @@ interface PlanGap {
  * the next step, long after anyone connects it to this dialog (§5.1).
  *
  * WHAT THE USER ACTUALLY DECIDES: where it goes out from, who it goes to, which
- * batches, and a free-text remark.
+ * batches, a free-text remark, and the org's custom fields (back 2026-10-05).
  *
- * ⚠️ Transport (vehicle / LR / e-way bill) and per-org custom fields were both
- * removed on 2026-08-10 — the columns are gone from `job_issues` and `job_issue`
- * is no longer a custom-field module, so there is nowhere left for either to go.
+ * ⚠️ Transport (vehicle / LR / e-way bill) was removed on 2026-08-10 — the columns
+ * are gone from `job_issues`, so there is nowhere left for it to go.
  *
  * The destination is not asked at all. It is the processor's own location, and
  * it is created on first use — making someone set up a location for a dyer
@@ -150,6 +153,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
   const unitLabel = useBatchUnitLabel();
 
   // Everything the draft already decided. Read once, as initial state, so the
@@ -184,6 +188,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
   /** Which item section opened Add Batches. Null when it is closed. */
   const [addBatchesFor, setAddBatchesFor] = useState<string | null>(null);
   const [remarks, setRemarks] = useState(draft?.remarks ?? '');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>(
+    (draft?.customFields as CustomFieldValues) ?? {},
+  );
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [overrideReason] = useState('');
   const [_needsOverride, setNeedsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,6 +254,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
    * is no longer its: see the query below. */
   const principal = inputItems[0] ?? null;
   const uomLabel = principal?.uomLabel ?? '';
+  const chainWarningByItem = useMemo(
+    () => new Map(step.chainWarnings.map((w) => [w.itemId, w.message])),
+    [step],
+  );
 
   /**
    * 🔴 A ledger query, over EVERY item on this challan (2026-08-19).
@@ -261,10 +273,19 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
    */
   const inputItemIds = useMemo(() => inputItems.map((input) => input.itemId), [inputItems]);
 
-  const { data: locations = [] } = useQuery({
-    queryKey: ['stock-locations', orgId, inputItemIds, jobOrder.ownership],
+  // `ownership: 'customer'` alone matches every customer's goods; the save accepts
+  // only this order's customer, so every stock query here narrows to it too.
+  const ownerPartyId =
+    jobOrder.ownership === 'customer' ? (jobOrder.ownerPartyId ?? undefined) : undefined;
+
+  const { data: locations = [], isLoading: locationsLoading } = useQuery({
+    queryKey: ['stock-locations', orgId, inputItemIds, jobOrder.ownership, ownerPartyId],
     queryFn: () =>
-      fetchStockLocations(orgId!, { itemIds: inputItemIds, ownership: jobOrder.ownership }),
+      fetchStockLocations(orgId!, {
+        itemIds: inputItemIds,
+        ownership: jobOrder.ownership,
+        ownerPartyId,
+      }),
     enabled: Boolean(orgId) && inputItemIds.length > 0,
   });
 
@@ -378,7 +399,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
   const sourceOptions = sourceKind === 'vendor' ? processorSourceOptions : ownSourceOptions;
 
-  const effectiveSourceId = sourceLocationId || (sourceOptions[0]?.value ?? '');
+  // Wait for the ledger list: the allLocations fallback is usually cached, so without
+  // this the plan seed runs once against the wrong godown and never retries.
+  const effectiveSourceId =
+    sourceLocationId || (locationsLoading ? '' : (sourceOptions[0]?.value ?? ''));
   const sourceLocationName =
     allLocations.find((l) => l.id === effectiveSourceId)?.name ??
     locations.find((l) => l.id === effectiveSourceId)?.name ??
@@ -428,6 +452,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       itemIds.join(','),
       effectiveSourceId,
       jobOrder.ownership,
+      ownerPartyId,
       // 🔴 Part of the KEY, not just the request. Turning the level on has to
       // invalidate this, or the picker serves a cached answer with no packages
       // in it and every batch looks as though it has none.
@@ -440,6 +465,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         // 🔴 Not optional. Without it one customer's goods can be issued into
         // another customer's job order (§5.2).
         ownership: jobOrder.ownership,
+        ownerPartyId,
         limit: BATCH_LIMIT,
         withUnits: unitLabel.enabled,
       }),
@@ -470,6 +496,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           input.itemId,
           effectiveSourceId,
           jobOrder.ownership,
+          ownerPartyId,
           search,
           unitLabel.enabled,
         ],
@@ -478,6 +505,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
             itemId: input.itemId,
             locationId: effectiveSourceId,
             ownership: jobOrder.ownership,
+            ownerPartyId,
             search,
             limit: BATCH_LIMIT,
             withUnits: unitLabel.enabled,
@@ -585,21 +613,23 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
-      let gone = 0;
+      // Batch ids, not a counter — a line is one per taka, so two takas of one
+      // batch would otherwise report as two batches.
+      const gone = new Set<string>();
 
       for (const line of mine) {
         const batch = offered.find(
           (row) => row.batchId === line.batchId && row.locationId === effectiveSourceId,
         );
         if (!batch) {
-          gone += 1;
+          gone.add(line.batchId);
           continue;
         }
         const unit = line.batchUnitId
           ? (batch.units.find((u) => u.batchUnitId === line.batchUnitId) ?? null)
           : null;
         if (line.batchUnitId && !unit) {
-          gone += 1;
+          gone.add(line.batchId);
           continue;
         }
         const qty = toNumber(line.qty);
@@ -612,8 +642,11 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         setSelection((prev) => ({ ...prev, ...seeded }));
         setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
       }
-      if (gone > 0) {
-        setPlanUnmatched((prev) => ({ ...prev, [input.itemId]: { gone, elsewhere: [] } }));
+      if (gone.size > 0) {
+        setPlanUnmatched((prev) => ({
+          ...prev,
+          [input.itemId]: { gone: gone.size, elsewhere: [] },
+        }));
       }
     });
   }, [draft, inputItems, batchQueries, effectiveSourceId]);
@@ -645,8 +678,9 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
 
       const seeded: Record<string, BatchSelection> = {};
       let matchedQty = 0;
-      let gone = 0;
-      const elsewhere = new Map<string, number>();
+      // Batch ids, not counters — see the draft seed above.
+      const gone = new Set<string>();
+      const elsewhere = new Map<string, Set<string>>();
 
       /**
        * 🔴 THE CEILING IS WHAT IS STILL TO BE ISSUED, not what was planned.
@@ -671,7 +705,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         if (planned.locationId !== effectiveSourceId) {
           const name =
             allLocations.find((l) => l.id === planned.locationId)?.name ?? 'another godown';
-          elsewhere.set(name, (elsewhere.get(name) ?? 0) + 1);
+          elsewhere.set(name, (elsewhere.get(name) ?? new Set()).add(planned.batchId));
           continue;
         }
 
@@ -679,7 +713,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           (row) => row.batchId === planned.batchId && row.locationId === planned.locationId,
         );
         if (!batch) {
-          gone += 1;
+          gone.add(planned.batchId);
           continue;
         }
 
@@ -693,7 +727,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           ? (batch.units.find((u) => u.batchUnitId === planned.batchUnitId) ?? null)
           : null;
         if (planned.batchUnitId && !unit) {
-          gone += 1;
+          gone.add(planned.batchId);
           continue;
         }
 
@@ -702,7 +736,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         const ceiling = unit ? toNumber(unit.availableQty) : toNumber(batch.availableQty);
         const qty = Math.min(Number(planned.qty), ceiling, toBeIssued);
         if (qty <= 0) {
-          gone += 1;
+          gone.add(planned.batchId);
           continue;
         }
         seeded[selectionKey(batch, unit?.batchUnitId ?? null)] = { batch, unit, qty };
@@ -714,12 +748,12 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         setSelection((prev) => ({ ...prev, ...seeded }));
         setTrackedQty((prev) => ({ ...prev, [input.itemId]: matchedQty }));
       }
-      if (gone > 0 || elsewhere.size > 0) {
+      if (gone.size > 0 || elsewhere.size > 0) {
         setPlanUnmatched((prev) => ({
           ...prev,
           [input.itemId]: {
-            gone,
-            elsewhere: [...elsewhere].map(([name, count]) => ({ name, count })),
+            gone: gone.size,
+            elsewhere: [...elsewhere].map(([name, ids]) => ({ name, count: ids.size })),
           },
         }));
       }
@@ -862,8 +896,10 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         lines,
         toleranceOverrideReason: overrideReason.trim() || null,
         remarks: remarks.trim() || null,
+        customFields,
         saveAsDraft,
       };
+      setCustomFieldErrors({});
       return draft ? updateJobIssue(orgId!, draft.id, payload) : createJobIssue(orgId!, payload);
     },
     meta: { suppressToast: true },
@@ -925,6 +961,17 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
       // only side that knows what has already been issued. When it says so, the
       // reason box appears rather than the save just failing again.
       if (err.response?.data?.details?.toleranceOverrideReason) setNeedsOverride(true);
+      // Custom-field errors: red border on the field plus a toast, no banner text.
+      const cfErrors = Object.fromEntries(
+        Object.entries(err.response?.data?.details ?? {}).filter(([key]) =>
+          key.startsWith('customFields.'),
+        ),
+      );
+      if (Object.keys(cfErrors).length > 0) {
+        setCustomFieldErrors(cfErrors);
+        notify.error(Object.values(cfErrors)[0]);
+        return;
+      }
       setError(message);
     },
   });
@@ -1473,6 +1520,21 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
         </div>
       </section>
 
+      {customFieldDefs.length > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <h3 style={sectionHeading}>Custom Fields</h3>
+          <CustomFieldsSection
+            orgId={orgId!}
+            entityType="job_issue"
+            values={customFields}
+            onChange={setCustomFields}
+            errors={customFieldErrors}
+            applyDefaults={!draft}
+            layout="rows"
+          />
+        </section>
+      )}
+
       <section style={{ marginBottom: 20 }}>
         <h3 style={sectionHeading}>Pick the material</h3>
 
@@ -1548,9 +1610,12 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                    flash a false "nothing on the books". */
                   const available = availableByItem.get(input.itemId) ?? 0;
                   /** How many batch rows this item carries — "…added to N batches". */
-                  const pickedBatchCount = Object.values(selection).filter(
-                    (sel) => sel.batch.itemId === input.itemId && sel.qty > 0,
-                  ).length;
+                  // Distinct batches — a selection is one per taka, not one per batch.
+                  const pickedBatchCount = new Set(
+                    Object.values(selection)
+                      .filter((sel) => sel.batch.itemId === input.itemId && sel.qty > 0)
+                      .map((sel) => sel.batch.batchId),
+                  ).size;
                   /* ⚠️ The same set `lines` reads — see `batchlessItemIds`. */
                   const showUnstockedInput = batchlessItemIds.has(input.itemId);
                   const isEmptyHere = !query?.isLoading && !search && available === 0;
@@ -1568,6 +1633,21 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                         <div style={{ ...lineCell, fontWeight: 600, color: '#111' }}>
                           {input.name}
                         </div>
+
+                        {/* A warning, never a block: the step feeding this item has
+                          returned none yet, so what goes out is older stock. */}
+                        {chainWarningByItem.get(input.itemId) && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 11.5,
+                              color: '#b45309',
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {chainWarningByItem.get(input.itemId)}
+                          </div>
+                        )}
 
                         {/* 🔴 Said out loud, never swallowed. Nothing was reserved, so
                           a planned batch going missing between planning and issuing

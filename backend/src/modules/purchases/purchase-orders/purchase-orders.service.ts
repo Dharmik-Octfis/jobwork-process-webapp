@@ -8,11 +8,13 @@ import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../li
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
+import { priceLines } from '../../../lib/linePricing.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 const DUPLICATE_NUMBER = 'A purchase order with this PO number already exists.';
 
 function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOrderWhereInput {
-  return {
+  const baseWhere: Prisma.PurchaseOrderWhereInput = {
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.PurchaseOrderWhereInput>('purchase_order', opts.filter),
@@ -23,6 +25,19 @@ function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOr
       'status',
     ]),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.vendorId) {
+        baseWhere.vendorId = filters.vendorId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 export async function getPurchaseOrdersList(organizationId: string, opts: ListQuery) {
@@ -60,12 +75,13 @@ export async function getPurchaseOrderById(orgId: string, id: string) {
       include: {
         lineItems: {
           where: { isDeleted: false },
-          include: { item: true },
+          include: { item: { include: { stockingUom: { select: { symbol: true } } } } },
         },
         vendor: { select: { contactName: true, email: true, phone: true, addresses: true } },
         deliveryLocation: true,
         deliveryCustomer: true,
-        bills: true,
+        // a deleted bill must drop off the PO, or it still reads BILLED and links to a 404
+        bills: { where: { isDeleted: false } },
       },
     }),
   );
@@ -76,7 +92,8 @@ export async function createPurchaseOrder(
   userId: string,
   data: CreatePurchaseOrderPayload,
 ) {
-  const { lineItems: lineItems, ...poData } = data;
+  const { lineItems: rawLineItems, ...poData } = data;
+  const { lines: lineItems, subTotal, totalAmount } = priceLines(rawLineItems);
   return runAsTenant(orgId, async (tx) => {
     await assertOnOrAfterMigration(tx, {
       organizationId: orgId,
@@ -100,17 +117,28 @@ export async function createPurchaseOrder(
 
     if (seq) {
       if (poData.poNumber.startsWith(seq.prefix)) {
+        const suffixPart = poData.poNumber.slice(seq.prefix.length);
+        const match = suffixPart.match(/^0*(\d+)/);
+        let newNextNumber = seq.nextNumber + 1;
+        if (match && match[1]) {
+          const extracted = parseInt(match[1], 10);
+          if (!isNaN(extracted) && extracted >= seq.nextNumber) {
+            newNextNumber = extracted + 1;
+          }
+        }
         await tx.numberSequence.update({
           where: { id: seq.id },
-          data: { nextNumber: seq.nextNumber + 1 },
+          data: { nextNumber: newNextNumber },
         });
       }
     }
 
-    return withUniqueViolation(DUPLICATE_NUMBER, () =>
+    const createdPo = await withUniqueViolation(DUPLICATE_NUMBER, () =>
       tx.purchaseOrder.create({
         data: {
           ...poData,
+          subTotal,
+          totalAmount,
           organizationId: orgId,
           createdBy: userId,
           updatedBy: userId,
@@ -139,6 +167,21 @@ export async function createPurchaseOrder(
         include: { lineItems: true },
       }),
     );
+
+    // Trigger approval workflow evaluation asynchronously post-commit
+    approvalTriggerService
+      .trigger({
+        organizationId: orgId,
+        moduleId: 'purchase_orders',
+        recordId: createdPo.id,
+        recordTitle: `PO #${createdPo.poNumber}`,
+        triggerType: 'CREATE',
+        record: createdPo as unknown as Record<string, unknown>,
+        actorUserId: userId,
+      })
+      .catch((err) => console.error('[ApprovalTrigger] Error in create purchase order:', err));
+
+    return createdPo;
   });
 }
 
@@ -148,7 +191,10 @@ export async function updatePurchaseOrder(
   userId: string,
   data: UpdatePurchaseOrderPayload,
 ) {
-  const { lineItems: lineItems, ...poData } = data;
+  // totals move only with the lines they are summed from
+  const { lineItems: rawLineItems, subTotal: _s, totalAmount: _t, ...poData } = data;
+  const priced = rawLineItems ? priceLines(rawLineItems) : undefined;
+  const lineItems = priced?.lines;
   return runAsTenant(orgId, async (tx) => {
     // `updatePurchaseOrderSchema` is partial, so an edit that does not touch the
     // date must not be refused for one it never sent.
@@ -174,6 +220,8 @@ export async function updatePurchaseOrder(
         where: { id, organizationId: orgId, isDeleted: false },
         data: {
           ...poData,
+          subTotal: priced?.subTotal,
+          totalAmount: priced?.totalAmount,
           updatedBy: userId,
           documents:
             poData.documents !== undefined
@@ -217,6 +265,27 @@ export async function updatePurchaseOrder(
           updatedBy: userId,
         },
       });
+
+      // Trigger approval workflow evaluation asynchronously post-commit
+      approvalTriggerService
+        .trigger({
+          organizationId: orgId,
+          moduleId: 'purchase_orders',
+          recordId: id,
+          recordTitle: `PO #${poData.poNumber || id}`,
+          triggerType: 'EDIT',
+          record: {
+            id,
+            ...poData,
+            // approval rules can key on the amount, so they see the server's figure
+            ...(priced && {
+              subTotal: priced.subTotal.toNumber(),
+              totalAmount: priced.totalAmount.toNumber(),
+            }),
+          },
+          actorUserId: userId,
+        })
+        .catch((err) => console.error('[ApprovalTrigger] Error in update purchase order:', err));
 
       return po;
     });

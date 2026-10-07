@@ -1,7 +1,8 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, SlidersHorizontal, Users as UsersIcon, Info } from 'lucide-react';
+import { notify } from '../../lib/notify';
 import { organizationsApi } from '../organizations/organizations.api';
 import { rolesApi } from '../roles/roles.api';
 import { permissionTemplatesApi } from '../permission-templates/permissionTemplates.api';
@@ -15,6 +16,7 @@ import { ListFilterDropdown } from '../../components/ui/ListFilterDropdown';
 import { CUSTOM_FIELD_PREFIX } from '../list-views/listViews.api';
 import { UserDetailPanel } from './UserDetailPanel';
 import { NewUserModal } from './NewUserModal';
+import { ORGANIZATION_MAX_USERS_LIMIT } from '../../constants/organization';
 import './Users.css';
 
 /**
@@ -76,16 +78,31 @@ function renderUserCell(
             onClick={(e) => e.stopPropagation()}
             style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default', width: 120 }}
           >
-            <div style={{ position: 'relative', width: 34, height: 20, borderRadius: 10, background: '#22c55e', opacity: 0.6 }}>
-              <div style={{ position: 'absolute', top: 2, left: 16, width: 16, height: 16, borderRadius: 8, background: '#fff' }} />
+            <div
+              style={{
+                position: 'relative',
+                width: 34,
+                height: 20,
+                borderRadius: 10,
+                background: '#22c55e',
+                opacity: 0.6,
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  left: 16,
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: '#fff',
+                }}
+              />
             </div>
             <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>Active</span>
             <span className="users-tooltip-wrapper">
-              <Info
-                size={14}
-                color="#94a3b8"
-                style={{ marginLeft: 2, cursor: 'default' }}
-              />
+              <Info size={14} color="#94a3b8" style={{ marginLeft: 2, cursor: 'default' }} />
               <span className="users-tooltip-text">The CEO cannot be made inactive</span>
             </span>
           </div>
@@ -135,7 +152,13 @@ function renderUserCell(
               }}
             />
           </div>
-          <span style={{ fontSize: 13, color: user.status === 'active' ? '#15803d' : '#64748b', fontWeight: 500 }}>
+          <span
+            style={{
+              fontSize: 13,
+              color: user.status === 'active' ? '#15803d' : '#64748b',
+              fontWeight: 500,
+            }}
+          >
             {user.status === 'active' ? 'Active' : 'Inactive'}
           </span>
         </button>
@@ -210,6 +233,14 @@ export function UsersPage() {
   });
   const activeOrg = organizations?.find((o) => o.organizationId === orgId);
 
+  const { data: absoluteTotal } = useQuery({
+    queryKey: ['org-total-users-count', orgId, 'all_users'],
+    queryFn: () => membersApi.count(orgId!, { filter: 'all_users' }),
+    enabled: Boolean(orgId),
+  });
+  const maxUsersLimit = activeOrg?.maxUsersLimit ?? ORGANIZATION_MAX_USERS_LIMIT;
+  const isLimitReached = (absoluteTotal ?? 0) >= maxUsersLimit;
+
   const { data: me } = useQuery({
     queryKey: ['org-users-me', orgId],
     queryFn: () => membersApi.getMe(orgId!),
@@ -244,7 +275,7 @@ export function UsersPage() {
           results: old.results.map((u: OrgUser) =>
             u.id === user.id
               ? { ...u, status: user.status === 'active' ? 'inactive' : 'active' }
-              : u
+              : u,
           ),
         };
       });
@@ -349,25 +380,33 @@ export function UsersPage() {
               {/* Adding a user IS sending an invitation — nobody gets a password set
                   for them — so this opens a window rather than routing to a create
                   page: there is no record to build yet, only an invite to address. */}
-              <button
-                onClick={() => setIsNewOpen(true)}
-                style={{
-                  background: '#186337',
-                  color: 'white',
-                  border: 'none',
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={16} /> New
-              </button>
+              <span style={{ display: 'inline-block' }}>
+                <button
+                  onClick={() => {
+                    if (isLimitReached) {
+                      notify.error(`User limit of ${maxUsersLimit} reached.`);
+                    } else {
+                      setIsNewOpen(true);
+                    }
+                  }}
+                  style={{
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Plus size={16} /> New
+                </button>
+              </span>
             </div>
           </header>
 
@@ -416,21 +455,29 @@ export function UsersPage() {
                     ? 'Everyone who was invited has either joined or been revoked.'
                     : 'Invite someone to this organization. They choose their own password from the link they receive.'}
                 </p>
-                <button
-                  onClick={() => setIsNewOpen(true)}
-                  style={{
-                    background: '#28a745',
-                    color: 'white',
-                    border: 'none',
-                    padding: '10px 24px',
-                    borderRadius: '4px',
-                    fontWeight: 600,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Invite User
-                </button>
+                <span style={{ display: 'inline-block' }}>
+                  <button
+                    onClick={() => {
+                      if (isLimitReached) {
+                        notify.error(`User limit of ${maxUsersLimit} reached.`);
+                      } else {
+                        setIsNewOpen(true);
+                      }
+                    }}
+                    style={{
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      padding: '10px 24px',
+                      borderRadius: '4px',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Invite User
+                  </button>
+                </span>
               </div>
             ) : selectedId ? (
               // Narrow master pane beside the detail panel.
@@ -472,77 +519,83 @@ export function UsersPage() {
               </div>
             ) : (
               <div className="responsive-table-wrapper">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'fixed' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f9f9fb',
-                      borderTop: '1px solid #eef0f3',
-                      borderBottom: '1px solid #eef0f3',
-                    }}
-                  >
-                    {columns.map((col) => (
-                      <th
-                        key={col.key}
-                        style={{
-                          ...headerStyle,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    textAlign: 'left',
+                    tableLayout: 'fixed',
+                  }}
+                >
+                  <thead>
                     <tr
-                      key={user.id}
-                      onClick={() => {
-                        setSearchParams((prev) => {
-                          const next = new URLSearchParams(prev);
-                          next.set('id', user.id);
-                          return next;
-                        });
-                      }}
                       style={{
+                        background: '#f9f9fb',
+                        borderTop: '1px solid #eef0f3',
                         borderBottom: '1px solid #eef0f3',
-                        transition: 'background 0.1s',
-                        cursor: 'pointer',
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       {columns.map((col) => (
-                        <td
+                        <th
                           key={col.key}
                           style={{
-                            padding: '12px 16px',
-                            fontSize: 13,
-                            // The locked column is the identity you click through on.
-                            color: col.locked ? '#0062ff' : '#333',
-                            fontWeight: col.locked ? 500 : 400,
+                            ...headerStyle,
                             whiteSpace: 'nowrap',
-                            overflow: col.key === 'status' ? 'visible' : 'hidden',
-                            textOverflow: col.key === 'status' ? 'clip' : 'ellipsis',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
                           }}
                         >
-                          {renderUserCell(user, col.key, handleToggleStatus)}
-                        </td>
+                          {col.label}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-                  </div>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr
+                        key={user.id}
+                        onClick={() => {
+                          setSearchParams((prev) => {
+                            const next = new URLSearchParams(prev);
+                            next.set('id', user.id);
+                            return next;
+                          });
+                        }}
+                        style={{
+                          borderBottom: '1px solid #eef0f3',
+                          transition: 'background 0.1s',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            style={{
+                              padding: '12px 16px',
+                              fontSize: 13,
+                              // The locked column is the identity you click through on.
+                              color: col.locked ? '#0062ff' : '#333',
+                              fontWeight: col.locked ? 500 : 400,
+                              whiteSpace: 'nowrap',
+                              overflow: col.key === 'status' ? 'visible' : 'hidden',
+                              textOverflow: col.key === 'status' ? 'clip' : 'ellipsis',
+                            }}
+                          >
+                            {renderUserCell(user, col.key, handleToggleStatus)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
           {/* Hidden while a user is selected (narrow master pane) */}
-          {!selectedId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -552,7 +605,6 @@ export function UsersPage() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {selectedId && selected && (

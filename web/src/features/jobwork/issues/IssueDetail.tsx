@@ -1,17 +1,26 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Printer, X } from 'lucide-react';
+import { PackageCheck, Printer, X } from 'lucide-react';
+import { notify } from '../../../lib/notify';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
 import { formatDate } from '../../../lib/formatDate';
 import { organizationsApi } from '../../organizations/organizations.api';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import { ISSUE_STATUS_META, formatQty, sharedUnit, statusMeta, toNumber } from '../jobwork.schemas';
 import { invalidateStockQueries } from '../stockCache';
 import { cancelJobIssue, deleteJobIssue, fetchJobIssueById, postJobIssue } from './jobIssues.api';
 import { printChallan } from './printChallan';
-import type { JobIssue, JobIssuesPage } from './jobIssues.schemas';
+import type { JobIssue } from './jobIssues.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import {
+  BatchUnitsCard,
+  BatchUnitsToggle,
+} from '../../../components/inventory/BatchUnitsBreakdown';
 
 interface Props {
   issueId: string;
@@ -39,10 +48,9 @@ const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13, color: '#33
  * so a refetch DELETES the row from the view the operator is looking at the
  * instant they act on it: press Issue on a draft and the Drafts list drops it
  * mid-click, which reads as the challan having been removed rather than sent.
- * Both transitions rewrite the row in place (`createNewJobIssue` updates it —
- * same id, same challan number), so `status` is the only thing the cached list
- * is now wrong about. The row leaves the view on the next real fetch: a
- * refresh, or `staleTime` expiring.
+ * Both transitions rewrite the row in place (same id, same challan number), so
+ * `status` is the only thing the cached list is wrong about, and the row stays
+ * until the view changes (`useListRowRetention`).
  */
 function patchStatusInLists(
   queryClient: QueryClient,
@@ -50,24 +58,7 @@ function patchStatusInLists(
   issueId: string,
   status: string,
 ) {
-  const swap = (rows: JobIssue[]) =>
-    rows.map((item) => (item.id === issueId ? { ...item, status } : item));
-
-  queryClient.setQueriesData(
-    { queryKey: ['job-issues', orgId], type: 'active' },
-    // Two shapes live under this key: the paginated list, and the unpaginated
-    // "every challan against one step" read (`?stepId=`). That one is not
-    // filtered on status, so its row STAYS — it just has to say the right thing.
-    (old: JobIssuesPage | JobIssue[] | undefined) => {
-      if (!old) return old;
-      if (Array.isArray(old)) return swap(old);
-      if (!old.results) return old;
-      return { ...old, results: swap(old.results) };
-    },
-  );
-  // The pages nobody is looking at are refetched instead — nothing is on screen
-  // for the row to disappear from, and they must be right when next opened.
-  queryClient.invalidateQueries({ queryKey: ['job-issues', orgId], type: 'inactive' });
+  patchListRow<JobIssue>(queryClient, ['job-issues', orgId], issueId, { status });
 }
 
 export function IssueDetail({ issueId, onClose }: Props) {
@@ -77,10 +68,20 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const trackingLabel = useTrackingLabel();
   /** What this org calls the level below a batch, for the challan's own column. */
   const unitLabel = useBatchUnitLabel();
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonMissing, setCancelReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openUnits, setOpenUnits] = useState<Set<string>>(() => new Set());
+  const toggleUnits = (key: string) =>
+    setOpenUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const { data: issue, isLoading } = useQuery({
     queryKey: ['job-issue', orgId, issueId],
@@ -96,6 +97,14 @@ export function IssueDetail({ issueId, onClose }: Props) {
   });
   const orgName =
     organizations.find((org) => org.organizationId === orgId)?.name ?? 'Delivery Challan';
+
+  // Same lock the job order's step buttons honour while it awaits approval.
+  const { isUnderApproval, isRejected } = useRecordApproval(
+    orgId,
+    'job_orders',
+    issue?.canReceive ? issue.jobOrderId : undefined,
+  );
+  const receiveLocked = isUnderApproval || isRejected;
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelJobIssue(orgId!, issueId, cancelReason),
@@ -143,6 +152,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteJobIssue(orgId!, issueId),
     onSuccess: () => {
+      releaseListRow(['job-issues', orgId], issueId);
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       setDeleteOpen(false);
@@ -189,6 +199,37 @@ export function IssueDetail({ issueId, onClose }: Props) {
     return [...totals.values()];
   })();
 
+  /** One table row per item + batch: each taka is its own line, so a batch sent
+   * as two takas would otherwise read as two rows. The takas open from the row. */
+  const batchRows = (() => {
+    const rows = new Map<
+      string,
+      {
+        key: string;
+        line: JobIssue['lines'][number];
+        qty: number;
+        units: { batchUnitId: string; label: string; qty: number }[];
+      }
+    >();
+    for (const line of issue.lines) {
+      const key = `${line.itemId}:${line.batchId}`;
+      const row = rows.get(key) ?? { key, line, qty: 0, units: [] };
+      row.qty += toNumber(line.qty);
+      if (line.batchUnit) {
+        const unit = row.units.find((u) => u.batchUnitId === line.batchUnit!.id);
+        if (unit) unit.qty += toNumber(line.qty);
+        else
+          row.units.push({
+            batchUnitId: line.batchUnit.id,
+            label: line.batchUnit.label,
+            qty: toNumber(line.qty),
+          });
+      }
+      rows.set(key, row);
+    }
+    return [...rows.values()];
+  })();
+
   return (
     <div style={{ background: '#fff', minHeight: '100%' }}>
       <header className="detail-page-header">
@@ -222,7 +263,7 @@ export function IssueDetail({ issueId, onClose }: Props) {
             {formatDate(issue.issueDate)} · {issue.processorNameSnapshot ?? 'in-house'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {/**
            * 🔴 A DRAFT GETS A DIFFERENT SET, and Print is deliberately not in it.
            * A challan is the document that TRAVELS WITH THE GOODS; printing one
@@ -318,6 +359,36 @@ export function IssueDetail({ issueId, onClose }: Props) {
               <span className="action-btn-text">
                 <span className="action-btn-text">Print</span> challan
               </span>
+            </button>
+          )}
+          {issue.canReceive && (
+            <button
+              className="action-btn"
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${issue.jobOrderId}` +
+                    `&stepId=${issue.jobOrderStepId}&issueId=${issue.id}`,
+                )
+              }
+              disabled={receiveLocked}
+              title={
+                receiveLocked ? 'Cannot receive while the job order awaits approval' : undefined
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                fontSize: 13,
+                borderRadius: 4,
+                background: receiveLocked ? '#f1f5f9' : '#fff',
+                color: receiveLocked ? '#94a3b8' : '#186337',
+                border: receiveLocked ? '1px solid #cbd5e1' : '1px solid #186337',
+                cursor: receiveLocked ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <PackageCheck size={14} /> <span className="action-btn-text">Receive</span>
             </button>
           )}
           {/* Cancelling posts reversing rows, so it only applies to a challan
@@ -442,6 +513,14 @@ export function IssueDetail({ issueId, onClose }: Props) {
                   <td style={{ ...rowValue, whiteSpace: 'pre-wrap' }}>{issue.remarks}</td>
                 </tr>
               )}
+              {customFieldDefs.map((def) => (
+                <tr key={def.id}>
+                  <td style={rowLabel}>{def.label}</td>
+                  <td style={rowValue}>
+                    {formatCustomFieldValue(issue.customFields?.[def.key], def)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -473,17 +552,52 @@ export function IssueDetail({ issueId, onClose }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {issue.lines.map((line) => (
-                  <tr key={line.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                    <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                      {line.item?.name ?? '-'}
-                    </td>
-                    <td style={td}>{line.batch?.supplierBatchRef ?? '-'}</td>
-                    <td style={td}>
-                      {formatQty(line.qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
-                    </td>
-                  </tr>
-                ))}
+                {batchRows.map(({ key, line, qty, units }) => {
+                  const hasUnits = unitLabel.enabled && units.length > 0;
+                  const open = hasUnits && openUnits.has(key);
+                  return (
+                    <Fragment key={key}>
+                      <tr
+                        style={{
+                          borderBottom: open ? 'none' : '1px solid #eef0f3',
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                          {line.item?.name ?? '-'}
+                        </td>
+                        <td style={td}>
+                          {line.batch?.supplierBatchRef ?? '-'}
+                          {hasUnits && (
+                            <BatchUnitsToggle
+                              count={units.length}
+                              open={open}
+                              onToggle={() => toggleUnits(key)}
+                              singular={unitLabel.singular}
+                              plural={unitLabel.plural}
+                            />
+                          )}
+                        </td>
+                        <td style={td}>
+                          {formatQty(qty)} {line.uom?.symbol ?? line.uom?.unitName ?? unit}
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                          <td />
+                          <td colSpan={2} style={{ padding: '0 12px 10px' }}>
+                            <BatchUnitsCard
+                              units={units}
+                              untaggedQty={qty - units.reduce((sum, u) => sum + u.qty, 0)}
+                              singular={unitLabel.singular}
+                              formatQty={(value) => formatQty(value)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -501,19 +615,34 @@ export function IssueDetail({ issueId, onClose }: Props) {
               on the 3rd and was cancelled on the 5th&rdquo; is a question someone will ask. This is
               not possible once goods have been received against it.
             </p>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-              Reason
+            <label
+              htmlFor="cancel-challan-reason"
+              style={{
+                display: 'block',
+                fontSize: 12,
+                color: '#ef4444',
+                fontWeight: 500,
+                marginBottom: 4,
+              }}
+            >
+              Reason*
             </label>
             <input
+              id="cancel-challan-reason"
               type="text"
+              required
+              aria-required="true"
               value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              aria-label="Reason for cancelling"
+              aria-invalid={cancelReasonMissing}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                if (e.target.value.trim()) setCancelReasonMissing(false);
+              }}
               style={{
                 width: '100%',
                 padding: '6px 8px',
                 fontSize: 13,
-                border: '1px solid #d1d5db',
+                border: `1px solid ${cancelReasonMissing ? '#ef4444' : '#d1d5db'}`,
                 borderRadius: 4,
                 minHeight: 32,
               }}
@@ -523,11 +652,17 @@ export function IssueDetail({ issueId, onClose }: Props) {
         confirmText={cancelMutation.isPending ? 'Cancelling…' : 'Cancel challan'}
         cancelText="Keep it"
         onConfirm={() => {
-          if (cancelReason.trim()) cancelMutation.mutate();
+          if (!cancelReason.trim()) {
+            setCancelReasonMissing(true);
+            notify.error('Enter a reason for cancelling.');
+            return;
+          }
+          cancelMutation.mutate();
         }}
         onCancel={() => {
           setCancelOpen(false);
           setCancelReason('');
+          setCancelReasonMissing(false);
         }}
       />
 

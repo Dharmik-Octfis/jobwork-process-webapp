@@ -17,40 +17,13 @@ import { ApiError } from '../../../lib/apiError.ts';
  * FIFO in JavaScript on every load, per location on the Item Ledger and per item on
  * the Summary, so the two screens disagreed with each other and with the ledger.
  *
- * Stock comes IN only from opening stock and bills and goes OUT on a job issue, so
- * a job receipt counts only once an Open bill carries it. Stock at a processor, in
- * transit or at a customer site is left out of both screens, as before.
+ * 🔴 A JOB RECEIPT COUNTS WHEN IT POSTS, at material + agreed charge (2026-09-23).
+ * Job-work goods were ours all along, so — as in Tally and SAP — the job worker's
+ * bill settles the charge and never gates or re-prices stock. Gating receipts on a
+ * bill hid their stock while the next challan drawing on it still counted, which
+ * drove these screens negative. Stock at a processor, in transit or at a customer
+ * site is left out of both screens, as before.
  */
-// A bill line raised from a job receipt posts no stock (the receipt already did), so
-// the receipt's own rows are what count once an Open bill carries that item.
-const COUNTED_SOURCE = Prisma.sql`
-  (
-    l.source_doc_type != 'job_receipt'
-    OR EXISTS (
-      SELECT 1 FROM bill_items bi
-      JOIN bills b ON b.id = bi.bill_id
-      WHERE bi.job_receipt_id = l.source_doc_id
-        AND bi.item_id = l.item_id
-        AND bi.is_deleted = false
-        AND b.is_deleted = false
-        AND LOWER(b.status) = 'open'
-    )
-  )`;
-
-// The ledger carries a billed receipt at the receipt's cost; the bill's discount is
-// applied here, per unit of that receipt's item, to the lot and to what was drawn from it.
-const BILLED_RECEIPT_DISCOUNT = Prisma.sql`
-  SELECT bi.job_receipt_id AS receipt_id, bi.item_id,
-    SUM(COALESCE(bi.discount_amount, 0)) / NULLIF(SUM(bi.quantity), 0) AS unit_discount
-  FROM bill_items bi
-  JOIN bills b ON b.id = bi.bill_id
-  WHERE bi.job_receipt_id IS NOT NULL
-    AND bi.is_deleted = false
-    AND b.is_deleted = false
-    AND LOWER(b.status) = 'open'
-  GROUP BY bi.job_receipt_id, bi.item_id
-  HAVING SUM(COALESCE(bi.discount_amount, 0)) <> 0`;
-
 const OWN_PLACE = Prisma.sql`
   EXISTS (
     SELECT 1 FROM locations loc
@@ -95,7 +68,7 @@ export async function getInventoryValuationSummary(
         i.sku AS "sku",
         i.hsn_code AS "hsnCode",
         i.custom_fields AS "customFields",
-        u.unit_name AS "uomName",
+        COALESCE(NULLIF(u.symbol, ''), u.unit_name) AS "uomName",
         COALESCE(SUM(l.qty_in - l.qty_out), 0) AS "stockOnHand",
         COALESCE(SUM(l.value_in - l.value_out), 0) AS "inventoryAssetValue"
       FROM items i
@@ -104,7 +77,6 @@ export async function getInventoryValuationSummary(
         AND l.organization_id = ${organizationId}::uuid
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'accounting')
-        AND ${COUNTED_SOURCE}
         ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
         AND ${OWN_PLACE}
     `;
@@ -145,7 +117,7 @@ export async function getInventoryValuationSummary(
       }
     }
 
-    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.unit_name`;
+    q = Prisma.sql`${q} GROUP BY i.id, i.name, i.category, i.sku, i.hsn_code, i.custom_fields, u.symbol, u.unit_name`;
 
     if (stockAvailability === 'gt') {
       q = Prisma.sql`${q} HAVING COALESCE(SUM(l.qty_in - l.qty_out), 0) > 0`;
@@ -175,35 +147,6 @@ export async function getInventoryValuationSummary(
       inventoryAssetValue: Number(row.inventoryAssetValue),
     }));
 
-    const asOf = asOfDate ? new Date(asOfDate) : null;
-    const discounts = mappedRows.length
-      ? await tx.$queryRaw<{ itemId: string; discount: Prisma.Decimal }[]>`
-          WITH billed AS (${BILLED_RECEIPT_DISCOUNT})
-          SELECT l.item_id AS "itemId",
-            SUM(billed.unit_discount * (l.qty - COALESCE(drawn.qty, 0))) AS "discount"
-          FROM stock_cost_layers l
-          JOIN stock_ledger e ON e.id = l.in_ledger_entry_id AND e.source_doc_type = 'job_receipt'
-          JOIN billed ON billed.receipt_id = e.source_doc_id AND billed.item_id = l.item_id
-          LEFT JOIN LATERAL (
-            SELECT SUM(d.qty) AS qty
-            FROM stock_layer_draws d
-            JOIN stock_ledger o ON o.id = d.out_ledger_entry_id
-            WHERE d.layer_id = l.id
-              AND d.reversed_at IS NULL
-              ${asOf ? Prisma.sql`AND o.posted_at <= ${asOf}::timestamptz` : Prisma.empty}
-          ) drawn ON true
-          WHERE l.organization_id = ${organizationId}::uuid
-            AND l.item_id = ANY(${mappedRows.map((row) => row.itemId)}::uuid[])
-            AND ${OWN_PLACE}
-            ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
-            ${asOf ? Prisma.sql`AND e.posted_at <= ${asOf}::timestamptz` : Prisma.empty}
-          GROUP BY l.item_id`
-      : [];
-    const discountByItem = new Map(discounts.map((d) => [d.itemId, Number(d.discount)]));
-    for (const row of mappedRows) {
-      row.inventoryAssetValue -= discountByItem.get(row.itemId) ?? 0;
-    }
-
     const totalQty = mappedRows.reduce((sum, row) => sum + row.stockOnHand, 0);
     const totalValue = mappedRows.reduce((sum, row) => sum + row.inventoryAssetValue, 0);
 
@@ -232,8 +175,19 @@ const DOC_LABELS: Record<string, string> = {
   job_issue: 'Job Issue',
   job_order_step: 'Job Order Write-off',
   item_assembly: 'Assembly',
+  inventory_adjustment: 'Stock Adjustment',
   purchase_order: 'Purchase Order',
 };
+
+// Documents whose cancel posts its reversals on the cancel date, so a group made
+// only of reversals is the cancellation. Bills are absent: an edit's reversal
+// carries the bill's own date and lands in the posting's group instead.
+const CANCELLED_BY_REVERSAL = new Set([
+  'job_issue',
+  'job_receipt',
+  'item_assembly',
+  'inventory_adjustment',
+]);
 
 /**
  * One row per document per place per posting moment, at the value the ledger
@@ -247,7 +201,7 @@ export async function getItemLedger(
   _query: ItemLedgerQuery,
 ): Promise<ItemLedgerResponse> {
   return runAsTenant(organizationId, async (tx) => {
-    const { fromDate, toDate } = _query;
+    const { fromDate, toDate, locationId } = _query;
 
     const item = await tx.item.findFirst({
       where: { organizationId, id: itemId },
@@ -263,6 +217,10 @@ export async function getItemLedger(
         value: Prisma.Decimal;
         sourceDocType: string;
         sourceDocId: string | null;
+        locationId: string;
+        createdAt: Date;
+        isReversal: boolean;
+        valueOnly: boolean;
       }[]
     >`
       SELECT
@@ -270,69 +228,22 @@ export async function getItemLedger(
         SUM(l.qty_in - l.qty_out) AS "qty",
         SUM(l.value_in - l.value_out) AS "value",
         l.source_doc_type AS "sourceDocType",
-        l.source_doc_id AS "sourceDocId"
+        l.source_doc_id AS "sourceDocId",
+        l.location_id AS "locationId",
+        MIN(l.created_at) AS "createdAt",
+        BOOL_AND(l.movement_type = 'reversal') AS "isReversal",
+        BOOL_AND(l.qty_in = 0 AND l.qty_out = 0) AS "valueOnly"
       FROM stock_ledger l
       WHERE l.organization_id = ${organizationId}::uuid
         AND l.item_id = ${itemId}::uuid
         AND l.ownership = 'own'
         AND l.stock_effect IN ('both', 'accounting')
-        AND ${COUNTED_SOURCE}
         AND ${OWN_PLACE}
         ${toDate ? Prisma.sql`AND l.posted_at <= ${new Date(toDate)}::timestamptz` : Prisma.empty}
+        ${locationId ? Prisma.sql`AND l.location_id = ${locationId}::uuid` : Prisma.empty}
       GROUP BY l.source_doc_type, l.source_doc_id, l.location_id, l.posted_at
       HAVING SUM(l.qty_in - l.qty_out) <> 0 OR SUM(l.value_in - l.value_out) <> 0
       ORDER BY l.posted_at ASC, MIN(l.created_at) ASC`;
-
-    // A billed receipt reads as its bill — at the receipt's date and cost, less the
-    // bill line's discount per unit.
-    const billedReceiptIds = [
-      ...new Set(
-        entries
-          .filter((e) => e.sourceDocType === 'job_receipt' && e.sourceDocId)
-          .map((e) => e.sourceDocId!),
-      ),
-    ];
-    const unitDiscountByReceipt = new Map<string, Prisma.Decimal>();
-    if (billedReceiptIds.length > 0) {
-      const billLines = (
-        await tx.billItem.findMany({
-          where: {
-            jobReceiptId: { in: billedReceiptIds },
-            itemId,
-            isDeleted: false,
-            bill: { organizationId, isDeleted: false },
-          },
-          select: {
-            jobReceiptId: true,
-            billId: true,
-            quantity: true,
-            discount: true,
-            bill: { select: { status: true } },
-          },
-        })
-      ).filter((line) => line.bill.status.toLowerCase() === 'open');
-      const billByReceipt = new Map(billLines.map((line) => [line.jobReceiptId!, line.billId]));
-      for (const receiptId of billByReceipt.keys()) {
-        const lines = billLines.filter((line) => line.jobReceiptId === receiptId);
-        const qty = lines.reduce((sum, line) => sum.plus(line.quantity), new Prisma.Decimal(0));
-        const discount = lines.reduce(
-          (sum, line) => sum.plus(line.discount ?? 0),
-          new Prisma.Decimal(0),
-        );
-        if (qty.greaterThan(0) && !discount.isZero()) {
-          unitDiscountByReceipt.set(receiptId, discount.dividedBy(qty));
-        }
-      }
-      for (const entry of entries) {
-        const billId = entry.sourceDocId && billByReceipt.get(entry.sourceDocId);
-        if (entry.sourceDocType === 'job_receipt' && billId) {
-          const unitDiscount = unitDiscountByReceipt.get(entry.sourceDocId!);
-          if (unitDiscount) entry.value = entry.value.minus(unitDiscount.times(entry.qty));
-          entry.sourceDocType = 'bill';
-          entry.sourceDocId = billId;
-        }
-      }
-    }
 
     const outDocIds = [
       ...new Set(
@@ -366,6 +277,7 @@ export async function getItemLedger(
         AND o.source_doc_id = ANY(${outDocIds}::uuid[])
         AND d.reversed_at IS NULL
       GROUP BY o.source_doc_id, i.source_doc_type, i.source_doc_id
+      ORDER BY o.source_doc_id, MIN(l.in_date) ASC, MIN(l.in_seq) ASC
     `
         : [];
 
@@ -407,6 +319,22 @@ export async function getItemLedger(
       });
       docs.forEach((d) => docNumbers.set(d.id, d.assemblyNumber));
     }
+    // Read off the draws as well: stock an adjustment ADDED is what a later row draws on.
+    const adjustmentIds = [
+      ...new Set([
+        ...idsOf('inventory_adjustment'),
+        ...draws
+          .filter((d) => d.inDocType === 'inventory_adjustment' && d.inDocId)
+          .map((d) => d.inDocId!),
+      ]),
+    ];
+    if (adjustmentIds.length > 0) {
+      const docs = await tx.stockAdjustment.findMany({
+        where: { organizationId, id: { in: adjustmentIds } },
+        select: { id: true, adjustmentNumber: true },
+      });
+      docs.forEach((d) => docNumbers.set(d.id, d.adjustmentNumber));
+    }
     const poIds = [
       ...new Set(
         draws.filter((d) => d.inDocType === 'purchase_order' && d.inDocId).map((d) => d.inDocId!),
@@ -418,6 +346,50 @@ export async function getItemLedger(
         select: { id: true, poNumber: true },
       });
       docs.forEach((d) => docNumbers.set(d.id, d.poNumber));
+    }
+
+    /**
+     * A value adjustment prints like Zoho's: per purchase entry it changed, the
+     * stock out at the old rate and back in at the new one (value plan §8). Read
+     * from what it did to each layer — its ledger rows carry value only.
+     */
+    const valueDocIds = [
+      ...new Set(
+        entries
+          .filter((e) => e.valueOnly && e.sourceDocType === 'inventory_adjustment' && e.sourceDocId)
+          .map((e) => e.sourceDocId!),
+      ),
+    ];
+    const revaluations = valueDocIds.length
+      ? await tx.$queryRaw<
+          {
+            docId: string;
+            locationId: string;
+            qty: Prisma.Decimal;
+            valueBefore: Prisma.Decimal;
+            valueAfter: Prisma.Decimal;
+          }[]
+        >`
+          SELECT e.source_doc_id AS "docId", e.location_id AS "locationId",
+                 SUM(r.qty) AS qty,
+                 SUM(r.value_before) AS "valueBefore",
+                 SUM(r.value_after) AS "valueAfter"
+          FROM stock_layer_revaluations r
+          JOIN stock_ledger e ON e.id = r.ledger_entry_id
+          JOIN stock_cost_layers c ON c.id = r.layer_id
+          LEFT JOIN stock_ledger ie ON ie.id = c.in_ledger_entry_id
+          WHERE e.organization_id = ${organizationId}::uuid
+            AND e.item_id = ${itemId}::uuid
+            AND e.source_doc_type = 'inventory_adjustment'
+            AND e.source_doc_id = ANY(${valueDocIds}::uuid[])
+          GROUP BY e.source_doc_id, e.location_id, ie.source_doc_type, ie.source_doc_id,
+                   c.in_date, CASE WHEN ie.id IS NULL THEN c.id END
+          ORDER BY MIN(c.in_date) DESC`
+      : [];
+    const pairsOf = new Map<string, typeof revaluations>();
+    for (const row of revaluations) {
+      const key = `${row.docId}|${row.locationId}`;
+      pairsOf.set(key, [...(pairsOf.get(key) ?? []), row]);
     }
 
     const drawsByOutDocId = new Map<string, { label: string; qty: number; value: number }[]>();
@@ -434,10 +406,8 @@ export async function getItemLedger(
       if (id && docNumbers.has(id)) {
         label = `${labelType} # ${docNumbers.get(id)}`;
       }
-      const unitDiscount = type === 'job_receipt' && id ? unitDiscountByReceipt.get(id) : undefined;
-      const value = unitDiscount ? draw.value.minus(unitDiscount.times(draw.qty)) : draw.value;
       const arr = drawsByOutDocId.get(draw.outDocId) || [];
-      arr.push({ label, qty: Number(draw.qty), value: Number(value) });
+      arr.push({ label, qty: Number(draw.qty), value: Number(draw.value) });
       drawsByOutDocId.set(draw.outDocId, arr);
     }
 
@@ -484,8 +454,49 @@ export async function getItemLedger(
 
       const entryDraws =
         qty < 0 && entry.sourceDocId ? drawsByOutDocId.get(entry.sourceDocId) : null;
+      const pairs =
+        entry.valueOnly && entry.sourceDocId
+          ? pairsOf.get(`${entry.sourceDocId}|${entry.locationId}`)
+          : undefined;
 
-      if (entryDraws && entryDraws.length > 0) {
+      if (pairs && pairs.length > 0) {
+        // A cancellation is its own event even straight after the posting.
+        const head = !isSameAsPrevious || entry.isReversal;
+        for (const [index, pair] of pairs.entries()) {
+          const q = Number(pair.qty);
+          // A cancellation is the mirror: out at the new rate, back in at the old.
+          const [outValue, inValue] = entry.isReversal
+            ? [Number(pair.valueAfter), Number(pair.valueBefore)]
+            : [Number(pair.valueBefore), Number(pair.valueAfter)];
+          const first = head && index === 0;
+          currentValue += inValue - outValue;
+          rows.push({
+            isCancellation: first && entry.isReversal,
+            date: first ? entry.date.toISOString() : null,
+            transactionDetails: first ? 'Inventory Adjustment By Value' : '',
+            quantity: -q,
+            unitCost: Math.abs(outValue / q),
+            totalCost: -outValue,
+            stockOnHand: null,
+            inventoryAssetValue: null,
+            sourceDocType: first ? entry.sourceDocType : null,
+            sourceDocId: first ? entry.sourceDocId : null,
+            sourceDocNumber: first ? docNumbers.get(entry.sourceDocId!) || null : null,
+          });
+          rows.push({
+            date: null,
+            transactionDetails: '',
+            quantity: q,
+            unitCost: Math.abs(inValue / q),
+            totalCost: inValue,
+            stockOnHand: currentQty,
+            inventoryAssetValue: currentValue,
+            sourceDocType: null,
+            sourceDocId: null,
+            sourceDocNumber: null,
+          });
+        }
+      } else if (entryDraws && entryDraws.length > 0) {
         let first = true;
         for (const draw of entryDraws) {
           const drawQty = -draw.qty; // draw qty is positive, we want outflow to be negative
@@ -494,6 +505,11 @@ export async function getItemLedger(
           currentValue += drawValue;
 
           rows.push({
+            isCancellation:
+              !isSameAsPrevious &&
+              first &&
+              entry.isReversal &&
+              CANCELLED_BY_REVERSAL.has(entry.sourceDocType),
             date: !isSameAsPrevious && first ? entry.date.toISOString() : null,
             transactionDetails:
               !isSameAsPrevious && first
@@ -520,6 +536,8 @@ export async function getItemLedger(
         currentValue += value;
 
         rows.push({
+          isCancellation:
+            !isSameAsPrevious && entry.isReversal && CANCELLED_BY_REVERSAL.has(entry.sourceDocType),
           date: isSameAsPrevious ? null : entry.date.toISOString(),
           transactionDetails: isSameAsPrevious
             ? ''
@@ -557,7 +575,7 @@ export async function getItemLedger(
       itemInfo: {
         itemName: item.name,
         sku: item.sku,
-        uomName: item.stockingUom?.unitName || null,
+        uomName: item.stockingUom?.symbol || item.stockingUom?.unitName || null,
       },
       rows,
     };

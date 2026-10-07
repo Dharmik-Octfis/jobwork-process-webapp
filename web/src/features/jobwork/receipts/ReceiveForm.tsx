@@ -8,6 +8,9 @@ import { Select } from '../../../components/ui/Select';
 import { SplitButton } from '../../../components/ui/SplitButton';
 import { RadioGroup } from '../../../components/ui/RadioGroup';
 import { InfoTip } from '../../../components/ui/InfoTip';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import {
   LOCATION_KIND_LABELS,
   fetchLocations,
@@ -34,6 +37,7 @@ import type {
   JobReceipt,
   JobReceiptBatchAllocationData,
   JobReceiptLineData,
+  ReceiptBatchOption,
 } from './jobReceipts.schemas';
 import { BatchAllocationModal, type BatchAllocation } from './BatchAllocationModal';
 import { isExistingUnit, isSubmittableUnit } from '../../../components/inventory/batchUnits';
@@ -48,13 +52,13 @@ interface Props {
    * 🔴 EDITING A PARKED DRAFT. Present, and this form REPLACES that receipt
    * instead of creating one — same id, same receipt number.
    *
-   * 🔴 What it restores is everything EXCEPT the batch allocations. A draft
-   * cannot hold a batch it is creating (`job_receipt_output_batches.batch_id` is
-   * a NOT NULL key to a real batch, and minting one to park a form is the thing
-   * this whole path avoids), so the batch reference is asked for again. The
-   * quantities, the challans and the notes all come back.
+   * It restores everything, as the Issue form does: quantities, challans, notes,
+   * and every batch with its takas — new batches (kept as draft batches since
+   * 2026-09-29) and top-ups of existing ones (see `draftAllocations`).
    */
   draft?: JobReceipt | null;
+  /** Opened from a challan: that one starts ticked, the rest stay tickable. */
+  initialIssueId?: string | null;
 }
 
 /**
@@ -211,7 +215,14 @@ const sectionHeading: React.CSSProperties = {
  *    out from the job order's plan (landed-cost R4) and may be typed over; what
  *    was sent and not used stays with the processor until the step is completed.
  */
-export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Props) {
+export function ReceiveForm({
+  jobOrder,
+  step,
+  onReceived,
+  onCancel,
+  draft,
+  initialIssueId,
+}: Props) {
   const { orgId } = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
@@ -220,20 +231,16 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   const unitLabel = useBatchUnitLabel();
 
   /**
-   * `null` means "everything that is open" — every challan pre-ticked, which is
-   * the normal case. Storing the default as null rather than seeding an array in
-   * an effect is what lets the prefill arrive without a second render, and what
-   * stops a re-fetch from silently re-ticking something the user un-ticked.
-   */
-  /**
-   * Seeded from the draft at mount — the page only renders this form once the
-   * draft has loaded, and remounts it by `key`, so the initial value is enough
-   * and no effect is needed to fill it in afterwards.
+   * Seeded from the draft (or the challan this was opened from) at mount — the
+   * page only renders this form once the draft has loaded, and remounts it by
+   * `key`, so the initial value is enough and no effect is needed afterwards.
    */
   const [pickedIssueIds, setPickedIssueIds] = useState<string[]>(() =>
     draft
       ? [...new Set(draft.lines.flatMap((line) => (line.jobIssueId ? [line.jobIssueId] : [])))]
-      : [],
+      : initialIssueId
+        ? [initialIssueId]
+        : [],
   );
   /** 🔴 Default empty array: picking the first batch of receipts is the
    * user's job, not a guess the system makes by pre-selecting every open
@@ -261,6 +268,10 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   );
   const [locationId, setLocationId] = useState(draft?.locationId ?? '');
   const [remarks, setRemarks] = useState(draft?.remarks ?? '');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>(
+    (draft?.customFields as CustomFieldValues) ?? {},
+  );
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'job_receipt');
   /**
    * 🔴 THE USED FIGURES SOMEBODY TYPED, per input item. An item absent (or null)
    * follows the calculation — so clearing a box hands it back to the plan.
@@ -284,11 +295,67 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * What could not be carried over from the draft. Derived, not state: it is a
    * fact about the draft that never changes while this form is open.
    */
+  /**
+   * 🔴 THE PICKER ROWS FOR THE EXISTING BATCHES A DRAFT ADDS TO. A top-up row
+   * renders from its `option` — balances, where it sits, its takas — which the
+   * draft does not store, so they are fetched once, by id, through the picker's
+   * own endpoint. Same filters as the picker, so a batch it would no longer offer
+   * does not come back and its row is left for the user to select again.
+   */
+  const topUpBatchIdsByItem = useMemo(() => {
+    const byItem = new Map<string, string[]>();
+    for (const output of draft?.outputs ?? []) {
+      const ids = [
+        ...new Set(
+          output.batches.filter((row) => row.batch.state !== 'draft').map((row) => row.batch.id),
+        ),
+      ];
+      if (ids.length) byItem.set(output.itemId, ids);
+    }
+    return byItem;
+  }, [draft]);
+  const { data: topUpOptions, isLoading: isLoadingTopUps } = useQuery({
+    queryKey: ['receipt-draft-top-ups', orgId, step.id, draft?.id, unitLabel.enabled],
+    queryFn: async () => {
+      // One request per item, independent of each other — so they overlap.
+      const pages = await Promise.all(
+        [...topUpBatchIdsByItem].map(([itemId, batchIds]) =>
+          fetchReceiptBatchOptions(orgId!, {
+            stepId: step.id,
+            itemId,
+            batchIds,
+            withUnits: unitLabel.enabled,
+          }),
+        ),
+      );
+      return new Map(
+        pages
+          .flatMap((page) => [...page.jobOrderBatches, ...page.otherBatches])
+          .map((option) => [option.batchId, option]),
+      );
+    },
+    enabled: Boolean(orgId) && topUpBatchIdsByItem.size > 0,
+  });
+  const optionByBatchId = topUpOptions ?? EMPTY_OPTIONS;
+
   const draftNotice =
-    draft && (draft.outputs ?? []).some((output) => toNumber(output.acceptedQty) > 0)
-      ? 'Quantities and challans have been restored. The batch the goods came into is not kept on ' +
-        'a draft — that batch does not exist until the receipt is posted — so allocate it again ' +
-        'before receiving.'
+    draft &&
+    !isLoadingTopUps &&
+    (draft.outputs ?? []).some((output) => {
+      // An untracked item allocates nothing, so there is nothing to have lost.
+      if (output.item?.inventoryTracking !== 'batch') return false;
+      const restored = (kind: 'accepted' | 'rework') =>
+        draftAllocations(output.batches, kind, optionByBatchId).reduce(
+          (sum, row) => sum + row.qty,
+          0,
+        );
+      return (
+        Math.abs(toNumber(output.acceptedQty) - restored('accepted')) > 0.00005 ||
+        Math.abs(toNumber(output.reworkQty) - restored('rework')) > 0.00005
+      );
+    })
+      ? 'Quantities and challans have been restored, but not every batch the goods came into. ' +
+        'Allocate the rest before receiving.'
       : null;
   /** Which returned row's batches are being allocated, and for which side. Null
    * closes the grid — and unmounts it, which is what lets it seed itself once. */
@@ -462,7 +529,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
 
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'receive'],
-    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500 }),
+    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500, filter: 'active' }),
     enabled: Boolean(orgId),
   });
   const items = itemsPage?.results ?? [];
@@ -478,12 +545,19 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
   // Checked challans. By default, none are checked (unlike before where all were).
   // A draft may name a challan another receipt has closed since; it cannot be
   // received against, and is not on screen to untick, so it is dropped (R14).
+  // The challan this was opened from may have come back in full since the link was
+  // shown; like a closed one it is off screen, so it is dropped rather than sent.
+  const initialIssueGone = Boolean(
+    initialIssueId && prefill && !prefill.issues.some((issue) => issue.id === initialIssueId),
+  );
   const selectedIssueIds = useMemo(
     () =>
       pickedIssueIds.filter(
-        (id) => !(prefill?.closedIssues ?? []).some((issue) => issue.id === id),
+        (id) =>
+          !(prefill?.closedIssues ?? []).some((issue) => issue.id === id) &&
+          !(initialIssueGone && id === initialIssueId),
       ),
-    [pickedIssueIds, prefill],
+    [pickedIssueIds, prefill, initialIssueGone, initialIssueId],
   );
   // Unticking a challan un-closes it — closing needs the challan on the receipt.
   const closedIssueIds = useMemo(
@@ -575,14 +649,13 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
    * and the draft stores neither — it saved quantities against an item id, and
    * the names live on the step's plan.
    *
-   * 🔴 `batches` stays EMPTY even on a draft. A `BatchAllocation` carries the
-   * option object from a live picker search, and a NEW batch was never stored at
-   * all, so there is nothing honest to put here — `draftNotice` says so rather
-   * than letting somebody press Receive and be refused by the server.
+   * A draft's batches come back whole (`draftAllocations`), top-ups included — so
+   * this also waits on their picker rows, or the first edit would freeze the
+   * grid without them.
    */
   const returnedRows: ReturnedRow[] = useMemo(() => {
     if (returnedEdits) return returnedEdits;
-    if (!prefill) return [];
+    if (!prefill || isLoadingTopUps) return [];
     // 🔴 The step's own main output leads the list, because the FIRST row is what
     // carries the cost (see the note on the Value column). Left in seq order, a
     // step whose main output happened to be typed second would put the cost on a
@@ -597,16 +670,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
         itemId: output.itemId,
         itemName: output.itemName,
         unit: output.uomSymbol ?? '',
-        receivedQty: row
-          ? toNumber(row.receivedQty)
-          : output.expectedQty
-            ? toNumber(output.expectedQty)
-            : 0,
-        acceptedQty: row
-          ? toNumber(row.acceptedQty)
-          : output.expectedQty
-            ? toNumber(output.expectedQty)
-            : 0,
+        receivedQty: row ? toNumber(row.receivedQty) : 0,
+        acceptedQty: row ? toNumber(row.acceptedQty) : 0,
         reworkQty: row ? toNumber(row.reworkQty) : 0,
         // Always zero. This form never sends anything else — goods refused at the
         // gate never entered stock — so there is nothing to restore.
@@ -619,11 +684,11 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
               ? toNumber(output.rate)
               : null,
         remarks: row?.remarks ?? '',
-        batches: [] as BatchAllocation[],
-        reworkBatches: [] as BatchAllocation[],
+        batches: draftAllocations(row?.batches, 'accepted', optionByBatchId),
+        reworkBatches: draftAllocations(row?.batches, 'rework', optionByBatchId),
       };
     });
-  }, [returnedEdits, prefill, draft]);
+  }, [returnedEdits, prefill, draft, isLoadingTopUps, optionByBatchId]);
 
   // What came back is typed on the returned rows, full stop. Under unit_wise the
   // first returned row used to be DERIVED from the consumed rows' per-taka split;
@@ -909,6 +974,7 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
             responsibility: null,
           })),
         remarks: remarks.trim() || null,
+        customFields,
         saveAsDraft,
       };
       return draft
@@ -919,6 +985,8 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, jobOrder.id] });
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-issues', orgId] });
+      // An open challan's Receive button depends on what is still out against it.
+      queryClient.invalidateQueries({ queryKey: ['job-issue', orgId] });
       // The goods just landed in a godown, under batches this receipt may have
       // created — the pickers, the location balances and the Item page all move.
       invalidateStockQueries(queryClient, orgId);
@@ -1013,19 +1081,26 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
     key: string,
     kind: 'accepted' | 'rework',
     allocation: BatchAllocation[],
+    overwriteQty?: number | null,
   ) => {
-    if (kind === 'rework') {
-      updateReturned(key, { reworkBatches: allocation });
-      return;
-    }
     const row = effectiveReturned.find((r) => r.key === key);
     if (!row) return;
+
+    if (kind === 'rework') {
+      updateReturned(key, {
+        reworkBatches: allocation,
+        ...(overwriteQty != null ? { reworkQty: overwriteQty } : {}),
+      });
+      return;
+    }
     const total = Number(allocation.reduce((sum, r) => sum + r.qty, 0).toFixed(4));
     updateReturned(key, {
       batches: allocation,
-      ...(row.receivedQty <= 0 && total > 0
-        ? { receivedQty: Number((total + row.reworkQty).toFixed(4)) }
-        : {}),
+      ...(overwriteQty != null
+        ? { receivedQty: Number((overwriteQty + row.reworkQty).toFixed(4)) }
+        : row.receivedQty <= 0 && total > 0
+          ? { receivedQty: Number((total + row.reworkQty).toFixed(4)) }
+          : {}),
     });
   };
 
@@ -1182,6 +1257,21 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
             </div>
           </section>
 
+          {customFieldDefs.length > 0 && (
+            <section style={{ maxWidth: 900, marginBottom: 20 }}>
+              <h3 style={sectionHeading}>Custom Fields</h3>
+              <CustomFieldsSection
+                orgId={orgId!}
+                entityType="job_receipt"
+                values={customFields}
+                onChange={setCustomFields}
+                errors={fieldErrors}
+                applyDefaults={!draft}
+                layout="rows"
+              />
+            </section>
+          )}
+
           <section style={{ marginBottom: 20 }}>
             {/* 🔴 The warning that stood here — "ticking a challan closes it
                 permanently, any unreceived quantity becomes scrap" — described
@@ -1233,6 +1323,12 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
                   Nothing is currently out against this step.
                 </span>
               )}
+              {initialIssueGone &&
+                !prefill.closedIssues.some((issue) => issue.id === initialIssueId) && (
+                  <span style={{ fontSize: 13, color: '#b45309', flexBasis: '100%' }}>
+                    The challan you opened this from has nothing left to receive.
+                  </span>
+                )}
               {prefill.issues.map((issue) => {
                 const ticked = selectedIssueIds.includes(issue.id);
                 const closed = closedIssueIds.includes(issue.id);
@@ -1802,7 +1898,9 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
           search={batchSearch}
           onSearchChange={setBatchSearch}
           isLoading={isLoadingBatches}
-          onSave={(rows) => saveAllocation(allocating.key, allocating.kind, rows)}
+          onSave={(rows, overwriteQty) =>
+            saveAllocation(allocating.key, allocating.kind, rows, overwriteQty)
+          }
         />
       )}
       <div
@@ -1872,6 +1970,74 @@ export function ReceiveForm({ jobOrder, step, onReceived, onCancel, draft }: Pro
  * price stated" and "free" can be told apart, and `Number('')` is 0 — so the
  * emptiness is tested before the conversion, never after.
  */
+const EMPTY_OPTIONS: ReadonlyMap<string, ReceiptBatchOption> = new Map();
+
+/**
+ * A draft's batches, back as the grid's rows — the same rows the user saved.
+ *
+ * · A `state = 'draft'` batch is one the draft CREATED: it goes back as a NEW row
+ *   with its reference, attributes and takas, because posting replaces it with a
+ *   real batch.
+ * · Any other batch is a TOP-UP: it goes back as an EXISTING row, which renders
+ *   from its picker `option`. A taka the draft named goes back as a label; one it
+ *   added to goes back as a pick. With no option (the picker no longer offers the
+ *   batch) the row is left out and `draftNotice` says so.
+ */
+function draftAllocations(
+  rows: JobReceipt['outputs'][number]['batches'] | undefined,
+  kind: 'accepted' | 'rework',
+  optionByBatchId: ReadonlyMap<string, ReceiptBatchOption>,
+): BatchAllocation[] {
+  const text = (value: string | number | null | undefined) =>
+    value === null || value === undefined ? '' : String(value);
+  const unitRows = (row: NonNullable<typeof rows>[number]) =>
+    row.units.map((unit) => ({
+      id: crypto.randomUUID(),
+      label: unit.label,
+      quantity: String(toNumber(unit.qty)),
+      ...(unit.isNew === false ? { batchUnitId: unit.id } : {}),
+    }));
+
+  return (rows ?? [])
+    .filter((row) => row.kind === kind)
+    .flatMap((row): BatchAllocation[] => {
+      if (row.batch.state !== 'draft') {
+        const option = optionByBatchId.get(row.batch.id);
+        if (!option) return [];
+        return [
+          {
+            batchId: row.batch.id,
+            batchReference: option.supplierBatchRef ?? '',
+            qty: toNumber(row.qty),
+            option,
+            // Never sent beside a `batchId` — an existing batch is not restamped.
+            manufacturerBatch: '',
+            manufacturedDate: '',
+            expiryDate: '',
+            sellingPrice: '',
+            mrp: '',
+            units: unitRows(row),
+          },
+        ];
+      }
+      return [
+        {
+          batchId: null,
+          batchReference: row.batch.supplierBatchRef ?? '',
+          qty: toNumber(row.qty),
+          option: null,
+          manufacturerBatch: row.batch.manufacturerBatch ?? '',
+          // `yyyy-mm-dd`, which is what `DateInput` emits and the payload sends.
+          manufacturedDate: (row.batch.manufacturedDate ?? '').slice(0, 10),
+          expiryDate: (row.batch.expiryDate ?? '').slice(0, 10),
+          sellingPrice: text(row.batch.sellingPrice),
+          mrp: text(row.batch.mrp),
+          units: unitRows(row),
+        },
+      ];
+    });
+}
+
 function toBatchPayload(batch: BatchAllocation): JobReceiptBatchAllocationData {
   /**
    * 🔴 PACKAGES RIDE ON BOTH KINDS OF ROW, where the five attributes ride on

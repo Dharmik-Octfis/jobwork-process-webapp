@@ -148,7 +148,7 @@ export function DeliveryAddressModal({
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {customers.map((cust) => {
+                  {customers.filter(cust => cust.status !== 'inactive' || selectedCustomerId === cust.id).map((cust) => {
                     const isSelected = selectedCustomerId === cust.id;
                     const addressString = [
                       cust.shippingStreet1,

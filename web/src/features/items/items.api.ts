@@ -67,18 +67,26 @@ export const itemsApi = {
     return response.data;
   },
 
+  fetchItemIssues: async (orgId: string, id: string, params: PageParams = {}) => {
+    const response = await apiClient.get(
+      `${endpoints.seedData.items(orgId)}/${id}/transactions/issues`,
+      { params },
+    );
+    return response.data;
+  },
+
+  fetchItemReceipts: async (orgId: string, id: string, params: PageParams = {}) => {
+    const response = await apiClient.get(
+      `${endpoints.seedData.items(orgId)}/${id}/transactions/receipts`,
+      { params },
+    );
+    return response.data;
+  },
+
   uploadImages: async (orgId: string, id: string, formData: FormData): Promise<Item> => {
-    const response = await apiClient.post(
+    const response = await apiClient.postForm(
       `${endpoints.seedData.items(orgId)}/${id}/images`,
-      formData,
-      {
-        transformRequest: [
-          (data, headers) => {
-            delete headers['Content-Type'];
-            return data;
-          },
-        ],
-      },
+      formData
     );
     return response.data;
   },
@@ -95,6 +103,11 @@ export const itemsApi = {
 
   getOpeningStock: async (orgId: string, id: string): Promise<ItemOpeningStockLocationRowDto[]> => {
     const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/opening-stock`);
+    return response.data;
+  },
+
+  getStockSummary: async (orgId: string, id: string): Promise<{ stockIn: number; stockOut: number }> => {
+    const response = await apiClient.get(`${endpoints.seedData.items(orgId)}/${id}/stock-summary`);
     return response.data;
   },
 

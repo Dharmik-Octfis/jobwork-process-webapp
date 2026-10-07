@@ -29,7 +29,8 @@ export const organizationsApi = {
               organizationId: org.organizationId || org.organizationId,
 
               orgCode: org.orgCode || org.org_code,
-              accountCreatedDate: org.accountCreatedDate || org.account_created_date,
+              maxUsersLimit: org.maxUsersLimit,
+      accountCreatedDate: org.accountCreatedDate || org.account_created_date,
               address: org.address
                 ? {
                     ...org.address,
@@ -61,6 +62,7 @@ export const organizationsApi = {
       organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
+      maxUsersLimit: org.maxUsersLimit,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
       address: org.address
         ? {
@@ -91,6 +93,7 @@ export const organizationsApi = {
       organizationId: org.organizationId || org.organizationId,
 
       orgCode: org.orgCode || org.org_code,
+      maxUsersLimit: org.maxUsersLimit,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
       address: org.address
         ? {
@@ -109,11 +112,7 @@ export const organizationsApi = {
     const formData = new FormData();
     formData.append('logo', file);
 
-    const response = await apiClient.post(`/organizations/${id}/logo`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await apiClient.postForm(`/organizations/${id}/logo`, formData);
 
     const org = response.data.organization || response.data;
     return {
@@ -121,11 +120,14 @@ export const organizationsApi = {
       organizationId: org.organizationId || org.organizationId,
 
       logo_url: org.logo_url,
+      maxUsersLimit: org.maxUsersLimit,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
-      address: org.address ? {
-        ...org.address,
-        streetAddress1: org.address.streetAddress1 || org.address.street_address1,
-      } : undefined,
+      address: org.address
+        ? {
+            ...org.address,
+            streetAddress1: org.address.streetAddress1 || org.address.street_address1,
+          }
+        : undefined,
     };
   },
 
@@ -139,6 +141,7 @@ export const organizationsApi = {
 
       orgCode: org.orgCode || org.org_code,
       logo_url: org.logo_url,
+      maxUsersLimit: org.maxUsersLimit,
       accountCreatedDate: org.accountCreatedDate || org.account_created_date,
       address: org.address
         ? {

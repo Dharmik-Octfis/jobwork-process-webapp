@@ -80,23 +80,50 @@ export function typeHasOptions(value: DataType): boolean {
   return DATA_TYPE_OPTIONS.find((t) => t.value === value)?.hasOptions ?? false;
 }
 
-/** Modules that support custom fields today. */
+/**
+ * Modules offered in Settings → Customization. Listed only when the module's form
+ * renders `CustomFieldsSection` — a module with no input would let an admin define
+ * a field nobody can fill in (why Rejection Reason, Batch and User are absent).
+ *
+ * 🔴 Order is the main sidebar's: Item, Inventory, Sales, Purchases, Jobwork, and
+ * each group's children in their `app_modules` sort order (`prisma/seed.ts`).
+ */
 export const CUSTOM_FIELD_MODULES: Array<{
   entityType: string;
   label: string;
   description: string;
 }> = [
+  { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
   {
-    entityType: 'vendor',
-    label: 'Vendor',
-    description: 'Add fields to the vendor create & edit form.',
+    entityType: 'item_assembly',
+    label: 'Assembly',
+    description: 'Add fields to the assembly form.',
+  },
+  {
+    entityType: 'stock_adjustment',
+    label: 'Inventory Adjustment',
+    description: 'Add fields to the inventory adjustment form.',
   },
   {
     entityType: 'customer',
     label: 'Customer',
     description: 'Add fields to the customer create & edit form.',
   },
-  { entityType: 'item', label: 'Item', description: 'Add fields to the item create & edit form.' },
+  {
+    entityType: 'sales_order',
+    label: 'Sales Order',
+    description: 'Add fields to the sales order create & edit form.',
+  },
+  {
+    entityType: 'vendor',
+    label: 'Vendor',
+    description: 'Add fields to the vendor create & edit form.',
+  },
+  {
+    entityType: 'purchase_order',
+    label: 'Purchase Order',
+    description: 'Add fields to the purchase order create & edit form.',
+  },
   {
     entityType: 'bill',
     label: 'Bill',
@@ -108,29 +135,14 @@ export const CUSTOM_FIELD_MODULES: Array<{
     description: 'Add fields to the job order form and its steps.',
   },
   {
+    entityType: 'job_issue',
+    label: 'Issue',
+    description: 'Add fields to the issue (challan out) form.',
+  },
+  {
     entityType: 'job_receipt',
     label: 'Receipt',
     description: 'Add fields captured when goods come back from a processor.',
-  },
-  {
-    entityType: 'rejection_reason',
-    label: 'Rejection Reason',
-    description: 'Add fields to the rejection reason master.',
-  },
-  {
-    entityType: 'batch',
-    label: 'Batch',
-    // No list page — batches are picked from an availability query, never browsed —
-    // but Material In creates one, and an org may need to record what its own tags
-    // carry.
-    description: 'Add fields recorded against a batch when material is taken in.',
-  },
-  {
-    entityType: 'member',
-    label: 'User',
-    // Dragging rows in this module's field list sets their display order, which is
-    // also the order the `cf:` columns appear in on Settings → Users.
-    description: 'Add fields to a user’s record. Values are per-organization.',
   },
 ];
 

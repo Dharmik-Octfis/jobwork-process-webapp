@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 import { Modal } from '../../../components/ui/Modal';
 import { StepsGrid } from '../StepsGrid';
 import { emptyStep, emptyStepItem, toNumber } from '../jobwork.schemas';
 import { appendJobOrderSteps } from './jobOrders.api';
-import type { JobOrderStepData, OverviewStep } from './jobOrders.schemas';
+import {
+  unissuablePlanMessage,
+  type JobOrderStepData,
+  type OverviewStep,
+} from './jobOrders.schemas';
 
 interface Props {
   isOpen: boolean;
@@ -17,6 +21,8 @@ interface Props {
   /** own | customer, from the order. Decides which batches the planner may name —
    * one customer's goods must never be planned into another's order (§5.3). */
   ownership: string;
+  /** …and which customer, on a customer order. */
+  ownerPartyId: string | null;
   /** Every step already on the order, in seq order. */
   steps: OverviewStep[];
   onAdded: () => void;
@@ -32,10 +38,9 @@ interface Props {
  *
  * 🔴 NO STEP'S STATUS IS CONSULTED — not the last one's, not any. A step appended
  * after one that is pending, at a processor, or complete is the same step: it
- * arrives `pending`, and the chain rule the server already enforces
- * (`chainNotReady`) refuses to let it issue until the step above has returned
- * something. The only refusal is on the ORDER, and it is the server's: an order
- * closed short or cancelled takes no more work.
+ * arrives `pending` and is issued like any other. The only refusal is on the
+ * ORDER, and it is the server's: an order closed short or cancelled takes no more
+ * work.
  *
  * The grid is `StepsGrid` — the same control the create form uses, not a second
  * copy of it. `seqOffset` makes its captions read "Step 4" instead of "Step 1",
@@ -48,6 +53,7 @@ export function AddStepsDialog({
   jobOrderId,
   jobOrderNumber,
   ownership,
+  ownerPartyId,
   steps,
   onAdded,
 }: Props) {
@@ -118,7 +124,9 @@ export function AddStepsDialog({
         steps: rows.map((row) => ({ ...row, plannedInputQty: null })),
         reason: reason.trim() || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      const planWarning = unissuablePlanMessage(saved);
+      if (planWarning) notify.warning(planWarning);
       onAdded();
       onClose();
     },
@@ -132,14 +140,14 @@ export function AddStepsDialog({
   const submit = () => {
     const missing = rows.findIndex((row) => !row.processId);
     if (missing >= 0) {
-      toast.error(`Step ${startSeq + missing} needs a process.`);
+      notify.error(`Step ${startSeq + missing} needs a process.`);
       return;
     }
     // A step that consumes nothing has nothing to issue, and the failure would
     // otherwise surface days later as an Issue dialog with no sections in it.
     const empty = rows.findIndex((row) => (row.inputs ?? []).length === 0);
     if (empty >= 0) {
-      toast.error(`Step ${startSeq + empty} consumes nothing. Add at least one item to it.`);
+      notify.error(`Step ${startSeq + empty} consumes nothing. Add at least one item to it.`);
       return;
     }
     setFieldErrors({});
@@ -198,6 +206,7 @@ export function AddStepsDialog({
         showPlannedQty
         allowPlannedBatches
         ownership={ownership}
+        ownerPartyId={ownerPartyId}
         seqOffset={startSeq - 1}
         priorProducers={priorProducers}
         priorSpare={priorSpare}

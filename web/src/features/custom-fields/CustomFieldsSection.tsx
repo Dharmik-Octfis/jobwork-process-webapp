@@ -67,9 +67,24 @@ export function CustomFieldsSection({
     let changed = false;
     const merged: CustomFieldValues = { ...values };
     for (const def of fields) {
-      if (!(def.key in merged) && def.config?.defaultValue !== undefined) {
-        merged[def.key] = def.config.defaultValue;
-        changed = true;
+      if (!(def.key in merged)) {
+        if (['date', 'datetime', 'time'].includes(def.dataType)) {
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, '0');
+          if (def.dataType === 'date') {
+            merged[def.key] = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+          } else if (def.dataType === 'datetime') {
+            merged[def.key] = now.toISOString();
+          } else if (def.dataType === 'time') {
+            merged[def.key] = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+          }
+          changed = true;
+          continue;
+        }
+        if (def.config?.defaultValue !== undefined) {
+          merged[def.key] = def.config.defaultValue;
+          changed = true;
+        }
       }
     }
     if (changed) onChange(merged);

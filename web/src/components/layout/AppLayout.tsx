@@ -33,6 +33,9 @@ import {
   Check,
   Menu,
   BarChart2,
+  CheckSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useAuth } from '../../providers/auth-context';
@@ -47,8 +50,10 @@ import { LAST_ORG_KEY } from '../../routes/OrgRedirect';
 import { fetchVendors } from '../../features/purchases/vendors/vendors.api';
 import { fetchCustomers } from '../../features/sales/customers/customers.api';
 import { itemsApi } from '../../features/items/items.api';
+import { approvalsApi } from '../../features/approvals/approvals.api';
 import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
 import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
+import { fetchAdjustments } from '../../features/inventory/adjustments/adjustments.api';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 /**
@@ -57,7 +62,9 @@ import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
  * absolute paths — see `navPath` below and app/router.tsx.
  */
 const ROUTE_MAP: Record<string, string> = {
-  DASHBOARD: '',
+  // HOME, not DASHBOARD: the old `DASHBOARD` app_modules row has no entry here, so
+  // `navigableModules` drops it and Home cannot render twice where it still exists.
+  HOME: '',
   REPORTS: '/reports',
   PURCHASES: '/purchases',
   VENDORS: '/purchases/vendors',
@@ -66,16 +73,19 @@ const ROUTE_MAP: Record<string, string> = {
   PURCHASE_ORDERS: '/purchases/purchase-orders',
   SALES: '/sales',
   CUSTOMERS: '/sales/customers',
+  SALES_ORDERS: '/sales/sales-orders',
   ITEMS: '/items',
   COMPOSITE_ITEMS: '/composite-items',
   INVENTORY_MANAGEMENT: '/inventory',
   ASSEMBLY: '/inventory/assembly',
+  STOCK_ADJUSTMENTS: '/inventory/adjustments',
   JOBWORK: '/jobwork',
   // No PROCESSES/ROUTES — both masters live under Settings since 2026-08-10 and
   // are reached from SettingsLayout's nav, not this one.
   JOB_ORDERS: '/jobwork/job-orders',
   ISSUES: '/jobwork/issues',
   RECEIPTS: '/jobwork/receipts',
+  APPROVALS: '/approvals',
 };
 
 function navPath(moduleCode: string, orgId: string | undefined): string {
@@ -107,6 +117,19 @@ function navigableModules(modules: AppModule[]): AppModule[] {
   });
 }
 
+/** Home is shown to every member, like My Jobs, so it lives in code rather than
+ *  `app_modules`. Rendered through `ModuleNavGroup` to keep the same look. */
+const HOME_MODULE: AppModule = {
+  id: 'home',
+  code: 'HOME',
+  name: 'Home',
+  parentId: null,
+  sortIndex: 0,
+  icon: 'Home',
+  isActive: true,
+  children: [],
+};
+
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
   Home,
@@ -121,6 +144,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Send,
   PackageCheck,
   BarChart2,
+  CheckSquare,
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -187,6 +211,17 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
         subtitle: i.sku ? `SKU: ${i.sku}` : undefined,
       })),
     to: (orgId, id) => `/organizations/${orgId}/items?id=${id}`,
+  },
+  {
+    match: '/inventory/adjustments',
+    label: 'Inventory Adjustments',
+    fetch: async (orgId, term) =>
+      (await fetchAdjustments(orgId, { search: term, perPage: 6 })).results.map((a) => ({
+        id: a.id,
+        title: a.adjustmentNumber,
+        subtitle: a.lines[0]?.item.name,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/inventory/adjustments?id=${id}`,
   },
   {
     // No Processes entry: that list moved under Settings, which renders outside
@@ -412,7 +447,7 @@ export function AppLayout() {
     queryKey: ['modules'],
     queryFn: fetchAppModules,
   });
-  const modules = navigableModules(fetchedModules);
+  const modules = [HOME_MODULE, ...navigableModules(fetchedModules)];
 
   // The URL is the single source of truth for which organization is active.
   // Previously this was React state mirrored into localStorage, which meant the
@@ -427,6 +462,15 @@ export function AppLayout() {
   const activeOrg =
     organizations?.find((o) => o.organizationId === effectiveOrgId) || organizations?.[0];
 
+  // Query pending approvals for the current user to display badge count
+  const { data: myApprovalsData } = useQuery({
+    queryKey: ['my-pending-approvals-count', effectiveOrgId],
+    queryFn: () => approvalsApi.listRequests(effectiveOrgId!, { tab: 'my', limit: 1 }),
+    enabled: Boolean(effectiveOrgId),
+    refetchInterval: 30000,
+  });
+  const pendingApprovalsCount = myApprovalsData?.total || 0;
+
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [prevPathname, setPrevPathname] = useState(location.pathname);
   const [prevModulesLength, setPrevModulesLength] = useState(0);
@@ -434,6 +478,20 @@ export function AppLayout() {
   const [prevOrgId, setPrevOrgId] = useState(activeOrgId);
   const [prevLogoUrl, setPrevLogoUrl] = useState(activeOrg?.logo_url);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const isRouteCollapsed = location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
+    const stored = localStorage.getItem('sidebar-collapsed');
+    return stored !== null ? stored === 'true' : null;
+  });
+  
+  const isSidebarCollapsed = userCollapsed !== null ? userCollapsed : isRouteCollapsed;
+
+  const toggleSidebar = () => {
+    const next = !isSidebarCollapsed;
+    setUserCollapsed(next);
+    localStorage.setItem('sidebar-collapsed', String(next));
+  };
 
   if (activeOrgId !== prevOrgId) {
     setPrevOrgId(activeOrgId);
@@ -449,6 +507,12 @@ export function AppLayout() {
     setPrevPathname(location.pathname);
     setPrevModulesLength(modules.length);
     if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+    
+    // Auto-collapse if navigating to reports or opening stock
+    if (location.pathname.includes('/reports') || location.pathname.endsWith('/opening-stock')) {
+      setUserCollapsed(true);
+    }
+
     const effectiveOrgId = activeOrgId || localStorage.getItem(LAST_ORG_KEY) || undefined;
     const activeModule = modules.find((m) =>
       m.children?.some((c) => {
@@ -460,9 +524,6 @@ export function AppLayout() {
       setExpandedModuleId(activeModule.id);
     }
   }
-
-  const isSidebarCollapsed =
-    location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
 
   // Remember it only so `/` can send the user back here next visit (OrgRedirect).
   // Not an authorization input: the server re-checks membership on every request.
@@ -544,7 +605,6 @@ export function AppLayout() {
                 maxWidth: isSidebarCollapsed ? 40 : 180,
                 maxHeight: 36,
                 width: 'auto',
-                height: 'auto',
                 objectFit: 'contain',
                 display: 'block',
                 transition: 'max-width 0.3s ease',
@@ -617,6 +677,71 @@ export function AppLayout() {
               isSidebarCollapsed={isSidebarCollapsed}
             />
           ))}
+
+          {effectiveOrgId && (
+            <NavLink
+              to={`/organizations/${effectiveOrgId}/approvals`}
+              className="sidebar-nav-link"
+              title={
+                pendingApprovalsCount > 0 ? `My Jobs (${pendingApprovalsCount} pending)` : 'My Jobs'
+              }
+              style={({ isActive }) => ({
+                display: 'flex',
+                flexDirection: isSidebarCollapsed ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
+                padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
+                borderRadius: 'var(--radius-md)',
+                textDecoration: 'none',
+                color: isActive ? 'white' : 'rgba(255,255,255,0.7)',
+                background: isActive ? '#186337' : 'transparent',
+                fontWeight: isActive ? 600 : 500,
+                transition: 'all 0.2s ease',
+                position: 'relative',
+              })}
+            >
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <CheckSquare size={18} />
+                {isSidebarCollapsed && pendingApprovalsCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -5,
+                      right: -8,
+                      background: '#ef4444',
+                      color: 'white',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      borderRadius: '8px',
+                      padding: '1px 4px',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {pendingApprovalsCount > 99 ? '99+' : pendingApprovalsCount}
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: isSidebarCollapsed ? 10 : 13, flex: 1 }}>My Jobs</span>
+              {!isSidebarCollapsed && pendingApprovalsCount > 0 && (
+                <span
+                  style={{
+                    background: '#ef4444',
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    borderRadius: '10px',
+                    padding: '2px 7px',
+                    minWidth: '18px',
+                    textAlign: 'center',
+                    lineHeight: 1,
+                  }}
+                >
+                  {pendingApprovalsCount > 99 ? '99+' : pendingApprovalsCount}
+                </span>
+              )}
+            </NavLink>
+          )}
         </nav>
 
         {/* Bottom Settings Link */}
@@ -668,6 +793,48 @@ export function AppLayout() {
             </NavLink>
           </div>
         )}
+        
+        {/* Toggle Sidebar Button */}
+        <div
+          style={{
+            height: '44px',
+            boxSizing: 'border-box',
+            padding: isSidebarCollapsed ? '0 8px' : '0 var(--space-3)',
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isSidebarCollapsed ? 'center' : 'flex-end',
+          }}
+        >
+          <button
+            onClick={toggleSidebar}
+            style={{
+              width: '100%',
+              display: 'flex',
+              flexDirection: isSidebarCollapsed ? 'column' : 'row',
+              alignItems: 'center',
+              justifyContent: isSidebarCollapsed ? 'center' : 'flex-end',
+              gap: isSidebarCollapsed ? '4px' : 'var(--space-3)',
+              padding: isSidebarCollapsed ? '8px 4px' : '6px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              background: 'transparent',
+              color: 'rgba(255,255,255,0.7)',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'white')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {isSidebarCollapsed ? (
+              <PanelLeftOpen size={22} />
+            ) : (
+              <PanelLeftClose size={22} />
+            )}
+          </button>
+        </div>
       </aside>
 
       {/* Main Container */}
@@ -947,7 +1114,7 @@ function ModuleNavGroup({
     return (
       <NavLink
         to={to}
-        end={module.code === 'DASHBOARD'}
+        end={module.code === 'HOME'}
         className="sidebar-nav-link"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -982,6 +1149,8 @@ function ModuleNavGroup({
                 alignItems: 'center',
                 gap: 8,
                 justifyContent: 'flex-start',
+                overflow: 'hidden',
+                flex: 1,
               }}
             >
               {depth === 0 ? (
@@ -1144,7 +1313,7 @@ function ModuleNavGroup({
     >
       <NavLink
         to={isParent ? '#' : to}
-        end={module.code === 'DASHBOARD'}
+        end={module.code === 'HOME'}
         onClick={(e) => {
           if (isParent) e.preventDefault();
         }}

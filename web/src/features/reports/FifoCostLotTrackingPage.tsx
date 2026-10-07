@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect, useMemo } from 'react';
 import { format, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Menu, X, Filter, History } from 'lucide-react';
@@ -7,11 +7,12 @@ import { ItemSearchableSelect } from '../../components/ui/ItemSearchableSelect';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
+import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { reportsApi } from './reports.api';
+import { useRecordReportVisit } from './useRecordReportVisit';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import type { Item } from '../items/items.schemas';
-
 
 const iconButtonStyle = {
   background: '#fff',
@@ -66,23 +67,100 @@ const tdStyle = {
 export function FifoCostLotTrackingPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  const organizationName = useOrganizationName();
+  useRecordReportVisit(orgId, 'fifo_cost_lot_tracking');
+
+  const initialState = useMemo(() => {
+    if (!orgId) return null;
+    const key = `fifoCostLotTrackingState_${orgId}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+
+        const safeDate = (val: string | number | null | undefined, fallback: Date) => {
+          if (!val) return fallback;
+          const d = new Date(val);
+          return isNaN(d.getTime()) ? fallback : d;
+        };
+
+        parsed.fromDate = parsed.fromDate
+          ? safeDate(parsed.fromDate, startOfMonth(new Date()))
+          : undefined;
+        parsed.toDate = parsed.toDate ? safeDate(parsed.toDate, endOfDay(new Date())) : undefined;
+
+        if (parsed.appliedFilters) {
+          parsed.appliedFilters.fromDate = parsed.appliedFilters.fromDate
+            ? safeDate(parsed.appliedFilters.fromDate, startOfMonth(new Date()))
+            : undefined;
+          parsed.appliedFilters.toDate = parsed.appliedFilters.toDate
+            ? safeDate(parsed.appliedFilters.toDate, endOfDay(new Date()))
+            : undefined;
+        }
+
+        return parsed;
+      }
+    } catch (_e) {
+      // ignore parse errors and fallback to default state
+    }
+    return null;
+  }, [orgId]);
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const [dateRangeLabel, setDateRangeLabel] = useState('This Month');
-  const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
-  const [toDate, setToDate] = useState<Date | undefined>(endOfDay(new Date()));
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [locationId, setLocationId] = useState<string>('');
-  const [isProductOut, setIsProductOut] = useState(false);
+  const [dateRangeLabel, setDateRangeLabel] = useState(
+    initialState?.dateRangeLabel || 'This Month',
+  );
+  const [fromDate, setFromDate] = useState<Date | undefined>(
+    initialState?.fromDate || startOfMonth(new Date()),
+  );
+  const [toDate, setToDate] = useState<Date | undefined>(
+    initialState?.toDate || endOfDay(new Date()),
+  );
+  const [selectedItem, setSelectedItem] = useState<Item | null>(initialState?.selectedItem || null);
+  const [locationId, setLocationId] = useState<string>(initialState?.locationId || '');
+  const [isProductOut, setIsProductOut] = useState(initialState?.isProductOut || false);
 
-  const [appliedFilters, setAppliedFilters] = useState({
-    fromDate: startOfMonth(new Date()) as Date | undefined,
-    toDate: endOfDay(new Date()) as Date | undefined,
-    itemName: undefined as string | undefined,
-    locationName: undefined as string | undefined,
-    reportBasis: 'product_in' as 'product_in' | 'product_out',
-  });
+  const [appliedFilters, setAppliedFilters] = useState<{
+    fromDate: Date | undefined;
+    toDate: Date | undefined;
+    itemName: string | undefined;
+    locationName: string | undefined;
+    reportBasis: 'product_in' | 'product_out';
+  }>(
+    initialState?.appliedFilters || {
+      fromDate: startOfMonth(new Date()),
+      toDate: endOfDay(new Date()),
+      itemName: undefined,
+      locationName: undefined,
+      reportBasis: 'product_in',
+    },
+  );
+
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.setItem(
+      `fifoCostLotTrackingState_${orgId}`,
+      JSON.stringify({
+        dateRangeLabel,
+        fromDate,
+        toDate,
+        selectedItem,
+        locationId,
+        isProductOut,
+        appliedFilters,
+      }),
+    );
+  }, [
+    dateRangeLabel,
+    fromDate,
+    toDate,
+    selectedItem,
+    locationId,
+    isProductOut,
+    appliedFilters,
+    orgId,
+  ]);
 
   const [hasInitializedLoc, setHasInitializedLoc] = useState(false);
 
@@ -103,7 +181,9 @@ export function FifoCostLotTrackingPage() {
   }
 
   const locationOptions =
-    locations?.filter(isOwnLocation).map((loc) => ({ label: loc.name, value: loc.id })) || [];
+    locations
+      ?.filter((loc) => isOwnLocation(loc))
+      .map((loc) => ({ label: loc.name, value: loc.id })) || [];
 
   const locationName = locations?.find((loc) => loc.id === locationId)?.name;
 
@@ -166,10 +246,9 @@ export function FifoCostLotTrackingPage() {
           isLeftSame = true;
         }
       } else {
-        if (
-          dataRows[i].inTransaction &&
-          dataRows[i].inTransaction === dataRows[leftGroupStart].inTransaction
-        ) {
+        // By lot, not by document name: one document can hold lots at two costs,
+        // and a lot's quantity is its own row's, never the first of a merged run.
+        if (dataRows[i].lotKey === dataRows[leftGroupStart].lotKey) {
           isLeftSame = true;
         }
       }
@@ -187,16 +266,15 @@ export function FifoCostLotTrackingPage() {
       // Right side grouping
       let isRightSame = false;
       if (appliedFilters.reportBasis === 'product_out') {
-        if (
-          dataRows[i].inTransaction &&
-          dataRows[i].inTransaction === dataRows[rightGroupStart].inTransaction
-        ) {
+        if (dataRows[i].lotKey === dataRows[rightGroupStart].lotKey) {
           isRightSame = true;
         }
       } else {
+        // A dispersal belongs to the lot it drew from; never span it across two lots.
         if (
           dataRows[i].outTransaction &&
-          dataRows[i].outTransaction === dataRows[rightGroupStart].outTransaction
+          dataRows[i].outTransaction === dataRows[rightGroupStart].outTransaction &&
+          dataRows[i].lotKey === dataRows[rightGroupStart].lotKey
         ) {
           isRightSame = true;
         }
@@ -229,6 +307,9 @@ export function FifoCostLotTrackingPage() {
         break;
       case 'job_receipt':
         url = `/organizations/${orgId}/jobwork/receipts?id=${docId}`;
+        break;
+      case 'inventory_adjustment':
+        url = `/organizations/${orgId}/inventory/adjustments?id=${docId}`;
         break;
       default:
         return <span style={{ color: '#2563eb' }}>{label}</span>;
@@ -275,7 +356,7 @@ export function FifoCostLotTrackingPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: 'Inter, system-ui, sans-serif',
+        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -400,6 +481,8 @@ export function FifoCostLotTrackingPage() {
               orgId={orgId!}
               value={selectedItem?.id}
               onChange={(item) => setSelectedItem(item)}
+              keepOpenOnSelect={true}
+              showIndicator={!!selectedItem}
               placeholder="Item Name : All Items"
               renderValue={(item) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -411,13 +494,14 @@ export function FifoCostLotTrackingPage() {
               )}
               triggerStyle={filterTriggerStyle}
               style={{ width: 'max-content', minWidth: '220px' }}
-              dropdownWidth={300}
             />
 
             <SearchableSelect
               options={locationOptions}
               value={locationId}
               onChange={setLocationId}
+              keepOpenOnSelect={true}
+              showIndicator={!!locationId}
               style={{ width: 'max-content' }}
               triggerStyle={filterTriggerStyle}
               renderValue={(opt) => (
@@ -498,7 +582,7 @@ export function FifoCostLotTrackingPage() {
                 fontWeight: 500,
               }}
             >
-              OCTFIS TECHNO llp
+              {organizationName}
             </div>
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}

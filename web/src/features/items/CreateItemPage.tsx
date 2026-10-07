@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Select } from '../../components/ui/Select';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { CategorySelectDropdown } from './components/CategorySelectDropdown';
 import { itemsApi } from './items.api.ts';
 import type { ItemFormData, Item, ItemImageAttachment } from './items.schemas.ts';
@@ -11,8 +11,9 @@ import { z } from 'zod';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Trash2 } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
+import { notify } from '../../lib/notify.ts';
 
 interface CreateItemPageProps {
   isModal?: boolean;
@@ -45,13 +46,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         unit: itemToClone.unit || '',
         stockingUomId: itemToClone.stockingUomId ?? null,
         sku: itemToClone.sku || '',
-        isSalesInfo: true,
+        isSalesInfo: itemToClone.isSalesInfo ?? true,
         sellingPrice:
           itemToClone.sellingPrice !== null && itemToClone.sellingPrice !== undefined
             ? Number(itemToClone.sellingPrice)
             : (null as unknown as number),
         salesDescription: itemToClone.salesDescription || itemToClone.salesDescription || '',
-        isPurchaseInfo: true,
+        isPurchaseInfo: itemToClone.isPurchaseInfo ?? true,
         costPrice:
           itemToClone.costPrice !== null && itemToClone.costPrice !== undefined
             ? Number(itemToClone.costPrice)
@@ -62,7 +63,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         frontImage: itemToClone.frontImage || null,
         rearImage: itemToClone.rearImage || null,
         images: itemToClone.images || [],
-        trackInventory: true,
+        trackInventory: itemToClone.itemType !== 'service' && itemToClone.trackInventory !== false,
         inventoryTracking: (itemToClone.inventoryTracking ?? 'none').toLowerCase(),
         openingStock:
           itemToClone.openingStock !== null && itemToClone.openingStock !== undefined
@@ -116,6 +117,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
   const [rearImageFile, setRearImageFile] = useState<File | null>(null);
   const [otherImageFiles, setOtherImageFiles] = useState<File[]>([]);
+  const [selectedOtherImageIndex, setSelectedOtherImageIndex] = useState(0);
+  const [hoveredImage, setHoveredImage] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (data: ItemFormData) => itemsApi.createItem(orgId!, data),
@@ -136,7 +139,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
             'Status:',
             err.response?.status,
           );
-          alert(`Image upload failed: ${JSON.stringify(err.response?.data || err.message)}`);
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
@@ -161,7 +163,6 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
         return;
       }
       console.error('Failed to create item:', errorMsg, details);
-      alert(`${errorMsg}${details ? '\n' + JSON.stringify(details, null, 2) : ''}`);
     },
   });
 
@@ -171,7 +172,9 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
       type === 'checkbox'
         ? (e.target as HTMLInputElement).checked
         : type === 'number'
-          ? parseFloat(value) || null
+          ? value === '' || isNaN(Number(value))
+            ? null
+            : Number(value)
           : value;
 
     setFormData((prev) => {
@@ -194,7 +197,8 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
   const handleRadioChange = (name: string, value: string) => {
     setFormData((prev) => {
       const newState = { ...prev, [name]: value };
-      if (name === 'type' && value === 'Service' && prev.inventoryTracking === 'batch') {
+      if (name === 'itemType' && value === 'service') {
+        newState.trackInventory = false;
         newState.inventoryTracking = 'none';
       }
       return newState;
@@ -239,32 +243,66 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
       if (validFiles.length < files.length) {
         alert('Some images were ignored because they exceed the 2 MB limit.');
       }
-      if (validFiles.length > 3) {
-        alert('You can only select up to 3 additional images.');
-        setOtherImageFiles(validFiles.slice(0, 3));
-      } else {
-        setOtherImageFiles(validFiles);
+      setOtherImageFiles((prev) => {
+        const newFiles = [...prev, ...validFiles];
+        if (newFiles.length > 3) {
+          alert('You can only select up to 3 additional images.');
+          return newFiles.slice(0, 3);
+        }
+        return newFiles;
+      });
+      if (e.target) {
+        e.target.value = '';
       }
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    let hasErrors = false;
+    const newErrors: Record<string, string> = {};
+    const newCustomFieldErrors: Record<string, string> = {};
+
     try {
       itemFormSchema.parse(formData);
-      setErrors({});
-      setCustomFieldErrors({});
-      createMutation.mutate(formData);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const formattedErrors: Record<string, string> = {};
+        hasErrors = true;
         error.issues.forEach((err: z.ZodIssue) => {
           if (err.path[0]) {
-            formattedErrors[err.path[0].toString()] = err.message;
+            newErrors[err.path[0].toString()] = err.message;
           }
         });
-        setErrors(formattedErrors);
       }
+    }
+
+    // Custom fields validation
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = formData.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setErrors(newErrors);
+    setCustomFieldErrors(newCustomFieldErrors);
+
+    // Custom fields mark the field red and say why in a toast; the built-in
+    // fields above keep their own messages.
+    const firstCustomFieldError = Object.values(newCustomFieldErrors)[0];
+    if (firstCustomFieldError) notify.error(firstCustomFieldError);
+
+    if (!hasErrors) {
+      createMutation.mutate(formData);
     }
   };
   return (
@@ -442,7 +480,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 <div>
                   <input
                     name="sku"
-                    value={formData.sku || ''}
+                    value={formData.sku ?? ''}
                     onChange={handleChange}
                     style={{
                       width: '100%',
@@ -504,7 +542,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       Unit
                     </div>
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                      <Select
+                      <SearchableSelect
                         value={formData.stockingUomId ?? ''}
                         /**
                          * 🔴 SETS BOTH. `stockingUomId` is the FK the stock
@@ -541,10 +579,12 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonClassName="no-global-focus"
-                        buttonStyle={{
+                        triggerStyle={{
                           border: 'none',
                           height: '100%',
+                          minHeight: '100%',
+                          background: 'transparent',
+                          boxShadow: 'none',
                           padding: '0 12px',
                           fontSize: 13,
                         }}
@@ -602,7 +642,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
-                  value={formData.hsnCode || ''}
+                  value={formData.hsnCode ?? ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
@@ -641,8 +681,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
-                  <button
-                    type="button"
+                  <div
                     onClick={() => frontImageRef.current?.click()}
                     style={{
                       width: '100%',
@@ -651,10 +690,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       borderRadius: '6px',
                       background: '#ffffff',
                       display: 'flex',
-                      flexDirection: 'column',
+                      flexDirection: frontImageFile || formData.frontImage ? 'column' : 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 8,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                     }}
@@ -708,8 +747,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
-                  <button
-                    type="button"
+                  <div
                     onClick={() => rearImageRef.current?.click()}
                     style={{
                       width: '100%',
@@ -718,10 +756,10 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                       borderRadius: '6px',
                       background: '#ffffff',
                       display: 'flex',
-                      flexDirection: 'column',
+                      flexDirection: rearImageFile || formData.rearImage ? 'column' : 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 6,
+                      gap: 8,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                     }}
@@ -777,9 +815,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                   accept="image/*"
                   multiple
                 />
-                <button
-                  type="button"
-                  onClick={() => otherImagesRef.current?.click()}
+                <div
                   style={{
                     width: '100%',
                     flex: 1,
@@ -920,7 +956,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             type="number"
                             step="0.01"
                             name="sellingPrice"
-                            value={formData.sellingPrice || ''}
+                            value={formData.sellingPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -960,7 +996,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         </label>
                         <textarea
                           name="salesDescription"
-                          value={formData.salesDescription || ''}
+                          value={formData.salesDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -1020,7 +1056,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                             type="number"
                             step="0.01"
                             name="costPrice"
-                            value={formData.costPrice || ''}
+                            value={formData.costPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -1058,7 +1094,7 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         </label>
                         <textarea
                           name="purchaseDescription"
-                          value={formData.purchaseDescription || ''}
+                          value={formData.purchaseDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -1129,15 +1165,39 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                 <div
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: 14,
-                    paddingTop: 8,
-                    borderTop: '1px solid #e2e8f0',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                    cursor: 'pointer',
                   }}
                 >
+                  <input
+                    type="checkbox"
+                    name="trackInventory"
+                    checked={formData.trackInventory}
+                    onChange={handleChange}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    Track Inventory for this item
+                    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>
+                      You cannot enable/disable inventory tracking once you've created transactions
+                      for this item
+                    </div>
+                  </div>
+                </label>
+
+                {formData.trackInventory && (
                   <div
-                    className="form-field-grid"
-                    style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 14,
+                      paddingTop: 8,
+                      marginLeft: 22,
+                    }}
                   >
                     <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                       Inventory Tracking
@@ -1162,7 +1222,25 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                         />{' '}
                         None
                       </label>
-                      {formData.itemType !== 'service' && (
+                      <div style={{ display: 'flex', gap: 16 }}>
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="inventoryTracking"
+                            value="none"
+                            checked={formData.inventoryTracking === 'none'}
+                            onChange={() => handleRadioChange('inventoryTracking', 'none')}
+                          />{' '}
+                          None
+                        </label>
                         <label
                           style={{
                             display: 'flex',
@@ -1182,70 +1260,13 @@ export function CreateItemPage({ isModal = false, onSuccess, onCancel }: CreateI
                           />{' '}
                           {singular}
                         </label>
-                      )}
+                      </div>
                     </div>
                   </div>
-
-                  {formData.inventoryTracking === 'none' && (
-                    <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <label
-                          style={{
-                            fontSize: 13,
-                            color: '#4b5563',
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Opening Stock
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="openingStock"
-                          value={formData.openingStock || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '140px',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <label
-                          style={{
-                            fontSize: 13,
-                            color: '#4b5563',
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Value of Opening Stock (per quantity)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="openingStockValuePerUnit"
-                          value={formData.openingStockValuePerUnit || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '140px',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Custom Fields */}
           {orgId && (

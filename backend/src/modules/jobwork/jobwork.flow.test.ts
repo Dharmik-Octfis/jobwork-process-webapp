@@ -244,8 +244,6 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
 
     const cutting = await createNewProcess(orgId, {
       name: 'Cutting',
-      // Cloth in, panels out — a different item in a different unit.
-      itemChanges: true,
     });
 
     const route = await createNewRoute(orgId, {
@@ -422,6 +420,9 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     // ---------------------------------------------------------------------
     // Rework — back to the SAME step, counted as a second attempt
     // ---------------------------------------------------------------------
+    const beforeRework = await getJobOrderOverview(orgId, jobOrder.id);
+    expect(beforeRework.steps[0]!.totals.pendingReworkQty).toBe('50');
+
     const reworkIssue = await createNewJobIssue(orgId, {
       jobOrderStepId: step1.id,
       sourceLocationId: godownId,
@@ -430,6 +431,11 @@ describe('jobwork — the full loop', { timeout: 120_000 }, () => {
     });
     expect(reworkIssue.isRework).toBe(true);
     expect(reworkIssue.attemptNo).toBeGreaterThan(1);
+
+    // Sent back to the dyer, so no longer waiting — but it still came back once.
+    const afterRework = await getJobOrderOverview(orgId, jobOrder.id);
+    expect(afterRework.steps[0]!.totals.pendingReworkQty).toBe('0');
+    expect(afterRework.steps[0]!.totals.reworkQty).toBe('50');
 
     // ---------------------------------------------------------------------
     // Step 2 — cutting. A different item, in a different unit, from a process
@@ -940,7 +946,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('consumes three items and produces two, in three different units', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -996,7 +1001,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('carries a default quantity on a route’s CONSUMES rows, and copies it into a job order', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching template ${unique()}`,
-      itemChanges: true,
     });
 
     const route = await createNewRoute(orgId, {
@@ -1066,11 +1070,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('labels a chain-fed input, and plans it from what the step above produces', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1120,11 +1122,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('saves an input only a later step produces, drawn from stock', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1161,11 +1161,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('derives an expected quantity only from a stated yield or a matching unit', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const washing = await createNewProcess(orgId, {
       name: `Washing ${unique()}`,
-      itemChanges: false,
     });
 
     const jobOrder = await createNewJobOrder(orgId, {
@@ -1221,11 +1219,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('shares one step’s output between later steps, and saves an over-plan anyway', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const shared = await createNewJobOrder(orgId, {
@@ -1287,7 +1283,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('carries two items on one challan and the third on another', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1364,7 +1359,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('measures the tolerance ceiling against each item’s own plan', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1417,7 +1411,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses a line whose item the step does not consume', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1468,7 +1461,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses a batch-less line for a batch-tracked item, and allows one for an untracked item', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const dyedBatch = await stockUp(dyedId, 100);
@@ -1525,7 +1517,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('consumes three items and returns two, with the value conserved', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     /* 🔴 Its own godown. Cost is FIFO per item per location, so on the shared
@@ -1685,7 +1676,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
   it('refuses a bulk receipt that does not say which item it accounts for', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(threadId, 20);
@@ -1737,14 +1727,18 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('refuses to issue a step until the step above it has delivered', async () => {
+  /**
+   * 🔴 THE CHAIN WARNS, IT DOES NOT BLOCK (2026-09-24). A step may issue before
+   * the step feeding it has returned anything, drawing on stock already on hand —
+   * the ledger is the only hard gate. The Overview names each such input so the
+   * Issue screen can say what is happening.
+   */
+  it('lets a step issue existing stock before the step above has delivered, and warns', async () => {
     const cutting = await createNewProcess(orgId, {
       name: `Cutting ${unique()}`,
-      itemChanges: true,
     });
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     await stockUp(dyedId, 100);
@@ -1763,43 +1757,64 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
           // Fed by step 1 — `classifyStepInputs` marks it fromStock: false, and
           // 60 is within the 100 panels cutting expects to return.
           inputs: [{ itemId: shirtId, plannedQty: 60 }],
-          outputs: [{ itemId: shirtsId, isPrimary: true }],
+          outputs: [{ itemId: shirtsId, isPrimary: true, expectedQty: 60 }],
         },
       ],
     });
     expect(jobOrder.steps[1]!.inputs[0]!.fromStock).toBe(false);
 
-    /**
-     * 🔴 Nothing has come back from cutting, so there is nothing for stitching
-     * to send — and the no-stock scaffold must NOT invent it. Raw material can
-     * be conjured while Purchase Received is missing; work in progress cannot,
-     * because a step that produced nothing produced nothing.
-     *
-     * 🔴 Blocked BY POSITION, not by matching items. Asking whether step 2's
-     * inputs were declared as fed by step 1 let a step whose PRODUCES list was
-     * empty — or which named a different item — declare no link at all, and the
-     * rule then silently did not apply.
-     */
-    await expect(
-      createNewJobIssue(orgId, {
-        jobOrderStepId: jobOrder.steps[1]!.id,
-        sourceLocationId: godownId,
-        lines: [{ itemId: shirtId, qty: 60 }],
-      }),
-    ).rejects.toMatchObject({ status: 409 });
+    // Nothing has come back from cutting: step 2 warns about the panels, and
+    // step 1 — which draws on stock — warns about nothing.
+    const before = await getJobOrderOverview(orgId, jobOrder.id);
+    expect(before.steps[0]!.chainWarnings).toEqual([]);
+    expect(before.steps[1]!.canIssue).toBe(true);
+    expect(before.steps[1]!.chainWarnings).toHaveLength(1);
+    expect(before.steps[1]!.chainWarnings[0]!.itemId).toBe(shirtId);
+    expect(before.steps[1]!.chainWarnings[0]!.message).toContain('come back from step 1');
 
-    // The Overview says the same thing, in words, instead of a dead button.
+    // Panels already in the godown (a closed order's leftovers) may go out now.
+    await stockUp(shirtId, 60);
+    const issue = await createNewJobIssue(orgId, {
+      jobOrderStepId: jobOrder.steps[1]!.id,
+      sourceLocationId: godownId,
+      lines: [{ itemId: shirtId, qty: 60 }],
+    });
+    expect(issue.status).toBe('issued');
+  });
+
+  it('never warns about a step whose inputs no earlier step produces', async () => {
+    const cutting = await createNewProcess(orgId, {
+      name: `Cutting ${unique()}`,
+    });
+    const packing = await createNewProcess(orgId, { name: `Packing ${unique()}` });
+
+    const jobOrder = await createNewJobOrder(orgId, {
+      steps: [
+        {
+          processId: cutting.id,
+          processorId: cutterId,
+          inputs: [{ itemId: dyedId, plannedQty: 10 }],
+          outputs: [{ itemId: shirtId, isPrimary: true }],
+        },
+        {
+          processId: packing.id,
+          processorId: cutterId,
+          // Nothing above produces thread — it comes off the shelf, so step 2 is
+          // free to run alongside step 1.
+          inputs: [{ itemId: threadId, plannedQty: 5 }],
+          outputs: [{ itemId: threadId, isPrimary: true }],
+        },
+      ],
+    });
+
     const overview = await getJobOrderOverview(orgId, jobOrder.id);
-    expect(overview.steps[1]!.canIssue).toBe(false);
-    expect(overview.steps[1]!.blockedReason).toContain('Nothing has come back from step 1');
-    // Step 1 draws on stock, so it is free to go.
-    expect(overview.steps[0]!.canIssue).toBe(true);
+    expect(overview.steps[1]!.canIssue).toBe(true);
+    expect(overview.steps[1]!.chainWarnings).toEqual([]);
   });
 
   it('refuses two primary outputs, and the same item listed twice', async () => {
     const stitching = await createNewProcess(orgId, {
       name: `Stitching ${unique()}`,
-      itemChanges: true,
     });
 
     const order = (steps: Parameters<typeof createNewJobOrder>[1]['steps']) =>
@@ -1840,19 +1855,17 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
    * and never over the whole grid (§6.6).
    *
    * The other half is what is NOT checked. No step's status gates this — a step
-   * at a processor is no reason to withhold it, because the appended step arrives
-   * `pending` and `chainNotReady` already refuses to let it issue until the step
-   * above has delivered. Only the ORDER refuses, and only when it is closed.
+   * at a processor is no reason to withhold it: the appended step arrives
+   * `pending` and is issued like any other. Only the ORDER refuses, and only when
+   * it is closed.
    */
   describe('appending steps to a running order', () => {
     it('appends after the last step while it is still at the processor, and leaves its challan intact', async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
       const stitching = await createNewProcess(orgId, {
         name: `Stitching ${unique()}`,
-        itemChanges: true,
       });
 
       // Dyed Fabric is batch-tracked, so the line has to name the batch it came
@@ -1921,21 +1934,18 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       expect(after.remarks).toContain('Added step 2');
       expect(after.remarks).toContain('Party asked for stitching too');
 
-      // The chain sequences it without any status check on our side: cutting has
-      // returned nothing, so stitching has nothing to send on.
+      // Cutting has returned nothing, so the appended step warns about the panels
+      // it would draw from existing stock — the chain reaches across the boundary.
       const overview = await getJobOrderOverview(orgId, jobOrder.id);
-      expect(overview.steps[1]!.canIssue).toBe(false);
-      expect(overview.steps[1]!.blockedReason).toContain('Nothing has come back from step 1');
+      expect(overview.steps[1]!.chainWarnings[0]?.message).toContain('come back from step 1');
     });
 
     it('refuses an order that has been closed short', async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
       const stitching = await createNewProcess(orgId, {
         name: `Stitching ${unique()}`,
-        itemChanges: true,
       });
 
       const jobOrder = await createNewJobOrder(orgId, {
@@ -1952,9 +1962,8 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
 
       /**
        * 🔴 The one refusal. `short_closed` is sticky, so the order would keep
-       * that label forever while `chainNotReady` waives the chain after a
-       * short-closed step — a document that reads as finished and still takes
-       * challans.
+       * that label forever while the new step took challans — a document that
+       * reads as finished and still takes them.
        */
       await expect(
         appendJobOrderSteps(orgId, jobOrder.id, {
@@ -1987,11 +1996,9 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     const twoStepOrder = async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
       const stitching = await createNewProcess(orgId, {
         name: `Stitching ${unique()}`,
-        itemChanges: true,
       });
       // Batch-tracked, so the line names its batch — see the note above.
       const dyedBatch = await stockUp(dyedId, 100);
@@ -2113,7 +2120,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     it('still rewrites a draft end to end, header included', async () => {
       const cutting = await createNewProcess(orgId, {
         name: `Cutting ${unique()}`,
-        itemChanges: true,
       });
 
       const jobOrder = await createNewJobOrder(orgId, {
@@ -2202,7 +2208,6 @@ describe('jobwork — FIFO allocation for untracked items', () => {
   const stepFor = async (itemId: string) => {
     const packing = await createNewProcess(orgId, {
       name: `Packing ${unique()}`,
-      itemChanges: true,
     });
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [
@@ -2371,7 +2376,6 @@ describe('jobwork — one challan, one location', { timeout: 60_000 }, () => {
   const stepFor = async (itemId: string) => {
     const packing = await createNewProcess(orgId, {
       name: `Packing ${unique()}`,
-      itemChanges: true,
     });
     const jobOrder = await createNewJobOrder(orgId, {
       steps: [

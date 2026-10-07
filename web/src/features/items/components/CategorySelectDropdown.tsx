@@ -203,6 +203,7 @@ export function CategorySelectDropdown({
                       className: 'no-global-focus',
                       placeholder: 'Search category...',
                       autoFocus: true,
+                      className: 'no-global-focus',
                       style: {
                         border: 'none',
                         background: 'transparent',

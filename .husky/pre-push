@@ -1,0 +1,49 @@
+# Same self-heal as post-checkout: a push is the other action reached while the button is stuck.
+sh scripts/clear-stale-merge-head.sh
+
+# Typecheck only the packages this push touches. Typecheck, not build: it catches what a build would
+# in seconds, and a slow hook is one people learn to --no-verify. Tests stay out -- they share the dev
+# database and are nondeterministic, so they would block good pushes at random.
+zero=0000000000000000000000000000000000000000
+changed=""
+all=0
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>, one line per ref being pushed
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # branch deletion -- nothing to check
+  if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha" 2>/dev/null; then
+    all=1 # new branch, or remote tip not fetched locally -- no base to diff against
+  else
+    changed="$changed
+$(git diff --name-only "$remote_sha" "$local_sha")"
+  fi
+done
+
+touches() {
+  [ "$all" = 1 ] || printf '%s\n' "$changed" | grep -q "^$1/"
+}
+
+failed=""
+
+if touches backend; then
+  echo "pre-push: typechecking backend..."
+  (cd backend && npm run --silent typecheck) || failed="$failed backend"
+fi
+
+if touches accounts; then
+  echo "pre-push: typechecking accounts..."
+  (cd accounts && npm run --silent typecheck) || failed="$failed accounts"
+fi
+
+if touches web; then
+  # `tsc -b`, never `tsc --noEmit`: web's tsconfig.json has "files": [] and checks nothing without -b
+  echo "pre-push: typechecking web..."
+  (cd web && npx --no-install tsc -b) || failed="$failed web"
+fi
+
+if [ -n "$failed" ]; then
+  echo ""
+  echo "pre-push: typecheck failed in:$failed -- push aborted."
+  echo "  Errors naming a Prisma model usually mean the client is stale: run 'npx prisma generate'."
+  exit 1
+fi

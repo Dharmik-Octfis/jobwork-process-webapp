@@ -25,6 +25,27 @@ export interface PublicInvitation {
 }
 
 /**
+ * What `createInvitation` returns: the invitation, and whether the email carrying
+ * it actually left the building.
+ *
+ * 🔴 The second half exists because the answer used to be assumed. The service
+ * catches a send failure, logs it, and still returns 201 so a provider outage does
+ * not throw away a valid invitation — that part is right. What was missing is that
+ * the caller could not tell the two cases apart, so the UI said "Invitation sent"
+ * either way. On 2026-08-31 the mail provider ran out of credit and every
+ * invitation, signup OTP and password reset failed silently; the only trace was a
+ * `console.error` in a log nobody was tailing.
+ *
+ * 🔴 It sits BESIDE the invitation, not on it. Delivery is a fact about this one
+ * request, not a property of the row — `listInvitations` reads the same rows later
+ * and could only guess. One home, one reader.
+ */
+export interface CreateInvitationResult {
+  invitation: PublicInvitation;
+  emailDelivered: boolean;
+}
+
+/**
  * An invitation as the RECIPIENT sees it in their in-app inbox — addressed by id,
  * never by token (the raw token is unrecoverable; only its hash is stored). No
  * token field here on purpose: the inbox authorizes by session + email match.
@@ -42,12 +63,7 @@ export interface MyInvitation {
 
 /** Lifecycle state the public accept page resolves a token to. */
 export type InvitationLookupStatus =
-  | 'valid'
-  | 'expired'
-  | 'accepted'
-  | 'revoked'
-  | 'declined'
-  | 'invalid';
+  'valid' | 'expired' | 'accepted' | 'revoked' | 'declined' | 'invalid';
 
 /**
  * What the public accept page needs before it can render — without leaking

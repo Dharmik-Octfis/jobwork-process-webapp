@@ -4,7 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Settings, Info, Image as ImageIcon, Plus, Trash2, X } from 'lucide-react';
 import { useForm, Controller, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../lib/notify';
 
 import { DateInput } from '../../../components/ui/DateInput';
 import { Input } from '../../../components/ui/Input';
@@ -20,6 +20,9 @@ import type { BatchSelection } from '../../jobwork/issues/batchSelection';
 import type { CompositeComponent } from '../composite-items/compositeItems.api';
 import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
 import { AssemblyNumberConfigModal } from './AssemblyNumberConfigModal';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import type { CustomFieldValues } from '../../custom-fields/customFields.schemas';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -53,6 +56,10 @@ export function CreateAssemblyPage() {
     handleSubmit,
     formState: { errors },
   } = form;
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId, 'item_assembly');
+  const [customFields, setCustomFields] = useState<CustomFieldValues>({});
+  /** Server `details`, keyed `customFields.<key>` — a red border, the message goes in the toast. */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const compositeItemId = useWatch({ control, name: 'compositeItemId' });
   const qty = useWatch({ control, name: 'qty' });
   /** 🔴 Which godown this assembly happens in. Both sides post there, so it also
@@ -247,9 +254,14 @@ export function CreateAssemblyPage() {
       navigate(`/organizations/${orgId}/inventory/assembly?id=${resData.id}`);
     },
     onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } } };
-      toast.error(
-        err.response?.data?.message ||
+      const err = error as {
+        response?: { data?: { message?: string; details?: Record<string, string> } };
+      };
+      const details = err.response?.data?.details ?? {};
+      setFieldErrors(details);
+      notify.error(
+        Object.values(details)[0] ||
+          err.response?.data?.message ||
           (error instanceof Error ? error.message : 'Failed to create assembly'),
       );
     },
@@ -306,19 +318,21 @@ export function CreateAssemblyPage() {
     const combinedLines = [...lines, ...validExtraItems, ...validServices];
 
     if (combinedLines.length === 0) {
-      toast.error('Composite item has no components and no additional items/services selected.');
+      notify.error('Composite item has no components and no additional items/services selected.');
       return;
     }
 
+    setFieldErrors({});
     createMutation.mutate({
       ...data,
       lines: combinedLines,
+      customFields,
     });
   };
 
   const onValidationError = (formErrors: FieldErrors<CreateAssemblyDto>) => {
     console.error('Form validation errors:', formErrors);
-    toast.error('Please check the highlighted mandatory fields.');
+    notify.error('Please check the highlighted mandatory fields.');
   };
 
   return (
@@ -572,6 +586,20 @@ export function CreateAssemblyPage() {
               </div>
             </div>
 
+            {customFieldDefs.length > 0 && (
+              <div style={{ marginTop: '24px' }}>
+                <CustomFieldsSection
+                  orgId={orgId!}
+                  entityType="item_assembly"
+                  values={customFields}
+                  onChange={setCustomFields}
+                  errors={fieldErrors}
+                  applyDefaults
+                  layout="rows"
+                />
+              </div>
+            )}
+
             <hr style={{ border: 'none', borderTop: '1px solid #eef0f3', margin: '40px 0' }} />
 
             {/* Associated Items */}
@@ -775,9 +803,21 @@ export function CreateAssemblyPage() {
                                           cursor: locationId ? 'pointer' : 'not-allowed',
                                         }}
                                       >
-                                        {Object.keys(componentBatches[comp.id] ?? {}).length > 0
-                                          ? `${Object.keys(componentBatches[comp.id]!).length} ${trackingLabel.plural.toLowerCase()} picked`
-                                          : `+ Add ${trackingLabel.plural}`}
+                                        {(() => {
+                                          // One selection per taka — count the batches behind them.
+                                          const batchCount = new Set(
+                                            Object.values(componentBatches[comp.id] ?? {}).map(
+                                              (sel) => sel.batch.batchId,
+                                            ),
+                                          ).size;
+                                          return batchCount > 0
+                                            ? `${batchCount} ${
+                                                batchCount === 1
+                                                  ? trackingLabel.singular.toLowerCase()
+                                                  : trackingLabel.plural.toLowerCase()
+                                              } picked`
+                                            : `+ Add ${trackingLabel.plural}`;
+                                        })()}
                                       </button>
                                     )}
                                   </div>
@@ -936,7 +976,8 @@ export function CreateAssemblyPage() {
                                       >
                                         The global stock for this item is less than the total
                                         quantity required. Note: Even if global stock is sufficient,
-                                        you must ensure the stock is physically present at the selected location.
+                                        you must ensure the stock is physically present at the
+                                        selected location.
                                         <div
                                           style={{
                                             content: '""',
@@ -1003,6 +1044,7 @@ export function CreateAssemblyPage() {
                           <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
                             <ItemComboBox
                               orgId={orgId!}
+                              portal={true}
                               filter="goods"
                               value={item.itemId}
                               onChange={(opt) => {
@@ -1322,6 +1364,7 @@ export function CreateAssemblyPage() {
                             <td style={{ padding: '16px', borderRight: '1px solid #eef0f3' }}>
                               <ItemComboBox
                                 orgId={orgId!}
+                                portal={true}
                                 filter="services"
                                 value={svc.itemId}
                                 onChange={(item) => {

@@ -7,13 +7,14 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
+import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
-import {
-  ISSUE_STATUS_META,
-  formatQty,
-  statusMeta,
-} from '../jobwork.schemas';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
+import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { ISSUE_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
 import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
 import { IssueDetail } from './IssueDetail';
 import type { JobIssue } from './jobIssues.schemas';
@@ -45,10 +46,19 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-// No `cf:` branch — `job_issue` is list-only since 2026-08-10, so the server
-// merges no custom-field columns into this catalog. A `cf:` key left in someone's
-// saved preferences falls through to the default and renders "-".
-function renderCell(issue: JobIssue, key: string): React.ReactNode {
+function renderCell(
+  issue: JobIssue,
+  key: string,
+  customFieldDefs: CustomFieldDefinition[],
+): React.ReactNode {
+  if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
+    const cfKey = key.slice(CUSTOM_FIELD_PREFIX.length);
+    return formatCustomFieldValue(
+      issue.customFields?.[cfKey],
+      customFieldDefs.find((d) => d.key === cfKey),
+    );
+  }
+
   switch (key) {
     case 'status':
       return <StatusPill status={issue.status} />;
@@ -93,11 +103,16 @@ export function IssuesList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('all');
 
+  const structuralSharing = useListRowRetention(
+    ['job-issues', orgId],
+    `${search}|${filter}|${page}|${perPage}|${stepId ?? ''}`,
+  );
   const { data: pageData, isLoading: pageLoading } = useQuery({
     queryKey: ['job-issues', orgId, search, filter, page, perPage],
     queryFn: () => fetchJobIssues(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId) && !stepId,
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const { data: stepIssues, isLoading: stepLoading } = useQuery({
@@ -124,6 +139,8 @@ export function IssuesList() {
     columns,
     save: saveColumns,
   } = useListColumns(orgId, 'job_issue');
+  // `cf:` columns carry no type in the catalog; the definitions format them.
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
 
   const openDetail = (id: string) => {
@@ -132,9 +149,13 @@ export function IssuesList() {
     setSearchParams(next);
   };
   const closeDetail = () => {
-    const next = new URLSearchParams(searchParams);
-    next.delete('id');
-    setSearchParams(next);
+    if (location.state?.returnUrl) {
+      navigate(location.state.returnUrl);
+    } else {
+      const next = new URLSearchParams(searchParams);
+      next.delete('id');
+      setSearchParams(next);
+    }
   };
 
   return (
@@ -177,7 +198,12 @@ export function IssuesList() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setSearchParams({})}
+                  onClick={() =>
+                    setSearchParams((prev) => {
+                      prev.delete('id');
+                      return prev;
+                    })
+                  }
                   style={{
                     marginLeft: 12,
                     background: 'none',
@@ -384,10 +410,10 @@ export function IssuesList() {
                                   textAlign: 'left',
                                 }}
                               >
-                                {renderCell(issue, col.key)}
+                                {renderCell(issue, col.key, customFieldDefs)}
                               </button>
                             ) : (
-                              renderCell(issue, col.key)
+                              renderCell(issue, col.key, customFieldDefs)
                             )}
                           </td>
                         ))}
@@ -399,7 +425,7 @@ export function IssuesList() {
             )}
           </div>
 
-          {!selectedId && !stepId && (
+          {!stepId && (
             <Pagination
               pageContext={pageData?.pageContext}
               page={page}

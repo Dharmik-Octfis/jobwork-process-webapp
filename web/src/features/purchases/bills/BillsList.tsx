@@ -1,6 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
 import { fetchBills, fetchBillCount, deleteBill } from './bills.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
@@ -10,13 +8,16 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { BillDetail } from './BillDetail';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import { releaseListRow, useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
+import { formatDate } from '../../../lib/formatDate';
 import type { Bill } from './bills.schemas';
+import { APPROVAL_LABELS } from './billApproval';
 
 function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []): string {
   if (key === 'paymentTerms') {
@@ -30,13 +31,16 @@ function renderBillCell(po: Bill, key: string, _paymentTerms: PaymentTerm[] = []
   if (key === 'vendor') {
     return po.vendor?.contactName || '-';
   }
+  if (key === 'approvalStatus') {
+    return po.approvalStatus ? (APPROVAL_LABELS[po.approvalStatus] ?? po.approvalStatus) : '-';
+  }
   if (key === 'totalAmount' || key === 'total') {
     return `₹${Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(2)}`;
   }
   const value = (po as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'date' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
-    return new Date(String(value)).toLocaleDateString();
+  if (key === 'billDate' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
+    return formatDate(String(value));
   }
   return String(value);
 }
@@ -50,11 +54,16 @@ export function BillsList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
+  const structuralSharing = useListRowRetention(
+    ['bills', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading, isError } = useQuery({
     queryKey: ['bills', orgId, search, filter, page, perPage],
     queryFn: () => fetchBills(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const { data: paymentTerms = [] } = useQuery({
@@ -85,15 +94,14 @@ export function BillsList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteBill(orgId!, id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      releaseListRow(['bills', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
       setPoToDelete(null);
     },
-    // A bill whose stock was used is refused, naming the document — say so.
-    onError: (error) => {
-      setPoToDelete(null);
-      toast.error(toApiErrorMessage(error));
-    },
+    // The refusal (stock already used, naming the document) is toasted globally.
+    onError: () => setPoToDelete(null),
   });
 
   const handleDeleteSelected = async () => {
@@ -304,7 +312,7 @@ export function BillsList() {
                     {bills.map((po) => (
                       <div
                         key={po.id}
-                        onClick={() => setSearchParams({ id: po.id })}
+                        onClick={() => setSearchParams(prev => { prev.set('id', po.id ); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -337,6 +345,7 @@ export function BillsList() {
                           </span>
                           <span style={{ fontSize: '12px', color: '#64748b' }}>
                             {renderBillCell(po, 'status', paymentTerms)}
+                            {po.approvalStatus && ` · ${renderBillCell(po, 'approvalStatus')}`}
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
@@ -383,7 +392,7 @@ export function BillsList() {
                         {bills.map((po) => (
                           <tr
                             key={po.id}
-                            onClick={() => setSearchParams({ id: po.id })}
+                            onClick={() => setSearchParams(prev => { prev.set('id', po.id ); return prev; })}
                             style={{
                               borderBottom: '1px solid #eef0f3',
                               transition: 'background 0.1s',
@@ -436,8 +445,7 @@ export function BillsList() {
           </div>
 
           {/* Pagination — hidden while a Bill is selected (narrow master pane) */}
-          {!selectedPoId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               perPage={perPage}
@@ -447,13 +455,12 @@ export function BillsList() {
               isCounting={isCounting}
               onRequestCount={requestCount}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedPoId && (
           <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <BillDetail poId={selectedPoId} onClose={() => setSearchParams({})} />
+            <BillDetail poId={selectedPoId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>
@@ -492,7 +499,9 @@ export function BillsList() {
           setIsProcessing(true);
           try {
             await Promise.allSettled(selectedIds.map((id) => deleteBill(orgId!, id)));
+            selectedIds.forEach((id) => releaseListRow(['bills', orgId], id));
             queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+            queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
             setSelectedIds([]);
           } finally {
             setIsProcessing(false);

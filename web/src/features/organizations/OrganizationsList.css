@@ -1,0 +1,226 @@
+/*
+ * The organization picker.
+ *
+ * A plain stylesheet rather than inline styles, because the three things this page
+ * most needed were `:hover`, `:focus-visible` and a responsive grid — none of which
+ * a style prop can express. Class names are prefixed `orgs-`: this file is global,
+ * like `VendorComments.css` beside it.
+ *
+ * 🔴 Everything here is a design token from `index.css`. The page it replaces was
+ * written in Tailwind utility classes (`p-8`, `text-2xl`, `bg-blue-600`) and this
+ * project has no Tailwind — no dependency, no config, no directive — so every one
+ * of them resolved to nothing and the page rendered as unstyled HTML.
+ */
+
+.orgs-page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-7);
+}
+
+.orgs-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.orgs-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.orgs-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* A link that has to read as the page's primary action. */
+.orgs-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.orgs-create:hover {
+  background: var(--color-primary-hover);
+}
+
+.orgs-create:active {
+  background: var(--color-primary-active);
+}
+
+.orgs-error {
+  margin-bottom: var(--space-5);
+  padding: 12px 16px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: 13.5px;
+}
+
+.orgs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+/*
+ * 🔴 The card is an `<a>`, not a `<div>`.
+ *
+ * This is a PICKER, and before this change nothing on it was clickable — the
+ * organizations rendered as inert divs, so the one thing the page exists to do
+ * could not be done. An anchor brings the click target, Enter, middle-click,
+ * "open in new tab" and keyboard focus with it, none of which a click handler on a
+ * div would have.
+ */
+.orgs-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.orgs-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.orgs-card:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* The organization's logo, or its initial when it has none. */
+.orgs-avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.orgs-card-body {
+  min-width: 0;
+}
+
+.orgs-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  /* Long names truncate rather than reflowing every card in the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orgs-meta {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orgs-code {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--color-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Loading and empty states share the card surface, so the page never jumps. */
+.orgs-panel {
+  padding: var(--space-7) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.orgs-panel p {
+  margin: 0 0 var(--space-4);
+}
+
+/* Skeleton cards, so a slow list does not flash an empty state first. */
+.orgs-skeleton {
+  height: 74px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    var(--color-surface-2) 37%,
+    var(--color-surface) 63%
+  );
+  background-size: 400% 100%;
+  animation: orgs-shimmer 1.4s ease infinite;
+}
+
+@keyframes orgs-shimmer {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+/* Respect a stated preference for less motion — the shimmer is decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .orgs-skeleton {
+    animation: none;
+  }
+  .orgs-card:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .orgs-page {
+    padding: var(--space-5) var(--space-4) var(--space-6);
+  }
+  .orgs-create {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -24,16 +24,26 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   vendor: [
     { key: 'all', label: 'All Vendors', where: {} },
     { key: 'active', label: 'Active Vendors', where: { status: 'active' } },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved Vendors', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected Vendors', where: { status: 'Rejected' } },
     { key: 'inactive', label: 'Inactive Vendors', where: { status: 'inactive' } },
   ],
   bill: [
     { key: 'all', label: 'All Bills', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
-    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'open', label: 'Open', where: { status: 'Open' } },
+    // Approval has its own column; `status` is only Draft | Open.
+    { key: 'pending_approval', label: 'Pending Approval', where: { approvalStatus: 'pending' } },
+    { key: 'approved', label: 'Approved', where: { approvalStatus: 'approved' } },
+    { key: 'rejected', label: 'Rejected', where: { approvalStatus: 'rejected' } },
   ],
   customer: [
     { key: 'all', label: 'All Customers', where: {} },
     { key: 'active', label: 'Active Customers', where: { status: 'active' } },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved Customers', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected Customers', where: { status: 'Rejected' } },
     { key: 'inactive', label: 'Inactive Customers', where: { status: 'inactive' } },
   ],
   item: [
@@ -46,7 +56,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   /**
    * Users. The first entry is the default, so an admin opening Settings → Users
    * lands on **Active Users** — the people who can actually sign in today, which is
-   * what they are looking for almost every time. (The key stays `all` because it 
+   * what they are looking for almost every time. (The key stays `all` because it
    * is the default slot, while the label and `where` narrow it.)
    *
    * 🔴 `unconfirmed` is the one preset whose rows do NOT come from `memberships` —
@@ -77,12 +87,7 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
    * `filterWhere` resolves an absent `?filter=` to `all`, so an empty list here
    * would 400 every request.
    */
-  process: [
-    { key: 'all', label: 'All Processes', where: {} },
-    /** Where the taka survives the operation, so unit-wise receipt is possible
-     * at all (§5.2.3) — dyeing yes, cutting no. */
-    { key: 'changes_item', label: 'Changes The Item', where: { itemChanges: true } },
-  ],
+  process: [{ key: 'all', label: 'All Processes', where: {} }],
   process_route: [{ key: 'all', label: 'All Routes', where: {} }],
   /**
    * Job orders. The default is **Open** — everything not yet finished — because
@@ -96,6 +101,9 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
       where: { status: { in: ['draft', 'in_progress'] } },
     },
     { key: 'all_orders', label: 'All Job Orders', where: {} },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected', where: { status: 'Rejected' } },
     { key: 'issued', label: 'Issued (Not Draft)', where: { status: { not: 'draft' } } },
     { key: 'draft', label: 'Draft', where: { status: 'draft' } },
     { key: 'in_progress', label: 'In Progress', where: { status: 'in_progress' } },
@@ -114,6 +122,9 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
    */
   job_issue: [
     { key: 'all', label: 'All Challans', where: {} },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected', where: { status: 'Rejected' } },
     { key: 'issued', label: 'Issued Challans', where: { status: 'issued' } },
     { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'rework', label: 'Rework Issues', where: { isRework: true } },
@@ -121,6 +132,9 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   ],
   job_receipt: [
     { key: 'all', label: 'All Receipts', where: {} },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected', where: { status: 'Rejected' } },
     { key: 'draft', label: 'Drafts', where: { status: 'draft' } },
     { key: 'with_rework', label: 'With Rework', where: { totalReworkQty: { gt: 0 } } },
     { key: 'with_scrap', label: 'With Scrap', where: { totalScrapQty: { gt: 0 } } },
@@ -138,12 +152,26 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   composite_item_component: [{ key: 'all', label: 'All', where: {} }],
   item_assembly: [
     { key: 'all', label: 'All Assemblies', where: {} },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected', where: { status: 'Rejected' } },
     { key: 'draft', label: 'Draft', where: { status: 'draft' } },
     { key: 'cancelled', label: 'Cancelled', where: { status: 'cancelled' } },
   ],
   item_assembly_line: [{ key: 'all', label: 'All', where: {} }],
+  stock_adjustment: [{ key: 'all', label: 'All Adjustments', where: {} }],
   purchase_order: [
     { key: 'all', label: 'All Purchase Orders', where: {} },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'rejected', label: 'Rejected', where: { status: 'Rejected' } },
+    { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
+    { key: 'issued', label: 'Issued', where: { status: 'Issued' } },
+    { key: 'closed', label: 'Closed', where: { status: 'Closed' } },
+    { key: 'cancelled', label: 'Cancelled', where: { status: 'Cancelled' } },
+  ],
+  sales_order: [
+    { key: 'all', label: 'All Sales Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
     { key: 'issued', label: 'Issued', where: { status: 'Issued' } },
     { key: 'closed', label: 'Closed', where: { status: 'Closed' } },

@@ -1,12 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { itemsApi } from './items.api.ts';
-import type { ItemFormData, ItemImageAttachment } from './items.schemas.ts';
+import type { ItemFormData } from './items.schemas.ts';
 import { itemFormSchema } from './items.schemas.ts';
 import { z } from 'zod';
-import { Select } from '../../components/ui/Select.tsx';
+import { SearchableSelect } from '../../components/ui/SearchableSelect.tsx';
 import { CategorySelectDropdown } from './components/CategorySelectDropdown.tsx';
 import { CustomFieldsSection } from '../custom-fields/CustomFieldsSection.tsx';
 import { useUoms } from '../inventory/uom/uom.api.ts';
@@ -14,6 +14,7 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api.ts';
 import { UomFormModal } from '../inventory/uom/UomFormModal.tsx';
 import { Plus } from 'lucide-react';
 import { useTrackingLabel } from '../../hooks/useTrackingLabel.ts';
+import { notify } from '../../lib/notify.ts';
 
 export function EditItemPage() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
@@ -56,13 +57,9 @@ export function EditItemPage() {
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   const [initializedId, setInitializedId] = useState<string | null>(null);
 
-  const frontImageRef = useRef<HTMLInputElement>(null);
-  const rearImageRef = useRef<HTMLInputElement>(null);
-  const otherImagesRef = useRef<HTMLInputElement>(null);
-
-  const [frontImageFile, setFrontImageFile] = useState<File | null>(null);
-  const [rearImageFile, setRearImageFile] = useState<File | null>(null);
-  const [otherImageFiles, setOtherImageFiles] = useState<File[]>([]);
+  const [frontImageFile] = useState<File | null>(null);
+  const [rearImageFile] = useState<File | null>(null);
+  const [otherImageFiles] = useState<File[]>([]);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', orgId, id],
@@ -84,13 +81,13 @@ export function EditItemPage() {
       unit: rawItem.unit || '',
       stockingUomId: rawItem.stockingUomId ?? null,
       sku: rawItem.sku || '',
-      isSalesInfo: true,
+      isSalesInfo: rawItem.isSalesInfo ?? true,
       sellingPrice:
         rawItem.sellingPrice !== null && rawItem.sellingPrice !== undefined
           ? Number(rawItem.sellingPrice)
           : (null as unknown as number),
       salesDescription: (rawItem.salesDescription as string) || '',
-      isPurchaseInfo: true,
+      isPurchaseInfo: rawItem.isPurchaseInfo ?? true,
       costPrice:
         rawItem.costPrice !== null && rawItem.costPrice !== undefined
           ? Number(rawItem.costPrice)
@@ -100,7 +97,8 @@ export function EditItemPage() {
       frontImage: rawItem.frontImage || null,
       rearImage: rawItem.rearImage || null,
       images: rawItem.images || [],
-      trackInventory: true,
+      // The stored value — a hard-coded `true` here turned tracking on for every saved service.
+      trackInventory: rawItem.itemType !== 'service' && rawItem.trackInventory !== false,
       inventoryTracking: (rawItem.inventoryTracking ?? 'none').toLowerCase(),
       openingStock:
         rawItem.openingStock !== null && rawItem.openingStock !== undefined
@@ -130,7 +128,6 @@ export function EditItemPage() {
           await itemsApi.uploadImages(orgId!, id!, formDataUpload);
         } catch (error) {
           console.error('Failed to upload images:', error);
-          alert('Item updated, but image upload failed.');
         }
       }
       queryClient.invalidateQueries({ queryKey: ['items', orgId] });
@@ -147,7 +144,6 @@ export function EditItemPage() {
         return;
       }
       console.error('Failed to update item:', error);
-      alert(err.response?.data?.error || err.response?.data?.message || 'Failed to update item.');
     },
   });
 
@@ -182,7 +178,8 @@ export function EditItemPage() {
   const handleRadioChange = (name: string, value: string) => {
     setFormData((prev) => {
       const newState = { ...prev, [name]: value };
-      if (name === 'type' && value === 'Service' && prev.inventoryTracking === 'batch') {
+      if (name === 'itemType' && value === 'service') {
+        newState.trackInventory = false;
         newState.inventoryTracking = 'none';
       }
       return newState;
@@ -200,7 +197,9 @@ export function EditItemPage() {
     }
   };
 
-  const handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /* 
+  // Image Upload handlers temporarily commented out for Edit mode
+  const _handleFrontImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       if (e.target.files[0].size > 2 * 1024 * 1024) {
         alert('Front image exceeds 2 MB limit.');
@@ -210,7 +209,7 @@ export function EditItemPage() {
     }
   };
 
-  const handleRearImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleRearImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       if (e.target.files[0].size > 2 * 1024 * 1024) {
         alert('Rear image exceeds 2 MB limit.');
@@ -220,7 +219,7 @@ export function EditItemPage() {
     }
   };
 
-  const handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleOtherImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       const validFiles = files.filter((f) => f.size <= 2 * 1024 * 1024);
@@ -235,24 +234,54 @@ export function EditItemPage() {
       }
     }
   };
+  */
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    let hasErrors = false;
+    const newErrors: Record<string, string> = {};
+    const newCustomFieldErrors: Record<string, string> = {};
+
     try {
       itemFormSchema.parse(formData);
-      setErrors({});
-      setCustomFieldErrors({});
-      updateMutation.mutate(formData);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const formattedErrors: Record<string, string> = {};
+        hasErrors = true;
         error.issues.forEach((err: z.ZodIssue) => {
           if (err.path[0]) {
-            formattedErrors[err.path[0].toString()] = err.message;
+            newErrors[err.path[0].toString()] = err.message;
           }
         });
-        setErrors(formattedErrors);
       }
+    }
+
+    // Custom fields validation
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = formData.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setErrors(newErrors);
+    setCustomFieldErrors(newCustomFieldErrors);
+
+    // Custom fields mark the field red and say why in a toast; the built-in
+    // fields above keep their own messages.
+    const firstCustomFieldError = Object.values(newCustomFieldErrors)[0];
+    if (firstCustomFieldError) notify.error(firstCustomFieldError);
+
+    if (!hasErrors) {
+      updateMutation.mutate(formData);
     }
   };
 
@@ -397,7 +426,7 @@ export function EditItemPage() {
                 <div>
                   <input
                     name="sku"
-                    value={formData.sku || ''}
+                    value={formData.sku ?? ''}
                     onChange={handleChange}
                     style={{
                       width: '100%',
@@ -459,7 +488,7 @@ export function EditItemPage() {
                       Unit
                     </div>
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                      <Select
+                      <SearchableSelect
                         value={formData.stockingUomId ?? ''}
                         onChange={(val) => {
                           const picked = uoms.find((u) => u.id === val);
@@ -482,10 +511,12 @@ export function EditItemPage() {
                             ? [{ value: '', label: `${formData.unit} — no stocking unit set` }]
                             : []),
                         ]}
-                        buttonClassName="no-global-focus"
-                        buttonStyle={{
+                        triggerStyle={{
                           border: 'none',
                           height: '100%',
+                          minHeight: '100%',
+                          background: 'transparent',
+                          boxShadow: 'none',
                           padding: '0 12px',
                           fontSize: 13,
                         }}
@@ -543,7 +574,7 @@ export function EditItemPage() {
                 <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>HSN Code</label>
                 <input
                   name="hsnCode"
-                  value={formData.hsnCode || ''}
+                  value={formData.hsnCode ?? ''}
                   onChange={handleChange}
                   style={{
                     width: '100%',
@@ -578,7 +609,7 @@ export function EditItemPage() {
                   <input
                     type="file"
                     ref={frontImageRef}
-                    onChange={handleFrontImageChange}
+                    onChange={_handleFrontImageChange}
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
@@ -645,7 +676,7 @@ export function EditItemPage() {
                   <input
                     type="file"
                     ref={rearImageRef}
-                    onChange={handleRearImageChange}
+                    onChange={_handleRearImageChange}
                     style={{ display: 'none' }}
                     accept="image/*"
                   />
@@ -713,7 +744,7 @@ export function EditItemPage() {
                 <input
                   type="file"
                   ref={otherImagesRef}
-                  onChange={handleOtherImagesChange}
+                  onChange={_handleOtherImagesChange}
                   style={{ display: 'none' }}
                   accept="image/*"
                   multiple
@@ -793,6 +824,7 @@ export function EditItemPage() {
                 </button>
               </div>
             </div>
+            )} */}
           </div>
 
           {/* Sales and Purchase Information */}
@@ -861,7 +893,7 @@ export function EditItemPage() {
                             type="number"
                             step="0.01"
                             name="sellingPrice"
-                            value={formData.sellingPrice || ''}
+                            value={formData.sellingPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -901,7 +933,7 @@ export function EditItemPage() {
                         </label>
                         <textarea
                           name="salesDescription"
-                          value={formData.salesDescription || ''}
+                          value={formData.salesDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -961,7 +993,7 @@ export function EditItemPage() {
                             type="number"
                             step="0.01"
                             name="costPrice"
-                            value={formData.costPrice || ''}
+                            value={formData.costPrice ?? ''}
                             onChange={handleChange}
                             style={{
                               width: '100%',
@@ -999,7 +1031,7 @@ export function EditItemPage() {
                         </label>
                         <textarea
                           name="purchaseDescription"
-                          value={formData.purchaseDescription || ''}
+                          value={formData.purchaseDescription ?? ''}
                           onChange={(e) =>
                             handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
                           }
@@ -1070,15 +1102,39 @@ export function EditItemPage() {
                 <div
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: 14,
-                    paddingTop: 8,
-                    borderTop: '1px solid #e2e8f0',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#1e293b',
+                    cursor: 'pointer',
                   }}
                 >
+                  <input
+                    type="checkbox"
+                    name="trackInventory"
+                    checked={formData.trackInventory}
+                    onChange={handleChange}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    Track Inventory for this item
+                    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 400, marginTop: 4 }}>
+                      You cannot enable/disable inventory tracking once you've created transactions
+                      for this item
+                    </div>
+                  </div>
+                </label>
+
+                {formData.trackInventory && (
                   <div
-                    className="form-field-grid"
-                    style={{ gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 12 }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 14,
+                      paddingTop: 8,
+                      borderTop: '1px solid #e2e8f0',
+                    }}
                   >
                     <label style={{ fontSize: 13, color: '#4b5563', fontWeight: 500 }}>
                       Inventory Tracking
@@ -1103,7 +1159,25 @@ export function EditItemPage() {
                         />{' '}
                         None
                       </label>
-                      {formData.itemType !== 'service' && (
+                      <div style={{ display: 'flex', gap: 16 }}>
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="inventoryTracking"
+                            value="none"
+                            checked={formData.inventoryTracking === 'none'}
+                            onChange={() => handleRadioChange('inventoryTracking', 'none')}
+                          />{' '}
+                          None
+                        </label>
                         <label
                           style={{
                             display: 'flex',
@@ -1123,70 +1197,13 @@ export function EditItemPage() {
                           />{' '}
                           {singular}
                         </label>
-                      )}
+                      </div>
                     </div>
                   </div>
-
-                  {formData.inventoryTracking === 'none' && (
-                    <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <label
-                          style={{
-                            fontSize: 13,
-                            color: '#4b5563',
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Opening Stock
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="openingStock"
-                          value={formData.openingStock || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '140px',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <label
-                          style={{
-                            fontSize: 13,
-                            color: '#4b5563',
-                            fontWeight: 500,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Value of Opening Stock (per quantity)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="openingStockValuePerUnit"
-                          value={formData.openingStockValuePerUnit || ''}
-                          onChange={handleChange}
-                          style={{
-                            width: '140px',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            fontSize: 13,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Custom Fields */}
           {orgId && (

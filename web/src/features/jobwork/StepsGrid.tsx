@@ -88,6 +88,9 @@ interface Props<T extends StepGridRow> {
   /** own | customer. Decides which batches may even be offered — one customer's
    * goods must never be planned into another's order (§5.3). */
   ownership?: string;
+  /** The customer, when `ownership` is `customer` — `ownership` alone matches every
+   * customer's goods. Until one is picked the planner offers nothing. */
+  ownerPartyId?: string | null;
   /**
    * How many steps already exist above these. The grid captions positions, and on
    * the append dialog position 1 of the array is step 4 of the order — a block
@@ -663,7 +666,7 @@ function ItemList({
                         })
                       }
                       disabled={disabled}
-                      placeholder="10"
+                      placeholder="0"
                       title={`Rate per ${unit?.label ?? 'unit'}`}
                       style={fieldError('rate') ? cellInputError : cellInput}
                     />
@@ -781,13 +784,19 @@ function ItemList({
                         disabled || !(row.plannedQty && row.plannedQty > 0) ? '#cbd5e1' : '#0062ff',
                     }}
                   >
-                    {(row.plannedBatches?.length ?? 0) === 0
-                      ? `Add ${trackingLabel.plural}`
-                      : `${row.plannedBatches!.length} ${
-                          row.plannedBatches!.length === 1
-                            ? trackingLabel.singular.toLowerCase()
-                            : trackingLabel.plural.toLowerCase()
-                        } planned`}
+                    {(() => {
+                      // One plan row per taka, so two takas of one batch are two rows.
+                      const batchCount = new Set(
+                        (row.plannedBatches ?? []).map((planned) => planned.batchId),
+                      ).size;
+                      return batchCount === 0
+                        ? `Add ${trackingLabel.plural}`
+                        : `${batchCount} ${
+                            batchCount === 1
+                              ? trackingLabel.singular.toLowerCase()
+                              : trackingLabel.plural.toLowerCase()
+                          } planned`;
+                    })()}
                   </button>
                 )}
               </div>
@@ -873,6 +882,7 @@ export function StepsGrid<T extends StepGridRow>({
   showInputQty,
   allowPlannedBatches,
   ownership = 'own',
+  ownerPartyId,
   seqOffset = 0,
   priorProducers,
   priorSpare,
@@ -893,7 +903,7 @@ export function StepsGrid<T extends StepGridRow>({
    */
   const { data: itemsPage } = useQuery({
     queryKey: ['items', orgId, 'step-grid'],
-    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500 }),
+    queryFn: () => itemsApi.getItems(orgId!, { perPage: 500, filter: 'active' }),
     enabled: Boolean(orgId),
   });
   const items = itemsPage?.results ?? [];
@@ -1016,29 +1026,49 @@ export function StepsGrid<T extends StepGridRow>({
    * (`JobOrderStepInputBatch.locationId`). `ownership` stays mandatory: one
    * customer's goods must never be planned into another's order (§5.2).
    */
+  const planOwnerPartyId = ownership === 'customer' ? (ownerPartyId ?? undefined) : undefined;
   const { data: planningBatches = [], isLoading: planningBatchesLoading } = useQuery({
     queryKey: [
       'available-batches',
       orgId,
       planningRow?.itemId,
       ownership,
+      planOwnerPartyId,
       planSearchDebounced,
       'plan',
-      // 🔴 Part of the KEY. Turning the level on has to invalidate this, or the
       // planner serves a cached answer with no packages and every batch looks as
       // though it has none.
       unitLabel.enabled,
+      // 🔴 Job orders don't plan from vendor locations by default
+      'excludeVendorLocations',
     ],
     queryFn: () =>
       fetchAvailableBatches(orgId!, {
         itemId: planningRow!.itemId!,
         ownership,
+        ownerPartyId: planOwnerPartyId,
         search: planSearchDebounced || undefined,
         limit: PLAN_BATCH_LIMIT,
         withUnits: unitLabel.enabled,
+        excludeVendorLocations: true,
       }),
-    enabled: Boolean(orgId && planningRow?.itemId),
+    // A customer order with no customer yet would otherwise list every customer's goods.
+    enabled: Boolean(
+      orgId && planningRow?.itemId && (ownership !== 'customer' || planOwnerPartyId),
+    ),
   });
+
+  /**
+   * Flips once per opening, when the batch list first arrives. `AddBatchesModal`
+   * seeds on mount, so mounted before the list it seeds the saved plan against
+   * nothing — the dialog opened empty the first time and Save then wiped the plan.
+   * Latched rather than read off `isLoading`, which a search re-raises and would
+   * remount the dialog over the user's edits.
+   */
+  const [planReady, setPlanReady] = useState(false);
+  // Adjusted during render, not in an effect — React re-renders at once, no cascade.
+  if (!planning && planReady) setPlanReady(false);
+  else if (planning && !planningBatchesLoading && !planReady) setPlanReady(true);
 
   const update = (index: number, patch: Partial<StepGridRow>) => {
     onChange(steps.map((step, i) => (i === index ? { ...step, ...patch } : step)));
@@ -1184,23 +1214,9 @@ export function StepsGrid<T extends StepGridRow>({
                   <div style={{ width: '100%' }}>
                     <ProcessSelect
                       value={step.processId || null}
-                      onChange={(processId, process) =>
-                        update(index, {
-                          processId,
-                          outputs:
-                            (step.outputs ?? []).length === 0 &&
-                            !process.itemChanges &&
-                            step.inputs?.[0]?.itemId
-                              ? [
-                                  {
-                                    ...emptyStepItem(),
-                                    itemId: step.inputs[0]!.itemId,
-                                    uomId: step.inputs[0]!.uomId ?? null,
-                                  },
-                                ]
-                              : step.outputs,
-                        })
-                      }
+                      // Picking a process seeds nothing — "Same as consumed" is the
+                      // one way to say a step returns what it took.
+                      onChange={(processId) => update(index, { processId })}
                       disabled={readOnly}
                       ariaLabel={`Step ${stepNo} process`}
                       minWidth="100%"
@@ -1435,7 +1451,7 @@ export function StepsGrid<T extends StepGridRow>({
       */}
       {planning && planningRow?.itemId && (
         <AddBatchesModal
-          key={`${planning.stepIndex}-${planning.rowIndex}-${planningRow.itemId}`}
+          key={`${planning.stepIndex}-${planning.rowIndex}-${planningRow.itemId}-${planReady}`}
           isOpen
           onClose={() => {
             setPlanning(null);

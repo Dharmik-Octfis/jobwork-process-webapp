@@ -67,11 +67,9 @@ describe('processes — the full CRUD path', () => {
       name,
       code: 'DYE',
       description: 'Wet processing',
-      itemChanges: true,
     });
 
     expect(created.name).toBe(name);
-    expect(created.itemChanges).toBe(true);
 
     const listed = await getProcessesList(orgId, listOpts);
     expect(listed.results.map((p) => p.id)).toContain(created.id);
@@ -85,9 +83,6 @@ describe('processes — the full CRUD path', () => {
       code: 'DYE2',
     });
     expect(updated.code).toBe('DYE2');
-    // Not sent on the update, so it falls back to its default rather than
-    // keeping the old value — the form posts the whole record.
-    expect(updated.itemChanges).toBe(false);
 
     await deleteProcessById(orgId, created.id);
 
@@ -165,22 +160,20 @@ describe('processes — the full CRUD path', () => {
     expect(created.description).toBeNull();
   });
 
-  it('filters the list by the preset views', async () => {
-    const sameItem = await createNewProcess(orgId, { name: `Dyeing ${unique()}` });
-    const newItem = await createNewProcess(orgId, {
-      name: `Stitching ${unique()}`,
-      itemChanges: true,
-    });
+  it('narrows nothing in the default view, and 400s the removed changes_item view', async () => {
+    const dyeing = await createNewProcess(orgId, { name: `Dyeing ${unique()}` });
+    const stitching = await createNewProcess(orgId, { name: `Stitching ${unique()}` });
 
-    // The default view narrows nothing — the active/inactive split went with the
-    // `is_active` column, so a process you have stopped running is deleted.
+    // The active/inactive split went with the `is_active` column, so a process you
+    // have stopped running is deleted.
     const byDefault = await getProcessesList(orgId, listOpts);
-    expect(byDefault.results.map((p) => p.id)).toContain(sameItem.id);
-    expect(byDefault.results.map((p) => p.id)).toContain(newItem.id);
+    expect(byDefault.results.map((p) => p.id)).toContain(dyeing.id);
+    expect(byDefault.results.map((p) => p.id)).toContain(stitching.id);
 
-    const changesItem = await getProcessesList(orgId, { ...listOpts, filter: 'changes_item' });
-    expect(changesItem.results.map((p) => p.id)).toContain(newItem.id);
-    expect(changesItem.results.map((p) => p.id)).not.toContain(sameItem.id);
+    const removed = await getProcessesList(orgId, { ...listOpts, filter: 'changes_item' }).catch(
+      (e: unknown) => e,
+    );
+    expect(removed).toBeInstanceOf(ApiError);
   });
 
   it('searches across name, code and description', async () => {

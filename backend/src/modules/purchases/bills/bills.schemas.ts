@@ -16,14 +16,29 @@ const emptyToNullDate = z.preprocess(
   z.coerce.date().optional().nullable(),
 );
 
+/** Draft or Open and nothing else — approval has its own column (BILL_APPROVAL_GATE_PLAN.md G1). */
+const billStatus = z.preprocess(
+  (val) =>
+    typeof val === 'string'
+      ? (({ draft: 'Draft', open: 'Open' } as Record<string, string>)[val.trim().toLowerCase()] ??
+        val)
+      : val,
+  z.enum(['Draft', 'Open']),
+);
+
 export const billItemSchema = z.object({
   id: emptyToUndefinedUuid,
   itemId: z.string().uuid(),
   jobReceiptId: emptyToUndefinedUuid,
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
-  discountPercentage: z.coerce.number().optional().nullable(),
-  discountAmount: z.coerce.number().optional().nullable(),
+  discountPercentage: z.coerce
+    .number()
+    .min(0, 'Discount cannot be negative.')
+    .max(100, 'Discount cannot exceed 100%.')
+    .optional()
+    .nullable(),
+  discountAmount: z.coerce.number().min(0, 'Discount cannot be negative.').optional().nullable(),
   amount: z.coerce.number(),
   batches: z
     .array(
@@ -103,7 +118,7 @@ const baseBillSchema = z.object({
   // No default here — see `createBillSchema`. Zod 4's `.partial()` keeps a default,
   // so every PATCH that omitted `status` used to arrive as "Draft" and withdraw the
   // bill's stock.
-  status: z.string(),
+  status: billStatus,
   customFields: z.record(z.string(), z.unknown()).optional(),
   lineItems: z.array(billItemSchema).min(1),
 });
@@ -118,16 +133,21 @@ const validateDueDate = (data: { billDate?: Date; dueDate?: Date | null }) => {
 };
 
 export const createBillSchema = baseBillSchema
-  .extend({ status: z.string().default('Draft') })
+  .extend({ status: billStatus.default('Draft') })
   .refine(validateDueDate, {
     message: 'Due date must be equal to or after Bill date',
     path: ['dueDate'],
   });
 
-export const updateBillSchema = baseBillSchema.partial().refine(validateDueDate, {
-  message: 'Due date must be equal to or after Bill date',
-  path: ['dueDate'],
-});
+// The source PO is fixed at creation: the edit form never sends it, and a null here
+// used to unlink the bill from its PO on every save.
+export const updateBillSchema = baseBillSchema
+  .omit({ sourcePoId: true })
+  .partial()
+  .refine(validateDueDate, {
+    message: 'Due date must be equal to or after Bill date',
+    path: ['dueDate'],
+  });
 
 export const billQuerySchema = z.object({
   search: z.string().optional(),

@@ -7,6 +7,7 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
+import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
@@ -100,11 +101,16 @@ export function ReceiptsList() {
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch('all');
 
+  const structuralSharing = useListRowRetention(
+    ['job-receipts', orgId],
+    `${search}|${filter}|${page}|${perPage}|${stepId ?? ''}`,
+  );
   const { data: pageData, isLoading: pageLoading } = useQuery({
     queryKey: ['job-receipts', orgId, search, filter, page, perPage],
     queryFn: () => fetchJobReceipts(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId) && !stepId,
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const { data: stepReceipts, isLoading: stepLoading } = useQuery({
@@ -183,7 +189,7 @@ export function ReceiptsList() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setSearchParams({})}
+                  onClick={() => setSearchParams(prev => { prev.delete('id'); return prev; })}
                   style={{
                     marginLeft: 12,
                     background: 'none',
@@ -405,7 +411,7 @@ export function ReceiptsList() {
             )}
           </div>
 
-          {!selectedId && !stepId && (
+          {!stepId && (
             <Pagination
               pageContext={pageData?.pageContext}
               page={page}
@@ -424,9 +430,13 @@ export function ReceiptsList() {
             <ReceiptDetail
               receiptId={selectedId}
               onClose={() => {
-                const next = new URLSearchParams(searchParams);
-                next.delete('id');
-                setSearchParams(next);
+                if (location.state?.returnUrl) {
+                  navigate(location.state.returnUrl);
+                } else {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('id');
+                  setSearchParams(next);
+                }
               }}
               onOpenJobOrder={(jobOrderId) =>
                 navigate(`/organizations/${orgId}/jobwork/job-orders/${jobOrderId}`)

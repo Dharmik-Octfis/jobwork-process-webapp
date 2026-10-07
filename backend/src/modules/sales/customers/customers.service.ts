@@ -1,5 +1,6 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
+import { approvalTriggerService } from '../../automation/approval-processes/approvalTrigger.service.ts';
 
 /** Message for the (organizationId, contactNumber) unique index. */
 const DUPLICATE_NUMBER = 'Customer number already exists in this organization.';
@@ -92,7 +93,32 @@ export async function getCustomersList(organizationId: string, opts: ListQuery) 
       include: { contactPersons: true, addresses: true },
     });
 
-    return pageSlice(rows, page, perPage);
+    const paginated = pageSlice(rows, page, perPage);
+    const customerIds = paginated.results.map((r) => r.id);
+    let pendingApprovalCustomerIds = new Set<string>();
+    if (customerIds.length > 0) {
+      try {
+        const activeReqs = await tx.$queryRaw<Array<{ record_id: string }>>`
+          SELECT "record_id" FROM "approval_requests"
+          WHERE "organization_id" = ${organizationId}::uuid
+            AND "module_id" = ANY(ARRAY['customers', 'customer']::text[])
+            AND "record_id" = ANY(${customerIds}::text[])
+            AND "status" IN ('PENDING', 'IN_PROGRESS')
+        `;
+        pendingApprovalCustomerIds = new Set(activeReqs.map((a) => a.record_id));
+      } catch (_e) {
+        // ignore
+      }
+    }
+
+    return {
+      ...paginated,
+      results: paginated.results.map((r) => ({
+        ...r,
+        isPendingApproval: pendingApprovalCustomerIds.has(r.id),
+        approvalStatus: pendingApprovalCustomerIds.has(r.id) ? 'Pending Approval' : null,
+      })),
+    };
   });
 }
 
@@ -109,7 +135,7 @@ export async function createNewCustomer(
   userId?: string,
 ) {
   const { contactPersons, addresses, customFields: rawCustomFields, ...customerData } = data;
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const defs = await loadActiveDefinitions(tx, organizationId, 'customer');
     const customFields = validateCustomFields({
       defs,
@@ -136,9 +162,18 @@ export async function createNewCustomer(
       // Let's just compare without padding if it's not strictly padded, or assume it's directly from frontend.
       // Actually, if we just blindly increment, it might be safer, but only if they start with the prefix.
       if (customerData.contactNumber.startsWith(seq.prefix)) {
+        const suffixPart = customerData.contactNumber.slice(seq.prefix.length);
+        const match = suffixPart.match(/^0*(\d+)/);
+        let newNextNumber = seq.nextNumber + 1;
+        if (match && match[1]) {
+          const extracted = parseInt(match[1], 10);
+          if (!isNaN(extracted) && extracted >= seq.nextNumber) {
+            newNextNumber = extracted + 1;
+          }
+        }
         await tx.numberSequence.update({
           where: { id: seq.id },
-          data: { nextNumber: seq.nextNumber + 1 },
+          data: { nextNumber: newNextNumber },
         });
       }
     }
@@ -185,15 +220,52 @@ export async function createNewCustomer(
       }),
     );
   });
+
+  // Trigger approval workflow evaluation asynchronously post-commit
+  approvalTriggerService
+    .trigger({
+      organizationId,
+      moduleId: 'customers',
+      recordId: result.id,
+      recordTitle: result.contactName || `Customer ${result.id}`,
+      triggerType: 'CREATE',
+      record: result as unknown as Record<string, unknown>,
+      actorUserId: userId,
+    })
+    .catch((err) => console.error('[ApprovalTrigger] Error in create customer:', err));
+
+  return result;
 }
 
 export async function getCustomerById(organizationId: string, id: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.customer.findFirst({
+  return runAsTenant(organizationId, async (tx) => {
+    const customer = await tx.customer.findFirst({
       where: { id, organizationId, isDeleted: false },
       include: { contactPersons: true, addresses: true },
-    }),
-  );
+    });
+    if (!customer) return null;
+
+    let isPendingApproval = false;
+    try {
+      const activeReqs = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "approval_requests"
+        WHERE "organization_id" = ${organizationId}::uuid
+          AND "module_id" = ANY(ARRAY['customers', 'customer']::text[])
+          AND "record_id" = ${id}
+          AND "status" IN ('PENDING', 'IN_PROGRESS')
+        LIMIT 1
+      `;
+      isPendingApproval = activeReqs.length > 0;
+    } catch (_e) {
+      // ignore
+    }
+
+    return {
+      ...customer,
+      isPendingApproval,
+      approvalStatus: isPendingApproval ? 'Pending Approval' : null,
+    };
+  });
 }
 
 export async function updateCustomerById(
@@ -202,7 +274,7 @@ export async function updateCustomerById(
   data: CustomerInput,
   userId?: string,
 ) {
-  return runAsTenant(organizationId, async (tx) => {
+  const result = await runAsTenant(organizationId, async (tx) => {
     const existingCustomer = await tx.customer.findFirst({
       where: { id, organizationId, isDeleted: false },
     });
@@ -298,6 +370,23 @@ export async function updateCustomerById(
       },
     });
   });
+
+  if (result) {
+    // Trigger approval workflow evaluation asynchronously post-commit
+    approvalTriggerService
+      .trigger({
+        organizationId,
+        moduleId: 'customers',
+        recordId: result.id,
+        recordTitle: result.contactName || `Customer ${result.id}`,
+        triggerType: 'EDIT',
+        record: result as unknown as Record<string, unknown>,
+        actorUserId: userId,
+      })
+      .catch((err) => console.error('[ApprovalTrigger] Error in update customer:', err));
+  }
+
+  return result;
 }
 
 export async function deleteCustomerById(organizationId: string, id: string, userId?: string) {

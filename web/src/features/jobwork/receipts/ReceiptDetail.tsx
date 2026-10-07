@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
@@ -22,8 +22,13 @@ import {
   fetchJobReceiptById,
   postJobReceipt,
 } from './jobReceipts.api';
-import type { JobReceipt, JobReceiptsPage } from './jobReceipts.schemas';
-import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
+import type { JobReceipt } from './jobReceipts.schemas';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
+import { useTrackingLabel, useBatchUnitLabel } from '../../../hooks/useTrackingLabel';
+import {
+  BatchUnitsCard,
+  BatchUnitsToggle,
+} from '../../../components/inventory/BatchUnitsBreakdown';
 
 interface Props {
   receiptId: string;
@@ -111,10 +116,9 @@ function BatchChip({
  * The Drafts preset filters on `status`, so a refetch DELETES the row from the
  * view the operator is looking at the instant they act on it — press Post on a
  * draft and it drops mid-click, which reads as the receipt having been removed
- * rather than posted. Both transitions rewrite the row in place
- * (`createNewJobReceipt` updates it — same id, same receipt number), so `status`
- * is the only thing the cached list is now wrong about. The row leaves the view
- * on the next real fetch: a refresh, or `staleTime` expiring. Mirrors
+ * rather than posted. Both transitions rewrite the row in place (same id, same
+ * receipt number), so `status` is the only thing the cached list is wrong about,
+ * and the row stays until the view changes (`useListRowRetention`). Mirrors
  * `IssueDetail`.
  */
 function patchStatusInLists(
@@ -123,24 +127,7 @@ function patchStatusInLists(
   receiptId: string,
   status: string,
 ) {
-  const swap = (rows: JobReceipt[]) =>
-    rows.map((item) => (item.id === receiptId ? { ...item, status } : item));
-
-  queryClient.setQueriesData(
-    { queryKey: ['job-receipts', orgId], type: 'active' },
-    // Two shapes live under this key: the paginated list, and the unpaginated
-    // "every receipt against one step" read (`?stepId=`). That one is not
-    // filtered on status, so its row STAYS — it just has to say the right thing.
-    (old: JobReceiptsPage | JobReceipt[] | undefined) => {
-      if (!old) return old;
-      if (Array.isArray(old)) return swap(old);
-      if (!old.results) return old;
-      return { ...old, results: swap(old.results) };
-    },
-  );
-  // The pages nobody is looking at are refetched instead — nothing is on screen
-  // for the row to disappear from, and they must be right when next opened.
-  queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId], type: 'inactive' });
+  patchListRow<JobReceipt>(queryClient, ['job-receipts', orgId], receiptId, { status });
 }
 
 export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
@@ -152,6 +139,15 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const [cancelReason, setCancelReason] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const takaLabel = useBatchUnitLabel();
+  const [openUnits, setOpenUnits] = useState<Set<string>>(() => new Set());
+  const toggleUnits = (key: string) =>
+    setOpenUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const { data: receipt, isLoading } = useQuery({
     queryKey: ['job-receipt', orgId, receiptId],
@@ -209,6 +205,7 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteJobReceipt(orgId!, receiptId),
     onSuccess: () => {
+      releaseListRow(['job-receipts', orgId], receiptId);
       queryClient.invalidateQueries({ queryKey: ['job-receipts', orgId] });
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId] });
       setDeleteOpen(false);
@@ -370,21 +367,23 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
               that posted some. A draft is deleted above. */}
           {receipt.status !== 'cancelled' && receipt.status !== 'draft' && (
             <>
-              {!((receipt._count?.billItems ?? 0) > 0) && (
+              {(!receipt.billItems || receipt.billItems.length === 0) && (
                 <button
                   className="action-btn"
                   type="button"
-                  onClick={() => {
-                    navigate(`/organizations/${orgId}/purchases/bills/new?jobReceiptId=${receipt.id}&vendorId=${receipt.processorId}`);
-                  }}
+                  onClick={() =>
+                    navigate(
+                      `/organizations/${orgId}/purchases/bills/new?fromJobReceipt=${receipt.id}`,
+                    )
+                  }
                   style={{
                     padding: '6px 12px',
                     fontSize: 13,
-                    border: '1px solid #d1d5db',
+                    border: '1px solid #0062ff',
                     borderRadius: 4,
-                    background: '#fff',
+                    background: '#0062ff',
                     cursor: 'pointer',
-                    color: '#333',
+                    color: '#fff',
                   }}
                 >
                   <span className="action-btn-text">Convert to Bill</span>
@@ -685,11 +684,24 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                       ? ((material * accepted) / (accepted + rework) + charge) / accepted
                       : null;
                   const unitLabel = row.uom?.symbol ?? row.uom?.unitName ?? 'unit';
+                  const openBatches = takaLabel.enabled
+                    ? row.batches.filter(
+                        (allocation) =>
+                          allocation.units.length > 0 &&
+                          openUnits.has(`${row.id}:${allocation.id}`),
+                      )
+                    : [];
                   return (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #eef0f3' }}>
-                      <td style={{ ...td, fontWeight: 500, color: '#111' }}>
-                        {row.item?.name ?? '-'}
-                        {/* 🔴 EVERY batch this row wrote into, as chips rather than
+                    <Fragment key={row.id}>
+                      <tr
+                        style={{
+                          borderBottom: openBatches.length ? 'none' : '1px solid #eef0f3',
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        <td style={{ ...td, fontWeight: 500, color: '#111' }}>
+                          {row.item?.name ?? '-'}
+                          {/* 🔴 EVERY batch this row wrote into, as chips rather than
                         grey text — they are identifiers somebody reads off a tag
                         and types into a search box, not a footnote. Green is the
                         stock you can issue onward; amber is the rework, kept in
@@ -699,54 +711,100 @@ export function ReceiptDetail({ receiptId, onClose, onOpenJobOrder }: Props) {
                         since 2026-08-21 those two name only the FIRST of each
                         kind, so a split delivery rendered from them shows one
                         batch and hides the rest. */}
-                        {row.batches.length > 0 && (
-                          <span style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                            {row.batches.map((allocation) => (
-                              <BatchChip
-                                key={allocation.id}
-                                batch={allocation.batch.supplierBatchRef ?? '—'}
-                                qty={formatQty(allocation.qty)}
-                                tone={allocation.kind === 'rework' ? 'rework' : 'good'}
-                                /* Worth saying: this delivery continued a batch that
-                               already existed rather than starting a new lot. */
-                                isTopUp={!allocation.isNewBatch}
-                              />
-                            ))}
+                          {row.batches.length > 0 && (
+                            <span
+                              style={{
+                                display: 'flex',
+                                gap: 6,
+                                marginTop: 4,
+                                flexWrap: 'wrap',
+                                alignItems: 'flex-start',
+                              }}
+                            >
+                              {row.batches.map((allocation) => (
+                                <span key={allocation.id} style={{ display: 'inline-block' }}>
+                                  <BatchChip
+                                    batch={allocation.batch.supplierBatchRef ?? '—'}
+                                    qty={formatQty(allocation.qty)}
+                                    tone={allocation.kind === 'rework' ? 'rework' : 'good'}
+                                    /* Worth saying: this delivery continued a batch that
+                                 already existed rather than starting a new lot. */
+                                    isTopUp={!allocation.isNewBatch}
+                                  />
+                                  {takaLabel.enabled && allocation.units.length > 0 && (
+                                    <BatchUnitsToggle
+                                      count={allocation.units.length}
+                                      open={openUnits.has(`${row.id}:${allocation.id}`)}
+                                      onToggle={() => toggleUnits(`${row.id}:${allocation.id}`)}
+                                      singular={takaLabel.singular}
+                                      plural={takaLabel.plural}
+                                    />
+                                  )}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </td>
+                        <td style={td}>
+                          {formatQty(row.receivedQty)}{' '}
+                          <span style={{ color: '#94a3b8' }}>
+                            {row.uom?.symbol ?? row.uom?.unitName ?? ''}
                           </span>
-                        )}
-                      </td>
-                      <td style={td}>
-                        {formatQty(row.receivedQty)}{' '}
-                        <span style={{ color: '#94a3b8' }}>
-                          {row.uom?.symbol ?? row.uom?.unitName ?? ''}
-                        </span>
-                      </td>
-                      <td style={td}>{formatQty(row.acceptedQty)}</td>
-                      <td style={td}>{formatQty(row.reworkQty)}</td>
-                      <td style={td}>{formatQty(row.scrapQty)}</td>
-                      <td style={td}>
-                        {row.rate === null || row.rate === undefined
-                          ? '-'
-                          : `${formatMoney(row.rate)} / ${unitLabel}`}
-                      </td>
-                      <td style={td}>{costed ? formatMoney(material) : '-'}</td>
-                      <td style={td}>{costed ? formatMoney(charge) : '-'}</td>
-                      <td style={{ ...td, fontWeight: 600, color: '#111' }}>
-                        {costed && perUnit !== null
-                          ? `${formatMoney(perUnit)} / ${unitLabel}`
-                          : '-'}
-                      </td>
-                      <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
-                        {/* Free text since 2026-08-21; `reason` is what receipts
+                        </td>
+                        <td style={td}>{formatQty(row.acceptedQty)}</td>
+                        <td style={td}>{formatQty(row.reworkQty)}</td>
+                        <td style={td}>{formatQty(row.scrapQty)}</td>
+                        <td style={td}>
+                          {row.rate === null || row.rate === undefined
+                            ? '-'
+                            : `${formatMoney(row.rate)} / ${unitLabel}`}
+                        </td>
+                        <td style={td}>{costed ? formatMoney(material) : '-'}</td>
+                        <td style={td}>{costed ? formatMoney(charge) : '-'}</td>
+                        <td style={{ ...td, fontWeight: 600, color: '#111' }}>
+                          {costed && perUnit !== null
+                            ? `${formatMoney(perUnit)} / ${unitLabel}`
+                            : '-'}
+                        </td>
+                        <td style={{ ...td, whiteSpace: 'pre-wrap' }}>
+                          {/* Free text since 2026-08-21; `reason` is what receipts
                         posted before that carry. */}
-                        {row.remarks || row.reason?.name || '-'}
-                        {row.responsibility && (
-                          <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
-                            {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+                          {row.remarks || row.reason?.name || '-'}
+                          {row.responsibility && (
+                            <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
+                              {row.responsibility === 'ours' ? 'Our fault' : 'Their fault'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      {/* Its own row, so opening the takas never widens a column. */}
+                      {openBatches.length > 0 && (
+                        <tr style={{ borderBottom: '1px solid #eef0f3' }}>
+                          <td colSpan={10} style={{ padding: '0 10px 10px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {openBatches.map((allocation) => {
+                                const qty = toNumber(allocation.qty);
+                                const units = allocation.units.map((u) => ({
+                                  batchUnitId: u.id,
+                                  label: u.label,
+                                  qty: toNumber(u.qty),
+                                }));
+                                return (
+                                  <BatchUnitsCard
+                                    key={allocation.id}
+                                    units={units}
+                                    untaggedQty={qty - units.reduce((sum, u) => sum + u.qty, 0)}
+                                    singular={takaLabel.singular}
+                                    heading={allocation.batch.supplierBatchRef ?? undefined}
+                                    formatQty={(value) => formatQty(value)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

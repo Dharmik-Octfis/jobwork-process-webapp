@@ -8,7 +8,10 @@ import {
   drawLayers,
   recordDraws,
   restoreDraws,
+  revalueLayers,
+  unrevalueLayers,
   type LayerDraw,
+  type LayerRevaluation,
   type LayerScope,
 } from './costLayers.ts';
 
@@ -66,6 +69,8 @@ export const MOVEMENT_TYPES = [
    * pieces carry the true cost of the failures (§5.5). */
   'scrap',
   'adjustment',
+  /** Value only, no quantity: a value adjustment (`postRevaluation`). */
+  'revaluation',
   /** The opposite of an earlier row. The ONLY way to undo anything here. */
   'reversal',
 ] as const;
@@ -93,6 +98,16 @@ export type Ownership = (typeof OWNERSHIPS)[number];
  * code-only change, the same call as `status = 'draft'` on jobwork documents.
  */
 export const UNALLOCATED_BATCH_STATE = 'unallocated';
+/**
+ * 🔴 A batch a DRAFT document has named but not received. It is a real row, so the
+ * draft keeps its reference, attributes and packages, but it has no ledger rows
+ * and nothing may post against it (`postMovement` refuses it). No picker or list
+ * offers it. Posting the draft discards it and creates the real batch the normal
+ * way, so it is never promoted in place.
+ */
+export const DRAFT_BATCH_STATE = 'draft';
+/** States a picker must never offer: stock nobody may pick, or stock that is not there yet. */
+export const UNPICKABLE_BATCH_STATES = [UNALLOCATED_BATCH_STATE, DRAFT_BATCH_STATE];
 /** The only document allowed to move an unallocated batch. */
 export const OPENING_STOCK_SOURCE_DOC_TYPE = 'item_opening_stock';
 
@@ -347,6 +362,14 @@ async function postCosted(
         'batch in Add Opening Stock before using it.',
     );
   }
+  // No exception, not even for the draft that created it: posting the draft
+  // discards its draft batches and creates the real ones (jobReceipts.service).
+  if (batch.state === DRAFT_BATCH_STATE) {
+    throw ApiError.badRequest(
+      'This batch belongs to a draft that has not been received yet, so no stock can move ' +
+        'through it.',
+    );
+  }
 
   const batchUnitId = input.batchUnitId ?? null;
   if (batchUnitId) {
@@ -541,6 +564,132 @@ export async function postTransfer(
   return { out: out.entry, in: into.entry };
 }
 
+interface RevaluationMeta {
+  organizationId: string;
+  locationId: string;
+  sourceDocType: string;
+  sourceDocId: string;
+  sourceDocLineId?: string | null;
+  remarks?: string | null;
+  postedAt: Date;
+  userId?: string | null;
+}
+
+/**
+ * 🔴 CHANGE WHAT STOCK ON HAND IS WORTH — the only writer of value-only rows
+ * (docs/STOCK_ADJUSTMENT_VALUE_PLAN.md). `postMovement` keeps refusing a row with
+ * no quantity; this is the one deliberate exception, and it moves no stock.
+ *
+ * One row per layer changed, `stock_effect = 'accounting'` so quantity reports
+ * never see it, carrying the layer's batch and the package its inward row named.
+ */
+export async function postRevaluation(
+  tx: TenantClient,
+  input: RevaluationMeta & { itemId: string; change: Prisma.Decimal },
+): Promise<{ changes: LayerRevaluation[]; value: Prisma.Decimal }> {
+  const changes = await revalueLayers(
+    tx,
+    { organizationId: input.organizationId, itemId: input.itemId, locationId: input.locationId },
+    input.change,
+  );
+
+  const batches = await tx.batch.findMany({
+    where: {
+      id: { in: [...new Set(changes.map((row) => row.batchId))] },
+      organizationId: input.organizationId,
+    },
+    select: { id: true, itemId: true, uomId: true, ownership: true, ownerPartyId: true },
+  });
+  const batchOf = new Map(batches.map((row) => [row.id, row]));
+
+  let value = ZERO;
+  for (const row of changes) {
+    const batch = batchOf.get(row.batchId);
+    if (!batch || batch.ownership !== 'own') throw ApiError.notFound('Batch not found.');
+    const delta = row.valueAfter.minus(row.valueBefore);
+    const entry = await tx.stockLedgerEntry.create({
+      data: {
+        organizationId: input.organizationId,
+        itemId: batch.itemId,
+        batchId: batch.id,
+        batchUnitId: row.batchUnitId,
+        locationId: input.locationId,
+        ownership: batch.ownership,
+        ownerPartyId: batch.ownerPartyId,
+        uomId: batch.uomId,
+        qtyIn: ZERO,
+        qtyOut: ZERO,
+        valueIn: delta.isPositive() ? delta : ZERO,
+        valueOut: delta.isNegative() ? delta.abs() : ZERO,
+        movementType: 'revaluation',
+        stockEffect: 'accounting',
+        sourceDocType: input.sourceDocType,
+        sourceDocId: input.sourceDocId,
+        sourceDocLineId: input.sourceDocLineId ?? null,
+        remarks: input.remarks ?? null,
+        postedAt: input.postedAt,
+        createdBy: input.userId ?? null,
+      },
+      select: { id: true },
+    });
+    await tx.stockLayerRevaluation.create({
+      data: {
+        organizationId: input.organizationId,
+        layerId: row.layerId,
+        ledgerEntryId: entry.id,
+        qty: row.qty,
+        valueBefore: row.valueBefore,
+        valueAfter: row.valueAfter,
+        // The clock, like a draw's — see `recordDraws`.
+        createdAt: new Date(),
+      },
+    });
+    value = value.plus(delta);
+  }
+  return { changes, value };
+}
+
+/** Undo a value adjustment's rows: the layers get back exactly what they were given. */
+export async function reverseRevaluation(
+  tx: TenantClient,
+  organizationId: string,
+  ledgerEntryIds: readonly string[],
+  meta: Omit<RevaluationMeta, 'organizationId' | 'locationId' | 'sourceDocLineId'>,
+) {
+  const undone = await unrevalueLayers(tx, organizationId, ledgerEntryIds);
+  const rows = await tx.stockLedgerEntry.findMany({
+    where: { organizationId, id: { in: undone.map((row) => row.ledgerEntryId) } },
+  });
+  const rowOf = new Map(rows.map((row) => [row.id, row]));
+  for (const { ledgerEntryId, change } of undone) {
+    const row = rowOf.get(ledgerEntryId)!;
+    await tx.stockLedgerEntry.create({
+      data: {
+        organizationId,
+        itemId: row.itemId,
+        batchId: row.batchId,
+        batchUnitId: row.batchUnitId,
+        locationId: row.locationId,
+        ownership: row.ownership,
+        ownerPartyId: row.ownerPartyId,
+        uomId: row.uomId,
+        qtyIn: ZERO,
+        qtyOut: ZERO,
+        valueIn: change.isNegative() ? change.abs() : ZERO,
+        valueOut: change.isPositive() ? change : ZERO,
+        movementType: 'reversal',
+        stockEffect: 'accounting',
+        sourceDocType: meta.sourceDocType,
+        sourceDocId: meta.sourceDocId,
+        sourceDocLineId: row.sourceDocLineId,
+        remarks: meta.remarks ?? null,
+        postedAt: meta.postedAt,
+        createdBy: meta.userId ?? null,
+      },
+    });
+  }
+}
+
 /**
  * 🔴 UNDO ONE LEDGER ROW — the only way a posted movement is corrected.
  *
@@ -729,6 +878,13 @@ export interface BalanceFilter {
    */
   locationIds?: readonly string[];
   ownership?: Ownership;
+  /**
+   * WHICH customer's goods. `ownership: 'customer'` alone matches every
+   * customer's stock, so an outward caller working for one customer must pass
+   * this too, or it offers — and posts — another customer's material.
+   * `undefined` means no filter; `null` means rows with no owner party.
+   */
+  ownerPartyId?: string | null;
   /** Balance as it stood at a moment in time, by `postedAt`. */
   asOf?: Date;
   /**
@@ -760,6 +916,7 @@ function balanceWhere(filter: BalanceFilter): Prisma.StockLedgerEntryWhereInput 
         ? { locationId: { in: [...filter.locationIds] } }
         : {}),
     ...(filter.ownership ? { ownership: filter.ownership } : {}),
+    ...(filter.ownerPartyId !== undefined ? { ownerPartyId: filter.ownerPartyId } : {}),
     ...(filter.asOf ? { postedAt: { lte: filter.asOf } } : {}),
     stockEffect: { in: [axis, 'both'] },
   };
@@ -994,6 +1151,9 @@ export interface AvailableBatch {
   createdAt: Date;
 }
 
+/** How many used-up batches per item `includeExhausted` adds, newest first. */
+const EXHAUSTED_BATCH_LIMIT = 10;
+
 /**
  * What is actually available to issue, at one location, for one item — or, since
  * 2026-09-01, for SEVERAL items in one round trip.
@@ -1034,12 +1194,25 @@ export async function getAvailableBatches(
      * back per (batch, location), so the caller knows where each balance is. */
     locationIds?: readonly string[];
     ownership?: Ownership;
+    /** See `BalanceFilter.ownerPartyId` — required in practice for customer stock. */
+    ownerPartyId?: string | null;
     asOf?: Date;
     /** Batch number or the supplier's own reference — the two things printed on
      * the tag, and the only two a user can read off the goods. */
     search?: string;
     /** A ceiling on rows returned, for a picker that cannot render hundreds. */
     limit?: number;
+    /**
+     * Also return batches whose balance here is exactly ZERO — the most recent
+     * `EXHAUSTED_BATCH_LIMIT` per item, after every live one.
+     *
+     * 🔴 OPT-IN, and only for an INWARD picker: a bill receiving more stock into
+     * an existing batch may top up one that has run out. Every outward caller —
+     * issue, assembly, planning — must leave this off: a zero row there is stock
+     * the picker offers and the save then refuses, and the allocators rely on
+     * every returned row holding something.
+     */
+    includeExhausted?: boolean;
   },
 ): Promise<AvailableBatch[]> {
   /**
@@ -1060,62 +1233,108 @@ export async function getAvailableBatches(
   });
 
   const zero = new Prisma.Decimal(0);
-  const positive = grouped
-    .map((row) => ({
-      batchId: row.batchId,
-      locationId: row.locationId,
-      availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
-      value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
-    }))
-    .filter((row) => row.availableQty.greaterThan(0));
+  const balances = grouped.map((row) => ({
+    batchId: row.batchId,
+    locationId: row.locationId,
+    availableQty: (row._sum.qtyIn ?? zero).minus(row._sum.qtyOut ?? zero),
+    value: (row._sum.valueIn ?? zero).minus(row._sum.valueOut ?? zero),
+  }));
 
-  if (positive.length === 0) return [];
+  const positive = balances.filter((row) => row.availableQty.greaterThan(0));
+  const zeroBalance = filter.includeExhausted
+    ? balances.filter((row) => row.availableQty.equals(0))
+    : [];
+
+  if (positive.length === 0 && zeroBalance.length === 0) return [];
 
   // One item asked about means the cap can go into the database, where a ceiling
   // belongs. Several means it cannot — see the note on `limit` above.
   const oneItem = Boolean(filter.itemId) || filter.itemIds?.length === 1;
 
-  const batches = await tx.batch.findMany({
-    where: {
-      id: { in: positive.map((row) => row.batchId) },
-      organizationId: filter.organizationId,
-      isDeleted: false,
-      // Unallocated opening stock counts on hand but is never offered — see
-      // `UNALLOCATED_BATCH_STATE`. Dropping it here drops its balance row below.
-      state: { not: UNALLOCATED_BATCH_STATE },
-      // The picker's own search. Matches what is on the physical tag and nothing
-      // else — `batchNumber` is never rendered, so it is never typed either
-      // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
-      ...searchWhere<Prisma.BatchWhereInput>(filter.search, [
-        'supplierBatchRef',
-        'manufacturerBatch',
-      ]),
-    },
-    // Ordered and capped HERE rather than after hydration, so a limit actually
-    // bounds the rows the database builds.
-    //
-    // 🔴 Oldest first, NOT by `batchNumber` (2026-08-14). The number is invisible
-    // now, so ordering by it produced a sequence nobody on screen could explain —
-    // and, worse, the `take` then kept the LOWEST-numbered rows rather than the
-    // oldest, so a capped list dropped exactly the stock FIFO wants issued first.
-    orderBy: { createdAt: 'asc' },
-    ...(filter.limit && oneItem ? { take: filter.limit } : {}),
-    select: {
-      id: true,
-      batchNumber: true,
-      createdAt: true,
-      supplierBatchRef: true,
-      manufacturerBatch: true,
-      manufacturedDate: true,
-      expiryDate: true,
-      mrp: true,
-      sellingPrice: true,
-      itemId: true,
-      uomId: true,
-      ownership: true,
-      ownerPartyId: true,
-    },
-  });
+  const baseWhere: Prisma.BatchWhereInput = {
+    organizationId: filter.organizationId,
+    isDeleted: false,
+    // Unallocated opening stock counts on hand but is never offered — see
+    // `UNALLOCATED_BATCH_STATE`. Dropping it here drops its balance row below.
+    state: { notIn: UNPICKABLE_BATCH_STATES },
+    // The picker's own search. Matches what is on the physical tag and nothing
+    // else — `batchNumber` is never rendered, so it is never typed either
+    // (2026-08-14). Same two columns as `batches.service.SEARCH_COLUMNS`.
+    ...searchWhere<Prisma.BatchWhereInput>(filter.search, [
+      'supplierBatchRef',
+      'manufacturerBatch',
+    ]),
+  };
+
+  const batches =
+    positive.length > 0
+      ? await tx.batch.findMany({
+          where: {
+            id: { in: positive.map((row) => row.batchId) },
+            ...baseWhere,
+          },
+          // Ordered and capped HERE rather than after hydration, so a limit actually
+          // bounds the rows the database builds.
+          //
+          // 🔴 Oldest first, NOT by `batchNumber` (2026-08-14). The number is invisible
+          // now, so ordering by it produced a sequence nobody on screen could explain —
+          // and, worse, the `take` then kept the LOWEST-numbered rows rather than the
+          // oldest, so a capped list dropped exactly the stock FIFO wants issued first.
+          orderBy: { createdAt: 'asc' },
+          ...(filter.limit && oneItem ? { take: filter.limit } : {}),
+          select: {
+            id: true,
+            batchNumber: true,
+            createdAt: true,
+            supplierBatchRef: true,
+            manufacturerBatch: true,
+            manufacturedDate: true,
+            expiryDate: true,
+            mrp: true,
+            sellingPrice: true,
+            itemId: true,
+            uomId: true,
+            ownership: true,
+            ownerPartyId: true,
+          },
+        })
+      : [];
+
+  // Newest first — what was just used up is what a top-up is likely to name. Capped
+  // PER ITEM like live stock (in the database for one item, below for several), and
+  // capped while searching too, so a search can never return every batch ever emptied.
+  const exhaustedCap = Math.min(EXHAUSTED_BATCH_LIMIT, filter.limit ?? EXHAUSTED_BATCH_LIMIT);
+  const exhaustedRows =
+    zeroBalance.length > 0
+      ? await tx.batch.findMany({
+          where: {
+            id: { in: zeroBalance.map((row) => row.batchId) },
+            ...baseWhere,
+          },
+          orderBy: { createdAt: 'desc' },
+          ...(oneItem ? { take: exhaustedCap } : {}),
+          select: {
+            id: true,
+            batchNumber: true,
+            createdAt: true,
+            supplierBatchRef: true,
+            manufacturerBatch: true,
+            manufacturedDate: true,
+            expiryDate: true,
+            mrp: true,
+            sellingPrice: true,
+            itemId: true,
+            uomId: true,
+            ownership: true,
+            ownerPartyId: true,
+          },
+        })
+      : [];
+
+  const keptExhausted = oneItem ? null : keepPerItem(exhaustedRows, exhaustedCap);
+  const exhaustedBatches = keptExhausted
+    ? exhaustedRows.filter((row) => keptExhausted.has(row.id))
+    : exhaustedRows;
 
   // The multi-item path's cap, applied to rows the database already ordered
   // oldest-first — so it keeps exactly the batches FIFO wants issued first,
@@ -1140,23 +1359,29 @@ export async function getAvailableBatches(
    * Assuming this was already sorted consumed the NEWEST stock first and passed
    * every test that did not check which batch moved (2026-09-02).
    */
-  const batchById = new Map(
+  // Two maps, not one: with no location filter a batch can be live in one godown
+  // and empty in another, and a shared map would let its exhausted entry smuggle a
+  // live row back past `limit`.
+  const liveById = new Map(
     batches.filter((batch) => capped.has(batch.id)).map((batch) => [batch.id, batch]),
   );
-  return positive.flatMap((balance) => {
-    const batch = batchById.get(balance.batchId);
-    return batch
-      ? [
-          {
-            ...batch,
-            batchId: batch.id,
-            locationId: balance.locationId,
-            availableQty: balance.availableQty,
-            value: balance.value,
-          },
-        ]
-      : [];
-  });
+  const exhaustedById = new Map(exhaustedBatches.map((batch) => [batch.id, batch]));
+  const toRow =
+    (byId: Map<string, (typeof batches)[number]>) => (balance: (typeof balances)[number]) => {
+      const batch = byId.get(balance.batchId);
+      return batch
+        ? [
+            {
+              ...batch,
+              batchId: batch.id,
+              locationId: balance.locationId,
+              availableQty: balance.availableQty,
+              value: balance.value,
+            },
+          ]
+        : [];
+    };
+  return [...positive.flatMap(toRow(liveById)), ...zeroBalance.flatMap(toRow(exhaustedById))];
 }
 
 /** The first `limit` rows of each item, taking `rows` in the order given. */
@@ -1554,6 +1779,8 @@ export interface CreateBatchInput {
   /** Mint the holding batch for unassigned opening stock — no reference, and
    * `state = UNALLOCATED_BATCH_STATE`. Opening stock only. */
   unallocated?: boolean;
+  /** Mint the batch as `DRAFT_BATCH_STATE` — a draft document's, never posted against. */
+  draft?: boolean;
 }
 
 /**
@@ -1644,7 +1871,8 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
     customFields: input.customFields ?? {},
   };
 
-  if (manualNumber) {
+  // A recycled row comes back `open`, which a draft must never be.
+  if (manualNumber && !input.draft) {
     const recycled = await recycleDeletedBatch(tx, data, input.userId ?? null);
     if (recycled) return recycled;
   }
@@ -1654,6 +1882,7 @@ export async function createBatch(tx: TenantClient, input: CreateBatchInput) {
       data: {
         ...data,
         ...(input.unallocated ? { state: UNALLOCATED_BATCH_STATE } : {}),
+        ...(input.draft ? { state: DRAFT_BATCH_STATE } : {}),
         createdBy: input.userId ?? null,
         updatedBy: input.userId ?? null,
       },

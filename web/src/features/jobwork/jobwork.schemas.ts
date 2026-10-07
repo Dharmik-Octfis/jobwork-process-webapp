@@ -862,6 +862,8 @@ export const itemRefSchema = z.object({
   id: z.string(),
   name: z.string(),
   sku: z.string().nullable().optional(),
+  itemType: z.string().nullable().optional(),
+  trackInventory: z.boolean().optional(),
   inventoryTracking: z.string().optional(),
 });
 

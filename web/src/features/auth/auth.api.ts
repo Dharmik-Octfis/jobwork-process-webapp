@@ -87,6 +87,26 @@ export async function logout(): Promise<{ message: string }> {
   return data;
 }
 
+/** Why the server says this session is over. `null` while it is still live. */
+export type SessionEndedReason = 'revoked' | 'expired' | 'account_disabled' | 'sso_logout';
+
+export interface SessionStatus {
+  active: boolean;
+  reason: SessionEndedReason | null;
+}
+
+/**
+ * Ask whether this session is still live. Polled — see `useSessionWatch`.
+ *
+ * Answers 200 either way, so `active: false` is a real answer and not an error.
+ * A network failure still rejects, which is what keeps a flaky connection from
+ * reading as a logout.
+ */
+export async function fetchSessionStatus(): Promise<SessionStatus> {
+  const { data } = await apiClient.get<SessionStatus>(endpoints.auth.session);
+  return data;
+}
+
 /**
  * Restore a session on app load by exchanging the httpOnly refresh cookie for a
  * fresh access token. Returns the user on success, or null when there's no

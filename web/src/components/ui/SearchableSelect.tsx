@@ -41,6 +41,8 @@ interface SearchableSelectProps {
    * it, and measuring the anchor is not free.
    */
   portal?: boolean;
+  keepOpenOnSelect?: boolean;
+  showIndicator?: boolean;
 }
 
 export function SearchableSelect({
@@ -57,7 +59,9 @@ export function SearchableSelect({
   renderValue,
   footerAction,
   dropdownWidth,
-  portal = false,
+  portal = true,
+  keepOpenOnSelect = false,
+  showIndicator = false,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,6 +73,7 @@ export function SearchableSelect({
   const triggerRef = useRef<HTMLDivElement>(null);
   const optionsContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const footerRef = useRef<HTMLButtonElement>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
 
@@ -164,6 +169,9 @@ export function SearchableSelect({
       return;
     }
 
+    // The footer button handles its own Enter/Space.
+    if (e.target === footerRef.current && e.key !== 'Escape' && e.key !== 'Tab') return;
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setFocusedIndex((prev) => {
@@ -184,13 +192,17 @@ export function SearchableSelect({
         const opt = filteredOptions[focusedIndex];
         if (!opt.disabled) {
           onChange(opt.value);
-          setIsOpen(false);
+          if (!keepOpenOnSelect) {
+            setIsOpen(false);
+          }
         }
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setIsOpen(false);
     } else if (e.key === 'Tab') {
+      // Tab from the search box moves on to the footer button rather than closing.
+      if (footerAction && !e.shiftKey && e.target === searchInputRef.current) return;
       setIsOpen(false);
     }
   };
@@ -230,6 +242,7 @@ export function SearchableSelect({
         tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         style={{
+          position: 'relative',
           padding: '8px 12px',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--color-border)',
@@ -284,6 +297,21 @@ export function SearchableSelect({
         ) : (
           <ChevronDown size={16} color="var(--color-text-muted)" />
         )}
+        {showIndicator && (
+          <span
+            style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              width: '10px',
+              height: '10px',
+              backgroundColor: '#f97316',
+              borderRadius: '50%',
+              border: '2px solid #fff',
+              zIndex: 1,
+            }}
+          />
+        )}
       </div>
 
       {isOpen &&
@@ -336,7 +364,7 @@ export function SearchableSelect({
                 borderRadius: 'var(--radius-md)',
                 boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
                 zIndex: 1000,
-                maxHeight: portal ? undefined : 300,
+                maxHeight: portal ? 'inherit' : 300,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -396,7 +424,9 @@ export function SearchableSelect({
                       onClick={() => {
                         if (opt.disabled) return;
                         onChange(opt.value);
-                        setIsOpen(false);
+                        if (!keepOpenOnSelect) {
+                          setIsOpen(false);
+                        }
                         setSearchTerm('');
                       }}
                       style={{
@@ -447,7 +477,10 @@ export function SearchableSelect({
                 )}
               </div>
               {footerAction && (
-                <div
+                // A button, not a div: Tab has to be able to reach it.
+                <button
+                  ref={footerRef}
+                  type="button"
                   onClick={() => {
                     setIsOpen(false);
                     footerAction.onClick();
@@ -459,7 +492,11 @@ export function SearchableSelect({
                     e.currentTarget.style.backgroundColor = 'white';
                   }}
                   style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
                     backgroundColor: 'white',
+                    border: 'none',
                     borderTop: '1px solid var(--color-border)',
                     padding: '8px 12px',
                     cursor: 'pointer',
@@ -475,7 +512,7 @@ export function SearchableSelect({
                 >
                   {footerAction.icon}
                   {footerAction.text}
-                </div>
+                </button>
               )}
             </div>
           </div>,

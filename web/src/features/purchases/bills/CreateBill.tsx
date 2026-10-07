@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
-import { toast } from 'react-hot-toast';
-import { toApiErrorMessage } from '../../../api/client';
+import { notify } from '../../../lib/notify';
+import { announceOpenOutcome } from './billApproval';
 import {
   Plus,
   Search,
@@ -17,6 +17,7 @@ import {
   ChevronDown,
   FileText,
   X,
+  Eye,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MultiSelectItemModal } from '../../items/components/MultiSelectItemModal';
@@ -34,10 +35,21 @@ import {
   fetchLocations,
   uploadBillAttachments,
   fetchOpenJobReceipts,
+  getBillSignedUrl,
   type BillAttachment,
 } from './bills.api';
 import { fetchPurchaseOrderById } from '../purchase-orders/purchase-orders.api';
+import { fetchJobReceiptById } from '../../jobwork/receipts/jobReceipts.api';
 import type { PurchaseOrderItem } from '../purchase-orders/purchase-orders.schemas';
+import {
+  lineDiscountAmount,
+  lineDiscountError,
+  lineGross,
+  storedLineDiscount,
+} from '../../../lib/lineDiscount';
+import { firstErrorMessage } from '../../../lib/formErrors';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
 import { fetchPaymentTerms } from '../../sales/customers/payment-terms.api';
 import { fetchVendors } from '../vendors/vendors.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
@@ -53,6 +65,52 @@ import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopove
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
+
+/**
+ * A job receipt is billed as the job worker's SERVICE, never as the goods: the
+ * receipt already valued its output at material + agreed charge. The user picks the
+ * process's service item and types qty and rate; the server refuses anything else.
+ */
+function receiptChargeLine(receipt: {
+  id: string;
+  receiptNumber: string;
+  jobOrder?: { jobOrderNumber?: string | null } | null;
+  outputs?: {
+    acceptedQty?: string | number | null;
+    rate?: string | number | null;
+    isPrimary?: boolean;
+  }[];
+  totalAcceptedQty?: string | number;
+}): BillItem {
+  let qtyNum = 0;
+  let rateNum = 0;
+
+  if (receipt.outputs && Array.isArray(receipt.outputs)) {
+    qtyNum = receipt.outputs.reduce((acc, curr) => acc + (Number(curr.acceptedQty) || 0), 0);
+    const primary = receipt.outputs.find((o) => o.isPrimary) || receipt.outputs[0];
+    if (primary) {
+      rateNum = Number(primary.rate) || 0;
+    }
+  } else if ('totalAcceptedQty' in receipt) {
+    qtyNum = Number(receipt.totalAcceptedQty) || 0;
+  }
+
+  const quantity = qtyNum > 0 ? qtyNum : ('' as unknown as number);
+  const rate = rateNum > 0 ? rateNum : ('' as unknown as number);
+  const amount = qtyNum * rateNum || 0;
+
+  return {
+    itemId: '',
+    quantity,
+    rate,
+    discountValue: '' as unknown as number,
+    discountType: 'percentage',
+    amount,
+    itemTotal: amount,
+    jobReceiptId: receipt.id,
+    description: `Job work charges for Job Order ${receipt.jobOrder?.jobOrderNumber ?? ''} / Receive ${receipt.receiptNumber}`,
+  };
+}
 
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
@@ -114,6 +172,121 @@ function ItemImage({
   );
 }
 
+function AttachmentLink({ orgId, attachment }: { orgId: string; attachment: BillAttachment }) {
+  const isDirectUrl = Boolean(attachment.data || attachment.url);
+  const { data: signedUrl } = useQuery({
+    queryKey: ['billAttachmentSignedUrl', orgId, attachment.key],
+    queryFn: () => getBillSignedUrl(orgId, attachment.key!),
+    enabled: Boolean(orgId && attachment.key && !isDirectUrl),
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const finalUrl = isDirectUrl ? attachment.data || attachment.url : signedUrl;
+
+  const handleView = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!finalUrl) return;
+
+    const name = (attachment.name || '').toLowerCase();
+    const isPdf = name.endsWith('.pdf');
+    const isImage = name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i);
+
+    if (!isPdf && !isImage) {
+      window.open(finalUrl, '_blank');
+      return;
+    }
+
+    try {
+      const res = await fetch(finalUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const newWin = window.open('', '_blank');
+      if (newWin) {
+        newWin.document.title = attachment.name || 'View File';
+        newWin.document.body.style.margin = '0';
+        newWin.document.body.style.background = '#0e0e0e';
+        newWin.document.body.style.display = 'flex';
+        newWin.document.body.style.justifyContent = 'center';
+        newWin.document.body.style.alignItems = 'center';
+        newWin.document.body.style.height = '100vh';
+        if (isImage) {
+          const img = newWin.document.createElement('img');
+          img.src = objectUrl;
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '100%';
+          img.style.objectFit = 'contain';
+          newWin.document.body.appendChild(img);
+        } else if (isPdf) {
+          const iframe = newWin.document.createElement('iframe');
+          iframe.src = objectUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          newWin.document.body.appendChild(iframe);
+        }
+      } else {
+        window.open(finalUrl, '_blank');
+      }
+    } catch (_err) {
+      window.open(finalUrl, '_blank');
+    }
+  };
+
+  if (finalUrl) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <a
+          href={finalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontWeight: 500,
+            color: '#0062ff',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textDecoration: 'none',
+          }}
+          title="Download file"
+        >
+          {attachment.name || 'Attachment'}
+        </a>
+        <button
+          type="button"
+          onClick={handleView}
+          title="View file"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '2px',
+          }}
+        >
+          <Eye size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <span
+      style={{
+        fontWeight: 500,
+        color: '#1e293b',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {attachment.name || 'Attachment'}
+    </span>
+  );
+}
+
 export function CreateBill() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,8 +294,9 @@ export function CreateBill() {
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
   const fromPo = searchParams.get('fromPo');
-  const jobReceiptId = searchParams.get('jobReceiptId');
+  const fromJobReceipt = searchParams.get('fromJobReceipt');
   const initialVendorId = searchParams.get('vendorId');
+  const jobReceiptId = searchParams.get('jobReceiptId');
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
 
@@ -130,6 +304,7 @@ export function CreateBill() {
   const isEdit = Boolean(id);
   const isClone = Boolean(cloneFrom);
   const isFromPo = Boolean(fromPo);
+  const isFromJobReceipt = Boolean(fromJobReceipt);
 
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
@@ -160,11 +335,19 @@ export function CreateBill() {
     enabled: Boolean(orgId && fromPo),
   });
 
+  const { data: sourceJobReceipt } = useQuery({
+    queryKey: ['jobReceipt', orgId, fromJobReceipt],
+    queryFn: () => fetchJobReceiptById(orgId!, fromJobReceipt!),
+    enabled: Boolean(orgId && fromJobReceipt),
+  });
+
   const { data: vendorsPage } = useQuery({
     queryKey: ['vendors', orgId],
     queryFn: () => fetchVendors(orgId!),
   });
-  const vendors = vendorsPage?.results || [];
+  const vendors = (vendorsPage?.results || []).filter(
+    (v) => v.status === 'active' || (existingPo && existingPo.vendorId === v.id),
+  );
 
   const { data: locations = [] } = useQuery({
     queryKey: ['locations', orgId],
@@ -229,7 +412,7 @@ export function CreateBill() {
 
   useEffect(() => {
     if (jobReceiptId && openJobReceipts.length > 0 && !hasAutoFilledJobReceipt) {
-      const receipt = openJobReceipts.find(r => r.id === jobReceiptId);
+      const receipt = openJobReceipts.find((r) => r.id === jobReceiptId);
       if (receipt) {
         const currentItems = getValues('lineItems') ?? [];
         let startIndex = currentItems.findIndex((item) => !item.itemId);
@@ -239,32 +422,12 @@ export function CreateBill() {
         }
 
         const newItems = [...currentItems];
-
-        receipt.outputs.forEach((output) => {
-          const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
-          const qty = Number(output.acceptedQty) || 1;
-          const itemData = {
-            itemId: output.itemId,
-            item: output.item,
-            quantity: qty,
-            rate: totalCost / qty,
-            amount: totalCost,
-            itemTotal: totalCost,
-            jobReceiptId: receipt.id,
-            description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
-            batches: output.outputBatchId ? [{
-              batchId: output.outputBatchId,
-              quantity: qty,
-            }] : undefined,
-          };
-
-          if (startIndex < newItems.length && !newItems[startIndex].itemId) {
-            newItems[startIndex] = { ...newItems[startIndex], ...itemData };
-          } else {
-            newItems.push({ ...itemData } as BillItem);
-          }
-          startIndex++;
-        });
+        const itemData = receiptChargeLine(receipt);
+        if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+          newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+        } else {
+          newItems.push(itemData);
+        }
 
         setValue('lineItems', newItems, { shouldValidate: true });
         setHasAutoFilledJobReceipt(true);
@@ -275,20 +438,18 @@ export function CreateBill() {
   useEffect(() => {
     if (existingPo) {
       const formattedLineItems = (existingPo.lineItems || []).map((item) => {
-        const discountVal =
-          item.discountValue !== undefined && item.discountValue !== null
-            ? item.discountValue
-            : item.discountPercentage || 0;
+        const { value: discountVal, type: discountType } = storedLineDiscount(item);
         return {
           itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          discountType,
           amount: item.amount || 0,
           jobReceiptId: item.jobReceiptId,
-          description: (item.customFields as Record<string, unknown>)?.description as string || '',
+          description:
+            ((item.customFields as Record<string, unknown>)?.description as string) || '',
           batches: isClone ? undefined : item.batches,
         };
       });
@@ -340,19 +501,54 @@ export function CreateBill() {
   }, [existingPo, isClone, reset]);
 
   useEffect(() => {
+    if (sourceJobReceipt && isFromJobReceipt) {
+      const formattedLineItems: BillItem[] = [receiptChargeLine(sourceJobReceipt)];
+
+      const resetData: CreateBillData = {
+        vendorId: sourceJobReceipt.processorId || '',
+        locationId: sourceJobReceipt.locationId || '',
+        paymentTerms: '',
+        billNumber: '',
+        billDate: new Date().toISOString().split('T')[0],
+        dueDate: '',
+        deliveryType: 'Location',
+        deliveryLocationId: sourceJobReceipt.locationId || '',
+        deliveryCustomerId: '',
+        termsAndConditions: '',
+        status: 'Draft',
+        customFields: null,
+        lineItems:
+          formattedLineItems.length > 0
+            ? (formattedLineItems as unknown as BillItem[])
+            : [
+                {
+                  itemId: '',
+                  quantity: '' as unknown as number,
+                  rate: '' as unknown as number,
+                  discountValue: '' as unknown as number,
+                  discountType: 'percentage',
+                  itemTotal: 0,
+                } as BillItem,
+              ],
+        subTotal: formattedLineItems.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
+        totalAmount: formattedLineItems.reduce((acc, curr) => acc + Number(curr.amount || 0), 0),
+      };
+
+      reset(resetData);
+    }
+  }, [sourceJobReceipt, isFromJobReceipt, reset]);
+
+  useEffect(() => {
     if (sourcePo && isFromPo) {
       const formattedLineItems = (sourcePo.lineItems || []).map((item: PurchaseOrderItem) => {
-        const discountVal =
-          item.discountValue !== undefined && item.discountValue !== null
-            ? item.discountValue
-            : item.discountPercentage || 0;
+        const { value: discountVal, type: discountType } = storedLineDiscount(item);
         return {
           itemId: item.itemId,
           item: item.item,
           quantity: item.quantity || ('' as unknown as number),
           rate: item.rate || ('' as unknown as number),
           discountValue: discountVal || ('' as unknown as number),
-          discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
+          discountType,
           amount: item.itemTotal || 0,
           from_po: true,
         };
@@ -411,6 +607,11 @@ export function CreateBill() {
   const watchPoDate = watch('billDate');
   const watchPaymentTerms = watch('paymentTerms');
   const watchStatus = watch('status');
+
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'bill');
+  const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
+
+  const hasJobReceiptLines = watchItems?.some((item) => !!item.jobReceiptId);
 
   useEffect(() => {
     if (watchPoDate && watchPaymentTerms && paymentTerms) {
@@ -501,18 +702,10 @@ export function CreateBill() {
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
   (watchItems || []).forEach((item: BillItem) => {
-    const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
-    const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-    const basePrice = qty * rate;
-    const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
-    const discType = item?.discountType || 'percentage';
-
-    const discountAmount =
-      discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-    computedSubTotal += basePrice;
-    computedTotalDiscount += discountAmount;
+    computedSubTotal += lineGross(item);
+    computedTotalDiscount += lineDiscountAmount(item);
   });
-  const computedTotalAmount = Math.max(0, computedSubTotal - computedTotalDiscount);
+  const computedTotalAmount = computedSubTotal - computedTotalDiscount;
 
   useEffect(() => {
     setValue('subTotal', computedSubTotal);
@@ -532,30 +725,51 @@ export function CreateBill() {
       if (id) {
         queryClient.invalidateQueries({ queryKey: ['bill', orgId, id] });
       }
-      if (fromPo) {
-        queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, fromPo] });
-        queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
-      }
+      // an edited bill's number, status and amount show on its source PO too
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['record-approvals', orgId, 'bills'] });
+      // An Open bill being corrected was already open; only a first opening is news.
+      if (data && !isOpenBill) announceOpenOutcome(data);
 
       navigate(`/organizations/${orgId}/purchases/bills?id=${isEdit && id ? id : data?.id}`);
     },
-    // The server's refusal says exactly why ("…already been used by challan JI-…"),
-    // and until this toast it only reached the console.
-    onError: (error: AxiosError<{ message?: string }>) => {
-      toast.error(toApiErrorMessage(error));
-    },
+    // No onError: the global mutation handler toasts the server's refusal (app/queryClient.ts).
   });
 
   const onSubmit = (data: CreateBillData) => {
+    let hasErrors = false;
+    const newLocalCustomFieldErrors: Record<string, string> = {};
+
+    customFields.forEach((field) => {
+      if (field.isRequired) {
+        const value = data.customFields?.[field.key];
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        ) {
+          newLocalCustomFieldErrors[`customFields.${field.key}`] = `${field.label} is required`;
+          hasErrors = true;
+        }
+      }
+    });
+
+    setLocalCustomFieldErrors(newLocalCustomFieldErrors);
+
+    if (hasErrors) {
+      notify.error('Please fill all required custom fields.');
+      return;
+    }
+
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);
-      const basePrice = qty * rate;
       const discountVal = isNaN(Number(item?.discountValue)) ? 0 : Number(item?.discountValue);
       const discType = item?.discountType || 'percentage';
-      const discountAmount =
-        discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
-      const itemTotal = Math.max(0, basePrice - discountAmount);
+      const discountAmount = lineDiscountAmount(item);
+      const itemTotal = lineGross(item) - discountAmount;
       return {
         ...item,
         quantity: qty,
@@ -573,7 +787,8 @@ export function CreateBill() {
 
     const finalData = {
       ...data,
-      sourcePoId: isFromPo ? fromPo : null,
+      // only a create links a PO — an edit sending null would unlink it
+      ...(isEdit ? {} : { sourcePoId: isFromPo ? fromPo : null }),
       deliveryCustomerId: data.deliveryCustomerId || null,
       deliveryLocationId: data.deliveryLocationId || null,
       dueDate: data.dueDate || null,
@@ -657,7 +872,9 @@ export function CreateBill() {
       <div className="page-body">
         <form
           id="create-bill-form"
-          onSubmit={handleSubmit(onSubmit, (errs) => console.log('Validation errors:', errs))}
+          onSubmit={handleSubmit(onSubmit, (errs) =>
+            notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.'),
+          )}
           noValidate
         >
           {/* Main Details Section */}
@@ -688,7 +905,9 @@ export function CreateBill() {
               <div>
                 <input type="hidden" {...register('vendorId', { required: true })} />
                 <SearchableSelect
-                  options={vendors.map((v) => ({ label: v.contactName, value: v.id }))}
+                  options={vendors
+                    .filter((v) => v.status !== 'inactive' || v.id === watch('vendorId'))
+                    .map((v) => ({ label: v.contactName, value: v.id }))}
                   value={watch('vendorId') || undefined}
                   onChange={(val) => {
                     setValue('vendorId', val, { shouldValidate: true });
@@ -884,6 +1103,18 @@ export function CreateBill() {
             </div>
           </div>
 
+          {/* Custom Fields Section */}
+          <div style={{ marginBottom: '32px' }}>
+            <CustomFieldsSection
+              orgId={orgId!}
+              entityType="bill"
+              values={(watch('customFields') as Record<string, unknown>) ?? {}}
+              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+              errors={localCustomFieldErrors}
+              applyDefaults={!isEdit && !isFromPo && !isFromJobReceipt}
+            />
+          </div>
+
           {/* Items Table Section */}
           <div
             style={{
@@ -1013,6 +1244,7 @@ export function CreateBill() {
                     const discountAmount =
                       discType === 'percentage' ? (basePrice * discountVal) / 100 : discountVal;
                     const calculatedRowAmount = Math.max(0, basePrice - discountAmount);
+                    const discountInvalid = !!errors.lineItems?.[index]?.discountValue;
 
                     return (
                       <tr
@@ -1079,40 +1311,52 @@ export function CreateBill() {
                                     });
                                     setValue(`lineItems.${index}.item`, val);
                                     const selected = val;
+                                    // A receipt line keeps its description, rate and qty: it names the receipt it settles.
+                                    const isReceiptLine = Boolean(curItem?.jobReceiptId);
                                     if (selected) {
-                                      setValue(
-                                        `lineItems.${index}.rate`,
-                                        (selected.costPrice ||
-                                          selected.sellingPrice ||
-                                          '') as unknown as number,
-                                      );
-                                      setValue(
-                                        `lineItems.${index}.quantity`,
-                                        1 as unknown as number,
-                                      );
-                                      setValue(
-                                        `lineItems.${index}.description`,
-                                        selected.purchaseDescription ||
+                                      if (!isReceiptLine) {
+                                        setValue(
+                                          `lineItems.${index}.rate`,
+                                          (selected.costPrice ||
+                                            selected.sellingPrice ||
+                                            '') as unknown as number,
+                                        );
+                                        setValue(
+                                          `lineItems.${index}.quantity`,
+                                          1 as unknown as number,
+                                        );
+                                        setValue(
+                                          `lineItems.${index}.description`,
                                           selected.purchaseDescription ||
-                                          selected.salesDescription ||
-                                          selected.salesDescription ||
-                                          '',
-                                      );
+                                            selected.salesDescription ||
+                                            '',
+                                        );
+                                      }
                                     } else {
-                                      setValue(`lineItems.${index}.rate`, '' as unknown as number);
-                                      setValue(
-                                        `lineItems.${index}.quantity`,
-                                        '' as unknown as number,
-                                      );
+                                      if (!isReceiptLine) {
+                                        setValue(
+                                          `lineItems.${index}.rate`,
+                                          '' as unknown as number,
+                                        );
+                                        setValue(
+                                          `lineItems.${index}.quantity`,
+                                          '' as unknown as number,
+                                        );
+                                        setValue(`lineItems.${index}.description`, '');
+                                      }
                                       setValue(
                                         `lineItems.${index}.discountValue`,
                                         '' as unknown as number,
                                       );
                                       setValue(`lineItems.${index}.discountType`, 'percentage');
-                                      setValue(`lineItems.${index}.description`, '');
                                     }
                                   }}
-                                  placeholder="Type or click to select an item."
+                                  filter={hasJobReceiptLines ? 'services' : undefined}
+                                  placeholder={
+                                    hasJobReceiptLines
+                                      ? 'Select a service item.'
+                                      : 'Type or click to select an item.'
+                                  }
                                   footerAction={{
                                     text: 'New Product',
                                     onClick: () => setItemModalIndex(index),
@@ -1121,8 +1365,8 @@ export function CreateBill() {
                               )}
                             </div>
 
-                            {/* Description Field - only shown when an item is selected */}
-                            {selectedItem && (
+                            {/* Description Field - shown once an item is selected, or on a receipt line */}
+                            {(selectedItem || curItem?.jobReceiptId) && (
                               <textarea
                                 {...register(`lineItems.${index}.description`)}
                                 placeholder="Add a description to your item"
@@ -1166,11 +1410,11 @@ export function CreateBill() {
                                     textTransform: 'uppercase',
                                   }}
                                 >
-                                  {selectedItem.type || 'GOODS'}
+                                  {selectedItem.itemType === 'service' ? 'Services' : 'Goods'}
                                 </span>
                                 {selectedItem.hsnCode && (
                                   <span style={{ color: '#475569', fontWeight: 500 }}>
-                                    HSN Code:{' '}
+                                    {selectedItem.itemType === 'service' ? 'SAC' : 'HSN Code'}:{' '}
                                     <span style={{ color: '#2563eb', fontWeight: 600 }}>
                                       {selectedItem.hsnCode}
                                     </span>
@@ -1207,12 +1451,26 @@ export function CreateBill() {
                               borderRadius: '6px',
                             }}
                           />
+                          {/* read-only — a line is always in the item's own unit */}
+                          {selectedItem?.stockingUom?.symbol && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                textAlign: 'right',
+                                fontSize: '12px',
+                                color: '#64748b',
+                              }}
+                            >
+                              {selectedItem.stockingUom.symbol}
+                            </div>
+                          )}
                           {/* Stock Display (above batch button) */}
                           {selectedItem && (
                             <div style={{ marginTop: '6px' }}>
                               <LineItemStockDisplay
                                 orgId={orgId!}
                                 itemId={selectedItem.id}
+                                unit={selectedItem.stockingUom?.symbol}
                                 deliveryLocationId={
                                   watchLocationId || watchDeliveryLocationId || ''
                                 }
@@ -1277,6 +1535,18 @@ export function CreateBill() {
                               borderRadius: '6px',
                             }}
                           />
+                          {selectedItem?.stockingUom?.symbol && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                textAlign: 'right',
+                                fontSize: '12px',
+                                color: '#64748b',
+                              }}
+                            >
+                              per {selectedItem.stockingUom.symbol}
+                            </div>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1293,7 +1563,7 @@ export function CreateBill() {
                               alignItems: 'center',
                               width: '100%',
                               boxSizing: 'border-box',
-                              border: '1px solid #d1d5db',
+                              border: `1px solid ${discountInvalid ? '#ef4444' : '#d1d5db'}`,
                               borderRadius: '6px',
                               background: '#ffffff',
                             }}
@@ -1301,9 +1571,12 @@ export function CreateBill() {
                             <input
                               type="number"
                               step="0.01"
+                              min={0}
+                              aria-invalid={discountInvalid}
                               {...register(`lineItems.${index}.discountValue`, {
                                 valueAsNumber: true,
-                                min: 0,
+                                validate: (_value, form) =>
+                                  lineDiscountError(form.lineItems?.[index] ?? {}) ?? true,
                               })}
                               style={{
                                 border: 'none',
@@ -1327,6 +1600,8 @@ export function CreateBill() {
                                   `lineItems.${index}.discountType`,
                                   val as 'percentage' | 'fixed',
                                 );
+                                // 150 is fine as ₹ but not as % — re-check a field already flagged
+                                if (discountInvalid) trigger(`lineItems.${index}.discountValue`);
                               }}
                               options={[
                                 { value: 'percentage', label: '%' },
@@ -1676,17 +1951,7 @@ export function CreateBill() {
                           }}
                         >
                           <FileText size={14} color="#2563eb" />
-                          <span
-                            style={{
-                              fontWeight: 500,
-                              color: '#1e293b',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {fileObj.name}
-                          </span>
+                          <AttachmentLink orgId={orgId!} attachment={fileObj} />
                           <span style={{ color: '#94a3b8', fontSize: '11px', flexShrink: 0 }}>
                             ({((fileObj.size || 0) / (1024 * 1024)).toFixed(2)} MB)
                           </span>
@@ -1837,6 +2102,7 @@ export function CreateBill() {
           setMultiSelectTargetIndex(null);
         }}
         orgId={orgId!}
+        filter={hasJobReceiptLines ? 'services' : undefined}
         onAddNewItem={() => {
           setItemModalIndex(multiSelectTargetIndex !== null ? multiSelectTargetIndex : 0);
         }}
@@ -1906,11 +2172,7 @@ export function CreateBill() {
           onClose={() => setBatchModalIndex(null)}
           itemName={watchItems[batchModalIndex].item?.name || 'Unknown Item'}
           sku={watchItems[batchModalIndex].item?.sku}
-          uomLabel={
-            watchItems[batchModalIndex].item?.stockingUom?.code ||
-            watchItems[batchModalIndex].item?.stocking_uom?.code ||
-            'pcs'
-          }
+          uomLabel={watchItems[batchModalIndex].item?.stockingUom?.symbol || ''}
           locationId={watchLocationId || watchDeliveryLocationId || undefined}
           locationName={
             locations.find((l: Location) => l.id === (watchLocationId || watchDeliveryLocationId))
@@ -1967,32 +2229,14 @@ export function CreateBill() {
           const newItems = [...currentItems];
 
           selectedReceipts.forEach((receipt) => {
-            receipt.outputs.forEach((output) => {
-              // If the targeted row is empty, overwrite it, else push new
-              const totalCost = (Number(output.materialValue) || 0) + (Number(output.processCharge) || 0);
-              const qty = Number(output.acceptedQty) || 1;
-              const itemData = {
-                itemId: output.itemId,
-                item: output.item,
-                quantity: qty,
-                rate: totalCost / qty,
-                amount: totalCost,
-                itemTotal: totalCost,
-                jobReceiptId: receipt.id,
-                description: `Processing charge for Job Order ${receipt.jobOrder.jobOrderNumber} / Receive ${receipt.receiptNumber}`,
-                batches: output.outputBatchId ? [{
-                  batchId: output.outputBatchId,
-                  quantity: qty,
-                }] : undefined,
-              };
-
-              if (startIndex < newItems.length && !newItems[startIndex].itemId) {
-                newItems[startIndex] = { ...newItems[startIndex], ...itemData };
-              } else {
-                newItems.push({ ...itemData } as BillItem);
-              }
-              startIndex++;
-            });
+            // If the targeted row is empty, overwrite it, else push new
+            const itemData = receiptChargeLine(receipt);
+            if (startIndex < newItems.length && !newItems[startIndex].itemId) {
+              newItems[startIndex] = { ...newItems[startIndex], ...itemData };
+            } else {
+              newItems.push(itemData);
+            }
+            startIndex++;
           });
 
           setValue('lineItems', newItems, { shouldValidate: true });

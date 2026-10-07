@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { notify } from '../../../lib/notify';
 import {
   CheckCircle2,
   ChevronDown,
@@ -15,6 +16,9 @@ import {
 import type { AxiosError } from 'axios';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Spinner } from '../../../components/ui/Spinner';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 
 import { JobOrderFlow } from './JobOrderFlow';
 import { ActivityTabs } from './JobOrderStepDetail';
@@ -35,12 +39,12 @@ import {
 } from './jobOrders.api';
 import { AddStepsDialog } from './AddStepsDialog';
 import { JobOrderStepDetail } from './JobOrderStepDetail';
+import { patchListRow, releaseListRow } from '../../../hooks/useListRowRetention';
 import type {
   ActivityEvent,
   JobOrderOverviewData,
   OverviewStep,
   JobOrder,
-  JobOrdersPage,
 } from './jobOrders.schemas';
 
 const metaItem: React.CSSProperties = { fontSize: 12, color: '#64748b' };
@@ -326,7 +330,7 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
     ? (front.inputs[0].uom.symbol ?? front.inputs[0].uom.unitName)
     : '';
   const outstanding = toNumber(front.totals.outstandingQty);
-  const rework = toNumber(front.totals.reworkQty);
+  const rework = toNumber(front.totals.pendingReworkQty);
 
   // When it went out, off the step's own last issue — "out since" is the fact
   // people chase a processor with, and it is not derivable from a total.
@@ -363,20 +367,11 @@ function currentPosition(data: JobOrderOverviewData, steps: OverviewStep[]): Pos
       step: front,
     };
   }
-  if (front.blockedReason) {
-    return {
-      icon: <Clock size={18} color="#64748b" />,
-      headline: 'Waiting on the step before it',
-      detail: `${where} · ${front.blockedReason}`,
-      tint: '#f8fafc',
-      border: '#e2e8f0',
-      step: front,
-    };
-  }
   return {
     icon: <Send size={18} color="#1d4ed8" />,
     headline: `Ready to issue to ${party}`,
-    detail: `${where} · nothing has gone out yet`,
+    // Issuing is allowed either way; the warning says it would use existing stock.
+    detail: `${where} · ${front.chainWarnings[0]?.message ?? 'nothing has gone out yet'}`,
     tint: '#eff6ff',
     border: '#bfdbfe',
     step: front,
@@ -416,16 +411,19 @@ interface Props {
 
 export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { orgId, id: routeId } = useParams<{ orgId: string; id: string }>();
   const id = jobOrderId ?? routeId;
 
   const [pickedStepId, setPickedStepId] = useState<string | null>(null);
-  const [view, setView] = useState<'step' | 'history'>('step');
+  const [view, setView] = useState<'step' | 'history' | 'approvals'>('step');
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
   const [completeStepTarget, setCompleteStepTarget] = useState<OverviewStep | null>(null);
+  const [completeReason, setCompleteReason] = useState('');
+  const [completeReasonMissing, setCompleteReasonMissing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -434,6 +432,18 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     queryFn: () => fetchJobOrderOverview(orgId!, id!),
     enabled: Boolean(orgId && id),
   });
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'job_orders',
+    id,
+  );
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    data?.jobOrder?.status === 'REJECTED' ||
+    (data?.jobOrder as { approvalStatus?: string } | undefined)?.approvalStatus === 'REJECTED',
+  );
+  const isActionBlocked = isUnderApproval || isRejected;
 
   const steps = useMemo(() => data?.steps ?? [], [data]);
   const activity = useMemo(() => data?.activity ?? [], [data]);
@@ -461,19 +471,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     mutationFn: () => shortCloseJobOrder(orgId!, id!, shortCloseReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-      queryClient.setQueriesData(
-        { queryKey: ['job-orders', orgId], type: 'active' },
-        (old: JobOrdersPage | undefined) => {
-          if (!old || !old.results) return old;
-          return {
-            ...old,
-            results: old.results.map((item: JobOrder) =>
-              item.id === id ? { ...item, status: 'short_closed' } : item,
-            ),
-          };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
+      patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, { status: 'short_closed' });
       setShortCloseOpen(false);
       setShortCloseReason('');
     },
@@ -490,33 +488,38 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
     completeStepTarget && completeStepTarget.inputs.length === 1
       ? completeStepTarget.inputs[0]?.uom
       : null;
-  const completeWriteOff =
-    completeOutstanding <= 0
-      ? 'Nothing is still with the processor, so nothing will be written off.'
-      : `${
-          completeStepTarget && completeStepTarget.inputs.length <= 1
-            ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
-            : 'Some material is still with the processor'
-        } and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
+  const completeStillOut =
+    completeStepTarget && completeStepTarget.inputs.length <= 1
+      ? `${qtyWithUnit(completeOutstanding, completeUom ? (completeUom.symbol ?? completeUom.unitName) : '')} is still with the processor`
+      : 'Some material is still with the processor';
+  // Mirrors the server: either case needs a reason (`manuallyCompleteStep`).
+  const completeNothingIssued = completeStepTarget?.totals.issueCount === 0;
+  const completeNothingReceived =
+    !completeNothingIssued && completeStepTarget?.totals.receiptCount === 0;
+  const completeNeedsReason = completeNothingIssued || completeNothingReceived;
+  const completeWriteOff = completeNothingIssued
+    ? 'Nothing has been issued on this step, so it will be marked complete without the work being done.'
+    : completeNothingReceived
+      ? `Nothing has been received on this step. ${completeStillOut} — all of it will be written off as job order loss. If the goods never left or came back untouched, cancel the challan instead.`
+      : completeOutstanding <= 0
+        ? 'Nothing is still with the processor, so nothing will be written off.'
+        : `${completeStillOut} and will be written off as job order loss. If it was normal shrinkage rather than missing, cancel this and close the challan on its last receipt instead, so it goes into the cost of the goods.`;
+
+  const closeCompleteStep = () => {
+    setCompleteStepTarget(null);
+    setCompleteReason('');
+    setCompleteReasonMissing(false);
+  };
 
   const completeStep = useMutation({
-    mutationFn: (stepId: string) => completeJobOrderStep(orgId!, id!, stepId),
+    mutationFn: (stepId: string) =>
+      completeJobOrderStep(orgId!, id!, stepId, completeReason.trim() || undefined),
     onSuccess: (updated) => {
       queryClient.setQueryData(['job-order-overview', orgId, id], updated);
-      queryClient.setQueriesData(
-        { queryKey: ['job-orders', orgId], type: 'active' },
-        (old: JobOrdersPage | undefined) => {
-          if (!old || !old.results) return old;
-          return {
-            ...old,
-            results: old.results.map((item: JobOrder) =>
-              item.id === id ? { ...item, status: updated.jobOrder.status } : item,
-            ),
-          };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
-      setCompleteStepTarget(null);
+      patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, {
+        status: updated.jobOrder.status,
+      });
+      closeCompleteStep();
     },
   });
 
@@ -529,6 +532,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const remove = useMutation({
     mutationFn: () => deleteJobOrder(orgId!, id!),
     onSuccess: () => {
+      releaseListRow(['job-orders', orgId], id!);
       queryClient.invalidateQueries({ queryKey: ['job-orders', orgId] });
       setDeleteOpen(false);
       // The panel is showing a row that no longer exists; the standalone page is
@@ -576,7 +580,9 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
    * to open it is the same impulse. */
   const openDocument = (event: ActivityEvent) => {
     const module = event.kind === 'issue' ? 'issues' : 'receipts';
-    navigate(`/organizations/${orgId}/jobwork/${module}?id=${event.id}`);
+    navigate(`/organizations/${orgId}/jobwork/${module}?id=${event.id}`, {
+      state: { returnUrl: location.pathname + location.search },
+    });
   };
 
   return (
@@ -702,12 +708,16 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
             <ActionsMenu
               label={`More actions for ${jobOrder.jobOrderNumber}`}
               actions={[
-                {
-                  key: 'clone',
-                  label: 'Clone',
-                  onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
-                },
-                ...(isClosed
+                ...(isActionBlocked
+                  ? []
+                  : [
+                      {
+                        key: 'clone',
+                        label: 'Clone',
+                        onSelect: () => navigate(`${listPath}/new?cloneFrom=${jobOrder.id}`),
+                      },
+                    ]),
+                ...(isClosed || isActionBlocked
                   ? []
                   : [
                       {
@@ -751,6 +761,20 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           </div>
         </div>
       </header>
+
+      {/* Zoho-style Top Record Approval Banner */}
+      {orgId && id && (
+        <div style={{ padding: '12px 24px 0 24px' }}>
+          <RecordApprovalBanner
+            organizationId={orgId}
+            moduleId="job_orders"
+            recordId={id}
+            onActionComplete={() =>
+              queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] })
+            }
+          />
+        </div>
+      )}
 
       {/* 🔴 THE ANSWER FIRST. The sentence on the left is what the page is for;
             the four numbers on the right are what somebody checks once they have
@@ -836,22 +860,22 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
              so a step at a processor is no reason to withhold it. A closed order
              is: the server refuses those, and a button that only ever 409s is
              worse than no button. */
-          onAppend={isClosed ? undefined : () => setAddStepsOpen(true)}
+          onAppend={isClosed || isActionBlocked ? undefined : () => setAddStepsOpen(true)}
         />
 
-        {steps.length > 0 && (
-          <>
-            <div
-              style={{
-                display: 'inline-flex',
-                gap: 2,
-                margin: '20px 0 10px 0',
-                padding: 3,
-                background: '#eef1f5',
-                borderRadius: 999,
-                maxWidth: '100%',
-              }}
-            >
+        <div
+          style={{
+            display: 'inline-flex',
+            gap: 2,
+            margin: '20px 0 10px 0',
+            padding: 3,
+            background: '#eef1f5',
+            borderRadius: 999,
+            maxWidth: '100%',
+          }}
+        >
+          {steps.length > 0 && (
+            <>
               <ViewTab
                 isActive={view === 'step'}
                 onClick={() => setView('step')}
@@ -866,44 +890,67 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                 onClick={() => setView('history')}
                 label={`Full history (${activity.length})`}
               />
-            </div>
+            </>
+          )}
+          <ViewTab
+            isActive={view === 'approvals'}
+            onClick={() => setView('approvals')}
+            label="Approvals"
+          />
+        </div>
 
-            {view === 'step' && selectedStep && (
-              <JobOrderStepDetail
-                step={selectedStep}
-                activity={stepActivity}
-                onIssue={(step) =>
-                  navigate(
-                    `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
-                  )
-                }
-                onReceive={(step) =>
-                  navigate(
-                    `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
-                  )
-                }
-                onComplete={setCompleteStepTarget}
-                onOpenDocument={openDocument}
-              />
-            )}
+        {view === 'step' && selectedStep && (
+          <JobOrderStepDetail
+            step={selectedStep}
+            activity={stepActivity}
+            isUnderApproval={isActionBlocked}
+            onIssue={(step) =>
+              navigate(
+                `/organizations/${orgId}/jobwork/issues/new?jobOrderId=${id}&stepId=${step.id}`,
+              )
+            }
+            onReceive={(step) =>
+              navigate(
+                `/organizations/${orgId}/jobwork/receipts/new?jobOrderId=${id}&stepId=${step.id}`,
+              )
+            }
+            onComplete={setCompleteStepTarget}
+            onOpenDocument={openDocument}
+          />
+        )}
 
-            {view === 'history' && (
-              <div
-                style={{
-                  border: '1px solid #eef0f3',
-                  borderRadius: 10,
-                  background: '#fff',
-                  padding: '14px 16px',
-                }}
-              >
-                {/* 🔴 Every step, in one column, oldest first. The per-step view
-                    above answers "what is happening here"; this answers "what has
-                    this order been through" — and the two orders of the same
-                    documents are genuinely different readings. */}
-                <ActivityTabs events={activity} onOpen={openDocument} />
-              </div>
-            )}
-          </>
+        {view === 'history' && (
+          <div
+            style={{
+              border: '1px solid #eef0f3',
+              borderRadius: 10,
+              background: '#fff',
+              padding: '14px 16px',
+            }}
+          >
+            {/* 🔴 Every step, in one column, oldest first. The per-step view
+                above answers "what is happening here"; this answers "what has
+                this order been through" — and the two orders of the same
+                documents are genuinely different readings. */}
+            <ActivityTabs events={activity} onOpen={openDocument} />
+          </div>
+        )}
+
+        {view === 'approvals' && orgId && id && (
+          <div
+            style={{
+              border: '1px solid #eef0f3',
+              borderRadius: 10,
+              background: '#fff',
+              padding: '18px 20px',
+            }}
+          >
+            <RecordApprovalHistoryTimeline
+              organizationId={orgId}
+              moduleId="job_orders"
+              recordId={id}
+            />
+          </div>
         )}
       </div>
 
@@ -914,24 +961,15 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
           jobOrderId={jobOrder.id}
           jobOrderNumber={jobOrder.jobOrderNumber}
           ownership={jobOrder.ownership}
+          ownerPartyId={jobOrder.ownerPartyId}
           steps={steps}
           onAdded={() => {
             // The list too: appending to a completed order reopens it as
             // in_progress, and the row would otherwise keep saying "Completed".
             queryClient.invalidateQueries({ queryKey: ['job-order-overview', orgId, id] });
-            queryClient.setQueriesData(
-              { queryKey: ['job-orders', orgId], type: 'active' },
-              (old: JobOrdersPage | undefined) => {
-                if (!old || !old.results) return old;
-                return {
-                  ...old,
-                  results: old.results.map((item: JobOrder) =>
-                    item.id === id ? { ...item, status: 'in_progress' } : item,
-                  ),
-                };
-              },
-            );
-            queryClient.invalidateQueries({ queryKey: ['job-orders', orgId], type: 'inactive' });
+            patchListRow<JobOrder>(queryClient, ['job-orders', orgId], id!, {
+              status: 'in_progress',
+            });
           }}
         />
       )}
@@ -949,13 +987,63 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               be undone — nothing more can be issued, received or cancelled against the step
               afterwards.
             </p>
+            {completeStepTarget && toNumber(completeStepTarget.totals.pendingReworkQty) > 0 && (
+              <p style={{ margin: '12px 0 0 0', lineHeight: 1.6, color: '#92400e' }}>
+                {formatQty(completeStepTarget.totals.pendingReworkQty)} of rework has not been
+                issued back yet and can no longer be reworked on this step.
+              </p>
+            )}
+            {completeNeedsReason && (
+              <>
+                <label
+                  htmlFor="complete-step-reason"
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: '#64748b',
+                    margin: '12px 0 4px 0',
+                  }}
+                >
+                  Reason
+                </label>
+                <input
+                  id="complete-step-reason"
+                  type="text"
+                  value={completeReason}
+                  onChange={(e) => {
+                    setCompleteReason(e.target.value);
+                    setCompleteReasonMissing(false);
+                  }}
+                  aria-invalid={completeReasonMissing}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    fontSize: 13,
+                    border: `1px solid ${completeReasonMissing ? '#dc2626' : '#d1d5db'}`,
+                    borderRadius: 4,
+                    minHeight: 32,
+                  }}
+                  placeholder={
+                    completeNothingIssued
+                      ? 'Not needed — party wants it undyed'
+                      : 'Processor lost the lot — debit note raised'
+                  }
+                />
+              </>
+            )}
           </div>
         }
         confirmText={completeStep.isPending ? 'Completing…' : 'Complete Step'}
         onConfirm={() => {
-          if (completeStepTarget) completeStep.mutate(completeStepTarget.id);
+          if (!completeStepTarget) return;
+          if (completeNeedsReason && !completeReason.trim()) {
+            setCompleteReasonMissing(true);
+            notify.error('Say why this step is being completed.');
+            return;
+          }
+          completeStep.mutate(completeStepTarget.id);
         }}
-        onCancel={() => setCompleteStepTarget(null)}
+        onCancel={closeCompleteStep}
       />
 
       <ConfirmDialog

@@ -156,12 +156,18 @@ export const invitationsApi = {
       roleId?: string;
       permissionTemplateId: string;
     },
-  ): Promise<Invitation> => {
-    const { data } = await apiClient.post<{ invitation: Invitation }>(
+  ): Promise<{ invitation: Invitation; emailDelivered: boolean }> => {
+    /**
+     * `emailDelivered` comes back beside the invitation: the API keeps the row and
+     * answers 201 even when the mail provider refused it, so "created" and "sent"
+     * are two different facts and the caller has to be able to tell them apart.
+     * The toast is already handled centrally in `api/client.ts`.
+     */
+    const { data } = await apiClient.post<{ invitation: Invitation; emailDelivered: boolean }>(
       endpoints.invitations.forOrg(orgId),
       body,
     );
-    return data.invitation;
+    return data;
   },
 
   /** DELETE /organizations/:orgId/invitations/:id — revoke a pending invite. */

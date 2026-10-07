@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant, type TenantClient } from '../../../db/prisma.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
@@ -19,7 +20,9 @@ import {
   resolveBatchesForPosting,
   resolveExistingBatchUnits,
   reverseMovement,
+  DRAFT_BATCH_STATE,
   UNALLOCATED_BATCH_STATE,
+  UNPICKABLE_BATCH_STATES,
   type Ownership,
   type ResolvedBatches,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
@@ -83,12 +86,25 @@ const ZERO = new Prisma.Decimal(0);
 const SEARCH_COLUMNS = ['receiptNumber', 'processorNameSnapshot'] as const;
 
 function receiptListWhere(organizationId: string, opts: ListQuery): Prisma.JobReceiptWhereInput {
-  return {
+  const baseWhere: Prisma.JobReceiptWhereInput = {
     organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.JobReceiptWhereInput>('job_receipt', opts.filter),
     ...searchWhere<Prisma.JobReceiptWhereInput>(opts.search, [...SEARCH_COLUMNS]),
   };
+
+  if (opts.fieldFilters) {
+    try {
+      const filters = JSON.parse(opts.fieldFilters) as Record<string, unknown>;
+      if (filters.processorId) {
+        baseWhere.processorId = filters.processorId as string;
+      }
+    } catch (_e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return baseWhere;
 }
 
 const RECEIPT_INCLUDE = {
@@ -107,6 +123,10 @@ const RECEIPT_INCLUDE = {
   location: { select: { id: true, name: true, type: true } },
   outputBatch: { select: { id: true, supplierBatchRef: true } },
   reworkBatch: { select: { id: true, supplierBatchRef: true } },
+  billItems: {
+    where: { isDeleted: false },
+    select: { id: true, billId: true },
+  },
   /** The CONSUMPTION record — one row per challan line this receipt closes. */
   lines: {
     where: { isDeleted: false },
@@ -123,7 +143,14 @@ const RECEIPT_INCLUDE = {
     orderBy: { seq: 'asc' },
     include: {
       item: {
-        select: { id: true, name: true, sku: true, itemType: true, inventoryTracking: true },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          itemType: true,
+          trackInventory: true,
+          inventoryTracking: true,
+        },
       },
       uom: { select: { id: true, unitName: true, symbol: true } },
       reason: { select: { id: true, name: true } },
@@ -139,13 +166,69 @@ const RECEIPT_INCLUDE = {
           kind: true,
           qty: true,
           isNewBatch: true,
-          batch: { select: { id: true, supplierBatchRef: true } },
+          batchUnitId: true,
+          // Scalars on a level already read — no extra round trip. The attributes
+          // and `state` are what a draft is rebuilt from (`draftBatchPlan`).
+          batch: {
+            select: {
+              id: true,
+              supplierBatchRef: true,
+              state: true,
+              manufacturerBatch: true,
+              manufacturedDate: true,
+              expiryDate: true,
+              sellingPrice: true,
+              mrp: true,
+            },
+          },
         },
       },
     },
   },
   _count: { select: { billItems: { where: { isDeleted: false } } } },
 } satisfies Prisma.JobReceiptInclude;
+
+type IncludedBatchRow = Prisma.JobReceiptGetPayload<{
+  include: typeof RECEIPT_INCLUDE;
+}>['outputs'][number]['batches'][number];
+
+/**
+ * 🔴 ONE ENTRY PER BATCH, as the API has always returned — the table holds one
+ * row per (batch, package) since 2026-09-29. Quantities are summed; the packages
+ * come back separately in `packages` so the detail screen can list them.
+ */
+function collapseBatchRows(rows: readonly IncludedBatchRow[]) {
+  const byKey = new Map<
+    string,
+    Omit<IncludedBatchRow, 'batchUnitId'> & {
+      packages: { batchUnitId: string; qty: Prisma.Decimal }[];
+    }
+  >();
+  for (const { batchUnitId, ...row } of rows) {
+    const key = `${row.kind}:${row.batch.id}`;
+    const seen = byKey.get(key);
+    const packages = batchUnitId ? [{ batchUnitId, qty: row.qty }] : [];
+    if (seen) {
+      seen.qty = seen.qty.plus(row.qty);
+      seen.packages.push(...packages);
+    } else {
+      byKey.set(key, { ...row, packages });
+    }
+  }
+  return [...byKey.values()];
+}
+
+function collapseReceipt(
+  receipt: Prisma.JobReceiptGetPayload<{ include: typeof RECEIPT_INCLUDE }>,
+) {
+  return {
+    ...receipt,
+    outputs: receipt.outputs.map(({ batches, ...output }) => ({
+      ...output,
+      batches: collapseBatchRows(batches),
+    })),
+  };
+}
 
 export async function getJobReceiptsList(organizationId: string, opts: ListQuery) {
   const { page, perPage } = opts;
@@ -157,7 +240,7 @@ export async function getJobReceiptsList(organizationId: string, opts: ListQuery
       take: takeForPage(perPage),
       include: RECEIPT_INCLUDE,
     });
-    return pageSlice(rows, page, perPage);
+    return pageSlice(rows.map(collapseReceipt), page, perPage);
   });
 }
 
@@ -174,37 +257,67 @@ export async function getJobReceiptById(organizationId: string, id: string) {
       include: RECEIPT_INCLUDE,
     });
     if (!receipt) return receipt;
+    const collapsed = collapseReceipt(receipt);
 
     /**
-     * The packages this receipt created, attached to the batch rows they belong
+     * The packages this receipt received, attached to the batch rows they belong
      * to. Read HERE and not in `RECEIPT_INCLUDE`, on purpose: that include is
      * shared with the list endpoint, and a fourth relation level would cost the
      * list a round trip per page for something only the detail screen renders.
      *
-     * Keyed on `sourceDocId`, so a top-up shows the rolls THIS delivery brought
-     * rather than everything the batch has ever held. One query for the whole
-     * receipt, indexed into a Map — never one per batch row.
+     * 🔴 From the DOCUMENT's own rows when it has them — every receipt saved since
+     * 2026-09-29, and the only record a draft has. Older receipts named no package
+     * on the document, so theirs come from this receipt's `produce` rows, which
+     * give the same answer for a posted one: the rolls THIS delivery brought, each
+     * with its quantity. Not filtered on `isDeleted`: cancelling frees a created
+     * roll's label that way, but a cancelled receipt should say what it received.
      */
-    const units = await tx.batchUnit.findMany({
-      where: {
-        organizationId,
-        sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
-        sourceDocId: id,
-        isDeleted: false,
-      },
-      orderBy: { seq: 'asc' },
-      select: { id: true, batchId: true, seq: true, label: true },
-    });
-    if (units.length === 0) return receipt;
+    const documented = collapsed.outputs.flatMap((output) =>
+      output.batches.flatMap((row) => row.packages),
+    );
+    const movements =
+      documented.length > 0
+        ? []
+        : await tx.stockLedgerEntry.groupBy({
+            by: ['batchId', 'batchUnitId'],
+            where: {
+              organizationId,
+              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+              sourceDocId: id,
+              movementType: 'produce',
+              batchUnitId: { not: null },
+            },
+            _sum: { qtyIn: true },
+          });
+    const qtyByUnit = new Map<string, Prisma.Decimal>(
+      documented.length > 0
+        ? documented.map((row) => [row.batchUnitId, row.qty])
+        : movements.map((row) => [row.batchUnitId!, row._sum.qtyIn ?? ZERO]),
+    );
+    if (qtyByUnit.size === 0) return collapsed;
 
-    const byBatch = new Map<string, typeof units>();
-    for (const unit of units) {
-      byBatch.set(unit.batchId, [...(byBatch.get(unit.batchId) ?? []), unit]);
+    const labels = await tx.batchUnit.findMany({
+      where: { organizationId, id: { in: [...qtyByUnit.keys()] } },
+      select: { id: true, batchId: true, seq: true, label: true, sourceDocId: true },
+    });
+
+    type UnitOut = Omit<(typeof labels)[number], 'sourceDocId'> & {
+      qty: Prisma.Decimal;
+      /** This receipt named the taka, rather than adding to one that already
+       * held stock — so a reopened draft restores it as a label, not a pick. */
+      isNew: boolean;
+    };
+    const byBatch = new Map<string, UnitOut[]>();
+    for (const { sourceDocId, ...unit } of labels.sort((a, b) => a.seq - b.seq)) {
+      byBatch.set(unit.batchId, [
+        ...(byBatch.get(unit.batchId) ?? []),
+        { ...unit, qty: qtyByUnit.get(unit.id) ?? ZERO, isNew: sourceDocId === id },
+      ]);
     }
 
     return {
-      ...receipt,
-      outputs: receipt.outputs.map((output) => ({
+      ...collapsed,
+      outputs: collapsed.outputs.map((output) => ({
         ...output,
         batches: output.batches.map((row) => ({
           ...row,
@@ -216,12 +329,14 @@ export async function getJobReceiptById(organizationId: string, id: string) {
 }
 
 export async function getReceiptsForStep(organizationId: string, jobOrderStepId: string) {
-  return runAsTenant(organizationId, (tx) =>
-    tx.jobReceipt.findMany({
-      where: { organizationId, jobOrderStepId, isDeleted: false },
-      orderBy: { receiptDate: 'asc' },
-      include: RECEIPT_INCLUDE,
-    }),
+  return runAsTenant(organizationId, async (tx) =>
+    (
+      await tx.jobReceipt.findMany({
+        where: { organizationId, jobOrderStepId, isDeleted: false },
+        orderBy: { receiptDate: 'asc' },
+        include: RECEIPT_INCLUDE,
+      })
+    ).map(collapseReceipt),
   );
 }
 
@@ -513,6 +628,9 @@ export async function getOutputBatchOptions(
     search?: string;
     cursor?: string;
     withUnits?: boolean;
+    /** Only these batches — still under every other filter here, so an id this
+     * picker would never offer is simply not returned. */
+    batchIds?: readonly string[];
   },
 ) {
   return runAsTenant(organizationId, async (tx) => {
@@ -569,9 +687,10 @@ export async function getOutputBatchOptions(
       organizationId,
       itemId: query.itemId,
       isDeleted: false,
-      // Never offered as something to add to — see `UNALLOCATED_BATCH_STATE`.
-      state: { not: UNALLOCATED_BATCH_STATE },
+      // Never offered as something to add to — see `UNPICKABLE_BATCH_STATES`.
+      state: { notIn: UNPICKABLE_BATCH_STATES },
       ...ownershipWhere,
+      ...(query.batchIds ? { id: { in: [...query.batchIds] } } : {}),
     };
 
     const provenanceOr: Prisma.BatchWhereInput = {
@@ -696,7 +815,14 @@ export async function getOutputBatchOptions(
     const unitsByBatch = new Map<string, { batchUnitId: string; seq: number; label: string }[]>();
     if (query.withUnits) {
       const unitRows = await tx.batchUnit.findMany({
-        where: { organizationId, batchId: { in: all.map((row) => row.id) }, isDeleted: false },
+        where: {
+          organizationId,
+          batchId: { in: all.map((row) => row.id) },
+          isDeleted: false,
+          // Only packages that have held stock. One a DRAFT named (this receipt's,
+          // or a draft bill's) has no ledger row yet and is not there to add to.
+          ledgerEntries: { some: {} },
+        },
         orderBy: { seq: 'asc' },
         select: { id: true, batchId: true, seq: true, label: true },
       });
@@ -1054,6 +1180,26 @@ interface PostedOutputBatch {
   batchId: string;
   qty: Prisma.Decimal;
   isNewBatch: boolean;
+  /** The packages inside `qty`, each written as its own row; the rest is one
+   * untagged row. Empty for a top-up on a draft, which keeps no packages. */
+  units: { batchUnitId: string; qty: Prisma.Decimal }[];
+}
+
+/**
+ * The rows `job_receipt_output_batches` holds for one batch: one per package, and
+ * one untagged row for whatever the packages leave over.
+ */
+function batchRowsOf(
+  batch: PostedOutputBatch,
+): { batchUnitId: string | null; qty: Prisma.Decimal }[] {
+  const tagged = batch.units.reduce((sum, unit) => sum.plus(unit.qty), ZERO);
+  const loose = batch.qty.minus(tagged);
+  return [
+    ...batch.units.map((unit) => ({ batchUnitId: unit.batchUnitId, qty: unit.qty })),
+    ...(loose.greaterThan(0) || batch.units.length === 0
+      ? [{ batchUnitId: null, qty: loose }]
+      : []),
+  ];
 }
 
 /**
@@ -1242,6 +1388,12 @@ async function loadExistingOutputBatches(
     if (batch.state === UNALLOCATED_BATCH_STATE) {
       throw ApiError.badRequest(
         'A receipt cannot add to unallocated opening stock. Pick a named batch or create a new one.',
+      );
+    }
+    if (batch.state === DRAFT_BATCH_STATE) {
+      throw ApiError.badRequest(
+        `Batch ${batch.supplierBatchRef ?? ''} belongs to a draft receipt that has not been ` +
+          'received yet. Receive that draft first, or create a new batch.',
       );
     }
     if (batch.itemId !== output.itemId) {
@@ -1541,13 +1693,12 @@ function allocateConsumption(
  *                                   names stay open and receivable.
  *   · `recomputeStep`             — nothing moved.
  *
- * 🔴 AND ONE THING A DRAFT LOSES, deliberately (2026-09-04). An output batch the
- * user is CREATING has no `batches` row to point at — `job_receipt_output_batches
- * .batch_id` is a NOT NULL foreign key to a real batch — and inventing that batch
- * early is exactly the thing a draft must not do. So new-batch allocations are
- * not saved; allocations that TOP UP an existing batch are. Reopening the draft
- * asks for the batch reference again, and `postJobReceiptDraft` refuses to post a
- * draft that never got one rather than guessing a label.
+ * 🔴 A NEW OUTPUT BATCH ON A DRAFT IS A `DRAFT_BATCH_STATE` ROW (2026-09-29), with
+ * its packages. It carries no ledger rows, nothing may post against it and no
+ * picker offers it. Every save of the draft recreates it, and posting replaces it
+ * with a real batch. Until then a new batch was dropped from the draft and had to
+ * be typed again. Packages typed against a TOP-UP of an existing batch are still
+ * not kept on a draft.
  */
 export type ReceiptSaveMode = 'draft' | 'post';
 
@@ -1590,12 +1741,36 @@ export async function createNewJobReceipt(
       );
     }
 
+    // The plan the receipt is costed by rides on this read — frozen on the step, and
+    // nothing in this transaction writes to it before it is used.
     const step = await tx.jobOrderStep.findFirst({
       where: { id: header.jobOrderStepId, organizationId, isDeleted: false },
       include: {
-        process: { select: { name: true } },
         jobOrder: {
           select: { id: true, ownership: true, ownerPartyId: true, status: true, isDeleted: true },
+        },
+        inputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: { itemId: true, uomId: true, plannedQty: true, item: { select: { name: true } } },
+        },
+        outputs: {
+          where: { isDeleted: false },
+          orderBy: { seq: 'asc' },
+          select: {
+            itemId: true,
+            uomId: true,
+            isPrimary: true,
+            expectedQty: true,
+            rate: true,
+            sharePct: true,
+            item: { select: { name: true, itemStructure: true } },
+            components: {
+              where: { isDeleted: false },
+              orderBy: { seq: 'asc' },
+              select: { componentItemId: true, qtyPerUnit: true },
+            },
+          },
         },
       },
     });
@@ -1715,11 +1890,9 @@ export async function createNewJobReceipt(
      * than from the `receiveItemId` scalar that used to mirror it (dropped
      * 2026-08-12, plan §12.1 Migration B).
      */
-    const plannedPrimaryOutput = await tx.jobOrderStepOutput.findFirst({
-      where: { organizationId, jobOrderStepId: step.id, isDeleted: false },
-      orderBy: [{ isPrimary: 'desc' }, { seq: 'asc' }],
-      select: { itemId: true, uomId: true },
-    });
+    // `outputs` is in seq order, so the first primary — else the first row — is
+    // what `orderBy: [isPrimary desc, seq asc]` used to return.
+    const plannedPrimaryOutput = step.outputs.find((row) => row.isPrimary) ?? step.outputs[0];
 
     const outputItemId = header.outputItemId ?? plannedPrimaryOutput?.itemId;
     if (!outputItemId) {
@@ -1782,22 +1955,15 @@ export async function createNewJobReceipt(
       batchReference: data.batchReference?.trim() || null,
       reworkBatchReference: data.reworkBatchReference?.trim() || null,
     });
-    await assertItemsBelongToOrg(
-      tx,
-      organizationId,
-      outputRows.map((row) => row.itemId),
-    );
-
     // One item, one stocking unit (§5.1) — read from the item, never taken from
-    // the request, exactly as the job order does with its own units.
+    // the request, exactly as the job order does with its own units. The same read
+    // is the existence check `assertItemsBelongToOrg` would have made.
+    const outputItemIds = [...new Set(outputRows.map((row) => row.itemId).filter(Boolean))];
     const outputItems = await tx.item.findMany({
-      where: {
-        id: { in: [...new Set(outputRows.map((row) => row.itemId))] },
-        organizationId,
-        isDeleted: false,
-      },
+      where: { id: { in: outputItemIds }, organizationId, isDeleted: false },
       select: { id: true, stockingUomId: true },
     });
+    if (outputItems.length !== outputItemIds.length) throw ApiError.badRequest('Unknown item.');
     const stockingUomByItem = new Map(outputItems.map((item) => [item.id, item.stockingUomId]));
     for (const row of outputRows) {
       row.uomId = stockingUomByItem.get(row.itemId) ?? row.uomId;
@@ -1824,35 +1990,7 @@ export async function createNewJobReceipt(
       );
     }
 
-    // The plan the receipt is costed by — frozen on the step, read in one query.
-    const planStep = await tx.jobOrderStep.findFirstOrThrow({
-      where: { id: step.id, organizationId },
-      select: {
-        seq: true,
-        inputs: {
-          where: { isDeleted: false },
-          orderBy: { seq: 'asc' },
-          select: { itemId: true, uomId: true, plannedQty: true, item: { select: { name: true } } },
-        },
-        outputs: {
-          where: { isDeleted: false },
-          orderBy: { seq: 'asc' },
-          select: {
-            itemId: true,
-            uomId: true,
-            expectedQty: true,
-            rate: true,
-            sharePct: true,
-            item: { select: { name: true, itemStructure: true } },
-            components: {
-              where: { isDeleted: false },
-              orderBy: { seq: 'asc' },
-              select: { componentItemId: true, qtyPerUnit: true },
-            },
-          },
-        },
-      },
-    });
+    const planStep = step;
     const plan: CostPlan = { inputs: planStep.inputs, outputs: planStep.outputs };
     const plannedOutputByItem = new Map(planStep.outputs.map((row) => [row.itemId, row]));
     const itemName = (itemId: string) =>
@@ -2143,14 +2281,12 @@ export async function createNewJobReceipt(
        *
        * The `outputItemId` / `outputUomId` columns that used to say WHICH row
        * these belong to went on 2026-08-12; it is the primary output, and that is
-       * derivable from the child list. `chainNotReady` still sums
-       * `totalReceivedQty`, which is why these six stay.
+       * derivable from the child list. List pages and reports still read
+       * these, which is why these six stay.
        *
        * 🔴 A DRAFT FILLS THESE IN TOO, so the list page can show what it is for.
        * They are therefore populated while the ledger behind them is empty, which
-       * is precisely why every sum over receipts filters on `POSTED_DOC_STATUS` —
-       * `chainNotReady` above all, since it reads `totalReceivedQty` alone and
-       * would otherwise let a parked receipt unlock the next step.
+       * is precisely why every sum over receipts filters on `POSTED_DOC_STATUS`.
        */
       totalIssuedQty: principalConsumedQty,
       totalReceivedQty: primaryOutput.receivedQty,
@@ -2160,6 +2296,10 @@ export async function createNewJobReceipt(
       totalReturnedQty: primaryOutput.returnedQty,
       remarks: header.remarks?.trim() || null,
       customFields,
+      // Cleared here and set again at the end of the save: a re-saved draft's old
+      // draft batches are deleted below, and these two point at them.
+      outputBatchId: null,
+      reworkBatchId: null,
       updatedBy: userId ?? null,
     };
 
@@ -2180,8 +2320,8 @@ export async function createNewJobReceipt(
      * repeatedly.
      *
      * `existing` is proved to be a draft above, so this is unreachable once a
-     * receipt is posted. Batch rows are NOT touched here because a draft never
-     * created any — that is the whole point of the batch work being skipped.
+     * receipt is posted. The draft's own DRAFT batches go too — each save
+     * recreates them, and a post replaces them with real ones.
      */
     if (existing) {
       await tx.jobReceiptOutputBatch.deleteMany({
@@ -2193,6 +2333,7 @@ export async function createNewJobReceipt(
       await tx.jobReceiptLine.deleteMany({
         where: { organizationId, jobReceiptId: existing.id },
       });
+      await discardDraftBatches(tx, organizationId, existing.id);
     }
 
     /**
@@ -2512,20 +2653,26 @@ export async function createNewJobReceipt(
           );
         }
 
-        posted.push({ kind, batchId, qty: plan.qty, isNewBatch });
+        posted.push({
+          kind,
+          batchId,
+          qty: plan.qty,
+          isNewBatch,
+          units: createdUnits.map((unit) => ({ batchUnitId: unit.id, qty: unit.qty })),
+        });
       }
 
       return posted;
     };
 
     /**
-     * 🔴 A DRAFT NEVER REACHES `postSide`, SO IT CREATES NO BATCH AND NO PACKAGE.
+     * 🔴 A DRAFT NEVER REACHES `postSide`, SO IT POSTS NOTHING AND CREATES NO
+     * `open` BATCH.
      *
      * This is the receipt side's version of "a draft moves no stock", and it is
      * the stronger half: a receipt is where batches are BORN. Running this for a
-     * parked form would mint a batch, a package grid and a `produce` row for
-     * goods nobody has accepted yet, and deleting the draft afterwards would
-     * leave all three behind with nothing to explain them.
+     * parked form would mint a live batch, a package grid and a `produce` row for
+     * goods nobody has accepted yet. A draft gets `draftSide` below instead.
      */
     for (const output of asDraft ? [] : outputRows) {
       const { acceptedValue, reworkValue } = valuesByItem.get(output.itemId)!;
@@ -2547,98 +2694,180 @@ export async function createNewJobReceipt(
     }
 
     /**
+     * 🔴 A DRAFT KEEPS ITS BATCH PLAN AS REAL ROWS (2026-09-29), the way a draft
+     * bill does: a new batch is created in `DRAFT_BATCH_STATE` with its packages,
+     * and nothing is posted. Until then a new batch was only a typed label, so the
+     * draft dropped it and could not be received without retyping it.
+     *
+     * A draft batch never becomes the real one. Posting deletes it
+     * (`discardDraftBatches`) and `postSide` above creates the batch the normal
+     * way, so every availability and genealogy check runs at receive time.
+     */
+    const draftSide = async (
+      output: ResolvedOutput,
+      kind: 'accepted' | 'rework',
+      plans: readonly OutputBatchPlan[],
+    ): Promise<PostedOutputBatch[]> => {
+      const kept: PostedOutputBatch[] = [];
+      for (const plan of plans) {
+        if (plan.batchId) {
+          /* A top-up keeps its takas too: a new label is created as a package of
+             the existing batch (no ledger row, so no picker offers it, and
+             `discardDraftBatches` removes it again), and a taka being added to
+             is only resolved. */
+          const units = [
+            ...(plan.units.length
+              ? await createBatchUnits(tx, {
+                  organizationId,
+                  batchId: plan.batchId,
+                  units: plan.units,
+                  uomId: output.uomId,
+                  sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+                  sourceDocId: receipt.id,
+                  userId,
+                })
+              : []),
+            ...(plan.existingUnits.length
+              ? await resolveExistingBatchUnits(tx, {
+                  organizationId,
+                  batchId: plan.batchId,
+                  units: plan.existingUnits,
+                })
+              : []),
+          ];
+          kept.push({
+            kind,
+            batchId: plan.batchId,
+            qty: plan.qty,
+            isNewBatch: false,
+            units: units.map((unit) => ({ batchUnitId: unit.id, qty: unit.qty })),
+          });
+          continue;
+        }
+        // Lenient like the rest of a draft: a row with no reference yet is not kept,
+        // and `postJobReceiptDraft` asks for it.
+        if (!plan.batchReference) continue;
+        const batch = await createBatch(tx, {
+          organizationId,
+          itemId: output.itemId,
+          uomId: output.uomId,
+          ownership,
+          ownerPartyId: step.jobOrder.ownerPartyId,
+          supplierBatchRef: plan.batchReference,
+          ...plan.attributes,
+          sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+          sourceDocId: receipt.id,
+          userId,
+          draft: true,
+        });
+        const units = plan.units.length
+          ? await createBatchUnits(tx, {
+              organizationId,
+              batchId: batch.id,
+              units: plan.units,
+              uomId: output.uomId,
+              sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+              sourceDocId: receipt.id,
+              userId,
+            })
+          : [];
+        kept.push({
+          kind,
+          batchId: batch.id,
+          qty: plan.qty,
+          isNewBatch: true,
+          units: units.map((unit) => ({ batchUnitId: unit.id, qty: unit.qty })),
+        });
+      }
+      return kept;
+    };
+
+    for (const output of asDraft ? outputRows : []) {
+      const kept = [
+        ...(await draftSide(output, 'accepted', output.batches)),
+        ...(await draftSide(output, 'rework', output.reworkBatches)),
+      ];
+      postedByItem.set(output.itemId, kept);
+      if (output.isPrimary) {
+        outputBatchId = kept.find((row) => row.kind === 'accepted')?.batchId ?? null;
+        reworkBatchId = kept.find((row) => row.kind === 'rework')?.batchId ?? null;
+      }
+    }
+
+    /**
      * 🔴 The RETURN side, recorded as rows (§5.7). `customFields` is left at its
      * default — the list is not a registered entity type, so there is nothing an
      * org could have defined to put in it.
      */
+    /* Built up here and written as three bulk INSERTs below — outputs, then their
+       batch links, then the consumption lines — the order the foreign keys need.
+       Output ids are assigned here so each link row names its own output without
+       relying on the order RETURNING hands rows back in. */
+    const outputData: Prisma.JobReceiptOutputCreateManyInput[] = [];
+    const outputBatchData: Prisma.JobReceiptOutputBatchCreateManyInput[] = [];
+
     for (const [index, output] of outputRows.entries()) {
-      /**
-       * 🔴 WHAT A DRAFT KEEPS OF THE BATCH PLAN: the allocations that name a
-       * batch which ALREADY EXISTS, and only those.
-       *
-       * A top-up points at a real `batches` row, so it survives the round trip
-       * untouched. A NEW batch is nothing but a label the user typed — there is
-       * no row to point `batch_id` at, and creating one would be the very thing
-       * this whole path avoids — so it is dropped, and reopening the draft asks
-       * for the reference again. `postJobReceiptDraft` refuses rather than
-       * guessing.
-       */
-      const posted =
-        postedByItem.get(output.itemId) ??
-        (asDraft
-          ? [
-              ...output.batches
-                .filter((plan) => plan.batchId)
-                .map((plan) => ({
-                  kind: 'accepted' as const,
-                  batchId: plan.batchId!,
-                  qty: plan.qty,
-                  isNewBatch: false,
-                })),
-              ...output.reworkBatches
-                .filter((plan) => plan.batchId)
-                .map((plan) => ({
-                  kind: 'rework' as const,
-                  batchId: plan.batchId!,
-                  qty: plan.qty,
-                  isNewBatch: false,
-                })),
-            ]
-          : []);
-      const outputRow = await tx.jobReceiptOutput.create({
-        data: {
-          organizationId,
-          jobReceiptId: receipt.id,
-          seq: index + 1,
-          itemId: output.itemId,
-          uomId: output.uomId,
-          receivedQty: output.receivedQty,
-          acceptedQty: output.acceptedQty,
-          reworkQty: output.reworkQty,
-          scrapQty: output.scrapQty,
-          returnedQty: output.returnedQty,
-          isPrimary: output.isPrimary,
-          // No longer drives cost (R5); kept null until Migration 2 drops it.
-          valueShare: null,
-          // 🔴 The breakdown as posted, never re-derived — a later change to the
-          // job order's rate must not rewrite what this receipt cost.
-          rate: rateByItem.get(output.itemId) ?? null,
-          materialValue: valuesByItem.get(output.itemId)?.material ?? ZERO,
-          processCharge: valuesByItem.get(output.itemId)?.charge ?? ZERO,
-          // The FIRST batch of each kind, not the only one — see the column's
-          // note. `batches` below is the complete record.
-          outputBatchId: posted.find((row) => row.kind === 'accepted')?.batchId ?? null,
-          reworkBatchId: posted.find((row) => row.kind === 'rework')?.batchId ?? null,
-          reasonId: output.reasonId,
-          responsibility: output.responsibility,
-          remarks: output.remarks,
-          createdBy: userId ?? null,
-          updatedBy: userId ?? null,
-        },
+      // Posted batches, or on a draft its draft batches and top-ups (`draftSide`).
+      const posted = postedByItem.get(output.itemId) ?? [];
+      const outputRowId = randomUUID();
+      outputData.push({
+        id: outputRowId,
+        organizationId,
+        jobReceiptId: receipt.id,
+        seq: index + 1,
+        itemId: output.itemId,
+        uomId: output.uomId,
+        receivedQty: output.receivedQty,
+        acceptedQty: output.acceptedQty,
+        reworkQty: output.reworkQty,
+        scrapQty: output.scrapQty,
+        returnedQty: output.returnedQty,
+        isPrimary: output.isPrimary,
+        // No longer drives cost (R5); kept null until Migration 2 drops it.
+        valueShare: null,
+        // 🔴 The breakdown as posted, never re-derived — a later change to the
+        // job order's rate must not rewrite what this receipt cost.
+        rate: rateByItem.get(output.itemId) ?? null,
+        materialValue: valuesByItem.get(output.itemId)?.material ?? ZERO,
+        processCharge: valuesByItem.get(output.itemId)?.charge ?? ZERO,
+        // The FIRST batch of each kind, not the only one — see the column's
+        // note. `batches` below is the complete record.
+        outputBatchId: posted.find((row) => row.kind === 'accepted')?.batchId ?? null,
+        reworkBatchId: posted.find((row) => row.kind === 'rework')?.batchId ?? null,
+        reasonId: output.reasonId,
+        responsibility: output.responsibility,
+        remarks: output.remarks,
+        createdBy: userId ?? null,
+        updatedBy: userId ?? null,
       });
 
       /**
        * 🔴 THE COMPLETE LIST OF BATCHES THIS ROW WROTE INTO. Written after the
-       * output row because the foreign key points at it, and written for EVERY
+       * output rows because the foreign key points at them, and written for EVERY
        * row including by-products — the guard that reads this at cancellation
        * time is the one that used to miss them.
        */
-      for (const [seq, batch] of posted.entries()) {
-        await tx.jobReceiptOutputBatch.create({
-          data: {
-            organizationId,
-            jobReceiptId: receipt.id,
-            jobReceiptOutputId: outputRow.id,
-            seq: seq + 1,
-            kind: batch.kind,
-            batchId: batch.batchId,
-            qty: batch.qty,
-            isNewBatch: batch.isNewBatch,
-            createdBy: userId ?? null,
-            updatedBy: userId ?? null,
-          },
+      const rows = posted.flatMap((batch) => batchRowsOf(batch).map((row) => ({ ...row, batch })));
+      for (const [seq, { batch, batchUnitId, qty }] of rows.entries()) {
+        outputBatchData.push({
+          organizationId,
+          jobReceiptId: receipt.id,
+          jobReceiptOutputId: outputRowId,
+          seq: seq + 1,
+          kind: batch.kind,
+          batchId: batch.batchId,
+          batchUnitId,
+          qty,
+          isNewBatch: batch.isNewBatch,
+          createdBy: userId ?? null,
+          updatedBy: userId ?? null,
         });
       }
+    }
+
+    await tx.jobReceiptOutput.createMany({ data: outputData });
+    if (outputBatchData.length > 0) {
+      await tx.jobReceiptOutputBatch.createMany({ data: outputBatchData });
     }
 
     /**
@@ -2667,12 +2896,15 @@ export async function createNewJobReceipt(
     const lineCustomFields = validateCustomFields({
       defs: lineDefs,
       input: lines[0]?.customFields,
-      mode: 'create',
+      // `update`, not `create`: these are the header's definitions and no form
+      // fills them per line, so `create` would let one required receipt field
+      // refuse every receipt. Required is enforced on the header above.
+      mode: 'update',
     }) as Prisma.InputJsonValue;
 
-    for (const allocation of allocations) {
-      await tx.jobReceiptLine.create({
-        data: {
+    if (allocations.length > 0) {
+      await tx.jobReceiptLine.createMany({
+        data: allocations.map((allocation) => ({
           organizationId,
           jobReceiptId: receipt.id,
           jobIssueId: allocation.jobIssueId,
@@ -2683,7 +2915,7 @@ export async function createNewJobReceipt(
           customFields: lineCustomFields,
           createdBy: userId ?? null,
           updatedBy: userId ?? null,
-        },
+        })),
       });
     }
 
@@ -2714,10 +2946,123 @@ export async function createNewJobReceipt(
      */
     if (!asDraft) await recomputeStep(tx, organizationId, step.id);
 
+    /* Header, line and output columns only — still read back after every write, so
+       they are what was stored (`outputBatchId` and the two value totals included,
+       which the update above set). The screens that save a receipt read only its id
+       and status and then refetch it; RECEIPT_INCLUDE's display relations were ~15
+       more round trips nobody read (`getJobReceiptById` still returns them). */
     return tx.jobReceipt.findFirstOrThrow({
       where: { id: receipt.id, organizationId },
-      include: RECEIPT_INCLUDE,
+      include: {
+        lines: { where: { isDeleted: false } },
+        outputs: { where: { isDeleted: false }, orderBy: { seq: 'asc' } },
+      },
     });
+  });
+}
+
+type StoredBatchRow = {
+  kind: string;
+  qty: Prisma.Decimal;
+  batchUnitId: string | null;
+  batch: {
+    id: string;
+    supplierBatchRef: string | null;
+    state: string;
+    manufacturerBatch: string | null;
+    manufacturedDate: Date | null;
+    expiryDate: Date | null;
+    sellingPrice: Prisma.Decimal | null;
+    mrp: Prisma.Decimal | null;
+  };
+};
+
+/**
+ * A draft's stored rows turned back into the request's batch plan for one side.
+ *
+ * A DRAFT batch goes back as a NEW batch — its reference, attributes and packages
+ * by label — because posting discards it and creates the real one. Any other
+ * batch is a top-up and goes back by id, with the takas it adds: one this draft
+ * created goes back by LABEL (posting discards and recreates it too), one that
+ * already held stock goes back by id.
+ */
+function draftBatchPlan(
+  rows: readonly StoredBatchRow[],
+  kind: 'accepted' | 'rework',
+  unitById: ReadonlyMap<string, { label: string; createdHere: boolean }>,
+): JobReceiptOutputBatchInput[] {
+  const byBatch = new Map<string, StoredBatchRow[]>();
+  for (const row of rows) {
+    if (row.kind !== kind) continue;
+    byBatch.set(row.batch.id, [...(byBatch.get(row.batch.id) ?? []), row]);
+  }
+  return [...byBatch.values()].map((group) => {
+    const { batch } = group[0]!;
+    const qty = Number(group.reduce((sum, row) => sum.plus(row.qty), ZERO));
+    const units = group
+      .filter((row) => row.batchUnitId)
+      .map((row) => {
+        const unit = unitById.get(row.batchUnitId!);
+        return unit?.createdHere
+          ? { label: unit.label, qty: Number(row.qty) }
+          : { batchUnitId: row.batchUnitId!, qty: Number(row.qty) };
+      });
+    if (batch.state !== DRAFT_BATCH_STATE) {
+      return { batchId: batch.id, qty, ...(units.length ? { units } : {}) };
+    }
+    return {
+      batchId: null,
+      batchReference: batch.supplierBatchRef,
+      qty,
+      manufacturerBatch: batch.manufacturerBatch,
+      manufacturedDate: batch.manufacturedDate,
+      expiryDate: batch.expiryDate,
+      sellingPrice: batch.sellingPrice === null ? null : Number(batch.sellingPrice),
+      mrp: batch.mrp === null ? null : Number(batch.mrp),
+      ...(units.length ? { units } : {}),
+    };
+  });
+}
+
+/**
+ * Delete the draft batches a draft receipt created, and every package it named —
+ * including new takas it added to an EXISTING batch.
+ *
+ * 🔴 A HARD DELETE, for the reason a draft's child rows are hard-deleted: a draft
+ * batch never held stock. It has no ledger rows (`postMovement` refuses it), and
+ * no picker offers it, so nothing outside this draft can point at it. Filtered on
+ * `DRAFT_BATCH_STATE`, so a batch this receipt really created can never match.
+ *
+ * Call it only after the receipt's `job_receipt_output_batches` / outputs rows and
+ * its header's two batch columns have stopped naming these batches.
+ */
+async function discardDraftBatches(tx: TenantClient, organizationId: string, receiptId: string) {
+  /* Every package this draft named — inside its draft batches, and the new takas it
+     added to an existing batch. `ledgerEntries: none` is the net: a package that has
+     held stock is real and stays, whatever created it. */
+  await tx.batchUnit.deleteMany({
+    where: {
+      organizationId,
+      sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+      sourceDocId: receiptId,
+      ledgerEntries: { none: {} },
+    },
+  });
+
+  const drafts = await tx.batch.findMany({
+    where: {
+      organizationId,
+      sourceDocType: SOURCE_DOC_TYPES.jobReceipt,
+      sourceDocId: receiptId,
+      state: DRAFT_BATCH_STATE,
+    },
+    select: { id: true },
+  });
+  if (drafts.length === 0) return;
+  const ids = drafts.map((row) => row.id);
+  await tx.batchUnit.deleteMany({ where: { organizationId, batchId: { in: ids } } });
+  await tx.batch.deleteMany({
+    where: { organizationId, id: { in: ids }, state: DRAFT_BATCH_STATE },
   });
 }
 
@@ -2774,11 +3119,11 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
   /**
    * 🔴 A DRAFT THAT NEVER NAMED ITS OUTPUT BATCHES CANNOT BE POSTED FROM HERE.
    *
-   * A draft cannot store a batch it is CREATING — the batch does not exist until
-   * something posts it — so a receipt parked for a batch-tracked output comes
-   * back with an accepted quantity and nothing to put it in. Reopening the draft
-   * and pressing Receive is the way through: the form asks for the reference and
-   * posts in one go.
+   * Since 2026-09-29 a draft keeps the new batches it names (as draft batches),
+   * so this now catches only a draft saved with no batch at all, and drafts saved
+   * before then, which dropped every new batch. Reopening the draft and pressing
+   * Receive is the way through: the form asks for the reference and posts in one
+   * go.
    *
    * Without this, `createBatch` refuses far downstream with "This item is
    * batch-tracked, so the batch needs a reference" — true, but thrown from inside
@@ -2793,8 +3138,7 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
    * batch is needed is the item's answer, and `createBatch` enforces exactly the
    * same rule at the other end.
    *
-   * An output that names an EXISTING batch is fine — that id survives a draft,
-   * because the batch is already there to point at.
+   * An output that names an existing batch or a draft batch is fine.
    */
   const needsReference = draft.outputs.filter((output) => {
     if (output.item?.inventoryTracking !== 'batch') return false;
@@ -2812,6 +3156,26 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
       { outputs: 'Enter the batch reference on the draft.' },
     );
   }
+
+  // The draft's taka labels, in one read — `RECEIPT_INCLUDE` carries only the ids.
+  const unitIds = draft.outputs.flatMap((output) =>
+    output.batches.flatMap((row) => (row.batchUnitId ? [row.batchUnitId] : [])),
+  );
+  const unitById = new Map(
+    unitIds.length
+      ? (
+          await runAsTenant(organizationId, (tx) =>
+            tx.batchUnit.findMany({
+              where: { organizationId, id: { in: unitIds } },
+              select: { id: true, label: true, sourceDocId: true },
+            }),
+          )
+        ).map((unit) => [
+          unit.id,
+          { label: unit.label, createdHere: unit.sourceDocId === draft.id },
+        ])
+      : [],
+  );
 
   return createNewJobReceipt(
     organizationId,
@@ -2852,12 +3216,8 @@ export async function postJobReceiptDraft(organizationId: string, id: string, us
         reasonId: output.reasonId,
         responsibility: output.responsibility,
         remarks: output.remarks,
-        batches: output.batches
-          .filter((row) => row.kind === 'accepted')
-          .map((row) => ({ batchId: row.batch.id, qty: Number(row.qty) })),
-        reworkBatches: output.batches
-          .filter((row) => row.kind === 'rework')
-          .map((row) => ({ batchId: row.batch.id, qty: Number(row.qty) })),
+        batches: draftBatchPlan(output.batches, 'accepted', unitById),
+        reworkBatches: draftBatchPlan(output.batches, 'rework', unitById),
       })),
     } as CreateJobReceiptInput,
     userId,
@@ -2897,8 +3257,14 @@ export async function deleteJobReceiptDraft(organizationId: string, id: string, 
     await tx.jobReceiptLine.deleteMany({ where: { organizationId, jobReceiptId: draft.id } });
     await tx.jobReceipt.update({
       where: { id: draft.id },
-      data: { isDeleted: true, updatedBy: userId ?? null },
+      data: {
+        isDeleted: true,
+        outputBatchId: null,
+        reworkBatchId: null,
+        updatedBy: userId ?? null,
+      },
     });
+    await discardDraftBatches(tx, organizationId, draft.id);
   });
 }
 
@@ -2954,6 +3320,18 @@ export async function cancelJobReceipt(
     if (receiptStep?.status === 'completed' || receiptStep?.status === 'short_closed') {
       throw ApiError.conflict(
         'This receipt’s step has been completed or closed short, so the receipt can no longer be cancelled.',
+      );
+    }
+
+    // The job worker's bill settles this receipt's charge; cancel the receipt and
+    // that bill would be paying for work the books no longer hold.
+    const billedOn = await tx.billItem.findFirst({
+      where: { jobReceiptId: id, isDeleted: false, bill: { organizationId, isDeleted: false } },
+      select: { bill: { select: { billNumber: true } } },
+    });
+    if (billedOn) {
+      throw ApiError.conflict(
+        `This receipt is on bill ${billedOn.bill.billNumber}. Remove it from the bill before cancelling.`,
       );
     }
 

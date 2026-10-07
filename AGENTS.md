@@ -516,9 +516,11 @@ npm run db:deploy        # prisma migrate deploy — every other environment, ne
 npm run db:check-drift   # exit 0 = in sync, 2 = drift. Run in CI.
 npx vitest run
 
-# Deploy — staging and production are DIFFERENT Zoho accounts, so a deploy must name its target.
-npm run deploy:staging       # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
-npm run deploy:production
+# Deploy — a deploy must name BOTH its target and its service. Staging and production are
+# DIFFERENT Zoho accounts, and this repo holds more than one AppSail.
+npm run deploy:staging:api        # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
+npm run deploy:production:api
+npm run deploy:production:accounts
 # 🔴 The logged-in Zoho account is machine-wide (%APPDATA%\zcatalyst-cli-nodejs\), NOT a repo file,
 # so it is the one thing the repo cannot get right for you. deploy.mjs reads the CLI's login and
 # refuses to run on a mismatch — never bypass it with a bare `catalyst deploy`, which skips that

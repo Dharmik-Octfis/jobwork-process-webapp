@@ -325,6 +325,12 @@ ephemeral token tables, no master-data reference tables):
   module has no gate, every member can do everything, and nothing warns you (same shape as a tenant
   table with no RLS policy). A module's routes are not done until each carries a `requirePermission`.
   Copy `src/modules/purchases/vendors/`. Full model in `docs/ROLES_AND_PERMISSIONS.md`.
+- 🔴 **An approval that gates stock is not a label.** By default the approval engine writes
+  `Pending Approval` / `Approved` / `Rejected` straight into the record's `status`. A document that
+  posts stock registers an outcome handler (`approvalOutcome.registry.ts`), keeps approval in its own
+  column, and **awaits** `evaluateAndTriggerApproval` before posting — never the fire-and-forget
+  `approvalTriggerService.trigger`, which swallows errors. Copy `bills.service.ts` `requestOpen` or
+  `adjustments.service.ts` `adjust`.
 - 🔴 **A Role is NOT a permission set.** Since 2026-07-25 they are two independent things on a
   Membership: `roleId` → `roles` is a **job title that grants nothing** (no middleware reads it),
   and `permissionTemplateId` → `permission_templates` **is** the authorization. Same title with
@@ -390,6 +396,10 @@ sendSuccess(res, null, 'Vendor deleted.'); // 200, no payload
 - Tenant pages live at `/organizations/:orgId/...` — the org comes from `useParams`, never localStorage.
   Query keys must include `orgId` or switching org serves the previous tenant's cache.
 - No UI library; hand-built controls. See `docs/UI_UX_PRINCIPLES.md`.
+- **A list page's create button is `components/ui/NewButton.tsx`** — green (`--color-create`),
+  `+ New`, never blue and never hand-rolled. The page header, the sidebar module name
+  (`prisma/seed.ts` → `app_modules.name`) and the global-search label say the full module name
+  ("Inventory Adjustments", not "Adjustments"). See `docs/UI_UX_PRINCIPLES.md` §3.1.
 - **Placeholders say "Select", never "Pick" or "Choose"** — `Select a batch…`, `Select a customer…`,
   `Select a work centre…`. One verb across the whole app, matching `components/ui/Select.tsx`'s
   default of `Select…`. Applies to input placeholders and to the empty option of a dropdown; prose
@@ -509,15 +519,24 @@ npm run db:deploy        # prisma migrate deploy — every other environment, ne
 npm run db:check-drift   # exit 0 = in sync, 2 = drift. Run in CI.
 npx vitest run
 
-# Deploy — staging and production are DIFFERENT Zoho accounts, so a deploy must name its target.
-npm run deploy:staging       # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
-npm run deploy:production
+# Deploy — a deploy must name BOTH its target and its service. Neither is ever defaulted:
+# staging and production are DIFFERENT Zoho accounts, and this repo holds more than one AppSail.
+npm run deploy:staging:api        # scripts/deploy.mjs — see docs/CATALYST_DEPLOYMENT_GUIDE.md §1.5b
+npm run deploy:production:api     # no short `deploy:production` — it hid which service it deployed
+npm run deploy:staging:accounts   # the identity service. NEVER DEPLOYED YET: accounts/.env.<target>
+npm run deploy:production:accounts  # does not exist, so both stop at the env-file check
 # 🔴 The logged-in Zoho account is machine-wide (%APPDATA%\zcatalyst-cli-nodejs\), NOT a repo file,
 # so it is the one thing the repo cannot get right for you. deploy.mjs reads the CLI's login and
 # refuses to run on a mismatch — never bypass it with a bare `catalyst deploy`, which skips that
 # check plus the env/project cross-check and the `.env`-parking that keeps dev secrets out of the
-# upload. `.catalystrc` and `backend/app-config.json` are GENERATED per target; the committed
-# sources are deploy/targets.json + deploy/<target>.catalystrc.json + backend/.env.<target>.
+# upload. `.catalystrc`, `catalyst.json` and `<service>/app-config.json` are GENERATED per deploy;
+# the committed sources are deploy/services.json + deploy/targets.json +
+# deploy/<target>.catalystrc.json + <service>/.env.<target>.
+# 🔴 `catalyst deploy --only appsail` is RESOURCE targeting, not service targeting — it pushes every
+# entry in catalyst.json. deploy.mjs generates that file with exactly ONE entry, which is the only
+# thing keeping a deploy of one service from deploying all of them. Never commit catalyst.json.
+# A service may be a different AppSail per target (deploy/targets.json → services.<name>.appsail);
+# the deploy banner's `AppSail :` line is the authority on the resolved name.
 
 # web/
 npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO files
@@ -528,15 +547,21 @@ npx tsc -b               # ⚠️ THE typecheck. `tsc --noEmit` checks ZERO file
 
 ## Docs
 
-|                                                           |                                                                                           |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `docs/PRISMA.md` §8                                       | migrations, the RLS runbook, drift, why the DB was baselined                              |
-| `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                                               |
-| `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                                                          |
-| `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                                               |
-| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog                               |
-| `docs/CACHING.md`                                         | L1/L2 layers, what must never be cached, the invalidation rules                           |
-| `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                                                       |
-| `docs/SSO_AND_IDENTITY.md`                                | **design, not built** — one login across every app: OIDC, the accounts service, migration |
-| **`docs/JOBWORK_CORE_WALKTHROUGH.md`**                    | **start here for jobwork** — every field's role, every table written, one worked example  |
-| `docs/JOBWORK_DOMAIN_AND_MODULE_MAP.md`                   | …and the design reasoning behind it: §5 boundaries, §6 the rules                          |
+|                                                           |                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/PRISMA.md` §8                                       | migrations, the RLS runbook, drift, why the DB was baselined                                                                                                                                                                                                                                                                                                                                                                                                |
+| `docs/ARCHITECTURE_AND_TECH_STACK.md`                     | every tech decision + rejected alternatives                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `docs/DYNAMIC_CUSTOM_FIELDS_EXPLAINED.md`                 | per-org custom fields — concepts                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `docs/DYNAMIC_CUSTOM_FIELDS_IMPLEMENTATION_PROMPT.md`     | …and the ordered build plan                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `docs/ROLES_AND_PERMISSIONS.md`                           | permission templates, `requirePermission`, the code catalog                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `docs/CACHING.md`                                         | L1/L2 layers, what must never be cached, the invalidation rules                                                                                                                                                                                                                                                                                                                                                                                             |
+| `docs/AUTHENTICATION.md` · `CATALYST_DEPLOYMENT_GUIDE.md` | auth model · deploy                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **`docs/SSO_WALKTHROUGH.md`**                             | **start here for SSO** — one sign-in end to end: every request, redirect and row written, with payloads                                                                                                                                                                                                                                                                                                                                                     |
+| `docs/SSO_AND_IDENTITY.md`                                | …and the design behind it. **live in production since 2026-08-31** — `accounts.octfis.com` is the issuer and `SSO_ENABLED=true` in `backend/.env` and `.env.production`, so local dev and production both sign in through it. Staging is configured the same way but **not deployed**: its `octfis-accounts-staging` AppSail does not exist yet, so deploy accounts there before the api or staging has neither way in. Its header table says what is built |
+| `docs/SSO_LOGIN_API_SEQUENCE.md`                          | the walkthrough's sign-in as a reference card: every API call in order with request and response, plus the returning, silent and direct-entry variants                                                                                                                                                                                                                                                                                                      |
+| `docs/SSO_WEBSITE_ENTRY_PLAN.md`                          | ✅ **fully deployed** (2026-09-21; phase B, the two jobwork URL values, 2026-09-26 when the page moved to `/jobwork`). Sign-in moves from jobwork's `/login` to a public product site (`https://www.octfis.com/jobwork` — exact string, `www` included); what changes on each of the three sites, the traps, the build order. Read §2 before touching the `_session` cookie and §4.5 before adding a post-logout URI                                        |
+| **`docs/SSO_GUIDE_NEW_APP.md`**                           | **start here to connect a new Octfis app** — env, DB columns, every route with payloads, frontend rules, invitations, security checklist                                                                                                                                                                                                                                                                                                                    |
+| `docs/SSO_GUIDE_WEBSITE.md`                               | the app's product page on www.octfis.com — button, label check, `/session/status` contract                                                                                                                                                                                                                                                                                                                                                                  |
+| `docs/SSO_GUIDE_ACCOUNTS.md`                              | operating accounts.octfis.com — every route, email-code rules, tables, env, adding a new app                                                                                                                                                                                                                                                                                                                                                                |
+| **`docs/JOBWORK_CORE_WALKTHROUGH.md`**                    | **start here for jobwork** — every field's role, every table written, one worked example                                                                                                                                                                                                                                                                                                                                                                    |
+| `docs/JOBWORK_DOMAIN_AND_MODULE_MAP.md`                   | …and the design reasoning behind it: §5 boundaries, §6 the rules                                                                                                                                                                                                                                                                                                                                                                                            |

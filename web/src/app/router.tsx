@@ -3,7 +3,9 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginPage } from '../features/auth/LoginPage';
 import { SignupPage } from '../features/auth/SignupPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
+import { NoAccessPage } from '../features/auth/NoAccessPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
+import { GuestRoute } from '../routes/GuestRoute';
 import { RequireOrganization } from '../routes/RequireOrganization';
 import { OrgRedirect } from '../routes/OrgRedirect';
 import { LegacyJobworkMasterRedirect } from '../routes/LegacyJobworkMasterRedirect';
@@ -132,6 +134,14 @@ const InventoryValuationSummaryPage = lazyPage(
   () => import('../features/reports/InventoryValuationSummaryPage'),
   'InventoryValuationSummaryPage',
 );
+const StockSummaryReportPage = lazyPage(
+  () => import('../features/reports/StockSummaryReportPage'),
+  'StockSummaryReportPage',
+);
+const StockMovementReportPage = lazyPage(
+  () => import('../features/reports/StockMovementReportPage'),
+  'StockMovementReportPage',
+);
 const InventoryValuationDetailPage = lazyPage(
   () => import('../features/reports/InventoryValuationDetailPage'),
   'InventoryValuationDetailPage',
@@ -139,6 +149,46 @@ const InventoryValuationDetailPage = lazyPage(
 const FifoCostLotTrackingPage = lazyPage(
   () => import('../features/reports/FifoCostLotTrackingPage'),
   'FifoCostLotTrackingPage',
+);
+const JobOrderLossReportPage = lazyPage(
+  () => import('../features/reports/JobOrderLossReportPage'),
+  'JobOrderLossReportPage',
+);
+const BatchReportPage = lazyPage(
+  () => import('../features/reports/BatchReportPage'),
+  'BatchReportPage',
+);
+const TakaReportPage = lazyPage(
+  () => import('../features/reports/TakaReportPage'),
+  'TakaReportPage',
+);
+const JobworkChallansRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkChallansRegisterPage'),
+  'JobworkChallansRegisterPage',
+);
+const JobworkReceiptsRegisterPage = lazyPage(
+  () => import('../features/reports/JobworkReceiptsRegisterPage'),
+  'JobworkReceiptsRegisterPage',
+);
+const JobOrdersReportPage = lazyPage(
+  () => import('../features/reports/JobOrdersReportPage'),
+  'JobOrdersReportPage',
+);
+const CustomersReportPage = lazyPage(
+  () => import('../features/reports/CustomersReportPage'),
+  'CustomersReportPage',
+);
+const VendorsReportPage = lazyPage(
+  () => import('../features/reports/VendorsReportPage'),
+  'VendorsReportPage',
+);
+const PurchaseOrdersReportPage = lazyPage(
+  () => import('../features/reports/PurchaseOrdersReportPage'),
+  'PurchaseOrdersReportPage',
+);
+const BillsReportPage = lazyPage(
+  () => import('../features/reports/BillsReportPage'),
+  'BillsReportPage',
 );
 const PurchasesPage = lazyPage(
   () => import('../features/purchases/PurchasesPage'),
@@ -200,6 +250,14 @@ const CreateCustomer = lazyPage(
 const EditCustomer = lazyPage(
   () => import('../features/sales/customers/EditCustomer'),
   'EditCustomer',
+);
+const SalesOrdersList = lazyPage(
+  () => import('../features/sales/sales-orders/SalesOrdersList'),
+  'SalesOrdersList',
+);
+const CreateSalesOrder = lazyPage(
+  () => import('../features/sales/sales-orders/CreateSalesOrder'),
+  'CreateSalesOrder',
 );
 const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
@@ -282,6 +340,14 @@ const AssemblyList = lazyPage(
   () => import('../features/inventory/assembly/AssemblyList'),
   'AssemblyList',
 );
+const AdjustmentsList = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentsList'),
+  'AdjustmentsList',
+);
+const AdjustmentFormPage = lazyPage(
+  () => import('../features/inventory/adjustments/AdjustmentFormPage'),
+  'AdjustmentFormPage',
+);
 const CreateAssemblyPage = lazyPage(
   () => import('../features/inventory/assembly/CreateAssemblyPage'),
   'CreateAssemblyPage',
@@ -314,6 +380,22 @@ const EditLocation = lazyPage(
   () => import('../features/configuration/locations/EditLocation'),
   'EditLocation',
 );
+const ApprovalProcessListPage = lazyPage(
+  () => import('../features/automation/approval-processes/ApprovalProcessListPage'),
+  'ApprovalProcessListPage',
+);
+const ApprovalProcessConfigStudio = lazyPage(
+  () => import('../features/automation/approval-processes/components/ApprovalProcessConfigStudio'),
+  'ApprovalProcessConfigStudio',
+);
+const ApprovalsListPage = lazyPage(
+  () => import('../features/approvals/ApprovalsListPage'),
+  'ApprovalsListPage',
+);
+const ApprovalDetailPage = lazyPage(
+  () => import('../features/approvals/ApprovalDetailPage'),
+  'ApprovalDetailPage',
+);
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -327,7 +409,8 @@ const EditLocation = lazyPage(
  * returns 403 rather than someone else's data.
  *
  * Not org-scoped, deliberately: auth, `/profile`, `/organizations` (you pick one
- * *before* you have one), and `/invite/accept` (the invitee may have no account).
+ * *before* you have one), `/invite/accept` (the invitee may have no account), and
+ * `/no-access` (a signed-in identity jobwork refused).
  *
  * 🔴 Every lazy element below renders inside `AppLayout` or `SettingsLayout`,
  * which is where the `<Suspense>` boundary lives — around each layout's
@@ -346,27 +429,100 @@ export const router = createBrowserRouter([
      */
     errorElement: <AppErrorBoundary />,
     children: [
-      { path: '/login', element: <LoginPage /> },
-      { path: '/signup', element: <SignupPage /> },
-      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      {
+        element: <GuestRoute />,
+        children: [
+          { path: '/login', element: <LoginPage /> },
+          { path: '/signup', element: <SignupPage /> },
+          { path: '/forgot-password', element: <ForgotPasswordPage /> },
+        ],
+      },
       // Public — the invitee may not have an account yet.
       { path: '/invite/accept', element: <AcceptInvitePage /> },
+      // Public — reached from a REFUSED sign-in, so there is no jobwork session to protect it with.
+      { path: '/no-access', element: <NoAccessPage /> },
       {
         element: <ProtectedRoute />,
         children: [
           {
             element: <AppLayout />,
             children: [
-              // No organization in the URL yet — send them to their last one.
-              { path: '/', element: <OrgRedirect /> },
+              /**
+               * No organization in the URL yet — send them to their last one.
+               *
+               * 🔴 `/home` IS `OrgRedirect`, not a dashboard of its own. It is the app's
+               * one "home" answer, and every entry point — a sign-in with no
+               * `returnTo`, the website's button, `/`, a bookmark — must reach this same
+               * component, or one account ends up with two homes depending on how it
+               * arrived (docs/SSO_WALKTHROUGH.md step 10). `/` only forwards here.
+               */
+              { path: '/home', element: <OrgRedirect /> },
+              { path: '/', element: <Navigate to="/home" replace /> },
               {
                 element: <RequireOrganization />,
                 children: [
                   { path: '/organizations/:orgId', element: <DashboardPage /> },
                   { path: '/organizations/:orgId/reports', element: <ReportsPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation-summary', element: <InventoryValuationSummaryPage /> },
-                  { path: '/organizations/:orgId/reports/inventory-valuation/:itemId', element: <InventoryValuationDetailPage /> },
-                  { path: '/organizations/:orgId/reports/fifo-cost-lot-tracking', element: <FifoCostLotTrackingPage /> },
+                  {
+                    path: '/organizations/:orgId/reports/stock-summary',
+                    element: <StockSummaryReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation-summary',
+                    element: <InventoryValuationSummaryPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/inventory-valuation/:itemId',
+                    element: <InventoryValuationDetailPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/stock-movement',
+                    element: <StockMovementReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/fifo-cost-lot-tracking',
+                    element: <FifoCostLotTrackingPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/job-order-loss',
+                    element: <JobOrderLossReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/batch',
+                    element: <BatchReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/taka',
+                    element: <TakaReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-challans',
+                    element: <JobworkChallansRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/jobwork-receipts',
+                    element: <JobworkReceiptsRegisterPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/job-orders',
+                    element: <JobOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/customers',
+                    element: <CustomersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/vendors',
+                    element: <VendorsReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/purchase-orders',
+                    element: <PurchaseOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/bills',
+                    element: <BillsReportPage />,
+                  },
                   { path: '/organizations/:orgId/purchases', element: <PurchasesPage /> },
                   { path: '/organizations/:orgId/purchases/vendors', element: <VendorsList /> },
                   {
@@ -390,6 +546,18 @@ export const router = createBrowserRouter([
                     element: <CreatePurchaseOrder />,
                   },
                   { path: '/organizations/:orgId/sales/customers', element: <CustomersList /> },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders',
+                    element: <SalesOrdersList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders/new',
+                    element: <CreateSalesOrder />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/sales-orders/:id/edit',
+                    element: <CreateSalesOrder />,
+                  },
                   {
                     path: '/organizations/:orgId/sales/customers/new',
                     element: <CreateCustomer />,
@@ -476,6 +644,20 @@ export const router = createBrowserRouter([
                     path: '/organizations/:orgId/inventory/assembly/new',
                     element: <CreateAssemblyPage />,
                   },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments',
+                    element: <AdjustmentsList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/new',
+                    element: <AdjustmentFormPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/inventory/adjustments/:id/edit',
+                    element: <AdjustmentFormPage />,
+                  },
+                  { path: '/organizations/:orgId/approvals', element: <ApprovalsListPage /> },
+                  { path: '/organizations/:orgId/approvals/:id', element: <ApprovalDetailPage /> },
                 ],
               },
               { path: '/organizations', element: <OrganizationsList /> },
@@ -521,12 +703,17 @@ export const router = createBrowserRouter([
               { path: 'locations', element: <LocationsList /> },
               { path: 'locations/new', element: <CreateLocation /> },
               { path: 'locations/:id/edit', element: <EditLocation /> },
+              { path: 'automation/approval-processes', element: <ApprovalProcessListPage /> },
+              {
+                path: 'automation/approval-processes/:id/edit',
+                element: <ApprovalProcessConfigStudio />,
+              },
             ],
           },
           { path: '/organizations/new', element: <CreateOrganizationForm /> },
         ],
       },
-      { path: '*', element: <Navigate to="/" replace /> },
+      { path: '*', element: <Navigate to="/home" replace /> },
     ],
   },
 ]);

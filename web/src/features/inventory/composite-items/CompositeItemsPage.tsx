@@ -7,6 +7,11 @@ import { ItemDetail } from '../../items/ItemDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
+import {
+  patchListRow,
+  releaseListRow,
+  useListRowRetention,
+} from '../../../hooks/useListRowRetention';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
@@ -92,7 +97,7 @@ function ExpandableCompositeItemRow({
 }: {
   item: Item;
   columns: { key: string; label: string; locked?: boolean }[];
-  setSearchParams: (params: Record<string, string>) => void;
+  setSearchParams: ReturnType<typeof useSearchParams>[1];
   orgId: string;
   customFieldsDef?: CustomFieldDefinition[];
   isSelected: boolean;
@@ -110,7 +115,7 @@ function ExpandableCompositeItemRow({
   return (
     <>
       <tr
-        onClick={() => setSearchParams({ id: item.id })}
+        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
         style={{
           borderBottom: '1px solid #eef0f3',
           transition: 'background 0.1s',
@@ -125,7 +130,10 @@ function ExpandableCompositeItemRow({
             e.currentTarget.style.background = isExpanded || isSelected ? '#fafafa' : 'transparent';
         }}
       >
-        <td style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+        <td
+          style={{ width: 48, padding: '12px 16px', paddingRight: 0, textAlign: 'center' }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <input
             type="checkbox"
             checked={isSelected}
@@ -243,7 +251,7 @@ function CompactCompositeItemRow({
   onToggle: _onToggle,
 }: {
   item: Item;
-  setSearchParams: (params: Record<string, string>) => void;
+  setSearchParams: ReturnType<typeof useSearchParams>[1];
   orgId: string;
   isSelected: boolean;
   isActive?: boolean;
@@ -260,7 +268,7 @@ function CompactCompositeItemRow({
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div
-        onClick={() => setSearchParams({ id: item.id })}
+        onClick={() => setSearchParams(prev => { prev.set('id', item.id ); return prev; })}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -298,15 +306,31 @@ function CompactCompositeItemRow({
           {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
         </button>
 
-        <span style={{ fontSize: 13, color: '#333', fontWeight: 500, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span
+          style={{
+            fontSize: 13,
+            color: '#333',
+            fontWeight: 500,
+            flex: 1,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
           {item.name}
         </span>
-        
+
         {item.isActive === false && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '12px', flexShrink: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8' }}>
-              INACTIVE
-            </div>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              marginLeft: '12px',
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ fontSize: '11px', fontWeight: 500, color: '#94a3b8' }}>INACTIVE</div>
           </div>
         )}
       </div>
@@ -350,8 +374,17 @@ function CompactCompositeItemRow({
                       borderTop: '1px solid #cbd5e1',
                     }}
                   />
-                  {comp.component?.itemStructure === 'composite' ? <Folder size={14} color="#0062ff" style={{ marginRight: 6 }} /> : null}
-                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {comp.component?.itemStructure === 'composite' ? (
+                    <Folder size={14} color="#0062ff" style={{ marginRight: 6 }} />
+                  ) : null}
+                  <span
+                    style={{
+                      flex: 1,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
                     {comp.component?.name || 'Unknown Item'}
                   </span>
                 </div>
@@ -369,19 +402,25 @@ function CompactCompositeItemRow({
 }
 
 export function CompositeItemsPage() {
-  const navigate = useNavigate();  const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();
+  const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedItemId = searchParams.get('id');
 
   // Search term (from the global top-bar box, via `?search=`) + page cursor.
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
+  const structuralSharing = useListRowRetention(
+    ['compositeItems', orgId],
+    `${search}|${filter}|${page}|${perPage}`,
+  );
   const { data, isLoading } = useQuery({
     queryKey: ['compositeItems', orgId, search, filter, page, perPage],
     queryFn: () =>
       compositeItemsApi.getItems(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
+    structuralSharing,
   });
 
   const items = data?.results ?? [];
@@ -408,40 +447,35 @@ export function CompositeItemsPage() {
 
   const { data: customFieldsDef } = useActiveCustomFields(orgId, 'item');
 
-  const handleMarkActive = async () => {
+  const setActiveForSelected = async (isActive: boolean) => {
     setIsProcessing(true);
     try {
-      await Promise.allSettled(
-        selectedIds.map((id) => compositeItemsApi.updateItem({ orgId: orgId!, id, data: { isActive: true } }))
+      const outcomes = await Promise.allSettled(
+        selectedIds.map((id) =>
+          compositeItemsApi.updateItem({ orgId: orgId!, id, data: { isActive } }),
+        ),
       );
-      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
+      // Patched, not invalidated: "Active Items" would drop every row just marked inactive.
+      selectedIds.forEach((id, index) => {
+        if (outcomes[index]!.status === 'fulfilled') {
+          patchListRow<Item>(queryClient, ['compositeItems', orgId], id, { isActive });
+        }
+      });
       setSelectedIds([]);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleMarkInactive = async () => {
-    setIsProcessing(true);
-    try {
-      await Promise.allSettled(
-        selectedIds.map((id) => compositeItemsApi.updateItem({ orgId: orgId!, id, data: { isActive: false } }))
-      );
-      queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
-      setSelectedIds([]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const handleMarkActive = () => setActiveForSelected(true);
+  const handleMarkInactive = () => setActiveForSelected(false);
 
   const handleDeleteSelected = async () => {
     setIsBulkDeleteDialogOpen(true);
   };
 
   const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const toggleAll = () => {
@@ -454,7 +488,8 @@ export function CompositeItemsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => compositeItemsApi.deleteItem(orgId!, id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      releaseListRow(['compositeItems', orgId], id);
       queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
       setItemToDelete(null);
     },
@@ -506,64 +541,64 @@ export function CompositeItemsPage() {
               isProcessing={isProcessing}
             />
           ) : (
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px 24px',
-              background: '#fff',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            <ListFilterDropdown
-              filters={filters}
-              value={filter}
-              onChange={setFilter}
-              fallbackLabel="All Items"
-            />
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 24px',
+                background: '#fff',
+                borderBottom: '1px solid #eef0f3',
+              }}
+            >
+              <ListFilterDropdown
+                filters={filters}
+                value={filter}
+                onChange={setFilter}
+                fallbackLabel="All Items"
+              />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {!selectedItemId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {!selectedItemId && (
+                  <button
+                    onClick={() => setIsColumnsOpen(true)}
+                    title="Customize Columns"
+                    aria-label="Customize Columns"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 30,
+                      height: 30,
+                      borderRadius: 4,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                    }}
+                  >
+                    <SlidersHorizontal size={15} />
+                  </button>
+                )}
                 <button
-                  onClick={() => setIsColumnsOpen(true)}
-                  title="Customize Columns"
-                  aria-label="Customize Columns"
+                  onClick={() => navigate(`/organizations/${orgId}/composite-items/new`)}
                   style={{
+                    background: '#186337',
+                    color: 'white',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 30,
-                    height: 30,
-                    borderRadius: 4,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    color: '#64748b',
+                    gap: 4,
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  <SlidersHorizontal size={15} />
+                  <Plus size={16} /> New
                 </button>
-              )}
-              <button
-                onClick={() => navigate(`/organizations/${orgId}/composite-items/new`)}
-                style={{
-                  background: '#186337',
-                  color: 'white',
-                  border: 'none',
-                  padding: '6px 12px',
-                  borderRadius: '4px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={16} /> New
-              </button>
               </div>
             </header>
           )}
@@ -647,45 +682,52 @@ export function CompositeItemsPage() {
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: '#f9f9fb',
-                          borderTop: '1px solid #eef0f3',
-                          borderBottom: '1px solid #eef0f3',
-                        }}
-                      >
-                        <th style={{ width: 48, ...headerStyle, paddingRight: 0, textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={items.length > 0 && selectedIds.length === items.length}
-                            onChange={toggleAll}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </th>
-                        {columns.map((col) => (
-                          <th key={col.key} style={headerStyle}>
-                            {col.label}
+                      <thead>
+                        <tr
+                          style={{
+                            background: '#f9f9fb',
+                            borderTop: '1px solid #eef0f3',
+                            borderBottom: '1px solid #eef0f3',
+                          }}
+                        >
+                          <th
+                            style={{
+                              width: 48,
+                              ...headerStyle,
+                              paddingRight: 0,
+                              textAlign: 'center',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={items.length > 0 && selectedIds.length === items.length}
+                              onChange={toggleAll}
+                              style={{ cursor: 'pointer' }}
+                            />
                           </th>
+                          {columns.map((col) => (
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <ExpandableCompositeItemRow
+                            key={item.id}
+                            item={item}
+                            columns={columns}
+                            setSearchParams={setSearchParams}
+                            orgId={orgId!}
+                            customFieldsDef={customFieldsDef}
+                            isSelected={selectedIds.includes(item.id)}
+                            isActive={selectedItemId === item.id}
+                            onToggle={() => toggleSelection(item.id)}
+                          />
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item) => (
-                        <ExpandableCompositeItemRow
-                          key={item.id}
-                          item={item}
-                          columns={columns}
-                          setSearchParams={setSearchParams}
-                          orgId={orgId!}
-                          customFieldsDef={customFieldsDef}
-                          isSelected={selectedIds.includes(item.id)}
-                          isActive={selectedItemId === item.id}
-                          onToggle={() => toggleSelection(item.id)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -693,8 +735,7 @@ export function CompositeItemsPage() {
           </div>
 
           {/* Pagination — hidden while an item is selected (narrow master pane) */}
-          {!selectedItemId && (
-            <Pagination
+          <Pagination
               pageContext={pageContext}
               page={page}
               onPageChange={setPage}
@@ -704,13 +745,12 @@ export function CompositeItemsPage() {
               isCounting={isCounting}
               onRequestCount={() => void requestCount()}
             />
-          )}
         </div>
 
         {/* Right Panel - Detail */}
         {selectedItemId && (
           <div className="detail-pane" style={{ overflowY: 'auto' }}>
-            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams({})} />
+            <ItemDetail itemId={selectedItemId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
           </div>
         )}
       </div>
@@ -746,8 +786,9 @@ export function CompositeItemsPage() {
           setIsProcessing(true);
           try {
             await Promise.allSettled(
-              selectedIds.map(id => compositeItemsApi.deleteItem(orgId!, id))
+              selectedIds.map((id) => compositeItemsApi.deleteItem(orgId!, id)),
             );
+            selectedIds.forEach((id) => releaseListRow(['compositeItems', orgId], id));
             queryClient.invalidateQueries({ queryKey: ['compositeItems', orgId] });
             setSelectedIds([]);
           } finally {

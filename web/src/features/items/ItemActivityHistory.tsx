@@ -108,3 +108,4 @@ export function ItemActivityHistory({ activities, isLoading }: ItemActivityHisto
     </div>
   );
 }
+

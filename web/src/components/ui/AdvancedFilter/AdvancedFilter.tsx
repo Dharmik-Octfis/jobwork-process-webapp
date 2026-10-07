@@ -53,7 +53,19 @@ export function AdvancedFilter({
 
   if (conditions !== prevConditions) {
     setPrevConditions(conditions);
-    setLocalConditions(conditions);
+    
+    // Check if incoming conditions are just a bounce-back of our valid local conditions
+    const validLocal = localConditions.filter(hasValidValue);
+    const isBounce = conditions.length === validLocal.length && 
+      conditions.every((c, i) => 
+        c.field === validLocal[i].field && 
+        c.operator === validLocal[i].operator && 
+        JSON.stringify(c.value) === JSON.stringify(validLocal[i].value)
+      );
+
+    if (!isBounce) {
+      setLocalConditions(conditions);
+    }
   }
 
   if (matchType !== prevMatchType) {
@@ -125,21 +137,39 @@ export function AdvancedFilter({
         type="button"
         className={`filter-trigger-btn ${conditions.length > 0 ? 'active' : ''}`}
         onClick={handleToggleOpen}
-        style={triggerLabel ? { 
-          width: 'auto', 
-          padding: '4px 10px', 
-          gap: '6px',
-          border: '1px solid #d1d5db',
-          background: '#fff',
-          borderRadius: '6px',
-          fontSize: '12px',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-          color: '#111827',
-          fontWeight: 500,
-        } : undefined}
+        style={
+          triggerLabel
+            ? {
+                width: 'auto',
+                padding: '4px 10px',
+                gap: '6px',
+                border: '1px solid #d1d5db',
+                background: '#fff',
+                borderRadius: '6px',
+                fontSize: '12px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                color: '#111827',
+                fontWeight: 500,
+              }
+            : undefined
+        }
       >
         {triggerIcon || <Filter size={16} />}
         {triggerLabel && <span>{triggerLabel}</span>}
+        {conditions.length > 0 && (
+          <span
+            style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              width: '10px',
+              height: '10px',
+              backgroundColor: '#f97316',
+              borderRadius: '50%',
+              border: '2px solid #fff',
+            }}
+          />
+        )}
       </button>
 
       {isOpen && (
@@ -160,238 +190,270 @@ export function AdvancedFilter({
 
           <div className="filter-body">
             {(() => {
-              const groupedFields = fields.reduce((acc, field) => {
-                const group = field.group || 'Other';
-                if (!acc[group]) acc[group] = [];
-                acc[group].push(field);
-                return acc;
-              }, {} as Record<string, FilterField[]>);
+              const groupedFields = fields.reduce(
+                (acc, field) => {
+                  const group = field.group || 'Other';
+                  if (!acc[group]) acc[group] = [];
+                  acc[group].push(field);
+                  return acc;
+                },
+                {} as Record<string, FilterField[]>,
+              );
 
-              const hasGroups = Object.keys(groupedFields).length > 1 || (Object.keys(groupedFields).length === 1 && Object.keys(groupedFields)[0] !== 'Other');
+              const hasGroups =
+                Object.keys(groupedFields).length > 1 ||
+                (Object.keys(groupedFields).length === 1 &&
+                  Object.keys(groupedFields)[0] !== 'Other');
 
               return Object.entries(groupedFields).map(([group, groupFields], groupIndex) => (
                 <div key={group}>
                   {hasGroups && group !== 'Other' && (
-                    <div style={{ 
-                      padding: groupIndex > 0 ? '16px 12px 6px 12px' : '8px 12px 6px 12px', 
-                      fontSize: '11px', 
-                      fontWeight: 600, 
-                      color: '#94a3b8', 
-                      letterSpacing: '0.04em',
-                      textTransform: 'uppercase', 
-                      background: 'transparent'
-                    }}>
+                    <div
+                      style={{
+                        padding: groupIndex > 0 ? '16px 12px 6px 12px' : '8px 12px 6px 12px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#94a3b8',
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        background: 'transparent',
+                      }}
+                    >
                       {group}
                     </div>
                   )}
                   {groupFields.map((field) => {
                     const condition = localConditions.find((c) => c.field === field.key);
-              const operators = getOperatorsForType(field.dataType);
-              const currentOperator = condition?.operator || operators[0].value;
-              const isExpanded = expandedFields.has(field.key);
-              const hasCondition = condition && hasValidValue(condition);
+                    const operators = getOperatorsForType(field.dataType);
+                    const currentOperator = condition?.operator || operators[0].value;
+                    const isExpanded = expandedFields.has(field.key);
+                    const hasCondition = condition && hasValidValue(condition);
 
-              const updateFieldCondition = (updates: Partial<FilterCondition>) => {
-                const newConditions = [...localConditions];
-                const index = newConditions.findIndex((c) => c.field === field.key);
-                if (index >= 0) {
-                  newConditions[index] = { ...newConditions[index], ...updates };
-                } else {
-                  newConditions.push({
-                    field: field.key,
-                    operator: operators[0].value,
-                    value: '',
-                    ...updates,
-                  });
-                }
-                setLocalConditions(newConditions);
-                if (liveUpdate) {
-                  onChange(newConditions.filter(hasValidValue));
-                }
-              };
+                    const updateFieldCondition = (updates: Partial<FilterCondition>) => {
+                      const newConditions = [...localConditions];
+                      const index = newConditions.findIndex((c) => c.field === field.key);
+                      if (index >= 0) {
+                        newConditions[index] = { ...newConditions[index], ...updates };
+                      } else {
+                        newConditions.push({
+                          field: field.key,
+                          operator: operators[0].value,
+                          value: '',
+                          ...updates,
+                        });
+                      }
+                      setLocalConditions(newConditions);
+                      if (liveUpdate) {
+                        onChange(newConditions.filter(hasValidValue));
+                      }
+                    };
 
-              const isNoVal = isNoValueOperator(currentOperator);
-              const isBetween = currentOperator === 'between';
+                    const isNoVal = isNoValueOperator(currentOperator);
+                    const isBetween = currentOperator === 'between';
 
-              const getInputType = () => {
-                if (['number', 'currency', 'percentage'].includes(field.dataType)) return 'number';
-                if (field.dataType === 'date') return 'date';
-                if (field.dataType === 'time') return 'time';
-                if (field.dataType === 'datetime') return 'datetime-local';
-                return 'text';
-              };
+                    const getInputType = () => {
+                      if (['number', 'currency', 'percentage'].includes(field.dataType))
+                        return 'number';
+                      if (field.dataType === 'date') return 'date';
+                      if (field.dataType === 'time') return 'time';
+                      if (field.dataType === 'datetime') return 'datetime-local';
+                      return 'text';
+                    };
 
-              return (
-                <div key={field.key} className="filter-row-container">
-                  <div className="filter-row-header" onClick={() => toggleField(field.key)}>
-                    <span className={`filter-row-title ${hasCondition ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center' }}>
-                      {field.label}
-                      {hasCondition && (
-                        <span className="filter-badge">
-                          {typeof condition.value === 'string' && condition.value.includes(',')
-                            ? condition.value.split(',').filter(Boolean).length
-                            : Array.isArray(condition.value)
-                            ? condition.value.length
-                            : 1}
-                        </span>
-                      )}
-                    </span>
-                    <div className="filter-row-status" onClick={(e) => e.stopPropagation()}>
-                      {isExpanded && (
-                        <div style={{ width: 140 }}>
-                          <Select
-                            options={operators}
-                            value={currentOperator}
-                            onChange={(val) => {
-                              // If switching to between, convert value to object
-                              const valToObj = val === 'between' ? { from: '', to: '' } : '';
-                              updateFieldCondition({
-                                operator: val as FilterOperator,
-                                value: valToObj,
-                              });
-                            }}
-                            minWidth={140}
-                            fullWidth={true}
-                            buttonStyle={{
-                              height: 26,
-                              padding: '0 8px',
-                              fontSize: 12,
-                              border: 'none',
-                              background: 'transparent',
-                            }}
-                          />
+                    return (
+                      <div key={field.key} className="filter-row-container">
+                        <div className="filter-row-header" onClick={() => toggleField(field.key)}>
+                          <span
+                            className={`filter-row-title ${hasCondition ? 'active' : ''}`}
+                            style={{ display: 'flex', alignItems: 'center' }}
+                          >
+                            {field.label}
+                            {hasCondition && (
+                              <span className="filter-badge">
+                                {typeof condition.value === 'string' &&
+                                condition.value.includes(',')
+                                  ? condition.value.split(',').filter(Boolean).length
+                                  : Array.isArray(condition.value)
+                                    ? condition.value.length
+                                    : 1}
+                              </span>
+                            )}
+                          </span>
+                          <div className="filter-row-status" onClick={(e) => e.stopPropagation()}>
+                            {isExpanded && (
+                              <div style={{ width: 140 }}>
+                                <Select
+                                  options={operators}
+                                  value={currentOperator}
+                                  onChange={(val) => {
+                                    // If switching to between, convert value to object
+                                    const valToObj = val === 'between' ? { from: '', to: '' } : '';
+                                    updateFieldCondition({
+                                      operator: val as FilterOperator,
+                                      value: valToObj,
+                                    });
+                                  }}
+                                  minWidth={140}
+                                  fullWidth={true}
+                                  portal
+                                  buttonStyle={{
+                                    height: 26,
+                                    padding: '0 8px',
+                                    fontSize: 12,
+                                    border: 'none',
+                                    background: 'transparent',
+                                  }}
+                                />
+                              </div>
+                            )}
+                            {hasCondition && (
+                              <button
+                                type="button"
+                                className="filter-row-clear-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newConditions = localConditions.filter(
+                                    (c) => c.field !== field.key,
+                                  );
+                                  setLocalConditions(newConditions);
+                                  if (liveUpdate) {
+                                    onChange(newConditions.filter(hasValidValue));
+                                  }
+                                }}
+                                title="Remove filter"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="filter-row-toggle-btn"
+                              onClick={() => toggleField(field.key)}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown size={16} className="chevron open" />
+                              ) : (
+                                <ChevronRight size={16} className="chevron" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                      )}
-                      {hasCondition && (
-                        <button
-                          type="button"
-                          className="filter-row-clear-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const newConditions = localConditions.filter((c) => c.field !== field.key);
-                            setLocalConditions(newConditions);
-                          }}
-                          title="Remove filter"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="filter-row-toggle-btn"
-                        onClick={() => toggleField(field.key)}
-                      >
-                        {isExpanded ? (
-                          <ChevronDown size={16} className="chevron open" />
-                        ) : (
-                          <ChevronRight size={16} className="chevron" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
 
-                  {isExpanded && !isNoVal && (
-                    <div className="filter-row-body">
-                      <div
-                        className="filter-row-input-wrapper"
-                        style={{ display: 'flex', gap: '8px' }}
-                      >
-                        {field.renderInput ? (
-                          field.renderInput({
-                            value: condition?.value,
-                            onChange: (val) => updateFieldCondition({ value: val }),
-                          })
-                        ) : field.dataType === 'select' || field.dataType === 'radio' ? (
-                          <Select
-                            options={
-                              field.options?.map((o) => ({
-                                label: o.label,
-                                value: o.value.toString(),
-                              })) || []
-                            }
-                            value={(condition?.value as string | number)?.toString() || ''}
-                            onChange={(val) => updateFieldCondition({ value: val })}
-                            placeholder="- Select -"
-                            buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
-                          />
-                        ) : field.dataType === 'boolean' ? (
-                          <Select
-                            options={[
-                              { label: 'Yes', value: 'true' },
-                              { label: 'No', value: 'false' },
-                            ]}
-                            value={
-                              condition?.value === true
-                                ? 'true'
-                                : condition?.value === false
-                                  ? 'false'
-                                  : ''
-                            }
-                            onChange={(val) => updateFieldCondition({ value: val === 'true' })}
-                            placeholder="- Select -"
-                            buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
-                          />
-                        ) : field.dataType === 'multi_select' ? (
-                          <MultiSelect
-                            options={
-                              field.options?.map((o) => ({
-                                label: o.label,
-                                value: o.value.toString(),
-                              })) || []
-                            }
-                            value={(condition?.value as string) || ''}
-                            onChange={(val) => updateFieldCondition({ value: val })}
-                            placeholder="- Select multiple -"
-                            buttonStyle={{ height: 28, fontSize: 12, width: '100%' }}
-                          />
-                        ) : isBetween ? (
-                          <>
-                            <input
-                              type={getInputType()}
-                              className="filter-row-input"
-                              placeholder="From..."
-                              value={
-                                (condition?.value as { from?: string; to?: string })?.from || ''
-                              }
-                              onChange={(e) =>
-                                updateFieldCondition({
-                                  value: {
-                                    ...((condition?.value as { from?: string; to?: string }) || {}),
-                                    from: e.target.value,
-                                  },
+                        {isExpanded && !isNoVal && (
+                          <div className="filter-row-body">
+                            <div
+                              className="filter-row-input-wrapper"
+                              style={{ display: 'flex', gap: '8px' }}
+                            >
+                              {field.renderInput ? (
+                                field.renderInput({
+                                  value: condition?.value,
+                                  onChange: (val) => updateFieldCondition({ value: val }),
                                 })
-                              }
-                            />
-                            <input
-                              type={getInputType()}
-                              className="filter-row-input"
-                              placeholder="To..."
-                              value={(condition?.value as { from?: string; to?: string })?.to || ''}
-                              onChange={(e) =>
-                                updateFieldCondition({
-                                  value: {
-                                    ...((condition?.value as { from?: string; to?: string }) || {}),
-                                    to: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                          </>
-                        ) : (
-                          <input
-                            type={getInputType()}
-                            className="filter-row-input"
-                            placeholder={`Search by ${field.label.toLowerCase()}...`}
-                            value={(condition?.value as string | number) || ''}
-                            onChange={(e) => updateFieldCondition({ value: e.target.value })}
-                          />
+                              ) : field.dataType === 'select' || field.dataType === 'radio' ? (
+                                <Select
+                                  options={
+                                    field.options?.map((o) => ({
+                                      label: o.label,
+                                      value: o.value.toString(),
+                                    })) || []
+                                  }
+                                  value={(condition?.value as string | number)?.toString() || ''}
+                                  onChange={(val) => updateFieldCondition({ value: val })}
+                                  placeholder="- Select -"
+                                  portal
+                                  buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
+                                />
+                              ) : field.dataType === 'boolean' ? (
+                                <Select
+                                  options={[
+                                    { label: 'Yes', value: 'true' },
+                                    { label: 'No', value: 'false' },
+                                  ]}
+                                  value={
+                                    condition?.value === true
+                                      ? 'true'
+                                      : condition?.value === false
+                                        ? 'false'
+                                        : ''
+                                  }
+                                  onChange={(val) =>
+                                    updateFieldCondition({ value: val === 'true' })
+                                  }
+                                  placeholder="- Select -"
+                                  portal
+                                  buttonStyle={{ height: 32, fontSize: 13, flex: 1 }}
+                                />
+                              ) : field.dataType === 'multi_select' ? (
+                                <MultiSelect
+                                  options={
+                                    field.options?.map((o) => ({
+                                      label: o.label,
+                                      value: o.value.toString(),
+                                    })) || []
+                                  }
+                                  value={(condition?.value as string) || ''}
+                                  onChange={(val) => updateFieldCondition({ value: val })}
+                                  placeholder="- Select multiple -"
+                                  buttonStyle={{ height: 28, fontSize: 12, width: '100%' }}
+                                />
+                              ) : isBetween ? (
+                                <>
+                                  <input
+                                    type={getInputType()}
+                                    className="filter-row-input"
+                                    placeholder="From..."
+                                    value={
+                                      (condition?.value as { from?: string; to?: string })?.from ||
+                                      ''
+                                    }
+                                    onChange={(e) =>
+                                      updateFieldCondition({
+                                        value: {
+                                          ...((condition?.value as {
+                                            from?: string;
+                                            to?: string;
+                                          }) || {}),
+                                          from: e.target.value,
+                                        },
+                                      })
+                                    }
+                                  />
+                                  <input
+                                    type={getInputType()}
+                                    className="filter-row-input"
+                                    placeholder="To..."
+                                    value={
+                                      (condition?.value as { from?: string; to?: string })?.to || ''
+                                    }
+                                    onChange={(e) =>
+                                      updateFieldCondition({
+                                        value: {
+                                          ...((condition?.value as {
+                                            from?: string;
+                                            to?: string;
+                                          }) || {}),
+                                          to: e.target.value,
+                                        },
+                                      })
+                                    }
+                                  />
+                                </>
+                              ) : (
+                                <input
+                                  type={getInputType()}
+                                  className="filter-row-input"
+                                  placeholder={`Search by ${field.label.toLowerCase()}...`}
+                                  value={(condition?.value as string | number) || ''}
+                                  onChange={(e) => updateFieldCondition({ value: e.target.value })}
+                                />
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    );
+                  })}
                 </div>
               ));
             })()}

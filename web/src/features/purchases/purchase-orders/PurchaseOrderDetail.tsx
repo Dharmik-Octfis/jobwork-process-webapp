@@ -1,4 +1,5 @@
-﻿import { format } from 'date-fns';
+import { format } from 'date-fns';
+import html2pdf from 'html2pdf.js';
 interface Html2PdfOptions {
   margin?: number | [number, number] | [number, number, number, number];
   filename?: string;
@@ -15,21 +16,39 @@ interface Html2PdfOptions {
   };
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { flushSync } from 'react-dom';
 import {
   fetchPurchaseOrderById,
   getPOSignedUrl,
   deletePurchaseOrder,
   type POAttachment,
 } from './purchase-orders.api';
+import { storedLineDiscount } from '../../../lib/lineDiscount';
 import { fetchPaymentTerms } from './payment-terms.api';
 import { deleteBill } from '../bills/bills.api';
+import { invalidateStockQueries } from '../../jobwork/stockCache';
 import { organizationsApi } from '../../organizations/organizations.api';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
+import {
+  X,
+  Edit,
+  ChevronDown,
+  FileText,
+  Paperclip,
+  Copy,
+  Trash2,
+  Printer,
+  Eye,
+} from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderComments } from './PurchaseOrderComments';
 import { PurchaseOrderActivityTimeline } from './PurchaseOrderActivityTimeline';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 
 function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: POAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -42,17 +61,85 @@ function POAttachmentLink({ orgId, attachment }: { orgId: string; attachment: PO
 
   const finalUrl = isDirectUrl ? attachment.data || attachment.url : signedUrl;
 
+  const handleView = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!finalUrl) return;
+
+    const name = (attachment.name || '').toLowerCase();
+    const isPdf = name.endsWith('.pdf');
+    const isImage = name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i);
+
+    if (!isPdf && !isImage) {
+      window.open(finalUrl, '_blank');
+      return;
+    }
+
+    try {
+      const res = await fetch(finalUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const newWin = window.open('', '_blank');
+      if (newWin) {
+        newWin.document.title = attachment.name || 'View File';
+        newWin.document.body.style.margin = '0';
+        newWin.document.body.style.background = '#0e0e0e';
+        newWin.document.body.style.display = 'flex';
+        newWin.document.body.style.justifyContent = 'center';
+        newWin.document.body.style.alignItems = 'center';
+        newWin.document.body.style.height = '100vh';
+        if (isImage) {
+          const img = newWin.document.createElement('img');
+          img.src = objectUrl;
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '100%';
+          img.style.objectFit = 'contain';
+          newWin.document.body.appendChild(img);
+        } else if (isPdf) {
+          const iframe = newWin.document.createElement('iframe');
+          iframe.src = objectUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          newWin.document.body.appendChild(iframe);
+        }
+      } else {
+        window.open(finalUrl, '_blank');
+      }
+    } catch (_err) {
+      window.open(finalUrl, '_blank');
+    }
+  };
+
   if (finalUrl) {
     return (
-      <a
-        href={finalUrl}
-        download={attachment.name || 'attachment'}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
-      >
-        {attachment.name || 'Attachment'}
-      </a>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <a
+          href={finalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
+          title="Download file"
+        >
+          {attachment.name || 'Attachment'}
+        </a>
+        <button
+          type="button"
+          onClick={handleView}
+          title="View file"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '2px',
+          }}
+        >
+          <Eye size={16} />
+        </button>
+      </div>
     );
   }
 
@@ -65,7 +152,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
-  const [activeSubTab, setActiveSubTab] = useState<'Bills' | 'Receives'>('Bills');
+  const [activeSubTab, setActiveSubTab] = useState<'Bills'>('Bills');
   const [isPdfView, setIsPdfView] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
@@ -74,41 +161,43 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
 
-  const handleDownloadPdf = async () => {
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'purchase_order');
+
+  const handleDownloadPdf = () => {
     setIsPdfMenuOpen(false);
-    setIsPdfView(true);
-    setTimeout(async () => {
-      if (pdfTemplateRef.current) {
-        try {
-          const html2pdfModule =
-            (await import('html2pdf.js')).default ||
-            (window as unknown as { html2pdf?: unknown }).html2pdf;
-          const opt: Html2PdfOptions = {
-            margin: [8, 8, 8, 8],
-            filename: `${po?.poNumber || 'PO'}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          };
-          if (typeof html2pdfModule === 'function') {
-            html2pdfModule().set(opt).from(pdfTemplateRef.current).save();
-          } else {
-            window.print();
-          }
-        } catch (err) {
-          console.error('PDF generation error:', err);
-          window.print();
-        }
+    flushSync(() => {
+      setActiveTab('Overview');
+      setIsPdfView(true);
+    });
+
+    if (pdfTemplateRef.current) {
+      try {
+        const opt: Html2PdfOptions = {
+          margin: [8, 8, 8, 8],
+          filename: `${po?.poNumber || 'PO'}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+        html2pdf().set(opt).from(pdfTemplateRef.current).save();
+      } catch (err) {
+        console.error('PDF generation error:', err);
+        window.print();
       }
-    }, 150);
+    }
   };
 
   const handlePrint = () => {
     setIsPdfMenuOpen(false);
-    setIsPdfView(true);
+    flushSync(() => {
+      setActiveTab('Overview');
+      setIsPdfView(true);
+    });
+
+    // Some browsers need a tiny delay even after flushSync to apply print CSS correctly
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 10);
   };
 
   useEffect(() => {
@@ -139,8 +228,13 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     mutationFn: (billId: string) => deleteBill(orgId!, billId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['bills', orgId] });
+      // Deleting a posted bill withdraws its stock.
+      invalidateStockQueries(queryClient, orgId);
       setBillToDelete(null);
     },
+    // The refusal (stock already used, naming the document) is toasted globally.
+    onError: () => setBillToDelete(null),
   });
 
   const { data: po, isLoading } = useQuery({
@@ -148,6 +242,17 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     queryFn: () => fetchPurchaseOrderById(orgId!, poId),
     enabled: Boolean(orgId && poId),
   });
+
+  const { isUnderApproval, isRejected: isApprovalRejected } = useRecordApproval(
+    orgId,
+    'purchase_orders',
+    poId,
+  );
+  const isRejected = Boolean(
+    isApprovalRejected ||
+    po?.status?.toLowerCase() === 'rejected' ||
+    (po as { approvalStatus?: string } | undefined)?.approvalStatus?.toUpperCase() === 'REJECTED',
+  );
 
   const { data: paymentTerms } = useQuery({
     queryKey: ['paymentTerms', orgId],
@@ -186,7 +291,9 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Approvals', 'Comments', 'Activity'];
+  const pdfDiscountTotal = Number(po.subTotal || 0) - Number(po.totalAmount || 0);
+  const pdfHasDiscount = (po.lineItems || []).some((item) => Number(item.discount || 0) > 0);
 
   const labelStyle = {
     fontSize: '11px',
@@ -222,10 +329,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           </h2>
           <span
             style={{
-              // Lowercased: the column stores "Draft", not "draft" (the filter
-              // presets match it capitalised), so the bare compare was never true
-              // and a draft PO was painted with the issued colour.
-              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
+              background: (() => {
+                const s = (po.status || '').toLowerCase();
+                if (s === 'draft' || s === '') return '#94a3b8';
+                if (s === 'pending approval') return '#f59e0b';
+                if (s === 'approved' || s === 'active') return '#10b981';
+                if (s === 'rejected') return '#ef4444';
+                return '#3b82f6';
+              })(),
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -299,27 +410,29 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   overflow: 'hidden',
                 }}
               >
-                <div
-                  onClick={() => {
-                    setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
-                    );
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: '#334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Copy size={14} /> Clone
-                </div>
+                {!isUnderApproval && !isRejected && (
+                  <div
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      navigate(
+                        `/organizations/${orgId}/purchases/purchase-orders/new?cloneFrom=${poId}`,
+                      );
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <Copy size={14} /> Clone
+                  </div>
+                )}
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
@@ -373,8 +486,8 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div ref={pdfMenuRef}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div ref={pdfMenuRef} style={{ position: 'relative' }}>
             <button
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
@@ -396,6 +509,60 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
               <ChevronDown size={14} />
             </button>
+
+            {isPdfMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #eef0f3',
+                  borderRadius: '4px',
+                  boxShadow:
+                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  width: '130px',
+                  zIndex: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={handleDownloadPdf}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <FileText size={14} /> Download PDF
+                </div>
+                <div
+                  onClick={handlePrint}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Printer size={14} /> Print
+                </div>
+              </div>
+            )}
           </div>
 
           {(!po.bills || po.bills.length === 0) && (
@@ -424,64 +591,24 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </button>
             </>
           )}
-
-          {isPdfMenuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: '4px',
-                background: 'white',
-                border: '1px solid #eef0f3',
-                borderRadius: '4px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                width: '130px',
-                zIndex: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                onClick={handleDownloadPdf}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  color: '#334155',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <FileText size={14} /> Download PDF
-              </div>
-              <div
-                onClick={handlePrint}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  color: '#334155',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <Printer size={14} /> Print
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && (
+          <div style={{ padding: '16px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="purchase_orders"
+              recordId={poId}
+              onActionComplete={() =>
+                queryClient.invalidateQueries({ queryKey: ['purchaseOrder', orgId, poId] })
+              }
+            />
+          </div>
+        )}
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -531,112 +658,6 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   {po.bills?.length || 0}
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('Receives')}
-                style={{
-                  padding: '12px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom:
-                    activeSubTab === 'Receives' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Receives' ? '#0062ff' : '#475569',
-                  fontWeight: activeSubTab === 'Receives' ? 600 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                Receives{' '}
-                <span
-                  style={{
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                  }}
-                >
-                  0
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Status Bar & PDF View Toggle */}
-          <div
-            style={{
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '20px',
-              fontSize: '13px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
-              <span>
-                Receive Status : <strong style={{ color: '#64748b' }}>YET TO BE RECEIVED</strong>
-              </span>
-              <span style={{ color: '#cbd5e1' }}>|</span>
-              <span>
-                Bill Status :{' '}
-                <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
-                  {po.bills?.length ? 'BILLED' : 'UNBILLED'}
-                </strong>
-              </span>
-            </div>
-
-            {/* Toggle Switch */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
-              >
-                Show PDF View
-              </span>
-              <label
-                style={{
-                  position: 'relative',
-                  display: 'inline-block',
-                  width: '38px',
-                  height: '20px',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isPdfView}
-                  onChange={(e) => setIsPdfView(e.target.checked)}
-                  style={{ opacity: 0, width: 0, height: 0 }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
-                    transition: '0.3s',
-                    borderRadius: '20px',
-                  }}
-                />
-                <span
-                  style={{
-                    position: 'absolute',
-                    content: '""',
-                    height: '14px',
-                    width: '14px',
-                    left: isPdfView ? '20px' : '3px',
-                    bottom: '3px',
-                    backgroundColor: 'white',
-                    transition: '0.3s',
-                    borderRadius: '50%',
-                  }}
-                />
-              </label>
             </div>
           </div>
 
@@ -729,14 +750,12 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         }}
                       >
                         <td style={{ padding: '14px 16px', fontSize: '13px' }}>
-                          <span
-                            onClick={() =>
-                              navigate(`/organizations/${orgId}/purchases/bills/${bill.id}`)
-                            }
-                            style={{ color: '#0062ff', cursor: 'pointer', fontWeight: 500 }}
+                          <Link
+                            to={`/organizations/${orgId}/purchases/bills?id=${bill.id}`}
+                            style={{ color: '#0062ff', fontWeight: 500, textDecoration: 'none' }}
                           >
                             {bill.billNumber}
-                          </span>
+                          </Link>
                         </td>
                         <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
                           {bill.billDate ? format(new Date(bill.billDate), 'dd-MM-yyyy') : '-'}
@@ -788,6 +807,81 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
               </div>
             </div>
           )}
+
+          {/* Status Bar & PDF View Toggle */}
+          <div
+            style={{
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px',
+              fontSize: '13px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#475569' }}>
+              {isPdfView && (
+                <>
+                  <span>
+                    Bill Status :{' '}
+                    <strong style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+                      {po.bills?.length ? 'BILLED' : 'YET TO BE BILLED'}
+                    </strong>
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Toggle Switch */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
+              >
+                Show PDF View
+              </span>
+              <label
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                  width: '38px',
+                  height: '20px',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isPdfView}
+                  onChange={(e) => setIsPdfView(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
+                    transition: '0.3s',
+                    borderRadius: '20px',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    content: '""',
+                    height: '14px',
+                    width: '14px',
+                    left: isPdfView ? '20px' : '3px',
+                    bottom: '3px',
+                    backgroundColor: 'white',
+                    transition: '0.3s',
+                    borderRadius: '50%',
+                  }}
+                />
+              </label>
+            </div>
+          </div>
 
           {/* VIEW MODE 1: Standard Web View (isPdfView === false) */}
           {!isPdfView && (
@@ -912,7 +1006,14 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
                       <span
                         style={{
-                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
+                          background: (() => {
+                            const s = (po.status || '').toLowerCase();
+                            if (s === 'draft' || s === '') return '#94a3b8';
+                            if (s === 'pending approval') return '#f59e0b';
+                            if (s === 'approved' || s === 'active') return '#10b981';
+                            if (s === 'rejected') return '#ef4444';
+                            return '#3b82f6';
+                          })(),
                           color: 'white',
                           fontSize: '10px',
                           padding: '1px 6px',
@@ -928,7 +1029,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
+                      Bill:{' '}
+                      <span style={{ color: po.bills?.length ? '#16a34a' : '#64748b' }}>
+                        {po.bills?.length ? 'Billed' : 'Unbilled'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -958,6 +1062,31 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   <div style={valueStyle}>Standard</div>
                 </div>
               </div>
+
+              {/* Custom Fields Section */}
+              {customFieldDefs.length > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '20px',
+                    marginBottom: '28px',
+                    background: '#fafafa',
+                    padding: '16px 20px',
+                    borderRadius: '6px',
+                    border: '1px solid #f1f5f9',
+                  }}
+                >
+                  {customFieldDefs.map((def) => (
+                    <div key={def.id}>
+                      <div style={labelStyle}>{def.label?.toUpperCase()}</div>
+                      <div style={valueStyle}>
+                        {formatCustomFieldValue(po.customFields?.[def.key], def) || '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Line Items Table */}
               <div className="responsive-table-wrapper">
@@ -1034,13 +1163,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                   </thead>
                   <tbody>
                     {(po.lineItems || []).map((item, index) => {
-                      const discVal = Number(
-                        item.discountValue !== undefined && item.discountValue !== null
-                          ? item.discountValue
-                          : item.discountPercentage || item.discount || 0,
-                      );
+                      const stored = storedLineDiscount(item);
+                      const discVal = Number(stored.value || 0);
                       const discDisplay =
-                        item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+                        stored.type === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
 
                       return (
                         <tr
@@ -1072,7 +1198,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                               verticalAlign: 'top',
                             }}
                           >
-                            {item.quantity} PCS
+                            {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                           </td>
                           <td
                             style={{
@@ -1397,6 +1523,33 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
                       </td>
                     </tr>
+                    {customFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = customFieldDefs[i * 2];
+                        const def2 = customFieldDefs[i * 2 + 1];
+                        return (
+                          <tr key={i} style={{ borderTop: '1px solid #000' }}>
+                            <td
+                              style={{
+                                width: '50%',
+                                padding: '6px 10px',
+                                borderRight: '1px solid #000',
+                              }}
+                            >
+                              <strong>{def1.label}</strong> :{' '}
+                              {formatCustomFieldValue(po.customFields?.[def1.key], def1) || '-'}
+                            </td>
+                            <td style={{ width: '50%', padding: '6px 10px' }}>
+                              {def2 ? (
+                                <>
+                                  <strong>{def2.label}</strong> :{' '}
+                                  {formatCustomFieldValue(po.customFields?.[def2.key], def2) || '-'}
+                                </>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1520,6 +1673,18 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                       >
                         Unit Rate (INR)
                       </th>
+                      {pdfHasDiscount && (
+                        <th
+                          style={{
+                            padding: '6px 8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'right',
+                            width: '85px',
+                          }}
+                        >
+                          Discount
+                        </th>
+                      )}
                       <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>
                         Total Value
                       </th>
@@ -1563,7 +1728,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                             textAlign: 'center',
                           }}
                         >
-                          {item.quantity}
+                          {item.quantity} {item.item?.stockingUom?.symbol ?? ''}
                         </td>
                         <td
                           style={{
@@ -1574,6 +1739,22 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         >
                           ₹{Number(item.rate || 0).toFixed(2)}
                         </td>
+                        {pdfHasDiscount && (
+                          <td
+                            style={{
+                              padding: '8px',
+                              borderRight: '1px solid #000',
+                              textAlign: 'right',
+                            }}
+                          >
+                            {Number(item.discount || 0) > 0
+                              ? `-₹${Number(item.discount).toFixed(2)}` +
+                                (storedLineDiscount(item).type === 'percentage'
+                                  ? ` (${Number(item.discountPercentage)}%)`
+                                  : '')
+                              : '-'}
+                          </td>
+                        )}
                         <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
                           ₹{Number(item.itemTotal || 0).toFixed(2)}
                         </td>
@@ -1642,6 +1823,18 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                           <span>Sub Total:</span>
                           <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
                         </div>
+                        {pdfDiscountTotal > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: '8px',
+                            }}
+                          >
+                            <span>Discount:</span>
+                            <strong>-₹{pdfDiscountTotal.toFixed(2)}</strong>
+                          </div>
+                        )}
                         <div
                           style={{
                             display: 'flex',
@@ -1671,6 +1864,13 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
           )}
         </div>
 
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '24px' }}>
+          <RecordApprovalHistoryTimeline
+            organizationId={orgId!}
+            moduleId="purchase_orders"
+            recordId={poId}
+          />
+        </div>
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
           <PurchaseOrderComments orgId={orgId!} poId={poId} />
         </div>

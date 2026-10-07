@@ -545,7 +545,6 @@ export function ItemImageGallery({
     },
     onError: (error) => {
       console.error('Failed to upload image:', error);
-      alert('Failed to upload image.');
     },
   });
 
