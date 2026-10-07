@@ -606,7 +606,7 @@ interface MovementRow {
 }
 
 function materialStanding(row: {
-  uomSymbol: string | null;
+  uomSymbol?: string | null;
   stillOutQty: string;
   closedQty: string;
   writtenOffQty: string;
