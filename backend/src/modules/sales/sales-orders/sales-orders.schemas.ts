@@ -19,7 +19,6 @@ const emptyToNullDate = z.preprocess(
 export const salesOrderItemSchema = z.object({
   id: emptyToUndefinedUuid,
   itemId: z.string().uuid(),
-  batchId: emptyToNullUuid,
   quantity: z.coerce.number().min(0.01),
   rate: z.coerce.number().min(0),
   discountPercentage: z.coerce

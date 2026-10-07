@@ -51,7 +51,6 @@ import { useApprovalProcesses } from '../../automation/approval-processes/api/ap
 import { CreateCustomerModal } from '../customers/CreateCustomerModal';
 import { AdditionalAddressModal } from '../customers/AdditionalAddressModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
-import { AddBillBatchesModal } from '../../purchases/bills/AddBillBatchesModal'
 import { ItemStockAndBatchDisplay } from '../../items/components/ItemStockAndBatchDisplay';
 
 function getImageKey(img: unknown): string | null {
@@ -131,7 +130,6 @@ export function CreateSalesOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
-  const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
 
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'sales_order');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
@@ -1291,12 +1289,6 @@ export function CreateSalesOrder() {
                               locations={locations}
                               trackInventory={selectedItem.trackInventory}
                               inventoryTracking={selectedItem.inventoryTracking}
-                              batchButtonLabel={
-                                curItem?.batches && curItem.batches.length > 0
-                                  ? `${curItem.batches.length} Batch${curItem.batches.length > 1 ? 'es' : ''} Selected`
-                                  : '+ Add Batches'
-                              }
-                              onBatchClick={() => setBatchModalIndex(index)}
                             />
                           )}
                         </td>
@@ -1982,48 +1974,6 @@ export function CreateSalesOrder() {
           setMultiSelectTargetIndex(null);
         }}
       />
-
-      {batchModalIndex !== null && watchItems?.[batchModalIndex]?.item && (
-        <AddBillBatchesModal
-          isOpen={true}
-          onClose={() => setBatchModalIndex(null)}
-          orgId={orgId!}
-          itemId={watchItems[batchModalIndex].item.id}
-          itemName={watchItems[batchModalIndex].item.name || 'Unknown Item'}
-          locationId={watchLocationId || watchDeliveryLocationId || ''}
-          uomLabel={watchItems[batchModalIndex].item.stockingUom?.symbol}
-          locationName={locations.find(l => l.id === (watchLocationId || watchDeliveryLocationId))?.name || null}
-          lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
-          defaultSellingPrice={watchItems[batchModalIndex].rate?.toString() || watchItems[batchModalIndex].item.sellingPrice?.toString() || ''}
-          initialBatches={watchItems[batchModalIndex].batches || []}
-          onSave={(batches, overwriteQty) => {
-            setValue(
-              `lineItems.${batchModalIndex}.batches`,
-              batches.map((b) => ({
-                ...b,
-                manufacturedDate:
-                  b.manufacturedDate instanceof Date
-                    ? b.manufacturedDate.toISOString()
-                    : b.manufacturedDate,
-                expiryDate:
-                  b.expiryDate instanceof Date ? b.expiryDate.toISOString() : b.expiryDate,
-                units: b.units?.map((u) => ({ ...u, label: u.label || '' })),
-              })),
-              {
-                shouldValidate: true,
-                shouldDirty: true,
-              },
-            );
-            if (overwriteQty) {
-              const total = batches.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
-              setValue(`lineItems.${batchModalIndex}.quantity`, total || ('' as unknown as number), {
-                shouldValidate: true,
-                shouldDirty: true,
-              });
-            }
-          }}
-        />
-      )}
 
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}

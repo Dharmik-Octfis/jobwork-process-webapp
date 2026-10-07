@@ -1,4 +1,4 @@
-﻿import type { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess } from '../../../lib/apiResponse.ts';
 import { ApiError } from '../../../lib/apiError.ts';
@@ -61,7 +61,7 @@ export async function updateInvoice(req: Request, res: Response) {
 
 export async function deleteInvoice(req: Request, res: Response) {
   const orgId = req.tenantId!;
-  await InvoiceService.deleteInvoice(orgId, req.params.id as string);
+  await InvoiceService.deleteInvoice(orgId, req.params.id as string, req.user!.id);
   sendSuccess(res, null, 'Invoice deleted.');
 }
 

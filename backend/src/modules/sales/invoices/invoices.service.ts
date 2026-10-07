@@ -1,14 +1,15 @@
 import { runAsTenant } from '../../../db/prisma.ts';
 import { approvalExecutionService } from '../../automation/approval-processes/approvalExecution.service.ts';
 import { ensureApprovalTables } from '../../automation/approval-processes/approvalTables.migration.ts';
-import type { Prisma } from '../../../../generated/prisma/client.ts';
+import { Prisma } from '../../../../generated/prisma/client.ts';
 import type { CreateInvoicePayload, UpdateInvoicePayload } from './invoices.schemas.ts';
 import { searchWhere, pageSlice, takeForPage, type ListQuery } from '../../../lib/pagination.ts';
 import { filterWhere } from '../../settings/list-views/listFilters.catalog.ts';
 import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { priceLines } from '../../../lib/linePricing.ts';
-
+import { allocateOutward } from '../../inventory/stock-ledger/allocateOutward.ts';
+import { postMovements, reverseMovement } from '../../inventory/stock-ledger/stockLedger.service.ts';
 const DUPLICATE_NUMBER = 'A Invoice with this Invoice Number already exists.';
 
 function invoiceListWhere(organizationId: string, opts: ListQuery): Prisma.InvoiceWhereInput {
@@ -158,6 +159,46 @@ export async function createInvoice(
         include: { lineItems: true },
       });
 
+      if (invoice.status !== 'Draft' && invoice.status !== 'Pending Approval' && invoice.locationId) {
+        const requests = invoice.lineItems.map((item, index) => ({
+          itemId: item.itemId,
+          name: `Invoice Line ${index + 1}`,
+          required: new Prisma.Decimal(item.quantity)
+        }));
+        
+        if (requests.length > 0) {
+          const allocations = await allocateOutward(tx, {
+            organizationId: orgId,
+            locationId: invoice.locationId,
+            requests,
+            taking: 'invoiced',
+            detailKey: 'lines'
+          });
+
+          const movementInputs = [];
+          for (const alloc of allocations) {
+            const line = invoice.lineItems[alloc.requestIndex];
+            if (!line) continue;
+            movementInputs.push({
+              organizationId: orgId,
+              batchId: alloc.batchId,
+              batchUnitId: alloc.batchUnitId,
+              locationId: invoice.locationId!,
+              movementType: 'issue' as const,
+              stockEffect: 'both' as const,
+              qtyOut: alloc.qty,
+              sourceDocType: 'invoice' as const,
+              sourceDocId: invoice.id,
+              sourceDocLineId: line.id,
+              userId: userId
+            });
+          }
+          if (movementInputs.length > 0) {
+            await postMovements(tx, movementInputs);
+          }
+        }
+      }
+
       if (invoice.status === 'Pending Approval') {
         await ensureApprovalTables();
         const outcome = await approvalExecutionService.evaluateAndTriggerApproval(
@@ -255,11 +296,69 @@ export async function updateInvoice(
         },
       });
 
-      if (soData.status === 'Pending Approval') {
-        const fullInvoice = await tx.invoice.findUnique({
-          where: { id },
-          include: { lineItems: true },
+      // Reverse existing stock entries for this invoice
+      const oldEntries = await tx.stockLedgerEntry.findMany({
+        where: {
+          organizationId: orgId,
+          sourceDocType: 'invoice',
+          sourceDocId: id,
+          movementType: 'issue'
+        }
+      });
+      for (const entry of oldEntries) {
+        await reverseMovement(tx, orgId, entry.id, {
+          sourceDocType: 'invoice',
+          sourceDocId: id,
+          userId
         });
+      }
+
+      // Re-allocate if the new status is not Draft or Pending Approval
+      const fullInvoice = await tx.invoice.findUnique({
+        where: { id },
+        include: { lineItems: { where: { isDeleted: false } } },
+      });
+      const checkStatus = soData.status ?? fullInvoice?.status ?? 'Draft';
+      const locId = fullInvoice?.locationId;
+      if (checkStatus !== 'Draft' && checkStatus !== 'Pending Approval' && fullInvoice && locId && fullInvoice.lineItems.length > 0) {
+          const requests = fullInvoice.lineItems.map((item, index) => ({
+            itemId: item.itemId,
+            name: `Invoice Line ${index + 1}`,
+            required: new Prisma.Decimal(item.quantity)
+          }));
+          
+          const allocations = await allocateOutward(tx, {
+            organizationId: orgId,
+            locationId: locId,
+            requests,
+            taking: 'invoiced',
+            detailKey: 'lines'
+          });
+
+          const movementInputs = [];
+          for (const alloc of allocations) {
+            const line = fullInvoice.lineItems[alloc.requestIndex];
+            if (!line) continue;
+            movementInputs.push({
+              organizationId: orgId,
+              batchId: alloc.batchId,
+              batchUnitId: alloc.batchUnitId,
+              locationId: locId,
+              movementType: 'issue' as const,
+              stockEffect: 'both' as const,
+              qtyOut: alloc.qty,
+              sourceDocType: 'invoice' as const,
+              sourceDocId: id,
+              sourceDocLineId: line.id,
+              userId: userId
+            });
+          }
+          if (movementInputs.length > 0) {
+            await postMovements(tx, movementInputs);
+          }
+        }
+
+      if (soData.status === 'Pending Approval') {
         if (fullInvoice) {
           await ensureApprovalTables();
           const outcome = await approvalExecutionService.evaluateAndTriggerApproval(
@@ -298,13 +397,30 @@ export async function getInvoiceActivities(organizationId: string, id: string) {
   );
 }
 
-export async function deleteInvoice(orgId: string, id: string) {
-  return runAsTenant(orgId, (tx) =>
-    tx.invoice.updateMany({
+export async function deleteInvoice(orgId: string, id: string, userId?: string) {
+  return runAsTenant(orgId, async (tx) => {
+    // reverse existing stock entries
+    const oldEntries = await tx.stockLedgerEntry.findMany({
+      where: {
+        organizationId: orgId,
+        sourceDocType: 'invoice',
+        sourceDocId: id,
+        movementType: 'issue'
+      }
+    });
+    for (const entry of oldEntries) {
+      await reverseMovement(tx, orgId, entry.id, {
+        sourceDocType: 'invoice',
+        sourceDocId: id,
+        userId
+      });
+    }
+
+    return tx.invoice.updateMany({
       where: { id, organizationId: orgId, isDeleted: false },
       data: { isDeleted: true },
-    }),
-  );
+    });
+  });
 }
 
 export async function getInvoiceNumberPreference(organizationId: string) {

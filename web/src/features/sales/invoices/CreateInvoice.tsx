@@ -171,7 +171,7 @@ export function CreateInvoice() {
   });
 
   const { data: preference } = useQuery({
-    queryKey: ['po-number-preference', orgId],
+    queryKey: ['invoice-number-preference', orgId],
     queryFn: () => fetchInvoiceNumberPreference(orgId!),
     enabled: !!orgId,
   });
@@ -238,7 +238,7 @@ export function CreateInvoice() {
         paymentTerms: sourceData.paymentTerms || '',
         notes: sourceData.notes || '',
         termsAndConditions: sourceData.termsAndConditions || '',
-        status: isClone || convertFromSo ? 'Draft' : sourceData.status || 'Draft',
+        status: isClone ? 'Draft' : convertFromSo ? 'Open' : sourceData.status || 'Draft',
         customFields: sourceData.customFields || {},
         lineItems:
           formattedLineItems.length > 0
@@ -297,7 +297,6 @@ export function CreateInvoice() {
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
 
-  const [poPrefix, setPoPrefix] = useState('INV-');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<InvoiceAttachment[]>([]);
@@ -411,6 +410,7 @@ export function CreateInvoice() {
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
+  const [invoicePrefix, setInvoicePrefix] = useState('INV-');
 
   useEffect(() => {
     if (preference && !isEdit) {
@@ -420,7 +420,7 @@ export function CreateInvoice() {
       if (!currentValue || currentValue === lastPrefilledNumber) {
         setValue('invoiceNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
-        setPoPrefix(preference.prefix);
+        setInvoicePrefix(preference.prefix);
       }
     }
   }, [preference, setValue, watch, lastPrefilledNumber, isEdit]);
@@ -429,9 +429,9 @@ export function CreateInvoice() {
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
       updateInvoiceNumberPreference(orgId!, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['po-number-preference', orgId], data);
+      queryClient.setQueryData(['invoice-number-preference', orgId], data);
       setValue('invoiceNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
-      setPoPrefix(data.prefix);
+      setInvoicePrefix(data.prefix);
       setIsNumberConfigOpen(false);
     },
   });
@@ -459,7 +459,7 @@ export function CreateInvoice() {
         queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, convertFromSo] });
         queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
       }
-      queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-number-preference', orgId] });
       navigate(`/organizations/${orgId}/sales/invoices?id=${isEdit && id ? id : data?.id}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
@@ -1857,12 +1857,12 @@ export function CreateInvoice() {
       <InvoiceNumberConfigModal
         isOpen={isNumberConfigOpen}
         onClose={() => setIsNumberConfigOpen(false)}
-        initialPrefix={preference?.prefix || poPrefix}
+        initialPrefix={preference?.prefix || invoicePrefix}
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
             : watch('invoiceNumber')
-              ? watch('invoiceNumber').replace(poPrefix, '')
+              ? watch('invoiceNumber').replace(invoicePrefix, '')
               : '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {

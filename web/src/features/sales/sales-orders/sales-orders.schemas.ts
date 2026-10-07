@@ -15,29 +15,6 @@ export const SalesOrderItemSchema = z.object({
   // Frontend virtual fields for display
   description: z.string().nullable().optional(),
   item: z.any().optional(),
-  batches: z
-    .array(
-      z.object({
-        batchId: z.string().optional(),
-        supplierBatchRef: z.string().optional(),
-        manufacturerBatch: z.string().nullable().optional(),
-        manufacturedDate: z.string().nullable().optional(),
-        expiryDate: z.string().nullable().optional(),
-        mrp: z.number().or(z.string()).nullable().optional(),
-        sellingPrice: z.number().or(z.string()).nullable().optional(),
-        quantity: z.number().or(z.string()),
-        units: z
-          .array(
-            z.object({
-              batchUnitId: z.string().optional(),
-              label: z.string(),
-              quantity: z.number().or(z.string()),
-            }),
-          )
-          .optional(),
-      }),
-    )
-    .optional(),
   discountType: z.enum(['percentage', 'fixed']).optional(),
   discountValue: z.number().or(z.string()).nullable().optional(),
 });
