@@ -1160,9 +1160,15 @@ export function ReceiveForm({
               }}
             >
               <label
-                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}
+                style={{
+                  ...labelStyle,
+                  color: '#ef4444',
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  marginTop: 10,
+                }}
               >
-                Received into
+                Received into*
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <RadioGroup
@@ -1289,7 +1295,7 @@ export function ReceiveForm({
                 marginBottom: 10,
               }}
             >
-              <h3 style={{ ...sectionHeading, margin: 0 }}>Received against</h3>
+              <h3 style={{ ...sectionHeading, margin: 0, color: '#ef4444' }}>Received against*</h3>
               {/* A job finishing normally closes every challan — eight hand-ticks is
                   how one gets missed. */}
               {selectedIssueIds.length > 0 && (
@@ -1478,8 +1484,8 @@ export function ReceiveForm({
                       <th style={th} scope="col">
                         Item
                       </th>
-                      <th style={th} scope="col">
-                        Received
+                      <th style={{ ...th, color: '#ef4444' }} scope="col">
+                        Received*
                       </th>
                       <th style={th} scope="col">
                         Rework

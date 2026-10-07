@@ -421,6 +421,7 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
   const [addStepsOpen, setAddStepsOpen] = useState(false);
   const [shortCloseOpen, setShortCloseOpen] = useState(false);
   const [shortCloseReason, setShortCloseReason] = useState('');
+  const [shortCloseReasonMissing, setShortCloseReasonMissing] = useState(false);
   const [completeStepTarget, setCompleteStepTarget] = useState<OverviewStep | null>(null);
   const [completeReason, setCompleteReason] = useState('');
   const [completeReasonMissing, setCompleteReasonMissing] = useState(false);
@@ -1000,11 +1001,12 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
                   style={{
                     display: 'block',
                     fontSize: 12,
-                    color: '#64748b',
+                    color: '#ef4444',
+                    fontWeight: 500,
                     margin: '12px 0 4px 0',
                   }}
                 >
-                  Reason
+                  Reason*
                 </label>
                 <input
                   id="complete-step-reason"
@@ -1056,19 +1058,34 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
               outcome, not an error. Whatever is still with a processor on its open steps is written
               off as job order loss. It cannot be reopened, and a later receipt will not undo it.
             </p>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-              Reason
+            <label
+              htmlFor="short-close-reason"
+              style={{
+                display: 'block',
+                fontSize: 12,
+                color: '#ef4444',
+                fontWeight: 500,
+                marginBottom: 4,
+              }}
+            >
+              Reason*
             </label>
             <input
+              id="short-close-reason"
               type="text"
+              required
+              aria-required="true"
               value={shortCloseReason}
-              onChange={(e) => setShortCloseReason(e.target.value)}
-              aria-label="Reason for closing short"
+              aria-invalid={shortCloseReasonMissing}
+              onChange={(e) => {
+                setShortCloseReason(e.target.value);
+                if (e.target.value.trim()) setShortCloseReasonMissing(false);
+              }}
               style={{
                 width: '100%',
                 padding: '6px 8px',
                 fontSize: 13,
-                border: '1px solid #d1d5db',
+                border: `1px solid ${shortCloseReasonMissing ? '#ef4444' : '#d1d5db'}`,
                 borderRadius: 4,
                 minHeight: 32,
               }}
@@ -1078,11 +1095,17 @@ export function JobOrderOverview({ jobOrderId, onClose }: Props) {
         }
         confirmText={shortClose.isPending ? 'Closing…' : 'Close short'}
         onConfirm={() => {
-          if (shortCloseReason.trim()) shortClose.mutate();
+          if (!shortCloseReason.trim()) {
+            setShortCloseReasonMissing(true);
+            notify.error('Say why this is being closed short.');
+            return;
+          }
+          shortClose.mutate();
         }}
         onCancel={() => {
           setShortCloseOpen(false);
           setShortCloseReason('');
+          setShortCloseReasonMissing(false);
         }}
       />
 
