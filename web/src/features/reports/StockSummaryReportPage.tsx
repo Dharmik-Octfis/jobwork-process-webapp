@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Menu, X, Filter, Columns, ChevronDown } from 'lucide-react';
+import { Menu, X, Filter, Columns } from 'lucide-react';
 import { format, endOfDay } from 'date-fns';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
