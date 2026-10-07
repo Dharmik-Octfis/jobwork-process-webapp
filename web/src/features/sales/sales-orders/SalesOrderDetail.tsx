@@ -166,8 +166,8 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
     },
   });
 
-  const markAsOpenMutation = useMutation({
-    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Approved' } }),
+  const markAsConfirmedMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Confirmed' } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
       queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
@@ -411,70 +411,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         {/* Convert to Invoice / PDF Print Dropdown next to Activity tab */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
 
-          {po?.status?.toLowerCase() === 'draft' && (
-            isApprovalEnabled ? (
-              <button
-                className="action-btn"
-                onClick={() => submitForApprovalMutation.mutate()}
-                disabled={submitForApprovalMutation.isPending}
-                style={{
-                  padding: '6px 12px',
-                  border: '1px solid #d97706',
-                  background: '#d97706',
-                  color: 'white',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
-                  fontWeight: 500,
-                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
-              </button>
-            ) : (
-              <button
-                className="action-btn"
-                onClick={() => markAsOpenMutation.mutate()}
-                disabled={markAsOpenMutation.isPending}
-                style={{
-                  padding: '6px 12px',
-                  border: '1px solid #16a34a',
-                  background: '#16a34a',
-                  color: 'white',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  cursor: markAsOpenMutation.isPending ? 'not-allowed' : 'pointer',
-                  fontWeight: 500,
-                  opacity: markAsOpenMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {markAsOpenMutation.isPending ? 'Saving...' : 'Mark as Open'}
-              </button>
-            )
-          )}
-
-          {isApprovalEnabled && po?.status?.toLowerCase() === 'pending approval' && (
-            <button
-              className="action-btn"
-              onClick={() => markAsApprovedMutation.mutate()}
-              disabled={markAsApprovedMutation.isPending}
-              style={{
-                padding: '6px 12px',
-                border: '1px solid #0062ff',
-                background: '#0062ff',
-                color: 'white',
-                borderRadius: '4px',
-                fontSize: '13px',
-                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
-            </button>
-          )}
-
-
           <div ref={pdfMenuRef}>
             <button
               className="action-btn"
@@ -551,7 +487,70 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             )}
           </div>
 
-          {(!po.invoices || po.invoices.length === 0) && po?.status?.toLowerCase() === 'approved' && (
+          {po?.status?.toLowerCase() === 'draft' && (
+            isApprovalEnabled ? (
+              <button
+                className="action-btn"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d97706',
+                  background: '#d97706',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                className="action-btn"
+                onClick={() => markAsConfirmedMutation.mutate()}
+                disabled={markAsConfirmedMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #16a34a',
+                  background: '#16a34a',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: markAsConfirmedMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: markAsConfirmedMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {markAsConfirmedMutation.isPending ? 'Saving...' : 'Mark as Confirmed'}
+              </button>
+            )
+          )}
+
+          {isApprovalEnabled && po?.status?.toLowerCase() === 'pending approval' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsApprovedMutation.mutate()}
+              disabled={markAsApprovedMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #0062ff',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
+            </button>
+          )}
+
+          {(!po.invoices || po.invoices.length === 0) && (po?.status?.toLowerCase() === 'approved' || po?.status?.toLowerCase() === 'confirmed') && (
             <>
               <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
               <button

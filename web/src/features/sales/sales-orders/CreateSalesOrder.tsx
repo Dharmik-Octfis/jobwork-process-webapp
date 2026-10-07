@@ -1803,7 +1803,7 @@ export function CreateSalesOrder() {
             type="button"
             disabled={mutation.isPending}
             onClick={() => {
-              setValue('status', 'Approved');
+              setValue('status', 'Confirmed');
               handleSubmit(onSubmit, onInvalid)();
             }}
             style={{
@@ -1817,7 +1817,7 @@ export function CreateSalesOrder() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending && watch('status') === 'Approved' ? 'Saving...' : 'Save as Open'}
+            {mutation.isPending && watch('status') === 'Confirmed' ? 'Saving...' : 'Save as Confirmed'}
           </button>
         )}
         <button
