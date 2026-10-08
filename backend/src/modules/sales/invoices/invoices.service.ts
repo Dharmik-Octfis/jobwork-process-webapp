@@ -13,6 +13,86 @@ import {
   postMovements,
   reverseMovement,
 } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
+
+registerApprovalOutcomeHandler('invoices', async (outcome) => {
+  const { organizationId, recordId: id } = outcome;
+  const move = (from: string, to: string) =>
+    runAsTenant(organizationId, (tx) =>
+      tx.invoice.updateMany({
+        where: { id, organizationId, isDeleted: false, status: from },
+        data: { status: to },
+      }),
+    );
+
+  if (outcome.status === 'Pending Approval') {
+    await move('Draft', 'Pending Approval');
+    return;
+  }
+  if (outcome.status === 'Rejected') {
+    await move('Pending Approval', 'Rejected');
+    return;
+  }
+  if (outcome.status !== 'Approved') return;
+
+  const approved = await move('Pending Approval', 'Open');
+  if (approved.count !== 1) return;
+
+  // post stock
+  await runAsTenant(organizationId, async (tx) => {
+    const invoice = await tx.invoice.findUnique({
+      where: { id },
+      include: { lineItems: { where: { isDeleted: false } } },
+    });
+    if (!invoice || !invoice.locationId) return;
+
+    const requests = invoice.lineItems.map((item, index) => ({
+      itemId: item.itemId,
+      name: `Invoice Line ${index + 1}`,
+      required: new Prisma.Decimal(item.quantity),
+    }));
+
+    if (requests.length > 0) {
+      const allocations = await allocateOutward(tx, {
+        organizationId,
+        locationId: invoice.locationId,
+        requests,
+        taking: 'invoiced',
+        detailKey: 'lines',
+      });
+
+      const movementInputs = [];
+      for (const alloc of allocations) {
+        const line = invoice.lineItems[alloc.requestIndex];
+        if (!line) continue;
+        movementInputs.push({
+          organizationId,
+          batchId: alloc.batchId,
+          batchUnitId: alloc.batchUnitId,
+          locationId: invoice.locationId,
+          movementType: 'issue' as const,
+          stockEffect: 'both' as const,
+          qtyOut: alloc.qty,
+          sourceDocType: 'invoice' as const,
+          sourceDocId: invoice.id,
+          sourceDocLineId: line.id,
+          postedAt: invoice.date,
+          userId: invoice.updatedBy ?? invoice.createdBy,
+        });
+      }
+      if (movementInputs.length > 0) {
+        await postMovements(tx, movementInputs);
+      }
+    }
+    if (invoice.salesOrderId) {
+      await tx.salesOrder.updateMany({
+        where: { id: invoice.salesOrderId, status: { not: 'Closed' } },
+        data: { status: 'Closed' },
+      });
+    }
+  });
+});
+
 const DUPLICATE_NUMBER = 'A Invoice with this Invoice Number already exists.';
 
 function invoiceListWhere(organizationId: string, opts: ListQuery): Prisma.InvoiceWhereInput {

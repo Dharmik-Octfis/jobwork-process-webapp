@@ -65,6 +65,7 @@ import { WarehouseLocationsPopover } from './components/WarehouseLocationsPopove
 import { LineItemStockDisplay } from './components/LineItemStockDisplay';
 import { useTrackingLabel } from '../../../hooks/useTrackingLabel';
 import { invalidateStockQueries } from '../../jobwork/stockCache';
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
 
 /**
  * A job receipt is billed as the job worker's SERVICE, never as the goods: the
@@ -299,6 +300,12 @@ export function CreateBill() {
   const jobReceiptId = searchParams.get('jobReceiptId');
   const queryClient = useQueryClient();
   const trackingLabel = useTrackingLabel();
+
+  const { data: approvalProcesses } = useApprovalProcesses(orgId!, {
+    moduleId: 'bills',
+    status: 'ACTIVE',
+  });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const poIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
@@ -2025,7 +2032,9 @@ export function CreateBill() {
             ? 'Saving...'
             : isOpenBill
               ? 'Save'
-              : 'Save as Open'}
+              : isApprovalEnabled
+                ? 'Save & Submit for Approval'
+                : 'Save as Open'}
         </button>
         <button
           type="button"
