@@ -89,6 +89,8 @@ export function StockMovementReportPage() {
         return `/organizations/${orgId}/purchases/purchase-orders?id=${row.sourceDocId}`;
       case 'inventory_adjustment':
         return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
+      case 'invoice':
+        return `/organizations/${orgId}/sales/invoices?id=${row.sourceDocId}`;
       default:
         return null;
     }
@@ -296,14 +298,78 @@ export function StockMovementReportPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
                 <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
-                  <SortableHeader sortKey="transactionDate" label="TRANSACTION DATE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="transactionNumber" label="TRANSACTION NUMBER" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="itemName" label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="transactionType" label="TRANSACTION" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="movementType" label="MOVEMENT TYPE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="source" label="SOURCE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="destination" label="DESTINATION" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="quantity" label="QUANTITY" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />
+                  <SortableHeader
+                    sortKey="transactionDate"
+                    label="TRANSACTION DATE"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="transactionNumber"
+                    label="TRANSACTION NUMBER"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="itemName"
+                    label="ITEM NAME"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="transactionType"
+                    label="TRANSACTION"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="movementType"
+                    label="MOVEMENT TYPE"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="source"
+                    label="SOURCE"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="destination"
+                    label="DESTINATION"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="quantity"
+                    label="QUANTITY"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="right"
+                  />
                 </tr>
               </thead>
               <tbody>
