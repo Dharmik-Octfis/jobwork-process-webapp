@@ -69,7 +69,6 @@ export const DATA_TYPES = [
   'phone',
   'select',
   'multi_select',
-  'attachment',
 ] as const;
 export type DataType = (typeof DATA_TYPES)[number];
 
@@ -77,10 +76,18 @@ export type DataType = (typeof DATA_TYPES)[number];
 export const OPTION_TYPES: readonly DataType[] = ['select', 'multi_select'];
 
 /**
- * `attachment` is defined so the type list is complete, but v1 cannot store or
- * render files, so the definition API refuses to create one. The UI greys it out.
+ * Fixed length limit per string type — `custom_fields` is JSONB, so nothing else
+ * bounds a value, and there is no per-field override. URL is 2048, not 255: real
+ * links run longer, and one stored value was already 287 when this cap landed.
+ * Mirrored in the web `TEXT_LENGTH_CAPS` (customFields.schemas.ts).
  */
-export const DISABLED_TYPES: readonly DataType[] = ['attachment'];
+export const TEXT_LENGTH_CAPS: Partial<Record<DataType, number>> = {
+  text: 255,
+  phone: 255,
+  email: 255,
+  url: 2048,
+  textarea: 2000,
+};
 
 /** Field-definition status (visibility on the form). Archive = isDeleted. */
 export const FIELD_STATUSES = ['active', 'hidden'] as const;

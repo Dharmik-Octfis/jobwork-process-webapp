@@ -162,6 +162,7 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
 
   const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'purchase_order');
+  const printFieldDefs = customFieldDefs.filter((d) => d.showInPrint);
 
   const handleDownloadPdf = () => {
     setIsPdfMenuOpen(false);
@@ -1523,10 +1524,10 @@ export function PurchaseOrderDetail({ poId, onClose }: { poId: string; onClose: 
                         <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
                       </td>
                     </tr>
-                    {customFieldDefs.length > 0 &&
-                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
-                        const def1 = customFieldDefs[i * 2];
-                        const def2 = customFieldDefs[i * 2 + 1];
+                    {printFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(printFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = printFieldDefs[i * 2];
+                        const def2 = printFieldDefs[i * 2 + 1];
                         return (
                           <tr key={i} style={{ borderTop: '1px solid #000' }}>
                             <td

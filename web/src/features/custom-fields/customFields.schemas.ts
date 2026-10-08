@@ -14,8 +14,7 @@ export type DataType =
   | 'url'
   | 'phone'
   | 'select'
-  | 'multi_select'
-  | 'attachment';
+  | 'multi_select';
 
 export interface CustomFieldOption {
   id: string;
@@ -25,11 +24,6 @@ export interface CustomFieldOption {
 
 export interface CustomFieldConfig {
   options?: CustomFieldOption[];
-  maxLength?: number;
-  min?: number;
-  max?: number;
-  precision?: number;
-  regex?: string;
   helpText?: string;
   defaultValue?: unknown;
 }
@@ -42,7 +36,6 @@ export interface CustomFieldDefinition {
   config: CustomFieldConfig;
   isRequired: boolean;
   showInPrint: boolean;
-  showInList: boolean;
   displayOrder: number;
   status?: 'active' | 'hidden';
 }
@@ -50,12 +43,21 @@ export interface CustomFieldDefinition {
 /** The value blob stored on a record (vendor/item) under `customFields`. */
 export type CustomFieldValues = Record<string, unknown>;
 
-/** Data-type catalog for the admin type-picker. `attachment` is disabled in v1. */
+/** Fixed length limit per string type — mirrors backend `TEXT_LENGTH_CAPS`
+ * (customFields.constants.ts); keep the two in sync. */
+export const TEXT_LENGTH_CAPS: Partial<Record<DataType, number>> = {
+  text: 255,
+  phone: 255,
+  email: 255,
+  url: 2048,
+  textarea: 2000,
+};
+
+/** Data-type catalog for the admin type-picker. */
 export const DATA_TYPE_OPTIONS: Array<{
   value: DataType;
   label: string;
   hasOptions?: boolean;
-  disabled?: boolean;
 }> = [
   { value: 'text', label: 'Text' },
   { value: 'textarea', label: 'Multi-line Text' },
@@ -145,6 +147,10 @@ export const CUSTOM_FIELD_MODULES: Array<{
     description: 'Add fields captured when goods come back from a processor.',
   },
 ];
+
+/** Modules whose PDF/print template renders custom fields — the only place
+ * `showInPrint` has an effect, so the toggle is offered for these alone. */
+export const PRINTABLE_ENTITY_TYPES: readonly string[] = ['sales_order', 'purchase_order', 'bill'];
 
 export function moduleLabel(entityType: string): string {
   return CUSTOM_FIELD_MODULES.find((m) => m.entityType === entityType)?.label ?? entityType;
