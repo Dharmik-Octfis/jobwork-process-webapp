@@ -134,10 +134,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
     },
   });
 
-
-
-
-
   const { data: po, isLoading } = useQuery({
     queryKey: ['salesOrder', orgId, poId],
     queryFn: () => fetchSalesOrderById(orgId!, poId),
@@ -158,6 +154,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   const currentOrg = orgs?.find((o) => o.organizationId === orgId);
 
   const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'sales_order');
+  const printFieldDefs = customFieldDefs.filter((d) => d.showInPrint);
 
   const getPaymentTermLabel = (termVal?: string | null) => {
     if (!termVal) return '-';
@@ -299,9 +296,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/sales/sales-orders/new?cloneFrom=${poId}`,
-                    );
+                    navigate(`/organizations/${orgId}/sales/sales-orders/new?cloneFrom=${poId}`);
                   }}
                   style={{
                     padding: '8px 12px',
@@ -403,7 +398,8 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                   background: 'white',
                   border: '1px solid #eef0f3',
                   borderRadius: '4px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  boxShadow:
+                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                   width: '130px',
                   zIndex: 20,
                   display: 'flex',
@@ -1117,10 +1113,10 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
                       </td>
                     </tr>
-                    {customFieldDefs.length > 0 &&
-                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
-                        const def1 = customFieldDefs[i * 2];
-                        const def2 = customFieldDefs[i * 2 + 1];
+                    {printFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(printFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = printFieldDefs[i * 2];
+                        const def2 = printFieldDefs[i * 2 + 1];
                         return (
                           <tr key={i} style={{ borderTop: '1px solid #000' }}>
                             <td
@@ -1180,7 +1176,9 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           lineHeight: 1.5,
                         }}
                       >
-                        <strong>{po.customer?.contactName || po.customer?.companyName || '-'}</strong>
+                        <strong>
+                          {po.customer?.contactName || po.customer?.companyName || '-'}
+                        </strong>
                         {po.customer?.email && <div>{po.customer.email}</div>}
                         {po.customer?.phone && <div>{po.customer.phone}</div>}
                       </td>
@@ -1418,8 +1416,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
       />
-
-
     </div>
   );
 }

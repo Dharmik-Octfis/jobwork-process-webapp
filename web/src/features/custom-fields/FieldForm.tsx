@@ -9,6 +9,7 @@ import {
 } from './customFields.api';
 import {
   DATA_TYPE_OPTIONS,
+  PRINTABLE_ENTITY_TYPES,
   generateOptionId,
   typeHasOptions,
   type CustomFieldConfig,
@@ -83,17 +84,14 @@ export function FieldForm({
   const [options, setOptions] = useState<OptionDraft[]>(
     (cfg.options ?? []).map((o) => ({ id: o.id, label: o.label })),
   );
-  const [maxLength, setMaxLength] = useState(cfg.maxLength != null ? String(cfg.maxLength) : '');
-  const [minVal, setMinVal] = useState(cfg.min != null ? String(cfg.min) : '');
-  const [maxVal, setMaxVal] = useState(cfg.max != null ? String(cfg.max) : '');
-  const [precision, setPrecision] = useState(cfg.precision != null ? String(cfg.precision) : '');
   const [defaultValue, setDefaultValue] = useState<unknown>(cfg.defaultValue);
   const [isRequired, setIsRequired] = useState(fieldToEdit?.isRequired ?? false);
-  const [showInList, setShowInList] = useState(fieldToEdit?.showInList ?? false);
+  const [showInPrint, setShowInPrint] = useState(fieldToEdit?.showInPrint ?? true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const needsOptions = typeHasOptions(dataType);
+  const isPrintable = PRINTABLE_ENTITY_TYPES.includes(entityType);
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   const cleanedOptions = (): CustomFieldOption[] =>
@@ -111,7 +109,6 @@ export function FieldForm({
     config: { options: cleanedOptions() },
     isRequired: false,
     showInPrint: false,
-    showInList: false,
     displayOrder: 0,
   };
 
@@ -119,14 +116,6 @@ export function FieldForm({
     const config: CustomFieldConfig = {};
     if (helpText.trim()) config.helpText = helpText.trim();
     if (needsOptions) config.options = cleanedOptions();
-    if ((dataType === 'text' || dataType === 'textarea') && maxLength) {
-      config.maxLength = Number(maxLength);
-    }
-    if (dataType === 'number' || dataType === 'decimal') {
-      if (minVal !== '') config.min = Number(minVal);
-      if (maxVal !== '') config.max = Number(maxVal);
-    }
-    if (dataType === 'decimal' && precision !== '') config.precision = Number(precision);
     const emptyDefault =
       defaultValue === undefined ||
       defaultValue === '' ||
@@ -154,6 +143,8 @@ export function FieldForm({
       setErrorMsg('Add at least one option.');
       return;
     }
+    // Only sent where a print template reads it; elsewhere the stored value is left alone.
+    const printFlag = isPrintable ? { showInPrint } : {};
     try {
       if (isEdit && fieldToEdit) {
         await updateMutation.mutateAsync({
@@ -162,7 +153,7 @@ export function FieldForm({
             label: fieldLabel.trim(),
             config: buildConfig(),
             isRequired,
-            showInList,
+            ...printFlag,
           },
         });
       } else {
@@ -172,7 +163,7 @@ export function FieldForm({
           dataType,
           config: buildConfig(),
           isRequired,
-          showInList,
+          ...printFlag,
         };
         await createMutation.mutateAsync(payload);
       }
@@ -186,214 +177,157 @@ export function FieldForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+    >
       <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
         <div style={{ maxWidth: 760 }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>
             {isEdit ? 'Edit Field' : 'New Field'} — {moduleLabel}
           </h2>
-        <div style={rowStyle}>
-          <label style={{ ...labelCol, color: '#ef4444' }}>Field Name*</label>
-          <input
-            value={fieldLabel}
-            onChange={(e) => setFieldLabel(e.target.value)}
-            placeholder="e.g. Truck Number"
-            style={input}
-            autoFocus
-          />
-        </div>
-
-        <div style={rowStyle}>
-          <label style={{ ...labelCol, color: '#ef4444' }}>Data Type*</label>
-          <div>
-            <SearchableSelect
-              options={DATA_TYPE_OPTIONS.map((t) => ({
-                label: t.label,
-                value: t.value,
-                disabled: t.disabled,
-              }))}
-              value={dataType}
-              disabled={isEdit}
-              placeholder="Select a data type"
-              style={{ maxWidth: 440 }}
-              onChange={(val) => {
-                setDataType(val as DataType);
-                setDefaultValue(undefined);
-              }}
-            />
-            {isEdit && (
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                Type can't change — archive this field and create a new one instead.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div style={rowStyle}>
-          <label style={labelCol}>Help Text</label>
-          <div>
-            <textarea
-              value={helpText}
-              onChange={(e) => setHelpText(e.target.value)}
-              rows={2}
-              style={{ ...input, resize: 'vertical' }}
-            />
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-              Shown under the field to help users understand its purpose.
-            </div>
-          </div>
-        </div>
-
-        {/* Text length */}
-        {(dataType === 'text' || dataType === 'textarea') && (
           <div style={rowStyle}>
-            <label style={labelCol}>Max Length</label>
+            <label style={{ ...labelCol, color: '#ef4444' }}>Field Name*</label>
             <input
-              type="number"
-              min={1}
-              value={maxLength}
-              onChange={(e) => setMaxLength(e.target.value)}
-              placeholder="e.g. 100"
-              style={{ ...input, maxWidth: 160 }}
+              value={fieldLabel}
+              onChange={(e) => setFieldLabel(e.target.value)}
+              placeholder="e.g. Truck Number"
+              style={input}
+              autoFocus
             />
           </div>
-        )}
 
-        {/* Number / decimal constraints */}
-        {(dataType === 'number' || dataType === 'decimal') && (
           <div style={rowStyle}>
-            <label style={labelCol}>Range</label>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="number"
-                value={minVal}
-                onChange={(e) => setMinVal(e.target.value)}
-                placeholder="Min"
-                style={{ ...input, maxWidth: 120 }}
+            <label style={{ ...labelCol, color: '#ef4444' }}>Data Type*</label>
+            <div>
+              <SearchableSelect
+                options={DATA_TYPE_OPTIONS.map((t) => ({ label: t.label, value: t.value }))}
+                value={dataType}
+                disabled={isEdit}
+                placeholder="Select a data type"
+                style={{ maxWidth: 440 }}
+                onChange={(val) => {
+                  setDataType(val as DataType);
+                  setDefaultValue(undefined);
+                }}
               />
-              <span style={{ color: '#94a3b8' }}>–</span>
-              <input
-                type="number"
-                value={maxVal}
-                onChange={(e) => setMaxVal(e.target.value)}
-                placeholder="Max"
-                style={{ ...input, maxWidth: 120 }}
-              />
-              {dataType === 'decimal' && (
-                <>
-                  <span style={{ fontSize: 12, color: '#64748b', marginLeft: 8 }}>
-                    Decimal places
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    value={precision}
-                    onChange={(e) => setPrecision(e.target.value)}
-                    placeholder="2"
-                    style={{ ...input, maxWidth: 80 }}
-                  />
-                </>
+              {isEdit && (
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                  Type can't change — archive this field and create a new one instead.
+                </div>
               )}
             </div>
           </div>
-        )}
 
-        {/* Options editor for dropdown / multi-select */}
-        {needsOptions && (
           <div style={rowStyle}>
-            <label style={requiredCol}>
-              {dataType === 'multi_select' ? 'Multiselect Options' : 'Dropdown Options'}
-            </label>
-            <div
-              style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, maxWidth: 520 }}
-            >
+            <label style={labelCol}>Help Text</label>
+            <div>
+              <textarea
+                value={helpText}
+                onChange={(e) => setHelpText(e.target.value)}
+                rows={2}
+                style={{ ...input, resize: 'vertical' }}
+              />
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                Shown under the field to help users understand its purpose.
+              </div>
+            </div>
+          </div>
+
+          {/* Options editor for dropdown / multi-select */}
+          {needsOptions && (
+            <div style={rowStyle}>
+              <label style={requiredCol}>
+                {dataType === 'multi_select' ? 'Multiselect Options' : 'Dropdown Options'}
+              </label>
               <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 12,
-                }}
+                style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, maxWidth: 520 }}
               >
-                <strong style={{ fontSize: 13, color: '#334155' }}>
-                  Options Count : {options.length}
-                </strong>
-                <button
-                  type="button"
-                  onClick={() => setOptions([...options, { id: generateOptionId(), label: '' }])}
+                <div
                   style={{
                     display: 'flex',
+                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    gap: 6,
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--color-primary)',
-                    fontSize: 13,
-                    cursor: 'pointer',
+                    marginBottom: 12,
                   }}
                 >
-                  <Plus size={15} /> Add Option
-                </button>
-              </div>
-
-              {options.map((opt, i) => (
-                <div
-                  key={opt.id}
-                  draggable
-                  onDragStart={() => setDragIndex(i)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (dragIndex !== null) reorder(dragIndex, i);
-                    setDragIndex(null);
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
-                >
-                  <GripVertical
-                    size={16}
-                    color="#94a3b8"
-                    style={{ cursor: 'grab', flexShrink: 0 }}
-                  />
-                  <input
-                    value={opt.label}
-                    onChange={(e) => {
-                      const next = [...options];
-                      next[i] = { ...next[i], label: e.target.value };
-                      setOptions(next);
-                    }}
-                    placeholder={`Option ${i + 1}`}
-                    style={{ ...input, maxWidth: 'none', flex: 1 }}
-                  />
+                  <strong style={{ fontSize: 13, color: '#334155' }}>
+                    Options Count : {options.length}
+                  </strong>
                   <button
                     type="button"
-                    onClick={() => setOptions(options.filter((_, idx) => idx !== i))}
+                    onClick={() => setOptions([...options, { id: generateOptionId(), label: '' }])}
                     style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
                       background: 'none',
                       border: 'none',
-                      color: '#dc2626',
+                      color: 'var(--color-primary)',
+                      fontSize: 13,
                       cursor: 'pointer',
-                      flexShrink: 0,
                     }}
                   >
-                    <Trash2 size={16} />
+                    <Plus size={15} /> Add Option
                   </button>
                 </div>
-              ))}
-              {options.length === 0 && (
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                  No options yet — add one above.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
-        {/* Default value — rendered with the same control the field will use */}
-        {dataType !== 'attachment' && (
+                {options.map((opt, i) => (
+                  <div
+                    key={opt.id}
+                    draggable
+                    onDragStart={() => setDragIndex(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragIndex !== null) reorder(dragIndex, i);
+                      setDragIndex(null);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
+                  >
+                    <GripVertical
+                      size={16}
+                      color="#94a3b8"
+                      style={{ cursor: 'grab', flexShrink: 0 }}
+                    />
+                    <input
+                      value={opt.label}
+                      onChange={(e) => {
+                        const next = [...options];
+                        next[i] = { ...next[i], label: e.target.value };
+                        setOptions(next);
+                      }}
+                      placeholder={`Option ${i + 1}`}
+                      style={{ ...input, maxWidth: 'none', flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setOptions(options.filter((_, idx) => idx !== i))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                {options.length === 0 && (
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                    No options yet — add one above.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Default value — rendered with the same control the field will use */}
           <div style={rowStyle}>
             <label style={labelCol}>Default Value</label>
             {/* Portalled: this preview sits in the page's `overflow: auto` pane,
-                which clips an absolutely-positioned calendar. */}
+              which clips an absolutely-positioned calendar. */}
             <CustomFieldInput
               def={draftDef}
               value={defaultValue}
@@ -401,68 +335,68 @@ export function FieldForm({
               portal
             />
           </div>
-        )}
 
-        <div style={rowStyle}>
-          <label style={labelCol}>Is Mandatory</label>
-          <YesNo value={isRequired} onChange={setIsRequired} />
-        </div>
+          <div style={rowStyle}>
+            <label style={labelCol}>Is Mandatory</label>
+            <YesNo value={isRequired} onChange={setIsRequired} />
+          </div>
 
-        <div style={rowStyle}>
-          <label style={labelCol}>Show in List View</label>
-          <YesNo value={showInList} onChange={setShowInList} />
-        </div>
+          {isPrintable && (
+            <div style={rowStyle}>
+              <label style={labelCol}>Show in Print</label>
+              <YesNo value={showInPrint} onChange={setShowInPrint} />
+            </div>
+          )}
 
-        {errorMsg && (
-          <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 16 }}>{errorMsg}</div>
-        )}
-
+          {errorMsg && (
+            <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 16 }}>{errorMsg}</div>
+          )}
         </div>
       </div>
 
-        <div
+      <div
+        style={{
+          background: '#fff',
+          padding: '16px 32px',
+          borderTop: '1px solid #eef0f3',
+          display: 'flex',
+          gap: 12,
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="submit"
+          disabled={isSaving}
           style={{
-            background: '#fff',
-            padding: '16px 32px',
-            borderTop: '1px solid #eef0f3',
-            display: 'flex',
-            gap: 12,
-            flexShrink: 0,
+            padding: '9px 22px',
+            background: 'var(--color-primary)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 4,
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: isSaving ? 'not-allowed' : 'pointer',
+            opacity: isSaving ? 0.7 : 1,
           }}
         >
-          <button
-            type="submit"
-            disabled={isSaving}
-            style={{
-              padding: '9px 22px',
-              background: 'var(--color-primary)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 4,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              opacity: isSaving ? 0.7 : 1,
-            }}
-          >
-            {isSaving ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: '9px 22px',
-              background: '#fff',
-              color: '#333',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
+          {isSaving ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: '9px 22px',
+            background: '#fff',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: 4,
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

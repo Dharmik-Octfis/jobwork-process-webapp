@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   DATA_TYPES,
-  DISABLED_TYPES,
   ENTITY_TYPES,
   FIELD_STATUSES,
   OPTION_TYPES,
@@ -29,11 +28,7 @@ const optionInputSchema = z.object({
 const configSchema = z
   .object({
     options: z.array(optionInputSchema).optional(),
-    maxLength: z.number().int().positive().max(10000).optional(),
-    min: z.number().optional(),
-    max: z.number().optional(),
-    precision: z.number().int().min(0).max(10).optional(),
-    regex: z.string().max(300).optional(),
+    // No per-field maxLength: every string type has a fixed cap (TEXT_LENGTH_CAPS).
     // Zoho-Books-style extras, stored in the JSONB config (no schema migration).
     helpText: z.string().max(500).optional(),
     defaultValue: z.unknown().optional(),
@@ -45,7 +40,6 @@ const baseFields = {
   config: configSchema.optional().default({}),
   isRequired: z.boolean().optional().default(false),
   showInPrint: z.boolean().optional().default(true),
-  showInList: z.boolean().optional().default(false),
 };
 
 /** Cross-check that config matches the chosen dataType. */
@@ -53,15 +47,6 @@ function refineConfig(
   data: { dataType: DataType; config?: { options?: unknown[] } },
   ctx: z.RefinementCtx,
 ): void {
-  if ((DISABLED_TYPES as readonly string[]).includes(data.dataType)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['dataType'],
-      message: `The "${data.dataType}" field type is coming soon and can't be added yet.`,
-    });
-    return;
-  }
-
   const needsOptions = (OPTION_TYPES as readonly string[]).includes(data.dataType);
   const options = data.config?.options ?? [];
   if (needsOptions && options.length === 0) {
@@ -87,7 +72,6 @@ export const updateDefinitionSchema = z.object({
   config: configSchema.optional(),
   isRequired: z.boolean().optional(),
   showInPrint: z.boolean().optional(),
-  showInList: z.boolean().optional(),
   status: z.enum(FIELD_STATUSES).optional(),
 });
 

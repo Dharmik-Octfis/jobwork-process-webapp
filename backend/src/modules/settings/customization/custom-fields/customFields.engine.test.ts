@@ -1,8 +1,4 @@
-/* eslint-disable @typescript-eslint/naming-convention --
-   Object keys here are custom-field *data* keys, not code identifiers. `slugifyKey`
-   (customFields.constants.ts) generates them as snake_case ("Truck Number" -> "truck_number"),
-   so these fixtures mirror the exact shape stored in the `customFields` JSONB. Same category as
-   the "keys we don't choose" carve-out in eslint.config.js. */
+ 
 import { describe, it, expect } from 'vitest';
 import { validateCustomFields, type FieldDefinition } from './customFields.engine.ts';
 import { ApiError } from '../../../../lib/apiError.ts';
@@ -123,6 +119,57 @@ describe('validateCustomFields', () => {
     expectFieldError(
       () => validateCustomFields({ defs, mode: 'create', input: { priority: 'Urgent' } }),
       'priority',
+    );
+  });
+
+  it('caps text at 255 and multi-line text at 2000', () => {
+    const defs = [
+      def({ key: 'note', dataType: 'text' }),
+      def({ key: 'remarks', dataType: 'textarea' }),
+    ];
+    expect(
+      validateCustomFields({
+        defs,
+        mode: 'create',
+        input: { note: 'a'.repeat(255), remarks: 'b'.repeat(2000) },
+      }),
+    ).toEqual({ note: 'a'.repeat(255), remarks: 'b'.repeat(2000) });
+    expectFieldError(
+      () => validateCustomFields({ defs, mode: 'create', input: { note: 'a'.repeat(256) } }),
+      'note',
+    );
+    expectFieldError(
+      () => validateCustomFields({ defs, mode: 'create', input: { remarks: 'b'.repeat(2001) } }),
+      'remarks',
+    );
+  });
+
+  it('ignores a maxLength left in an old definition — the type cap is the only limit', () => {
+    const tight = [def({ key: 'truck_no', dataType: 'text', config: { maxLength: 17 } })];
+    expect(
+      validateCustomFields({ defs: tight, mode: 'create', input: { truck_no: 'x'.repeat(18) } }),
+    ).toEqual({ truck_no: 'x'.repeat(18) });
+    const loose = [def({ key: 'note', dataType: 'text', config: { maxLength: 5000 } })];
+    expectFieldError(
+      () => validateCustomFields({ defs: loose, mode: 'create', input: { note: 'x'.repeat(256) } }),
+      'note',
+    );
+  });
+
+  it('allows a URL longer than 255 (cap is 2048)', () => {
+    const defs = [def({ key: 'link', dataType: 'url' })];
+    const longUrl = `https://example.com/${'p'.repeat(300)}`;
+    expect(validateCustomFields({ defs, mode: 'create', input: { link: longUrl } })).toEqual({
+      link: longUrl,
+    });
+    expectFieldError(
+      () =>
+        validateCustomFields({
+          defs,
+          mode: 'create',
+          input: { link: `https://example.com/${'p'.repeat(2048)}` },
+        }),
+      'link',
     );
   });
 
