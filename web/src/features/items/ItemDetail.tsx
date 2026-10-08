@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { itemsApi } from './items.api';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { X, Edit, ChevronDown, Building2, HelpCircle } from 'lucide-react';
+import { X, Edit, ChevronDown, Building2, HelpCircle, Barcode } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ItemLocations } from './components/ItemLocations';
@@ -334,26 +334,46 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
             <Edit size={14} />
           </button>
 
-          {isInventoryTracked && item.itemType !== 'service' && item.itemStructure !== 'composite' && (
-            <button
-              type="button"
-              ref={adjustStockButtonRef}
-              onClick={() => setShowAdjustStock(true)}
-              style={{
-                padding: '6px 12px',
-                border: 'none',
-                background: '#186337',
-                color: 'white',
-                borderRadius: 4,
-                fontWeight: 500,
-                fontSize: 13,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Adjust Stock
-            </button>
-          )}
+          {isInventoryTracked &&
+            item.itemType !== 'service' &&
+            item.itemStructure !== 'composite' && (
+              <button
+                type="button"
+                ref={adjustStockButtonRef}
+                onClick={() => setShowAdjustStock(true)}
+                style={{
+                  padding: '6px 12px',
+                  border: 'none',
+                  background: '#186337',
+                  color: 'white',
+                  borderRadius: 4,
+                  fontWeight: 500,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Adjust Stock
+              </button>
+            )}
+
+          <button
+            type="button"
+            style={{
+              padding: '6px 12px',
+              border: '1px solid var(--color-border)',
+              background: '#f8fafc',
+              color: 'var(--color-text)',
+              borderRadius: '4px',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            Print Item Barcode <ChevronDown size={14} />
+          </button>
 
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
@@ -404,24 +424,26 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
                     Clone
                   </div>
                 )}
-                {isInventoryTracked && item.itemType !== 'service' && item.itemStructure === 'composite' && (
-                  <div
-                    onClick={() => {
-                      setIsMoreOpen(false);
-                      setShowAdjustStock(true);
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      color: '#1e293b',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  >
-                    Adjust Stock
-                  </div>
-                )}
+                {isInventoryTracked &&
+                  item.itemType !== 'service' &&
+                  item.itemStructure === 'composite' && (
+                    <div
+                      onClick={() => {
+                        setIsMoreOpen(false);
+                        setShowAdjustStock(true);
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        color: '#1e293b',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      Adjust Stock
+                    </div>
+                  )}
                 {!isUnderApproval && !isRejected && (
                   <div
                     onClick={() =>
@@ -482,29 +504,50 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         className="detail-page-tabs"
         style={{
           display: 'flex',
-          gap: '24px',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           borderBottom: '1px solid var(--color-border)',
           padding: '0 24px',
         }}
       >
-        {[
-          'Overview',
-          ...(isInventoryTracked ? ['Locations'] : []),
-          ...(isBatchTracked ? [batchTabName] : []),
-          'Transactions',
-          'Related Lists',
-          'Approvals',
-          'History',
-          ...(showComponentsTab ? ['Components'] : []),
-        ].map((tab) => (
-          <div
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`detail-tab ${effectiveActiveTab === tab ? 'active' : ''}`}
-          >
-            {tab}
-          </div>
-        ))}
+        <div style={{ display: 'flex', gap: '24px' }}>
+          {[
+            'Overview',
+            ...(isInventoryTracked ? ['Locations'] : []),
+            ...(isBatchTracked ? [batchTabName] : []),
+            'Transactions',
+            'Related Lists',
+            'Approvals',
+            'History',
+            ...(showComponentsTab ? ['Components'] : []),
+          ].map((tab) => (
+            <div
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`detail-tab ${effectiveActiveTab === tab ? 'active' : ''}`}
+            >
+              {tab}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'none',
+            border: 'none',
+            color: '#2563eb',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            padding: '8px 0',
+          }}
+        >
+          <Barcode size={16} /> Print Barcode
+        </button>
       </div>
 
       {/* Content */}
