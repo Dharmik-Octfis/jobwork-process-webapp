@@ -25,10 +25,11 @@ model ZohoIntegration {
   createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization             Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser            User?         @relation("ZohoIntegrationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser            User?         @relation("ZohoIntegrationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization             Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser            User?         @relation("ZohoIntegrationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  updatedByUser            User?         @relation("ZohoIntegrationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
+  @@index([organizationId, status], map: "idx_zoho_integrations_org")
   @@map("zoho_integrations")
 }
 
@@ -45,12 +46,12 @@ model OAuthState {
   usedAt         DateTime?     @map("used_at") @db.Timestamptz(6)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([organizationId])
-  @@index([state])
-  @@index([expiresAt])
+  @@index([organizationId], map: "idx_oauth_states_org")
+  @@index([state], map: "idx_oauth_states_state")
+  @@index([expiresAt], map: "idx_oauth_states_expires_at")
   @@map("oauth_states")
 }
 
@@ -73,11 +74,11 @@ model ZohoSyncHistory {
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   completedAt    DateTime?    @map("completed_at") @db.Timestamptz(6)
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  appModule      AppModule?   @relation(fields: [appModuleId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  appModule      AppModule?   @relation(fields: [appModuleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  @@index([organizationId, createdAt(sort: Desc)])
-  @@index([organizationId, appModuleId])
+  @@index([organizationId, createdAt(sort: Desc)], map: "idx_zoho_sync_history_org_time")
+  @@index([organizationId, appModuleId], map: "idx_zoho_sync_history_module")
   @@map("zoho_sync_history")
 }
 
