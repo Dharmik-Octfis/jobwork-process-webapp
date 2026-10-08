@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { env } from '../../../config/env.ts';
 import { encryptToken, decryptToken } from '../../../lib/encryption.ts';
@@ -50,15 +51,40 @@ describe('Zoho Books Integration Module', () => {
           oAuthState: prisma.oAuthState,
           item: prisma.item,
           customer: prisma.customer,
-          customerAddress: (prisma as any).customerAddress || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-          customerContactPerson: (prisma as any).customerContactPerson || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+          customerAddress: (prisma as any).customerAddress || {
+            findFirst: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+          },
+          customerContactPerson: (prisma as any).customerContactPerson || {
+            findFirst: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+          },
           vendor: prisma.vendor,
-          vendorAddress: (prisma as any).vendorAddress || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-          vendorContactPerson: (prisma as any).vendorContactPerson || { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+          vendorAddress: (prisma as any).vendorAddress || {
+            findFirst: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+          },
+          vendorContactPerson: (prisma as any).vendorContactPerson || {
+            findFirst: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+          },
           itemCategory: prisma.itemCategory,
           unitOfMeasurement: prisma.unitOfMeasurement,
           paymentTerm: prisma.paymentTerm,
           currency: prisma.currency,
+          zohoSyncHistory: (prisma as any).zohoSyncHistory || {
+            findMany: vi.fn().mockResolvedValue([]),
+            count: vi.fn().mockResolvedValue(0),
+            create: vi.fn(),
+          },
+          appModule: (prisma as any).appModule || {
+            findUnique: vi.fn(),
+            findMany: vi.fn().mockResolvedValue([]),
+          },
         };
         return cb(mockTx);
       }
@@ -111,12 +137,7 @@ describe('Zoho Books Integration Module', () => {
       vi.spyOn(prisma.zohoIntegration, 'findUnique').mockResolvedValue(null);
       const createSpy = vi.spyOn(prisma.zohoIntegration, 'create').mockResolvedValue({} as any);
 
-      await saveZohoCredentials(
-        testOrgId,
-        '1000.TESTCLIENTID',
-        'raw_secret_xyz123',
-        testUserId,
-      );
+      await saveZohoCredentials(testOrgId, '1000.TESTCLIENTID', 'raw_secret_xyz123', testUserId);
 
       expect(createSpy).toHaveBeenCalled();
       const callData = (createSpy.mock.calls[0]?.[0] as any)?.data;
@@ -624,9 +645,9 @@ describe('Zoho Books Integration Module', () => {
         }),
       } as Response);
 
-      await expect(
-        saveSelectedZohoOrganization(testOrgId, '99999999', testUserId),
-      ).rejects.toThrow(/Selected organization is not valid/i);
+      await expect(saveSelectedZohoOrganization(testOrgId, '99999999', testUserId)).rejects.toThrow(
+        /Selected organization is not valid/i,
+      );
     });
   });
 
@@ -914,10 +935,10 @@ describe('Zoho Books Integration Module', () => {
       expect(syncResult.status).toBe('SUCCESS');
       expect(syncResult.syncedCount).toBeGreaterThan(0);
 
-      const history = await getZohoSyncHistory(testOrgId, 'item');
-      expect(history.length).toBeGreaterThan(0);
-      expect(history[0]?.syncType).toBe('INSTANT');
-      expect(history[0]?.status).toBe('SUCCESS');
+      const historyRes = await getZohoSyncHistory(testOrgId, 'item');
+      expect(historyRes.history.length).toBeGreaterThan(0);
+      expect(historyRes.history[0]?.syncType).toBe('Pushed to Zoho Books.');
+      expect(historyRes.history[0]?.status).toBe('Completed');
     });
 
     it('transforms and dumps Zoho records into Jobwork DB based on field mappings with master data auto-creation', async () => {
@@ -944,12 +965,7 @@ describe('Zoho Books Integration Module', () => {
         },
       ];
 
-      const dumpResult = await dumpZohoRecordsToDb(
-        testOrgId,
-        'item',
-        mockZohoItems,
-        itemConfig,
-      );
+      const dumpResult = await dumpZohoRecordsToDb(testOrgId, 'item', mockZohoItems, itemConfig);
 
       expect(dumpResult.syncedCount).toBe(1);
       expect(dumpResult.failedCount).toBe(0);
@@ -995,12 +1011,7 @@ describe('Zoho Books Integration Module', () => {
         },
       ];
 
-      const dumpResult = await dumpZohoRecordsToDb(
-        testOrgId,
-        'item',
-        modifiedZohoItem,
-        itemConfig,
-      );
+      const dumpResult = await dumpZohoRecordsToDb(testOrgId, 'item', modifiedZohoItem, itemConfig);
 
       expect(dumpResult.syncedCount).toBe(1);
       expect(dumpResult.failedCount).toBe(0);
@@ -1017,7 +1028,9 @@ describe('Zoho Books Integration Module', () => {
 
     it('ensures master data like categories and UOM are added first without duplicates', async () => {
       // Mock category lookup returning null on first check, then created
-      const catFindFirstSpy = vi.spyOn(prisma.itemCategory, 'findFirst').mockResolvedValueOnce(null);
+      const catFindFirstSpy = vi
+        .spyOn(prisma.itemCategory, 'findFirst')
+        .mockResolvedValueOnce(null);
       const catCreateSpy = vi.spyOn(prisma.itemCategory, 'create').mockResolvedValueOnce({
         id: 'cat-1',
         name: 'Fabrics',
@@ -1033,7 +1046,9 @@ describe('Zoho Books Integration Module', () => {
       expect(existingCat).toBe('Fabrics');
 
       // UOM check
-      const uomFindFirstSpy = vi.spyOn(prisma.unitOfMeasurement, 'findFirst').mockResolvedValueOnce(null);
+      const uomFindFirstSpy = vi
+        .spyOn(prisma.unitOfMeasurement, 'findFirst')
+        .mockResolvedValueOnce(null);
       const uomCreateSpy = vi.spyOn(prisma.unitOfMeasurement, 'create').mockResolvedValueOnce({
         id: 'uom-1',
         unitName: 'Kilogram',
@@ -1068,25 +1083,29 @@ describe('Zoho Books Integration Module', () => {
       const settings = await getZohoSyncSettings(testOrgId);
       settings.modules.item.lastSyncAt = new Date(Date.now() - 3600000).toISOString();
 
-      const fullSyncResult = await executeInstantSync(testOrgId, 'item', undefined, { fullSync: true });
+      const fullSyncResult = await executeInstantSync(testOrgId, 'item', undefined, {
+        fullSync: true,
+      });
       expect(fullSyncResult.status).toBe('SUCCESS');
       expect(fullSyncResult.syncType).toBe('FULL_SYNC');
-      expect(fullSyncResult.message).toMatch(/Full synchronization completed.*all records, not filtered by time/i);
+      expect(fullSyncResult.message).toMatch(
+        /Full synchronization completed.*all records, not filtered by time/i,
+      );
 
-      const history = await getZohoSyncHistory(testOrgId, 'item');
-      expect(history[0]?.syncType).toBe('FULL_SYNC');
+      const historyRes = await getZohoSyncHistory(testOrgId, 'item');
+      expect(historyRes.history[0]?.syncType).toBe('Pushed to Zoho Books.');
     });
 
     it('executes full sync across all active modules when fullSync option is provided', async () => {
       const allFullResult = await executeAllZohoSync(testOrgId, undefined, { fullSync: true });
       expect(allFullResult.status).toBe('SUCCESS');
       expect(allFullResult.syncType).toBe('FULL_SYNC');
-      expect(allFullResult.message).toMatch(/Full sync completed across all modules.*all records without time filter/i);
+      expect(allFullResult.message).toMatch(
+        /Full sync completed across all modules.*all records without time filter/i,
+      );
       expect(allFullResult.modules.item?.syncType).toBe('FULL_SYNC');
       expect(allFullResult.modules.customer?.syncType).toBe('FULL_SYNC');
       expect(allFullResult.modules.vendor?.syncType).toBe('FULL_SYNC');
     });
   });
 });
-
-

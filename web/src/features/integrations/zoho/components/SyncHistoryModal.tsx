@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, RefreshCw, CheckCircle2, AlertCircle, Clock, ArrowRightLeft } from 'lucide-react';
 import { useZohoSyncHistory } from '../zoho.api';
-import type { ZohoSyncLog, ZohoSyncModuleKey } from '../zoho.schemas';
+import type { ZohoSyncModuleKey, ZohoSyncHistoryItem } from '../zoho.schemas';
 
 interface SyncHistoryModalProps {
   isOpen: boolean;
@@ -18,7 +18,8 @@ export const SyncHistoryModal: React.FC<SyncHistoryModalProps> = ({
   module,
   moduleLabel,
 }) => {
-  const { data: logs, isLoading, refetch } = useZohoSyncHistory(orgId, module, isOpen);
+  const { data, isLoading, refetch } = useZohoSyncHistory(orgId, module, isOpen);
+  const logs: ZohoSyncHistoryItem[] = Array.isArray(data) ? data : data?.history || [];
 
   if (!isOpen) return null;
 
@@ -154,125 +155,133 @@ export const SyncHistoryModal: React.FC<SyncHistoryModalProps> = ({
                 No sync events recorded yet
               </p>
               <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                Run an Instant Sync or configure scheduled synchronization to see activity logs here.
+                Run an Instant Sync or configure scheduled synchronization to see activity logs
+                here.
               </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {logs.map((log: ZohoSyncLog) => (
-                <div
-                  key={log.id}
-                  style={{
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '14px 16px',
-                    backgroundColor: log.status === 'SUCCESS' ? '#f8fafc' : '#fef2f2',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                  }}
-                >
+              {logs.map((log: ZohoSyncHistoryItem) => {
+                const isSuccess = log.status === 'SUCCESS' || log.status === 'Completed';
+                const synced = log.addedCount ?? log.syncedCount ?? 0;
+                const failed = log.failureCount ?? log.failedCount ?? 0;
+                const displayName =
+                  log.moduleName || (log.module ? `${log.module} Sync` : 'Sync Log');
+
+                return (
                   <div
+                    key={log.id}
                     style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '14px 16px',
+                      backgroundColor: isSuccess ? '#f8fafc' : '#fef2f2',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      flexDirection: 'column',
+                      gap: '8px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {log.status === 'SUCCESS' ? (
-                        <CheckCircle2 size={16} color="#16a34a" />
-                      ) : (
-                        <AlertCircle size={16} color="#dc2626" />
-                      )}
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          color: '#0f172a',
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {log.module} Sync
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          backgroundColor:
-                            log.syncType === 'FULL_SYNC'
-                              ? '#ede9fe'
-                              : log.syncType === 'INSTANT'
-                                ? '#e0f2fe'
-                                : '#f1f5f9',
-                          color:
-                            log.syncType === 'FULL_SYNC'
-                              ? '#6d28d9'
-                              : log.syncType === 'INSTANT'
-                                ? '#0369a1'
-                                : '#475569',
-                        }}
-                      >
-                        {log.syncType === 'FULL_SYNC'
-                          ? 'Full Sync (All Records)'
-                          : log.syncType === 'INSTANT'
-                            ? 'Instant Sync'
-                            : log.syncType}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          backgroundColor: log.status === 'SUCCESS' ? '#dcfce7' : '#fee2e2',
-                          color: log.status === 'SUCCESS' ? '#15803d' : '#b91c1c',
-                        }}
-                      >
-                        {log.status}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isSuccess ? (
+                          <CheckCircle2 size={16} color="#16a34a" />
+                        ) : (
+                          <AlertCircle size={16} color="#dc2626" />
+                        )}
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            color: '#0f172a',
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {displayName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            backgroundColor:
+                              log.syncType === 'FULL_SYNC'
+                                ? '#ede9fe'
+                                : log.syncType === 'INSTANT'
+                                  ? '#e0f2fe'
+                                  : '#f1f5f9',
+                            color:
+                              log.syncType === 'FULL_SYNC'
+                                ? '#6d28d9'
+                                : log.syncType === 'INSTANT'
+                                  ? '#0369a1'
+                                  : '#475569',
+                          }}
+                        >
+                          {log.syncType === 'FULL_SYNC'
+                            ? 'Full Sync (All Records)'
+                            : log.syncType === 'INSTANT'
+                              ? 'Instant Sync'
+                              : log.syncType}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            backgroundColor: isSuccess ? '#dcfce7' : '#fee2e2',
+                            color: isSuccess ? '#15803d' : '#b91c1c',
+                          }}
+                        >
+                          {log.status}
+                        </span>
+                      </div>
+
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        {new Date(log.createdAt).toLocaleString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
                       </span>
                     </div>
 
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>
-                      {new Date(log.createdAt).toLocaleString('en-GB', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
-                    </span>
-                  </div>
+                    <div style={{ fontSize: '13px', color: '#334155', lineHeight: '1.4' }}>
+                      {log.details || `Processed ${synced} records.`}
+                    </div>
 
-                  <div style={{ fontSize: '13px', color: '#334155', lineHeight: '1.4' }}>
-                    {log.details || `Processed ${log.syncedCount} records.`}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        fontSize: '12px',
+                        color: '#64748b',
+                      }}
+                    >
+                      <span>
+                        Synced: <strong style={{ color: '#16a34a' }}>{synced}</strong>
+                      </span>
+                      <span>
+                        Failed:{' '}
+                        <strong style={{ color: failed > 0 ? '#dc2626' : '#64748b' }}>
+                          {failed}
+                        </strong>
+                      </span>
+                    </div>
                   </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px',
-                      fontSize: '12px',
-                      color: '#64748b',
-                    }}
-                  >
-                    <span>
-                      Synced:{' '}
-                      <strong style={{ color: '#16a34a' }}>{log.syncedCount}</strong>
-                    </span>
-                    <span>
-                      Failed:{' '}
-                      <strong style={{ color: log.failedCount > 0 ? '#dc2626' : '#64748b' }}>
-                        {log.failedCount}
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { notify } from '../../../../lib/notify';
 import {
   ArrowLeft,
@@ -14,6 +15,7 @@ import {
   Plus,
   Trash2,
   Sparkles,
+  Clock,
 } from 'lucide-react';
 import {
   useZohoEntityFields,
@@ -43,6 +45,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   module,
   onBack,
 }) => {
+  const navigate = useNavigate();
   const { data: syncSettings, refetch: refetchSettings } = useZohoSyncSettings(orgId);
   const { data: fieldsData, isLoading: isFieldsLoading } = useZohoEntityFields(orgId, module);
   const { data: clientCustomFields = [] } = useActiveCustomFields(orgId, module);
@@ -248,7 +251,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
 
     if (missingRequired.length > 0) {
       const names = missingRequired.map((f) => f.label).join(', ');
-      toast.error(
+      notify.error(
         `Required field mapping(s) missing: ${names}. Please map all required fields before saving.`,
       );
       return;
@@ -478,23 +481,46 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
           </h2>
         </div>
 
-        <a
-          href="https://www.zoho.com/in/books/help/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            color: '#2563eb',
-            textDecoration: 'none',
-            fontWeight: 500,
-          }}
-        >
-          <HelpCircle size={16} />
-          Help
-        </a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button
+            type="button"
+            onClick={() => navigate(`/organizations/${orgId}/settings/integrations/zoho/history`)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              color: '#0284c7',
+              backgroundColor: '#f0f9ff',
+              border: '1px solid #bae6fd',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            <Clock size={15} />
+            Sync History
+          </button>
+
+          <a
+            href="https://www.zoho.com/in/books/help/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              color: '#2563eb',
+              textDecoration: 'none',
+              fontWeight: 500,
+            }}
+          >
+            <HelpCircle size={16} />
+            Help
+          </a>
+        </div>
       </div>
 
       <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px' }}>

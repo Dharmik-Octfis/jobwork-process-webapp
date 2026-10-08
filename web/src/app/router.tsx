@@ -255,10 +255,7 @@ const SalesOrdersList = lazyPage(
   () => import('../features/sales/sales-orders/SalesOrdersList'),
   'SalesOrdersList',
 );
-const InvoicesList = lazyPage(
-  () => import('../features/sales/invoices/InvoicesList'),
-  'default',
-);
+const InvoicesList = lazyPage(() => import('../features/sales/invoices/InvoicesList'), 'default');
 const CreateSalesOrder = lazyPage(
   () => import('../features/sales/sales-orders/CreateSalesOrder'),
   'CreateSalesOrder',
@@ -415,6 +412,10 @@ const ZohoBooksIntegrationPage = lazyPage(
 const ZohoOAuthCallbackPage = lazyPage(
   () => import('../features/integrations/zoho/ZohoOAuthCallbackPage'),
   'ZohoOAuthCallbackPage',
+);
+const ZohoSyncHistoryPage = lazyPage(
+  () => import('../features/integrations/zoho/ZohoSyncHistoryPage'),
+  'ZohoSyncHistoryPage',
 );
 
 /**
@@ -744,6 +745,7 @@ export const router = createBrowserRouter([
               },
               { path: 'integrations', element: <IntegrationsListPage /> },
               { path: 'integrations/zoho', element: <ZohoBooksIntegrationPage /> },
+              { path: 'integrations/zoho/history', element: <ZohoSyncHistoryPage /> },
             ],
           },
           { path: '/organizations/new', element: <CreateOrganizationForm /> },

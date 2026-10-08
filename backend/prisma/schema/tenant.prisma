@@ -399,6 +399,7 @@ model Organization {
   processes              Process[]
   zohoIntegration        ZohoIntegration?
   oauthStates            OAuthState[]
+  zohoSyncHistories      ZohoSyncHistory[]
   batches                Batch[]
   batchUnits             BatchUnit[]
   stockLedgerEntries     StockLedgerEntry[]
@@ -630,7 +631,8 @@ model AppModule {
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   parent    AppModule?  @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
-  children  AppModule[] @relation("ModuleToSubModules")
+  children          AppModule[]       @relation("ModuleToSubModules")
+  zohoSyncHistories ZohoSyncHistory[]
 
   @@map("app_modules")
 }

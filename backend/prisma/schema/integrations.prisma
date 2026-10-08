@@ -53,3 +53,31 @@ model OAuthState {
   @@index([expiresAt])
   @@map("oauth_states")
 }
+
+/// Stores execution history and audit logs for Zoho integration sync runs.
+/// References `app_modules` master data table and `organizations`.
+model ZohoSyncHistory {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  appModuleId    String?      @map("app_module_id") @db.Uuid
+  moduleName     String       @map("module_name") @db.VarChar(255)
+  syncType       String       @map("sync_type") @db.VarChar(100)
+  syncDirection  String       @default("PUSH") @map("sync_direction") @db.VarChar(20)
+  status         String       @default("Completed") @map("status") @db.VarChar(50)
+  addedCount     Int          @default(0) @map("added_count")
+  updatedCount   Int          @default(0) @map("updated_count")
+  deletedCount   Int          @default(0) @map("deleted_count")
+  failureCount   Int          @default(0) @map("failure_count")
+  details        String?      @map("details") @db.Text
+  errorLogs      Json?        @map("error_logs") @db.JsonB
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime?    @map("completed_at") @db.Timestamptz(6)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appModule      AppModule?   @relation(fields: [appModuleId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, appModuleId])
+  @@map("zoho_sync_history")
+}
+

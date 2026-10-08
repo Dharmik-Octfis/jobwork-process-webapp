@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/naming-convention */
 import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import { ZOHO_PROVIDER, ZOHO_INTEGRATION_STATUS } from './zoho.constants.ts';
@@ -17,6 +18,9 @@ import type {
   ZohoSyncSettings,
   ZohoSyncLog,
   ZohoSyncOptions,
+  ZohoSyncHistoryItem,
+  ZohoSyncModuleSummary,
+  ZohoSyncHistoryResponse,
 } from './zoho.types.ts';
 import { saveZohoSyncConfigSchema, type SaveZohoSyncConfigInput } from './zoho.schemas.ts';
 
@@ -27,84 +31,363 @@ const tenantSyncLogsStore = new Map<string, ZohoSyncLog[]>();
 
 // Standard Default Fields for App Entities (matching Jobwork entity creation forms)
 export const APP_ITEM_FIELDS: AppFieldDefinition[] = [
-  { key: 'name', label: 'Name', type: 'string', required: true, isSystem: true, description: 'Item name' },
+  {
+    key: 'name',
+    label: 'Name',
+    type: 'string',
+    required: true,
+    isSystem: true,
+    description: 'Item name',
+  },
   { key: 'itemType', label: 'Type', type: 'string', description: 'Goods or Services' },
   { key: 'sku', label: 'SKU', type: 'string', description: 'Item SKU / identifier' },
   { key: 'category', label: 'Category', type: 'string', description: 'Item category' },
-  { key: 'unit', label: 'Unit', type: 'string', required: true, description: 'Usage / stocking unit' },
-  { key: 'hsnCode', label: 'HSN Code', type: 'string', description: 'HSN / SAC tax categorization code' },
-  { key: 'sellingPrice', label: 'Selling Price', type: 'number', required: true, description: 'Selling / sales price' },
-  { key: 'salesDescription', label: 'Sales Description', type: 'string', description: 'Description printed on sales orders' },
-  { key: 'costPrice', label: 'Cost Price', type: 'number', required: true, description: 'Cost / purchase price' },
-  { key: 'purchaseDescription', label: 'Purchase Description', type: 'string', description: 'Description printed on purchase bills' },
-  { key: 'inventoryTracking', label: 'Track Inventory', type: 'string', description: 'Inventory tracking (None / Batch)' },
+  {
+    key: 'unit',
+    label: 'Unit',
+    type: 'string',
+    required: true,
+    description: 'Usage / stocking unit',
+  },
+  {
+    key: 'hsnCode',
+    label: 'HSN Code',
+    type: 'string',
+    description: 'HSN / SAC tax categorization code',
+  },
+  {
+    key: 'sellingPrice',
+    label: 'Selling Price',
+    type: 'number',
+    required: true,
+    description: 'Selling / sales price',
+  },
+  {
+    key: 'salesDescription',
+    label: 'Sales Description',
+    type: 'string',
+    description: 'Description printed on sales orders',
+  },
+  {
+    key: 'costPrice',
+    label: 'Cost Price',
+    type: 'number',
+    required: true,
+    description: 'Cost / purchase price',
+  },
+  {
+    key: 'purchaseDescription',
+    label: 'Purchase Description',
+    type: 'string',
+    description: 'Description printed on purchase bills',
+  },
+  {
+    key: 'inventoryTracking',
+    label: 'Track Inventory',
+    type: 'string',
+    description: 'Inventory tracking (None / Batch)',
+  },
   { key: 'packaging', label: 'Packaging', type: 'string', description: 'Packaging type' },
 ];
 
 export const APP_CUSTOMER_FIELDS: AppFieldDefinition[] = [
-  { key: 'displayName', label: 'Display Name', type: 'string', required: true, isSystem: true, description: 'Customer primary display name' },
-  { key: 'contactNumber', label: 'Customer Number', type: 'string', description: 'Unique customer sequence identifier' },
-  { key: 'companyName', label: 'Company Name', type: 'string', description: 'Company / Business legal name' },
+  {
+    key: 'displayName',
+    label: 'Display Name',
+    type: 'string',
+    required: true,
+    isSystem: true,
+    description: 'Customer primary display name',
+  },
+  {
+    key: 'contactNumber',
+    label: 'Customer Number',
+    type: 'string',
+    description: 'Unique customer sequence identifier',
+  },
+  {
+    key: 'companyName',
+    label: 'Company Name',
+    type: 'string',
+    description: 'Company / Business legal name',
+  },
   { key: 'email', label: 'Email Address', type: 'string', description: 'Primary contact email' },
   { key: 'phone', label: 'Phone', type: 'string', description: 'Work telephone number' },
   { key: 'mobile', label: 'Mobile', type: 'string', description: 'Mobile contact number' },
   { key: 'gstin', label: 'GSTIN', type: 'string', description: 'Goods and Services Tax ID' },
   { key: 'pan', label: 'PAN Number', type: 'string', description: 'Permanent Account Number' },
-  { key: 'billingAddress', label: 'Billing Address', type: 'string', description: 'Primary billing location' },
-  { key: 'shippingAddress', label: 'Shipping Address', type: 'string', description: 'Primary shipping location' },
+  {
+    key: 'billingAddress',
+    label: 'Billing Address',
+    type: 'string',
+    description: 'Primary billing location',
+  },
+  {
+    key: 'shippingAddress',
+    label: 'Shipping Address',
+    type: 'string',
+    description: 'Primary shipping location',
+  },
 ];
 
 export const APP_VENDOR_FIELDS: AppFieldDefinition[] = [
-  { key: 'displayName', label: 'Display Name', type: 'string', required: true, isSystem: true, description: 'Vendor primary display name' },
-  { key: 'contactNumber', label: 'Vendor Number', type: 'string', description: 'Unique vendor sequence identifier' },
-  { key: 'companyName', label: 'Company Name', type: 'string', description: 'Company / Business legal name' },
+  {
+    key: 'displayName',
+    label: 'Display Name',
+    type: 'string',
+    required: true,
+    isSystem: true,
+    description: 'Vendor primary display name',
+  },
+  {
+    key: 'contactNumber',
+    label: 'Vendor Number',
+    type: 'string',
+    description: 'Unique vendor sequence identifier',
+  },
+  {
+    key: 'companyName',
+    label: 'Company Name',
+    type: 'string',
+    description: 'Company / Business legal name',
+  },
   { key: 'email', label: 'Email Address', type: 'string', description: 'Primary contact email' },
   { key: 'phone', label: 'Phone', type: 'string', description: 'Work telephone number' },
   { key: 'mobile', label: 'Mobile', type: 'string', description: 'Mobile contact number' },
   { key: 'gstin', label: 'GSTIN', type: 'string', description: 'Goods and Services Tax ID' },
   { key: 'pan', label: 'PAN Number', type: 'string', description: 'Permanent Account Number' },
-  { key: 'billingAddress', label: 'Billing Address', type: 'string', description: 'Primary billing location' },
-  { key: 'shippingAddress', label: 'Shipping Address', type: 'string', description: 'Primary shipping location' },
+  {
+    key: 'billingAddress',
+    label: 'Billing Address',
+    type: 'string',
+    description: 'Primary billing location',
+  },
+  {
+    key: 'shippingAddress',
+    label: 'Shipping Address',
+    type: 'string',
+    description: 'Primary shipping location',
+  },
 ];
 
 // Standard Zoho Fields Fallback
 export const DEFAULT_ZOHO_ITEM_FIELDS: ZohoField[] = [
-  { field_name: 'name', label: 'Item Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
-  { field_name: 'sku', label: 'SKU', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'rate', label: 'Rate', data_type: 'currency', is_mandatory: false, is_custom_field: false },
-  { field_name: 'purchase_rate', label: 'Purchase Rate', data_type: 'currency', is_mandatory: false, is_custom_field: false },
-  { field_name: 'description', label: 'Description', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'purchase_description', label: 'Purchase Description', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'unit', label: 'Usage Unit', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'item_type', label: 'Item Type', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'hsn_or_sac', label: 'HSN/SAC', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'product_type', label: 'Product Type', data_type: 'string', is_mandatory: false, is_custom_field: false },
+  {
+    field_name: 'name',
+    label: 'Item Name',
+    data_type: 'string',
+    is_mandatory: true,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'sku',
+    label: 'SKU',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'rate',
+    label: 'Rate',
+    data_type: 'currency',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'purchase_rate',
+    label: 'Purchase Rate',
+    data_type: 'currency',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'description',
+    label: 'Description',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'purchase_description',
+    label: 'Purchase Description',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'unit',
+    label: 'Usage Unit',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'item_type',
+    label: 'Item Type',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'hsn_or_sac',
+    label: 'HSN/SAC',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'product_type',
+    label: 'Product Type',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
 ];
 
 export const DEFAULT_ZOHO_CUSTOMER_FIELDS: ZohoField[] = [
-  { field_name: 'contact_name', label: 'Display Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
-  { field_name: 'customer_number', label: 'Customer Number', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'company_name', label: 'Company Name', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'email', label: 'Email', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'phone', label: 'Phone', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'mobile', label: 'Mobile', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'gst_no', label: 'GST Identification Number', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'pan_no', label: 'PAN', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'billing_address', label: 'Billing Address', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'shipping_address', label: 'Shipping Address', data_type: 'string', is_mandatory: false, is_custom_field: false },
+  {
+    field_name: 'contact_name',
+    label: 'Display Name',
+    data_type: 'string',
+    is_mandatory: true,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'customer_number',
+    label: 'Customer Number',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'company_name',
+    label: 'Company Name',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'email',
+    label: 'Email',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'phone',
+    label: 'Phone',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'mobile',
+    label: 'Mobile',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'gst_no',
+    label: 'GST Identification Number',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'pan_no',
+    label: 'PAN',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'billing_address',
+    label: 'Billing Address',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'shipping_address',
+    label: 'Shipping Address',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
 ];
 
 export const DEFAULT_ZOHO_VENDOR_FIELDS: ZohoField[] = [
-  { field_name: 'contact_name', label: 'Display Name', data_type: 'string', is_mandatory: true, is_custom_field: false },
-  { field_name: 'vendor_number', label: 'Vendor Number', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'company_name', label: 'Company Name', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'email', label: 'Email', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'phone', label: 'Phone', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'mobile', label: 'Mobile', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'gst_no', label: 'GST Identification Number', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'pan_no', label: 'PAN', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'billing_address', label: 'Billing Address', data_type: 'string', is_mandatory: false, is_custom_field: false },
-  { field_name: 'shipping_address', label: 'Shipping Address', data_type: 'string', is_mandatory: false, is_custom_field: false },
+  {
+    field_name: 'contact_name',
+    label: 'Display Name',
+    data_type: 'string',
+    is_mandatory: true,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'vendor_number',
+    label: 'Vendor Number',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'company_name',
+    label: 'Company Name',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'email',
+    label: 'Email',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'phone',
+    label: 'Phone',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'mobile',
+    label: 'Mobile',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'gst_no',
+    label: 'GST Identification Number',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'pan_no',
+    label: 'PAN',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'billing_address',
+    label: 'Billing Address',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
+  {
+    field_name: 'shipping_address',
+    label: 'Shipping Address',
+    data_type: 'string',
+    is_mandatory: false,
+    is_custom_field: false,
+  },
 ];
 
 // Default Field Mappings
@@ -429,9 +712,7 @@ export function getInitialSyncSettings(): ZohoSyncSettings {
 /**
  * Call Zoho Books Organizations API to fetch all organizations available to the authorized user.
  */
-export async function fetchZohoOrganizations(
-  organizationId: string,
-): Promise<ZohoOrganization[]> {
+export async function fetchZohoOrganizations(organizationId: string): Promise<ZohoOrganization[]> {
   const { accessToken, apiDomain } = await getValidAccessToken(organizationId);
 
   const orgsUrl = `${apiDomain.replace(/\/+$/, '')}/books/v3/organizations`;
@@ -485,7 +766,8 @@ export async function fetchZohoOrganizations(
     });
     throw new ApiError(
       502,
-      data.message || 'Zoho account connected, but organizations could not be loaded. Please retry.',
+      data.message ||
+        'Zoho account connected, but organizations could not be loaded. Please retry.',
     );
   }
 
@@ -563,8 +845,8 @@ export async function fetchZohoEntityFields(
   defaultMappings: ZohoFieldMappingItem[];
 }> {
   const normalizedEntity = entity.toLowerCase() as ZohoSyncModuleKey;
-  let defaultZohoFields = DEFAULT_ZOHO_ITEM_FIELDS;
-  let appFields = APP_ITEM_FIELDS;
+  let defaultZohoFields: ZohoField[];
+  let appFields: AppFieldDefinition[];
 
   if (normalizedEntity === 'customer') {
     defaultZohoFields = DEFAULT_ZOHO_CUSTOMER_FIELDS;
@@ -573,6 +855,7 @@ export async function fetchZohoEntityFields(
     defaultZohoFields = DEFAULT_ZOHO_VENDOR_FIELDS;
     appFields = [...APP_VENDOR_FIELDS];
   } else {
+    defaultZohoFields = DEFAULT_ZOHO_ITEM_FIELDS;
     appFields = [...APP_ITEM_FIELDS];
   }
 
@@ -583,7 +866,9 @@ export async function fetchZohoEntityFields(
       const customAppFields: AppFieldDefinition[] = customDefs.map((def) => ({
         key: `customFields.${def.key}`,
         label: def.label,
-        type: (def.dataType === 'number' || def.dataType === 'decimal' || def.dataType === 'currency'
+        type: (def.dataType === 'number' ||
+        def.dataType === 'decimal' ||
+        def.dataType === 'currency'
           ? 'number'
           : def.dataType === 'checkbox' || def.dataType === 'boolean'
             ? 'boolean'
@@ -612,7 +897,9 @@ export async function fetchZohoEntityFields(
       const { accessToken, apiDomain } = await getValidAccessToken(organizationId);
       const zohoOrgId = integration.selectedOrganizationId;
       const zohoEntityParam =
-        normalizedEntity === 'customer' || normalizedEntity === 'vendor' ? 'contacts' : normalizedEntity;
+        normalizedEntity === 'customer' || normalizedEntity === 'vendor'
+          ? 'contacts'
+          : normalizedEntity;
       const fieldsUrl = `${apiDomain.replace(/\/+$/, '')}/books/v3/settings/fields?entity=${encodeURIComponent(zohoEntityParam)}&organization_id=${encodeURIComponent(zohoOrgId)}`;
 
       const res = await fetch(fieldsUrl, {
@@ -693,7 +980,12 @@ export async function saveZohoSyncConfig(
 
   const updatedModuleConfig: ZohoModuleSyncConfig = {
     module: moduleKey,
-    moduleLabel: moduleKey === 'item' ? 'Item' : moduleKey === 'customer' ? 'Accounts <-> Customers' : 'Vendors',
+    moduleLabel:
+      moduleKey === 'item'
+        ? 'Item'
+        : moduleKey === 'customer'
+          ? 'Accounts <-> Customers'
+          : 'Vendors',
     status: input.status || 'ACTIVE',
     syncDirection: input.syncDirection,
     duplicationPreference: input.duplicationPreference,
@@ -710,11 +1002,11 @@ export async function saveZohoSyncConfig(
     syncAddresses:
       input.syncAddresses !== undefined
         ? input.syncAddresses
-        : currentSettings.modules[moduleKey]?.syncAddresses ?? true,
+        : (currentSettings.modules[moduleKey]?.syncAddresses ?? true),
     syncContactPersons:
       input.syncContactPersons !== undefined
         ? input.syncContactPersons
-        : currentSettings.modules[moduleKey]?.syncContactPersons ?? true,
+        : (currentSettings.modules[moduleKey]?.syncContactPersons ?? true),
     stats: currentSettings.modules[moduleKey]?.stats || {
       totalSynced: 0,
       lastSyncedCount: 0,
@@ -767,7 +1059,10 @@ function extractZohoValue(zohoRecord: Record<string, any>, zohoField: string): a
   }
   // Check custom_field_hash if present
   if (zohoRecord.custom_field_hash && typeof zohoRecord.custom_field_hash === 'object') {
-    if (zohoRecord.custom_field_hash[zohoField] !== undefined && zohoRecord.custom_field_hash[zohoField] !== null) {
+    if (
+      zohoRecord.custom_field_hash[zohoField] !== undefined &&
+      zohoRecord.custom_field_hash[zohoField] !== null
+    ) {
       return zohoRecord.custom_field_hash[zohoField];
     }
   }
@@ -776,9 +1071,16 @@ function extractZohoValue(zohoRecord: Record<string, any>, zohoField: string): a
     const matched = zohoRecord.custom_fields.find((cf: any) => {
       if (!cf) return false;
       const normalizedQuery = zohoField.toLowerCase().replace(/^cf_/, '').trim();
-      const label = String(cf.label || '').toLowerCase().trim();
-      const placeholder = String(cf.placeholder || '').toLowerCase().replace(/^cf_/, '').trim();
-      const apiName = String(cf.api_name || cf.customfield_id || '').toLowerCase().trim();
+      const label = String(cf.label || '')
+        .toLowerCase()
+        .trim();
+      const placeholder = String(cf.placeholder || '')
+        .toLowerCase()
+        .replace(/^cf_/, '')
+        .trim();
+      const apiName = String(cf.api_name || cf.customfield_id || '')
+        .toLowerCase()
+        .trim();
       return (
         cf.placeholder === zohoField ||
         cf.label === zohoField ||
@@ -798,7 +1100,10 @@ function extractZohoValue(zohoRecord: Record<string, any>, zohoField: string): a
   if (zohoField === 'name' && (zohoRecord.item_name || zohoRecord.product_name)) {
     return zohoRecord.item_name || zohoRecord.product_name;
   }
-  if (zohoField === 'contact_name' && (zohoRecord.name || zohoRecord.customer_name || zohoRecord.vendor_name)) {
+  if (
+    zohoField === 'contact_name' &&
+    (zohoRecord.name || zohoRecord.customer_name || zohoRecord.vendor_name)
+  ) {
     return zohoRecord.name || zohoRecord.customer_name || zohoRecord.vendor_name;
   }
   if (zohoField === 'rate' && zohoRecord.selling_price !== undefined) {
@@ -814,10 +1119,20 @@ function extractZohoValue(zohoRecord: Record<string, any>, zohoField: string): a
     return zohoRecord.gstin || zohoRecord.tax_number;
   }
   if (
-    (zohoField === 'vendor_number' || zohoField === 'customer_number' || zohoField === 'contact_number') &&
-    (zohoRecord.contact_number || zohoRecord.vendor_number || zohoRecord.customer_number || zohoRecord.reference_id)
+    (zohoField === 'vendor_number' ||
+      zohoField === 'customer_number' ||
+      zohoField === 'contact_number') &&
+    (zohoRecord.contact_number ||
+      zohoRecord.vendor_number ||
+      zohoRecord.customer_number ||
+      zohoRecord.reference_id)
   ) {
-    return zohoRecord.contact_number || zohoRecord.vendor_number || zohoRecord.customer_number || zohoRecord.reference_id;
+    return (
+      zohoRecord.contact_number ||
+      zohoRecord.vendor_number ||
+      zohoRecord.customer_number ||
+      zohoRecord.reference_id
+    );
   }
   return undefined;
 }
@@ -845,7 +1160,10 @@ export async function pullZohoBooksRecords(
     }
 
     const { accessToken, apiDomain } = await getValidAccessToken(organizationId);
-    const domain = (apiDomain || integration.apiDomain || 'https://www.zohoapis.com').replace(/\/+$/, '');
+    const domain = (apiDomain || integration.apiDomain || 'https://www.zohoapis.com').replace(
+      /\/+$/,
+      '',
+    );
     const zohoOrgId = integration.selectedOrganizationId;
 
     const allRecords: Record<string, any>[] = [];
@@ -886,7 +1204,9 @@ export async function pullZohoBooksRecords(
       });
 
       if (!res.ok) {
-        console.warn(`Zoho live records fetch page ${page} returned status ${res.status} for module ${module}`);
+        console.warn(
+          `Zoho live records fetch page ${page} returned status ${res.status} for module ${module}`,
+        );
         break;
       }
 
@@ -938,7 +1258,10 @@ export async function pullZohoBooksRecords(
           let fallbackPage: any[] = [];
           if (module === 'item' && Array.isArray(fallbackJson.items)) {
             fallbackPage = fallbackJson.items;
-          } else if ((module === 'customer' || module === 'vendor') && Array.isArray(fallbackJson.contacts)) {
+          } else if (
+            (module === 'customer' || module === 'vendor') &&
+            Array.isArray(fallbackJson.contacts)
+          ) {
             fallbackPage = fallbackJson.contacts;
           }
           if (fallbackPage.length > 0) {
@@ -1022,7 +1345,8 @@ export async function ensureUnitOfMeasurementExists(
   unitName?: string | null,
   userId?: string,
 ): Promise<{ unitName: string; stockingUomId: string | null }> {
-  const name = unitName && typeof unitName === 'string' && unitName.trim() ? unitName.trim() : 'pcs';
+  const name =
+    unitName && typeof unitName === 'string' && unitName.trim() ? unitName.trim() : 'pcs';
   try {
     if (!tx.unitOfMeasurement) return { unitName: name, stockingUomId: null };
     const existing = await tx.unitOfMeasurement.findFirst({
@@ -1134,7 +1458,16 @@ export async function ensureCurrencyExists(
       }
       return existing.currencyCode;
     }
-    const symbol = code === 'INR' ? '₹' : code === 'USD' ? '$' : code === 'EUR' ? '€' : code === 'GBP' ? '£' : code;
+    const symbol =
+      code === 'INR'
+        ? '₹'
+        : code === 'USD'
+          ? '$'
+          : code === 'EUR'
+            ? '€'
+            : code === 'GBP'
+              ? '£'
+              : code;
     const created = await tx.currency.create({
       data: {
         organizationId,
@@ -1167,15 +1500,31 @@ async function syncCustomerAddresses(
   let shipping = zRec.shipping_address;
 
   if (!billing && Array.isArray(zRec.addresses)) {
-    billing = zRec.addresses.find((a: any) => a.address_type === 'billing' || a.address_type === 'billing_address') || null;
+    billing =
+      zRec.addresses.find(
+        (a: any) => a.address_type === 'billing' || a.address_type === 'billing_address',
+      ) || null;
   }
   if (!shipping && Array.isArray(zRec.addresses)) {
-    shipping = zRec.addresses.find((a: any) => a.address_type === 'shipping' || a.address_type === 'shipping_address') || null;
+    shipping =
+      zRec.addresses.find(
+        (a: any) => a.address_type === 'shipping' || a.address_type === 'shipping_address',
+      ) || null;
   }
 
   if (
     billing &&
-    (typeof billing === 'string' || billing.address || billing.street1 || billing.street2 || billing.city || billing.state || billing.zip || billing.pin_code || billing.country || billing.phone || billing.attention)
+    (typeof billing === 'string' ||
+      billing.address ||
+      billing.street1 ||
+      billing.street2 ||
+      billing.city ||
+      billing.state ||
+      billing.zip ||
+      billing.pin_code ||
+      billing.country ||
+      billing.phone ||
+      billing.attention)
   ) {
     const existing = await tx.customerAddress.findFirst({
       where: {
@@ -1184,22 +1533,23 @@ async function syncCustomerAddresses(
       },
     });
 
-    const data = typeof billing === 'string'
-      ? {
-          street1: billing,
-          isDeleted: false,
-        }
-      : {
-          attention: billing.attention || null,
-          street1: billing.address || billing.street1 || null,
-          street2: billing.street2 || null,
-          city: billing.city || null,
-          state: billing.state || null,
-          pinCode: billing.zip || billing.pin_code || null,
-          country: billing.country || null,
-          phone: billing.phone || null,
-          isDeleted: false,
-        };
+    const data =
+      typeof billing === 'string'
+        ? {
+            street1: billing,
+            isDeleted: false,
+          }
+        : {
+            attention: billing.attention || null,
+            street1: billing.address || billing.street1 || null,
+            street2: billing.street2 || null,
+            city: billing.city || null,
+            state: billing.state || null,
+            pinCode: billing.zip || billing.pin_code || null,
+            country: billing.country || null,
+            phone: billing.phone || null,
+            isDeleted: false,
+          };
 
     if (existing) {
       await tx.customerAddress.update({
@@ -1215,7 +1565,17 @@ async function syncCustomerAddresses(
 
   if (
     shipping &&
-    (typeof shipping === 'string' || shipping.address || shipping.street1 || shipping.street2 || shipping.city || shipping.state || shipping.zip || shipping.pin_code || shipping.country || shipping.phone || shipping.attention)
+    (typeof shipping === 'string' ||
+      shipping.address ||
+      shipping.street1 ||
+      shipping.street2 ||
+      shipping.city ||
+      shipping.state ||
+      shipping.zip ||
+      shipping.pin_code ||
+      shipping.country ||
+      shipping.phone ||
+      shipping.attention)
   ) {
     const existing = await tx.customerAddress.findFirst({
       where: {
@@ -1224,22 +1584,23 @@ async function syncCustomerAddresses(
       },
     });
 
-    const data = typeof shipping === 'string'
-      ? {
-          street1: shipping,
-          isDeleted: false,
-        }
-      : {
-          attention: shipping.attention || null,
-          street1: shipping.address || shipping.street1 || null,
-          street2: shipping.street2 || null,
-          city: shipping.city || null,
-          state: shipping.state || null,
-          pinCode: shipping.zip || shipping.pin_code || null,
-          country: shipping.country || null,
-          phone: shipping.phone || null,
-          isDeleted: false,
-        };
+    const data =
+      typeof shipping === 'string'
+        ? {
+            street1: shipping,
+            isDeleted: false,
+          }
+        : {
+            attention: shipping.attention || null,
+            street1: shipping.address || shipping.street1 || null,
+            street2: shipping.street2 || null,
+            city: shipping.city || null,
+            state: shipping.state || null,
+            pinCode: shipping.zip || shipping.pin_code || null,
+            country: shipping.country || null,
+            phone: shipping.phone || null,
+            isDeleted: false,
+          };
 
     if (existing) {
       await tx.customerAddress.update({
@@ -1340,15 +1701,31 @@ async function syncVendorAddresses(
   let shipping = zRec.shipping_address;
 
   if (!billing && Array.isArray(zRec.addresses)) {
-    billing = zRec.addresses.find((a: any) => a.address_type === 'billing' || a.address_type === 'billing_address') || null;
+    billing =
+      zRec.addresses.find(
+        (a: any) => a.address_type === 'billing' || a.address_type === 'billing_address',
+      ) || null;
   }
   if (!shipping && Array.isArray(zRec.addresses)) {
-    shipping = zRec.addresses.find((a: any) => a.address_type === 'shipping' || a.address_type === 'shipping_address') || null;
+    shipping =
+      zRec.addresses.find(
+        (a: any) => a.address_type === 'shipping' || a.address_type === 'shipping_address',
+      ) || null;
   }
 
   if (
     billing &&
-    (typeof billing === 'string' || billing.address || billing.street1 || billing.street2 || billing.city || billing.state || billing.zip || billing.pin_code || billing.country || billing.phone || billing.attention)
+    (typeof billing === 'string' ||
+      billing.address ||
+      billing.street1 ||
+      billing.street2 ||
+      billing.city ||
+      billing.state ||
+      billing.zip ||
+      billing.pin_code ||
+      billing.country ||
+      billing.phone ||
+      billing.attention)
   ) {
     const existing = await tx.vendorAddress.findFirst({
       where: {
@@ -1357,22 +1734,23 @@ async function syncVendorAddresses(
       },
     });
 
-    const data = typeof billing === 'string'
-      ? {
-          street1: billing,
-          isDeleted: false,
-        }
-      : {
-          attention: billing.attention || null,
-          street1: billing.address || billing.street1 || null,
-          street2: billing.street2 || null,
-          city: billing.city || null,
-          state: billing.state || null,
-          pinCode: billing.zip || billing.pin_code || null,
-          country: billing.country || null,
-          phone: billing.phone || null,
-          isDeleted: false,
-        };
+    const data =
+      typeof billing === 'string'
+        ? {
+            street1: billing,
+            isDeleted: false,
+          }
+        : {
+            attention: billing.attention || null,
+            street1: billing.address || billing.street1 || null,
+            street2: billing.street2 || null,
+            city: billing.city || null,
+            state: billing.state || null,
+            pinCode: billing.zip || billing.pin_code || null,
+            country: billing.country || null,
+            phone: billing.phone || null,
+            isDeleted: false,
+          };
 
     if (existing) {
       await tx.vendorAddress.update({
@@ -1388,7 +1766,17 @@ async function syncVendorAddresses(
 
   if (
     shipping &&
-    (typeof shipping === 'string' || shipping.address || shipping.street1 || shipping.street2 || shipping.city || shipping.state || shipping.zip || billing?.pin_code || shipping.country || shipping.phone || shipping.attention)
+    (typeof shipping === 'string' ||
+      shipping.address ||
+      shipping.street1 ||
+      shipping.street2 ||
+      shipping.city ||
+      shipping.state ||
+      shipping.zip ||
+      billing?.pin_code ||
+      shipping.country ||
+      shipping.phone ||
+      shipping.attention)
   ) {
     const existing = await tx.vendorAddress.findFirst({
       where: {
@@ -1397,22 +1785,23 @@ async function syncVendorAddresses(
       },
     });
 
-    const data = typeof shipping === 'string'
-      ? {
-          street1: shipping,
-          isDeleted: false,
-        }
-      : {
-          attention: shipping.attention || null,
-          street1: shipping.address || shipping.street1 || null,
-          street2: shipping.street2 || null,
-          city: shipping.city || null,
-          state: shipping.state || null,
-          pinCode: shipping.zip || shipping.pin_code || null,
-          country: shipping.country || null,
-          phone: shipping.phone || null,
-          isDeleted: false,
-        };
+    const data =
+      typeof shipping === 'string'
+        ? {
+            street1: shipping,
+            isDeleted: false,
+          }
+        : {
+            attention: shipping.attention || null,
+            street1: shipping.address || shipping.street1 || null,
+            street2: shipping.street2 || null,
+            city: shipping.city || null,
+            state: shipping.state || null,
+            pinCode: shipping.zip || shipping.pin_code || null,
+            country: shipping.country || null,
+            phone: shipping.phone || null,
+            isDeleted: false,
+          };
 
     if (existing) {
       await tx.vendorAddress.update({
@@ -1532,7 +1921,11 @@ export async function dumpZohoRecordsToDb(
       if (integration && integration.selectedOrganizationId) {
         const tokenObj = await getValidAccessToken(organizationId);
         accessToken = tokenObj.accessToken;
-        domain = (tokenObj.apiDomain || integration.apiDomain || 'https://www.zohoapis.com').replace(/\/+$/, '');
+        domain = (
+          tokenObj.apiDomain ||
+          integration.apiDomain ||
+          'https://www.zohoapis.com'
+        ).replace(/\/+$/, '');
         zohoOrgId = integration.selectedOrganizationId;
       }
     } catch (err) {
@@ -1588,21 +1981,30 @@ export async function dumpZohoRecordsToDb(
       if (module === 'item') {
         const name = mappedData.name || zRec.name || zRec.item_name || 'Zoho Item';
         const zohoItemId = zRec.item_id ? String(zRec.item_id) : null;
-        let sku = mappedData.sku || zRec.sku || (zohoItemId ? `ZOHO-${zohoItemId}` : `SKU-${Date.now()}`);
+        const sku =
+          mappedData.sku || zRec.sku || (zohoItemId ? `ZOHO-${zohoItemId}` : `SKU-${Date.now()}`);
         const rawUnit = mappedData.unit || zRec.unit || zRec.usage_unit || 'pcs';
         const sellingPrice = Number(mappedData.sellingPrice || zRec.rate || 0);
         const costPrice = Number(mappedData.costPrice || zRec.purchase_rate || 0);
-        const itemType = (mappedData.itemType || zRec.product_type || zRec.item_type || 'goods').toLowerCase().includes('service')
+        const itemType = (mappedData.itemType || zRec.product_type || zRec.item_type || 'goods')
+          .toLowerCase()
+          .includes('service')
           ? 'service'
           : 'goods';
         const hsnCode = mappedData.hsnCode || zRec.hsn_or_sac || null;
         const rawCategory = mappedData.category || zRec.category_name || zRec.category || null;
         const salesDescription = mappedData.salesDescription || zRec.description || null;
-        const purchaseDescription = mappedData.purchaseDescription || zRec.purchase_description || null;
+        const purchaseDescription =
+          mappedData.purchaseDescription || zRec.purchase_description || null;
 
         await runAsTenant(organizationId, async (tx) => {
           // 1. Ensure master data (Category & Unit Of Measurement) exist in master tables first
-          const validCategory = await ensureItemCategoryExists(tx, organizationId, rawCategory, userId);
+          const validCategory = await ensureItemCategoryExists(
+            tx,
+            organizationId,
+            rawCategory,
+            userId,
+          );
           const { unitName: validUnit, stockingUomId } = await ensureUnitOfMeasurementExists(
             tx,
             organizationId,
@@ -1642,8 +2044,10 @@ export async function dumpZohoRecordsToDb(
                 isPurchaseInfo: true,
                 hsnCode: hsnCode !== null ? hsnCode : existing.hsnCode,
                 category: validCategory || existing.category,
-                salesDescription: salesDescription !== null ? salesDescription : existing.salesDescription,
-                purchaseDescription: purchaseDescription !== null ? purchaseDescription : existing.purchaseDescription,
+                salesDescription:
+                  salesDescription !== null ? salesDescription : existing.salesDescription,
+                purchaseDescription:
+                  purchaseDescription !== null ? purchaseDescription : existing.purchaseDescription,
                 customFields: {
                   ...((existing.customFields as Record<string, any>) || {}),
                   ...(mappedData.customFields || {}),
@@ -1684,25 +2088,49 @@ export async function dumpZohoRecordsToDb(
           syncedCount++;
         });
       } else if (module === 'customer') {
-        const contactName = mappedData.displayName || mappedData.contactName || zRec.contact_name || zRec.company_name || 'Zoho Customer';
+        const contactName =
+          mappedData.displayName ||
+          mappedData.contactName ||
+          zRec.contact_name ||
+          zRec.company_name ||
+          'Zoho Customer';
         const companyName = mappedData.companyName || zRec.company_name || null;
         const zohoContactId = zRec.contact_id ? String(zRec.contact_id) : null;
-        const rawZohoNumber = zRec.contact_number || zRec.customer_number || zRec.reference_id || null;
-        let contactNumber = mappedData.contactNumber || rawZohoNumber || (zohoContactId ? `ZC-${zohoContactId}` : `CUST-${Date.now().toString().slice(-6)}`);
+        const rawZohoNumber =
+          zRec.contact_number || zRec.customer_number || zRec.reference_id || null;
+        const contactNumber =
+          mappedData.contactNumber ||
+          rawZohoNumber ||
+          (zohoContactId ? `ZC-${zohoContactId}` : `CUST-${Date.now().toString().slice(-6)}`);
         const email = mappedData.email || zRec.email || null;
         const phone = mappedData.phone || zRec.phone || null;
         const mobile = mappedData.mobile || zRec.mobile || null;
         const gstin = mappedData.gstin || zRec.gst_no || null;
         const pan = mappedData.pan || zRec.pan_no || null;
-        const rawPaymentTerms = mappedData.paymentTerms || zRec.payment_terms_label || zRec.payment_terms || null;
+        const rawPaymentTerms =
+          mappedData.paymentTerms || zRec.payment_terms_label || zRec.payment_terms || null;
         const rawCurrency = mappedData.currency || zRec.currency_code || null;
-        const primaryContactSalutation = zRec.salutation || (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.salutation : null) || null;
-        const primaryContactFirstName = zRec.first_name || (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.first_name : null) || null;
-        const primaryContactLastName = zRec.last_name || (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.last_name : null) || null;
+        const primaryContactSalutation =
+          zRec.salutation ||
+          (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.salutation : null) ||
+          null;
+        const primaryContactFirstName =
+          zRec.first_name ||
+          (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.first_name : null) ||
+          null;
+        const primaryContactLastName =
+          zRec.last_name ||
+          (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.last_name : null) ||
+          null;
 
         await runAsTenant(organizationId, async (tx) => {
           // 1. Ensure master data (Payment Terms & Currency) exist in master tables first
-          const validPaymentTerms = await ensurePaymentTermExists(tx, organizationId, rawPaymentTerms, userId);
+          const validPaymentTerms = await ensurePaymentTermExists(
+            tx,
+            organizationId,
+            rawPaymentTerms,
+            userId,
+          );
           const validCurrency = await ensureCurrencyExists(tx, organizationId, rawCurrency, userId);
 
           // 2. Check for existing customer (matches both active & deleted customers)
@@ -1728,13 +2156,20 @@ export async function dumpZohoRecordsToDb(
                 where: { id: existing.id },
                 data: {
                   contactName,
-                  contactNumber: (contactNumber && !contactNumber.startsWith('ZC-')) ? contactNumber : (existing.contactNumber?.startsWith('ZC-') ? contactNumber : existing.contactNumber),
+                  contactNumber:
+                    contactNumber && !contactNumber.startsWith('ZC-')
+                      ? contactNumber
+                      : existing.contactNumber?.startsWith('ZC-')
+                        ? contactNumber
+                        : existing.contactNumber,
                   companyName: companyName !== null ? companyName : existing.companyName,
                   email: email !== null ? email : existing.email,
                   phone: phone !== null ? phone : existing.phone,
                   mobile: mobile !== null ? mobile : existing.mobile,
-                  primaryContactSalutation: primaryContactSalutation || existing.primaryContactSalutation,
-                  primaryContactFirstName: primaryContactFirstName || existing.primaryContactFirstName,
+                  primaryContactSalutation:
+                    primaryContactSalutation || existing.primaryContactSalutation,
+                  primaryContactFirstName:
+                    primaryContactFirstName || existing.primaryContactFirstName,
                   primaryContactLastName: primaryContactLastName || existing.primaryContactLastName,
                   paymentTerms: validPaymentTerms || existing.paymentTerms,
                   currency: validCurrency || existing.currency,
@@ -1794,25 +2229,49 @@ export async function dumpZohoRecordsToDb(
           syncedCount++;
         });
       } else if (module === 'vendor') {
-        const contactName = mappedData.displayName || mappedData.contactName || zRec.contact_name || zRec.company_name || 'Zoho Vendor';
+        const contactName =
+          mappedData.displayName ||
+          mappedData.contactName ||
+          zRec.contact_name ||
+          zRec.company_name ||
+          'Zoho Vendor';
         const companyName = mappedData.companyName || zRec.company_name || null;
         const zohoContactId = zRec.contact_id ? String(zRec.contact_id) : null;
-        const rawZohoNumber = zRec.contact_number || zRec.vendor_number || zRec.reference_id || null;
-        let contactNumber = mappedData.contactNumber || rawZohoNumber || (zohoContactId ? `ZV-${zohoContactId}` : `VEND-${Date.now().toString().slice(-6)}`);
+        const rawZohoNumber =
+          zRec.contact_number || zRec.vendor_number || zRec.reference_id || null;
+        const contactNumber =
+          mappedData.contactNumber ||
+          rawZohoNumber ||
+          (zohoContactId ? `ZV-${zohoContactId}` : `VEND-${Date.now().toString().slice(-6)}`);
         const email = mappedData.email || zRec.email || null;
         const phone = mappedData.phone || zRec.phone || null;
         const mobile = mappedData.mobile || zRec.mobile || null;
         const gstin = mappedData.gstin || zRec.gst_no || null;
         const pan = mappedData.pan || zRec.pan_no || null;
-        const rawPaymentTerms = mappedData.paymentTerms || zRec.payment_terms_label || zRec.payment_terms || null;
+        const rawPaymentTerms =
+          mappedData.paymentTerms || zRec.payment_terms_label || zRec.payment_terms || null;
         const rawCurrency = mappedData.currency || zRec.currency_code || null;
-        const primaryContactSalutation = zRec.salutation || (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.salutation : null) || null;
-        const primaryContactFirstName = zRec.first_name || (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.first_name : null) || null;
-        const primaryContactLastName = zRec.last_name || (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.last_name : null) || null;
+        const primaryContactSalutation =
+          zRec.salutation ||
+          (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.salutation : null) ||
+          null;
+        const primaryContactFirstName =
+          zRec.first_name ||
+          (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.first_name : null) ||
+          null;
+        const primaryContactLastName =
+          zRec.last_name ||
+          (Array.isArray(zRec.contact_persons) ? zRec.contact_persons[0]?.last_name : null) ||
+          null;
 
         await runAsTenant(organizationId, async (tx) => {
           // 1. Ensure master data (Payment Terms & Currency) exist in master tables first
-          const validPaymentTerms = await ensurePaymentTermExists(tx, organizationId, rawPaymentTerms, userId);
+          const validPaymentTerms = await ensurePaymentTermExists(
+            tx,
+            organizationId,
+            rawPaymentTerms,
+            userId,
+          );
           const validCurrency = await ensureCurrencyExists(tx, organizationId, rawCurrency, userId);
 
           // 2. Check for existing vendor (matches both active & deleted vendors)
@@ -1838,13 +2297,20 @@ export async function dumpZohoRecordsToDb(
                 where: { id: existing.id },
                 data: {
                   contactName,
-                  contactNumber: (contactNumber && !contactNumber.startsWith('ZV-')) ? contactNumber : (existing.contactNumber?.startsWith('ZV-') ? contactNumber : existing.contactNumber),
+                  contactNumber:
+                    contactNumber && !contactNumber.startsWith('ZV-')
+                      ? contactNumber
+                      : existing.contactNumber?.startsWith('ZV-')
+                        ? contactNumber
+                        : existing.contactNumber,
                   companyName: companyName !== null ? companyName : existing.companyName,
                   email: email !== null ? email : existing.email,
                   phone: phone !== null ? phone : existing.phone,
                   mobile: mobile !== null ? mobile : existing.mobile,
-                  primaryContactSalutation: primaryContactSalutation || existing.primaryContactSalutation,
-                  primaryContactFirstName: primaryContactFirstName || existing.primaryContactFirstName,
+                  primaryContactSalutation:
+                    primaryContactSalutation || existing.primaryContactSalutation,
+                  primaryContactFirstName:
+                    primaryContactFirstName || existing.primaryContactFirstName,
                   primaryContactLastName: primaryContactLastName || existing.primaryContactLastName,
                   paymentTerms: validPaymentTerms || existing.paymentTerms,
                   currency: validCurrency || existing.currency,
@@ -1940,10 +2406,12 @@ export async function executeInstantSync(
   if (!moduleConfig) {
     moduleConfig = {
       module,
-      moduleLabel: module === 'item' ? 'Item' : module === 'customer' ? 'Accounts <-> Customers' : 'Vendors',
+      moduleLabel:
+        module === 'item' ? 'Item' : module === 'customer' ? 'Accounts <-> Customers' : 'Vendors',
       status: 'ACTIVE',
       syncDirection: 'ZOHO_TO_APP',
-      duplicationPreference: module === 'item' ? 'Item Name' : module === 'customer' ? 'Contact Name' : 'Vendor Name',
+      duplicationPreference:
+        module === 'item' ? 'Item Name' : module === 'customer' ? 'Contact Name' : 'Vendor Name',
       conflictResolution: 'Clone',
       fieldMappings: getDefaultFieldMappings(module),
       lastSyncAt: null,
@@ -1967,17 +2435,17 @@ export async function executeInstantSync(
   }
 
   if (moduleConfig.status === 'INACTIVE') {
-    throw new ApiError(400, `Module ${module} is currently Inactive. Please activate sync before running an instant sync.`);
+    throw new ApiError(
+      400,
+      `Module ${module} is currently Inactive. Please activate sync before running an instant sync.`,
+    );
   }
 
   // Validate that all required field mappings are present and non-empty via the API validation schema
   const parseResult = saveZohoSyncConfigSchema.safeParse(moduleConfig);
   if (!parseResult.success) {
     const errorMsg = parseResult.error.issues.map((i) => i.message).join(' ');
-    throw new ApiError(
-      400,
-      `Cannot perform synchronization for module "${module}": ${errorMsg}`,
-    );
+    throw new ApiError(400, `Cannot perform synchronization for module "${module}": ${errorMsg}`);
   }
 
   const isFullSync = Boolean(options?.fullSync || options?.syncMode === 'full');
@@ -2001,9 +2469,17 @@ export async function executeInstantSync(
     const effectiveConfig: ZohoModuleSyncConfig = {
       ...moduleConfig,
       ...(options?.syncAddresses !== undefined ? { syncAddresses: options.syncAddresses } : {}),
-      ...(options?.syncContactPersons !== undefined ? { syncContactPersons: options.syncContactPersons } : {}),
+      ...(options?.syncContactPersons !== undefined
+        ? { syncContactPersons: options.syncContactPersons }
+        : {}),
     };
-    const dumpResult = await dumpZohoRecordsToDb(organizationId, module, zohoRecords, effectiveConfig, userId);
+    const dumpResult = await dumpZohoRecordsToDb(
+      organizationId,
+      module,
+      zohoRecords,
+      effectiveConfig,
+      userId,
+    );
     recordCount = dumpResult.syncedCount;
     failedCount = dumpResult.failedCount;
   } else if (isFirstTimeMigration || isFullSync) {
@@ -2034,7 +2510,7 @@ export async function executeInstantSync(
   }
 
   // Determine descriptive user-facing message
-  let syncMessage = '';
+  let syncMessage: string;
   if (isFullSync) {
     syncMessage = `Full synchronization completed for ${moduleConfig.moduleLabel}. ${recordCount} total records synchronized (all records, not filtered by time).`;
   } else if (isFirstTimeMigration) {
@@ -2060,7 +2536,39 @@ export async function executeInstantSync(
 
   const syncType = isFullSync ? 'FULL_SYNC' : 'INSTANT';
 
-  // Record sync log
+  // Record in database referencing app_modules
+  const syncDirectionStr = moduleConfig.syncDirection === 'ZOHO_TO_APP' ? 'PULL' : 'PUSH';
+  const historyStatus =
+    failedCount > 0 && recordCount === 0 ? 'Failed' : failedCount > 0 ? 'Partial' : 'Completed';
+  await recordZohoSyncHistory({
+    organizationId,
+    module,
+    syncType: isFullSync ? 'Full Sync' : 'Instant Sync',
+    syncDirection: syncDirectionStr,
+    status: historyStatus,
+    addedCount: recordCount,
+    updatedCount: 0,
+    deletedCount: 0,
+    failureCount: failedCount,
+    details: `${syncMessage} Direction: ${moduleConfig.syncDirection}. Mode: ${isFullSync ? 'Full Sync (All Records)' : 'Incremental Sync'}.`,
+  });
+
+  if (module === 'customer' && options?.syncContactPersons) {
+    await recordZohoSyncHistory({
+      organizationId,
+      module: 'contact_person',
+      syncType: isFullSync ? 'Full Sync' : 'Instant Sync',
+      syncDirection: syncDirectionStr,
+      status: 'Completed',
+      addedCount: 0,
+      updatedCount: 0,
+      deletedCount: 0,
+      failureCount: 0,
+      details: 'Customer contact persons synchronized.',
+    });
+  }
+
+  // Record in-memory sync log for legacy / quick lookups
   const syncLogs = tenantSyncLogsStore.get(organizationId) || [];
   const newLog: ZohoSyncLog = {
     id: `log_${Date.now()}`,
@@ -2073,7 +2581,6 @@ export async function executeInstantSync(
     createdAt: timestamp,
   };
   syncLogs.unshift(newLog);
-  // Keep last 50 logs
   if (syncLogs.length > 50) {
     syncLogs.length = 50;
   }
@@ -2091,6 +2598,89 @@ export async function executeInstantSync(
 }
 
 /**
+ * Record sync history entry in PostgreSQL referencing app_modules table with tenant context.
+ */
+export async function recordZohoSyncHistory(params: {
+  organizationId: string;
+  module: ZohoSyncModuleKey | string;
+  syncType: string;
+  syncDirection?: string;
+  status?: string;
+  addedCount?: number;
+  updatedCount?: number;
+  deletedCount?: number;
+  failureCount?: number;
+  details?: string;
+  errorLogs?: any;
+}): Promise<void> {
+  const {
+    organizationId,
+    module,
+    syncDirection = 'PUSH',
+    status = 'Completed',
+    addedCount = 0,
+    updatedCount = 0,
+    deletedCount = 0,
+    failureCount = 0,
+    details,
+    errorLogs,
+  } = params;
+
+  let moduleCode = 'ITEMS';
+  let moduleName = 'Zoho Books Items';
+
+  if (module === 'customer') {
+    moduleCode = 'CUSTOMERS';
+    moduleName = 'Zoho Books Accounts as Customers';
+  } else if (module === 'vendor') {
+    moduleCode = 'VENDORS';
+    moduleName = 'Zoho Books Vendors';
+  } else if (module === 'item') {
+    moduleCode = 'ITEMS';
+    moduleName = 'Zoho Books Items';
+  } else if (module === 'contact_person' || module === 'contacts') {
+    moduleCode = 'CUSTOMERS';
+    moduleName = 'Zoho Books Contacts as Contact Persons';
+  }
+
+  try {
+    await runAsTenant(organizationId, async (tx) => {
+      let appModuleId: string | null = null;
+      try {
+        const appModule = await tx.appModule.findUnique({
+          where: { code: moduleCode },
+        });
+        if (appModule) {
+          appModuleId = appModule.id;
+        }
+      } catch {
+        // Non-fatal if appModule lookup fails
+      }
+
+      await tx.zohoSyncHistory.create({
+        data: {
+          organizationId,
+          appModuleId,
+          moduleName,
+          syncType: syncDirection === 'PULL' ? 'Fetched from Zoho Books.' : 'Pushed to Zoho Books.',
+          syncDirection,
+          status,
+          addedCount,
+          updatedCount,
+          deletedCount,
+          failureCount,
+          details: details || null,
+          errorLogs: errorLogs || undefined,
+          completedAt: new Date(),
+        },
+      });
+    });
+  } catch (err) {
+    console.error('Failed to persist zoho sync history to database:', err);
+  }
+}
+
+/**
  * Execute common / all-modules synchronization (syncs all active modules: item, customer, vendor).
  * Supports options.fullSync to trigger full sync across all active modules without time filter.
  */
@@ -2102,7 +2692,10 @@ export async function executeAllZohoSync(
   status: string;
   totalSynced: number;
   totalFailed: number;
-  modules: Record<string, { status: string; syncedCount: number; failedCount: number; message: string; syncType?: string }>;
+  modules: Record<
+    string,
+    { status: string; syncedCount: number; failedCount: number; message: string; syncType?: string }
+  >;
   message: string;
   syncedAt: string;
   syncType: string;
@@ -2113,7 +2706,10 @@ export async function executeAllZohoSync(
 
   let totalSynced = 0;
   let totalFailed = 0;
-  const moduleResults: Record<string, { status: string; syncedCount: number; failedCount: number; message: string; syncType?: string }> = {};
+  const moduleResults: Record<
+    string,
+    { status: string; syncedCount: number; failedCount: number; message: string; syncType?: string }
+  > = {};
 
   for (const mod of activeModules) {
     const config = settings.modules[mod];
@@ -2160,15 +2756,200 @@ export async function executeAllZohoSync(
 }
 
 /**
- * Fetch Sync History Logs for a module or whole integration.
+ * Fetch Sync History Logs and Module Summaries for Zoho integration from database.
  */
 export async function getZohoSyncHistory(
   organizationId: string,
-  module?: ZohoSyncModuleKey,
-): Promise<ZohoSyncLog[]> {
-  const allLogs = tenantSyncLogsStore.get(organizationId) || [];
-  if (module) {
-    return allLogs.filter((log) => log.module === module);
-  }
-  return allLogs;
+  module?: ZohoSyncModuleKey | string,
+  page = 1,
+  limit = 100,
+): Promise<ZohoSyncHistoryResponse> {
+  return await runAsTenant(organizationId, async (tx) => {
+    let appModules: any[];
+    try {
+      appModules = await tx.appModule.findMany({
+        where: {
+          code: { in: ['ITEMS', 'CUSTOMERS', 'VENDORS'] },
+        },
+      });
+    } catch {
+      appModules = [];
+    }
+    const moduleMap = new Map(appModules.map((m) => [m.code, m]));
+
+    const whereClause: any = { organizationId };
+    if (module && module !== 'all') {
+      const targetCode =
+        module === 'item'
+          ? 'ITEMS'
+          : module === 'customer'
+            ? 'CUSTOMERS'
+            : module === 'vendor'
+              ? 'VENDORS'
+              : String(module).toUpperCase();
+      const matchedAppModule = moduleMap.get(targetCode);
+      if (matchedAppModule) {
+        whereClause.OR = [
+          { appModuleId: matchedAppModule.id },
+          { moduleName: { contains: module, mode: 'insensitive' } },
+        ];
+      }
+    }
+
+    let total: number;
+    let rows: any[];
+    let allHistory: any[];
+
+    try {
+      [total, rows, allHistory] = await Promise.all([
+        tx.zohoSyncHistory.count({ where: whereClause }),
+        tx.zohoSyncHistory.findMany({
+          where: whereClause,
+          include: {
+            appModule: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          skip: (page - 1) * limit,
+        }),
+        tx.zohoSyncHistory.findMany({
+          where: { organizationId },
+          select: {
+            moduleName: true,
+            syncDirection: true,
+            failureCount: true,
+            status: true,
+          },
+        }),
+      ]);
+    } catch {
+      total = 0;
+      rows = [];
+      allHistory = [];
+    }
+
+    // If DB has no history yet, fallback to in-memory logs for instant feedback
+    if (rows.length === 0) {
+      const memLogs = tenantSyncLogsStore.get(organizationId) || [];
+      const filteredMem =
+        module && module !== 'all' ? memLogs.filter((l) => l.module === module) : memLogs;
+      rows = filteredMem.map((l) => ({
+        id: l.id,
+        organizationId,
+        appModuleId: null,
+        moduleName:
+          l.module === 'customer'
+            ? 'Zoho Books Accounts as Customers'
+            : l.module === 'vendor'
+              ? 'Zoho Books Vendors'
+              : 'Zoho Books Items',
+        syncType: 'Pushed to Zoho Books.',
+        syncDirection: 'PUSH',
+        status: l.status === 'SUCCESS' ? 'Completed' : 'Failed',
+        addedCount: l.syncedCount,
+        updatedCount: 0,
+        deletedCount: 0,
+        failureCount: l.failedCount,
+        details: l.details,
+        createdAt: new Date(l.createdAt),
+        completedAt: new Date(l.createdAt),
+        appModule: null,
+      }));
+      total = rows.length;
+    }
+
+    const modulesSummaryConfig = [
+      {
+        code: 'CUSTOMERS',
+        title: 'Zoho Books',
+        subtitle: 'Accounts as Customers',
+        keyword: 'Customers',
+        appModule: moduleMap.get('CUSTOMERS'),
+      },
+      {
+        code: 'CONTACT_PERSONS',
+        title: 'Zoho Books',
+        subtitle: 'Contacts as Contact Persons',
+        keyword: 'Contact Persons',
+        appModule: moduleMap.get('CUSTOMERS'),
+      },
+      {
+        code: 'ITEMS',
+        title: 'Zoho Books',
+        subtitle: 'Items & Products',
+        keyword: 'Items',
+        appModule: moduleMap.get('ITEMS'),
+      },
+      {
+        code: 'VENDORS',
+        title: 'Zoho Books',
+        subtitle: 'Vendors & Suppliers',
+        keyword: 'Vendors',
+        appModule: moduleMap.get('VENDORS'),
+      },
+    ];
+
+    const summaries: ZohoSyncModuleSummary[] = modulesSummaryConfig.map((cfg) => {
+      const matchingRows = allHistory.filter(
+        (h) => h.moduleName && h.moduleName.toLowerCase().includes(cfg.keyword.toLowerCase()),
+      );
+
+      const pullErrorCount = matchingRows
+        .filter((h) => h.syncDirection === 'PULL' || h.syncDirection === 'ZOHO_TO_APP')
+        .reduce((acc, h) => acc + (h.failureCount || (h.status === 'Failed' ? 1 : 0)), 0);
+
+      const pushErrorCount = matchingRows
+        .filter(
+          (h) =>
+            h.syncDirection === 'PUSH' ||
+            h.syncDirection === 'APP_TO_ZOHO' ||
+            h.syncDirection === 'TWO_WAY',
+        )
+        .reduce((acc, h) => acc + (h.failureCount || (h.status === 'Failed' ? 1 : 0)), 0);
+
+      return {
+        appModuleId: cfg.appModule?.id || null,
+        moduleCode: cfg.code,
+        moduleName: cfg.appModule?.name || cfg.subtitle,
+        title: cfg.title,
+        subtitle: cfg.subtitle,
+        pullErrorCount,
+        pushErrorCount,
+      };
+    });
+
+    const history: ZohoSyncHistoryItem[] = rows.map((r: any) => ({
+      id: r.id,
+      organizationId: r.organizationId,
+      appModuleId: r.appModuleId,
+      module:
+        r.appModule?.code?.toLowerCase() ||
+        (r.moduleName?.toLowerCase().includes('customer')
+          ? 'customer'
+          : r.moduleName?.toLowerCase().includes('vendor')
+            ? 'vendor'
+            : 'item'),
+      moduleName: r.moduleName,
+      moduleCode: r.appModule?.code || null,
+      syncType: r.syncType,
+      syncDirection: r.syncDirection,
+      status: r.status,
+      addedCount: r.addedCount,
+      updatedCount: r.updatedCount,
+      deletedCount: r.deletedCount,
+      failureCount: r.failureCount,
+      details: r.details,
+      errorLogs: r.errorLogs,
+      createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
+      completedAt: r.completedAt
+        ? (r.completedAt instanceof Date ? r.completedAt : new Date(r.completedAt)).toISOString()
+        : null,
+    }));
+
+    return {
+      summaries,
+      history,
+      total,
+    };
+  });
 }

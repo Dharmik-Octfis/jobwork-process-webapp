@@ -5,6 +5,7 @@ import type {
   ZohoIntegrationStatus,
   SelectZohoOrgInput,
   ConfigureZohoCredentialsInput,
+  ZohoSyncHistoryResponse,
 } from './zoho.schemas';
 
 const ZOHO_STATUS_QUERY_KEY = 'zoho-integration-status';
@@ -281,11 +282,18 @@ export function useSyncAllZohoModules(orgId: string) {
 export function useZohoSyncHistory(orgId: string, module?: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_SYNC_HISTORY_QUERY_KEY, orgId, module || 'all'],
-    queryFn: async (): Promise<Record<string, unknown>[]> => {
+    queryFn: async (): Promise<ZohoSyncHistoryResponse> => {
       const qs = module ? `?module=${encodeURIComponent(module)}` : '';
       const res = await apiClient.get(
         `/organizations/${orgId}/settings/integrations/zoho/sync/history${qs}`,
       );
+      if (Array.isArray(res.data)) {
+        return {
+          summaries: [],
+          history: res.data,
+          total: res.data.length,
+        };
+      }
       return res.data;
     },
     enabled: Boolean(orgId) && enabled,

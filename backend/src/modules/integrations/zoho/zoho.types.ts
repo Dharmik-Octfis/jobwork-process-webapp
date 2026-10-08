@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import type { ZohoIntegrationStatus } from './zoho.constants.ts';
 
 export interface ZohoTokenResponse {
@@ -57,7 +58,7 @@ export interface ZohoField {
   is_mandatory: boolean;
   is_custom_field?: boolean;
   max_length?: number;
-  default_value?: any;
+  default_value?: unknown;
   options?: Array<{ label: string; value: string }>;
 }
 
@@ -127,11 +128,47 @@ export interface ZohoSyncSettings {
 
 export interface ZohoSyncLog {
   id: string;
-  module: ZohoSyncModuleKey;
-  syncType: 'INSTANT' | 'AUTO' | 'SCHEDULED' | 'FULL_SYNC' | 'INCREMENTAL';
-  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'IN_PROGRESS';
+  module: ZohoSyncModuleKey | string;
+  syncType: string;
+  status: string;
   syncedCount: number;
   failedCount: number;
   details?: string;
   createdAt: string;
+}
+
+export interface ZohoSyncHistoryItem {
+  id: string;
+  organizationId: string;
+  appModuleId?: string | null;
+  module: string;
+  moduleName: string;
+  moduleCode?: string | null;
+  syncType: string;
+  syncDirection: string;
+  status: string;
+  addedCount: number;
+  updatedCount: number;
+  deletedCount: number;
+  failureCount: number;
+  details?: string | null;
+  errorLogs?: unknown;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface ZohoSyncModuleSummary {
+  appModuleId?: string | null;
+  moduleCode: string;
+  moduleName: string;
+  title: string;
+  subtitle: string;
+  pullErrorCount: number;
+  pushErrorCount: number;
+}
+
+export interface ZohoSyncHistoryResponse {
+  summaries: ZohoSyncModuleSummary[];
+  history: ZohoSyncHistoryItem[];
+  total: number;
 }

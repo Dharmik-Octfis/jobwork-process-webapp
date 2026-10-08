@@ -56,12 +56,7 @@ export async function getZohoConnectUrl(req: Request, res: Response): Promise<vo
     typeof req.query['accounts_server'] === 'string' ? req.query['accounts_server'] : undefined;
   const returnTo = typeof req.query['return_to'] === 'string' ? req.query['return_to'] : undefined;
 
-  const result = await buildAuthorizationUrl(
-    req.tenantId!,
-    req.user!.id,
-    accountsServer,
-    returnTo,
-  );
+  const result = await buildAuthorizationUrl(req.tenantId!, req.user!.id, accountsServer, returnTo);
 
   sendSuccess(res, result);
 }
@@ -75,9 +70,7 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
   const state = typeof req.query['state'] === 'string' ? req.query['state'] : undefined;
   const error = typeof req.query['error'] === 'string' ? req.query['error'] : undefined;
   const errorDesc =
-    typeof req.query['error_description'] === 'string'
-      ? req.query['error_description']
-      : undefined;
+    typeof req.query['error_description'] === 'string' ? req.query['error_description'] : undefined;
   const accountsServer =
     typeof req.query['accounts-server'] === 'string'
       ? req.query['accounts-server']
@@ -222,12 +215,13 @@ export async function saveSyncConfig(req: Request, res: Response): Promise<void>
 export async function toggleSync(req: Request, res: Response): Promise<void> {
   const { module, active, status } = req.body as ToggleZohoSyncInput;
   const result = await toggleZohoSync(req.tenantId!, module, active, status, req.user?.id);
-  const statusMsg = result.status === 'ACTIVE' ? 'activated' : result.status === 'PAUSED' ? 'paused' : 'set to inactive';
-  sendSuccess(
-    res,
-    result,
-    `Sync for ${result.moduleLabel} has been ${statusMsg}.`,
-  );
+  const statusMsg =
+    result.status === 'ACTIVE'
+      ? 'activated'
+      : result.status === 'PAUSED'
+        ? 'paused'
+        : 'set to inactive';
+  sendSuccess(res, result, `Sync for ${result.moduleLabel} has been ${statusMsg}.`);
 }
 
 /**
@@ -235,7 +229,8 @@ export async function toggleSync(req: Request, res: Response): Promise<void> {
  * Trigger manual instant or full sync for a specific module or all active modules.
  */
 export async function instantSync(req: Request, res: Response): Promise<void> {
-  const { module, fullSync, syncMode, syncAddresses, syncContactPersons } = req.body as InstantZohoSyncInput;
+  const { module, fullSync, syncMode, syncAddresses, syncContactPersons } =
+    req.body as InstantZohoSyncInput;
   const syncOptions = { fullSync, syncMode, syncAddresses, syncContactPersons };
 
   if (!module || module === 'all') {
@@ -268,7 +263,7 @@ export async function syncAllModules(req: Request, res: Response): Promise<void>
  * Fetch sync logs and history.
  */
 export async function getSyncHistory(req: Request, res: Response): Promise<void> {
-  const module = typeof req.query['module'] === 'string' ? (req.query['module'] as any) : undefined;
+  const module = typeof req.query['module'] === 'string' ? req.query['module'] : undefined;
   const logs = await getZohoSyncHistory(req.tenantId!, module);
   sendSuccess(res, logs);
 }

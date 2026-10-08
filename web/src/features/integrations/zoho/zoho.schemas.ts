@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import { z } from 'zod';
 
 export interface ZohoOrganization {
@@ -138,13 +139,49 @@ export interface InstantZohoSyncInput {
 
 export interface ZohoSyncLog {
   id: string;
-  module: ZohoSyncModuleKey;
-  syncType: 'INSTANT' | 'AUTO' | 'SCHEDULED' | 'FULL_SYNC' | 'INCREMENTAL';
-  status: 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'IN_PROGRESS';
+  module: ZohoSyncModuleKey | string;
+  syncType: string;
+  status: string;
   syncedCount: number;
   failedCount: number;
   details?: string;
   createdAt: string;
+}
+
+export interface ZohoSyncHistoryItem {
+  id: string;
+  organizationId: string;
+  appModuleId?: string | null;
+  module: string;
+  moduleName: string;
+  moduleCode?: string | null;
+  syncType: string;
+  syncDirection: string;
+  status: string;
+  addedCount: number;
+  updatedCount: number;
+  deletedCount: number;
+  failureCount: number;
+  details?: string | null;
+  errorLogs?: unknown;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface ZohoSyncModuleSummary {
+  appModuleId?: string | null;
+  moduleCode: string;
+  moduleName: string;
+  title: string;
+  subtitle: string;
+  pullErrorCount: number;
+  pushErrorCount: number;
+}
+
+export interface ZohoSyncHistoryResponse {
+  summaries: ZohoSyncModuleSummary[];
+  history: ZohoSyncHistoryItem[];
+  total: number;
 }
 
 export const saveZohoSyncConfigSchema = z
@@ -153,18 +190,20 @@ export const saveZohoSyncConfigSchema = z
     syncDirection: z.enum(['TWO_WAY', 'APP_TO_ZOHO', 'ZOHO_TO_APP']).default('TWO_WAY'),
     duplicationPreference: z.string().trim().min(1, 'Duplication preference is required'),
     conflictResolution: z.string().trim().min(1, 'Conflict resolution is required'),
-    fieldMappings: z.array(
-      z.object({
-        id: z.string().optional(),
-        zohoField: z.string().trim().min(1),
-        zohoFieldLabel: z.string().trim().min(1),
-        appField: z.string().trim().min(1),
-        appFieldLabel: z.string().trim().min(1),
-        isRequired: z.boolean().optional(),
-        isSystem: z.boolean().optional(),
-        dataType: z.string().optional(),
-      }),
-    ).min(1, 'At least one field mapping is required'),
+    fieldMappings: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          zohoField: z.string().trim().min(1),
+          zohoFieldLabel: z.string().trim().min(1),
+          appField: z.string().trim().min(1),
+          appFieldLabel: z.string().trim().min(1),
+          isRequired: z.boolean().optional(),
+          isSystem: z.boolean().optional(),
+          dataType: z.string().optional(),
+        }),
+      )
+      .min(1, 'At least one field mapping is required'),
     status: z.enum(['ACTIVE', 'PAUSED', 'INACTIVE', 'NOT_CONFIGURED']).optional(),
     autoSyncInterval: z.string().optional(),
     syncAddresses: z.boolean().optional(),
@@ -177,8 +216,13 @@ export const saveZohoSyncConfigSchema = z
 
     const hasRequiredMapping = data.fieldMappings.some(
       (m) =>
-        (m.appField === requiredAppField || m.appField === 'name' || m.appField === 'displayName' || m.appField === 'contactName') &&
-        (m.zohoField === requiredZohoField || m.zohoField === 'name' || m.zohoField === 'contact_name') &&
+        (m.appField === requiredAppField ||
+          m.appField === 'name' ||
+          m.appField === 'displayName' ||
+          m.appField === 'contactName') &&
+        (m.zohoField === requiredZohoField ||
+          m.zohoField === 'name' ||
+          m.zohoField === 'contact_name') &&
         m.appField.trim().length > 0 &&
         m.zohoField.trim().length > 0,
     );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { toast } from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
+import { notify } from '../../../../lib/notify';
 import {
   ArrowRightLeft,
   Users,
@@ -10,6 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  Clock,
 } from 'lucide-react';
 import {
   useZohoSyncSettings,
@@ -27,6 +29,7 @@ interface ModuleSyncHubProps {
 }
 
 export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigureModule }) => {
+  const navigate = useNavigate();
   const [historyModalModule, setHistoryModalModule] = useState<{
     key: ZohoSyncModuleKey;
     label: string;
@@ -37,7 +40,9 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
   const instantSyncMutation = useInstantZohoSync(orgId);
   const syncAllMutation = useSyncAllZohoModules(orgId);
 
-  const [activeSyncing, setActiveSyncing] = useState<{ module: string; fullSync: boolean } | null>(null);
+  const [activeSyncing, setActiveSyncing] = useState<{ module: string; fullSync: boolean } | null>(
+    null,
+  );
   const [syncingAllType, setSyncingAllType] = useState<'incremental' | 'full' | null>(null);
 
   const modules: ZohoSyncModuleKey[] = ['customer', 'vendor', 'item'];
@@ -75,13 +80,17 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
     },
   };
 
-  const handleSetSyncStatus = async (module: ZohoSyncModuleKey, status: 'ACTIVE' | 'PAUSED' | 'INACTIVE') => {
+  const handleSetSyncStatus = async (
+    module: ZohoSyncModuleKey,
+    status: 'ACTIVE' | 'PAUSED' | 'INACTIVE',
+  ) => {
     try {
       await toggleSyncMutation.mutateAsync({ module, status });
-      const label = status === 'ACTIVE' ? 'activated' : status === 'PAUSED' ? 'paused' : 'set to inactive';
-      toast.success(`Sync for ${moduleMeta[module].title} ${label}.`);
+      const label =
+        status === 'ACTIVE' ? 'activated' : status === 'PAUSED' ? 'paused' : 'set to inactive';
+      notify.success(`Sync for ${moduleMeta[module].title} ${label}.`);
     } catch (err) {
-      toast.error(toApiErrorMessage(err));
+      notify.error(toApiErrorMessage(err));
     }
   };
 
@@ -93,13 +102,13 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
         fullSync,
         syncMode: fullSync ? 'full' : 'incremental',
       });
-      toast.success(
+      notify.success(
         res?.message ||
           `${fullSync ? 'Full sync' : 'Instant sync'} completed for ${moduleMeta[module].title}!`,
       );
       refetch();
     } catch (err) {
-      toast.error(toApiErrorMessage(err));
+      notify.error(toApiErrorMessage(err));
     } finally {
       setActiveSyncing(null);
     }
@@ -112,13 +121,13 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
         fullSync,
         syncMode: fullSync ? 'full' : 'incremental',
       });
-      toast.success(
+      notify.success(
         res?.message ||
           `${fullSync ? 'Full synchronization (all records)' : 'Common sync'} completed for all active Zoho modules!`,
       );
       refetch();
     } catch (err) {
-      toast.error(toApiErrorMessage(err));
+      notify.error(toApiErrorMessage(err));
     } finally {
       setSyncingAllType(null);
     }
@@ -243,6 +252,30 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
             {syncingAllType === 'full' ? 'Full Syncing All...' : 'Full Sync All (All Records)'}
           </button>
 
+          {/* View Sync History Page Button */}
+          <button
+            type="button"
+            onClick={() => navigate(`/organizations/${orgId}/settings/integrations/zoho/history`)}
+            title="View complete Sync History matching Zoho Books layout"
+            style={{
+              backgroundColor: '#0284c7',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+            }}
+          >
+            <Clock size={13} />
+            Sync History
+          </button>
+
           <button
             type="button"
             onClick={() => refetch()}
@@ -291,8 +324,10 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
             const isActive = status === 'ACTIVE';
             const isPaused = status === 'PAUSED';
             const isInactive = status === 'INACTIVE';
-            const isSyncingIncremental = activeSyncing?.module === modKey && !activeSyncing?.fullSync;
-            const isSyncingFull = activeSyncing?.module === modKey && Boolean(activeSyncing?.fullSync);
+            const isSyncingIncremental =
+              activeSyncing?.module === modKey && !activeSyncing?.fullSync;
+            const isSyncingFull =
+              activeSyncing?.module === modKey && Boolean(activeSyncing?.fullSync);
             const isModuleSyncing = isSyncingIncremental || isSyncingFull;
 
             return (
@@ -381,17 +416,9 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                               : isPaused
                                 ? '#fef3c7'
                                 : '#f1f5f9',
-                            color: isActive
-                              ? '#15803d'
-                              : isPaused
-                                ? '#b45309'
-                                : '#64748b',
+                            color: isActive ? '#15803d' : isPaused ? '#b45309' : '#64748b',
                             border: `1px solid ${
-                              isActive
-                                ? '#bbf7d0'
-                                : isPaused
-                                  ? '#fde68a'
-                                  : '#cbd5e1'
+                              isActive ? '#bbf7d0' : isPaused ? '#fde68a' : '#cbd5e1'
                             }`,
                           }}
                         >
@@ -460,7 +487,9 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                         </div>
 
                         <div>
-                          <span style={{ color: '#64748b', marginRight: '6px' }}>Last Push Time:</span>
+                          <span style={{ color: '#64748b', marginRight: '6px' }}>
+                            Last Push Time:
+                          </span>
                           <strong style={{ fontWeight: 600, color: '#1e293b' }}>
                             {formatDateTime(config?.lastPushAt)}
                           </strong>
@@ -608,9 +637,7 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
 
                         <button
                           type="button"
-                          onClick={() =>
-                            setHistoryModalModule({ key: modKey, label: meta.title })
-                          }
+                          onClick={() => setHistoryModalModule({ key: modKey, label: meta.title })}
                           style={{
                             background: 'none',
                             border: 'none',
