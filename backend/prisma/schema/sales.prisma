@@ -30,6 +30,7 @@ model Customer {
   updatedByUser            User?                   @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
   deliveryPurchaseOrders   PurchaseOrder[]
   salesOrders              SalesOrder[]            @relation("CustomerToSalesOrder")
+  invoices                 Invoice[]               @relation("CustomerToInvoice")
 
   @@unique([organizationId, contactNumber])
   @@map("customers")
@@ -142,6 +143,7 @@ model SalesOrder {
   activities         SalesOrderActivity[]
   comments           SalesOrderComment[]
   lineItems          SalesOrderItem[]
+  invoices           Invoice[]
   
   createdByUser      User?                @relation("SoCreatedBy", fields: [createdBy], references: [id])
   location           Location?            @relation("SoSourceLocation", fields: [locationId], references: [id])
@@ -157,6 +159,7 @@ model SalesOrderItem {
   id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   salesOrderId       String        @map("sales_order_id") @db.Uuid
   itemId             String        @map("item_id") @db.Uuid
+  batchId            String?       @map("batch_id") @db.Uuid
   quantity           Decimal       @default(1) @db.Decimal(15, 2)
   rate               Decimal       @default(0) @db.Decimal(15, 2)
   discountPercentage Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
@@ -170,6 +173,7 @@ model SalesOrderItem {
   updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdByUser      User?         @relation("SoItemCreatedBy", fields: [createdBy], references: [id])
   item               Item          @relation(fields: [itemId], references: [id])
+  batch              Batch?        @relation(fields: [batchId], references: [id])
   salesOrder         SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   updatedByUser      User?         @relation("SoItemUpdatedBy", fields: [updatedBy], references: [id])
 
@@ -209,4 +213,104 @@ model SalesOrderComment {
   updatedByUser   User?         @relation("SoCommentUpdatedBy", fields: [updatedBy], references: [id])
 
   @@map("sales_order_comments")
+}
+
+model Invoice {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String               @map("organization_id") @db.Uuid
+  customerId         String               @map("customer_id") @db.Uuid
+  invoiceNumber      String               @map("invoice_number") @db.VarChar(100)
+  date               DateTime             @map("invoice_date") @db.Date
+  dueDate            DateTime?            @map("due_date") @db.Date
+  paymentTerms       String?              @map("payment_terms") @db.VarChar(100)
+  subTotal           Decimal              @default(0) @map("sub_total") @db.Decimal(15, 2)
+  totalAmount        Decimal              @default(0) @map("total_amount") @db.Decimal(15, 2)
+  notes              String?
+  status             String               @default("Draft") @db.VarChar(50)
+  deliveryType       String               @default("Location") @map("delivery_type") @db.VarChar(50)
+  customFields       Json                 @default("{}") @map("custom_fields")
+  isDeleted          Boolean              @default(false) @map("is_deleted")
+  createdBy          String?              @map("created_by") @db.Uuid
+  updatedBy          String?              @map("updated_by") @db.Uuid
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  locationId         String?              @map("location_id") @db.Uuid
+  documents          Json?                @default("[]") @map("attachments")
+  termsAndConditions String?              @map("terms_and_conditions")
+
+  activities         InvoiceActivity[]
+  comments           InvoiceComment[]
+  lineItems          InvoiceItem[]
+  
+  salesOrderId       String?              @map("sales_order_id") @db.Uuid
+  salesOrder         SalesOrder?          @relation(fields: [salesOrderId], references: [id])
+  
+  createdByUser      User?                @relation("InvoiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  location           Location?            @relation("InvoiceSourceLocation", fields: [locationId], references: [id])
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedByUser      User?                @relation("InvoiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  customer           Customer             @relation("CustomerToInvoice", fields: [customerId], references: [id])
+
+  @@unique([organizationId, invoiceNumber])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId          String        @map("invoice_id") @db.Uuid
+  itemId             String        @map("item_id") @db.Uuid
+  batchId            String?       @map("batch_id") @db.Uuid
+  quantity           Decimal       @default(1) @db.Decimal(15, 2)
+  rate               Decimal       @default(0) @db.Decimal(15, 2)
+  discountPercentage Decimal?      @map("discount_percentage") @db.Decimal(5, 2)
+  discount           Decimal?      @map("discount_amount") @db.Decimal(15, 2)
+  itemTotal          Decimal       @default(0) @map("amount") @db.Decimal(15, 2)
+  customFields       Json          @default("{}") @map("custom_fields")
+  isDeleted          Boolean       @default(false) @map("is_deleted")
+  createdBy          String?       @map("created_by") @db.Uuid
+  updatedBy          String?       @map("updated_by") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser      User?         @relation("InvoiceItemCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  item               Item          @relation(fields: [itemId], references: [id])
+  batch              Batch?        @relation(fields: [batchId], references: [id])
+  invoice            Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  updatedByUser      User?         @relation("InvoiceItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("invoice_items")
+}
+
+model InvoiceActivity {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId       String        @map("invoice_id") @db.Uuid
+  title           String        @db.VarChar(255)
+  description     String?
+  performedBy     String?       @map("performed_by") @db.VarChar(255)
+  isDeleted       Boolean       @default(false) @map("is_deleted")
+  createdBy       String?       @map("created_by") @db.Uuid
+  updatedBy       String?       @map("updated_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser   User?         @relation("InvoiceActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  updatedByUser   User?         @relation("InvoiceActivityUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("invoice_activities")
+}
+
+model InvoiceComment {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId       String        @map("invoice_id") @db.Uuid
+  content         String
+  performedBy     String?       @map("performed_by") @db.VarChar(255)
+  isDeleted       Boolean       @default(false) @map("is_deleted")
+  createdBy       String?       @map("created_by") @db.Uuid
+  updatedBy       String?       @map("updated_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser   User?         @relation("InvoiceCommentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  updatedByUser   User?         @relation("InvoiceCommentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("invoice_comments")
 }

@@ -183,6 +183,8 @@ router.get('/:id/activities', requirePermission('item:read'), itemsController.ge
 router.get('/:id/transactions/bills', requirePermission('item:read'), itemsController.getItemBills);
 router.get('/:id/transactions/issues', requirePermission('item:read'), itemsController.getItemIssues);
 router.get('/:id/transactions/receipts', requirePermission('item:read'), itemsController.getItemReceipts);
+router.get('/:id/transactions/invoices', requirePermission('item:read'), itemsController.getItemInvoices);
+router.get('/:id/transactions/sales-orders', requirePermission('item:read'), itemsController.getItemSalesOrders);
 router.get('/:id/signed-url', requirePermission('item:read'), itemsController.getSignedUrl);
 router.put(
   '/:id',

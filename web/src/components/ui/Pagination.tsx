@@ -47,42 +47,48 @@ export function Pagination({
       style={{ 
         display: 'flex', 
         flexDirection: 'row', 
-        flexWrap: 'wrap',
-        gap: '8px', 
-        padding: '6px 16px',
-        minHeight: '44px',
-        height: 'auto',
+        flexWrap: 'nowrap',
+        gap: '4px', 
+        padding: '0 16px',
+        height: '44px',
+        boxSizing: 'border-box',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
+        borderTop: '1px solid var(--color-border)',
+        background: '#fff'
       }}
     >
-      <div style={{ display: 'flex', flex: 1, minWidth: '100px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flex: '1 1 auto', minWidth: 'min-content', alignItems: 'center' }}>
         {!hideTotal && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px' }}>
-            <span style={{ color: 'var(--color-text-muted)' }}>Total Count:</span>
-            {isCounting ? (
-              <span style={{ color: 'var(--color-text-subtle)' }}>loading…</span>
-            ) : total !== undefined ? (
-              <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{total}</span>
-            ) : (
-              <button
-                type="button"
-                onClick={onRequestCount}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  font: 'inherit',
-                  fontWeight: 500,
-                  color: 'var(--color-primary)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                View
-              </button>
-            )}
+            <span style={{ color: 'var(--color-text-muted)' }}>Total:</span>
+            <div style={{ minWidth: '60px', display: 'flex', alignItems: 'center' }}>
+              {isCounting ? (
+                <span style={{ color: 'var(--color-text-subtle)' }}>loading…</span>
+              ) : total !== undefined ? (
+                <span style={{ fontWeight: 500, color: 'var(--color-text)' }}>{total}</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onRequestCount}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    fontWeight: 500,
+                    color: 'var(--color-primary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  View
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -94,7 +100,7 @@ export function Pagination({
             border: '1px solid #cbd5e1', 
             borderRadius: '6px', 
             overflow: 'hidden',
-            height: '32px'
+            height: '28px'
           }}
         >
           {/* Left section: Per Page Selector */}
@@ -109,7 +115,7 @@ export function Pagination({
                 gap: '2px'
               }}
             >
-              <Settings size={14} color="#64748b" style={{ flexShrink: 0 }} />
+              <Settings size={12} color="#64748b" style={{ flexShrink: 0 }} />
               <Select
                 value={String(perPage)}
                 onChange={(v) => onPerPageChange(Number(v))}
@@ -125,7 +131,8 @@ export function Pagination({
                   padding: '0 4px',
                   height: '100%',
                   color: '#475569',
-                  fontWeight: 400
+                  fontWeight: 400,
+                  fontSize: '12px'
                 }}
               />
             </div>
@@ -137,8 +144,8 @@ export function Pagination({
               background: '#ffffff', 
               display: 'flex', 
               alignItems: 'center', 
-              padding: '0 12px',
-              gap: '12px'
+              padding: '0 8px',
+              gap: '8px'
             }}
           >
             <button
@@ -158,10 +165,10 @@ export function Pagination({
                 padding: 0,
               }}
             >
-              <ChevronLeft size={16} strokeWidth={2.5} />
+              <ChevronLeft size={14} strokeWidth={2.5} />
             </button>
             
-            <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap' }}>
               {start} - {end}
             </span>
 
@@ -182,7 +189,7 @@ export function Pagination({
                 padding: 0,
               }}
             >
-              <ChevronRight size={16} strokeWidth={2.5} />
+              <ChevronRight size={14} strokeWidth={2.5} />
             </button>
           </div>
         </div>

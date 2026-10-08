@@ -26,33 +26,35 @@ import { Select } from '../../../components/ui/Select';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { CustomFieldsSection } from '../../custom-fields/CustomFieldsSection';
-import type { CreateSalesOrderData, SalesOrderItem } from './sales-orders.schemas';
+import type { CreateInvoiceData, InvoiceItem, Invoice } from './invoices.schemas';
 import { lineDiscountAmount, lineDiscountError, lineGross } from '../../../lib/lineDiscount';
 import { firstErrorMessage } from '../../../lib/formErrors';
 import {
-  createSalesOrder,
-  fetchSalesOrderById,
-  updateSalesOrder,
-  fetchLocations,
-  uploadSOAttachments,
-  fetchSONumberPreference,
-  updateSONumberPreference,
-  type SOAttachment,
-} from './sales-orders.api';
-
+  createInvoice,
+  fetchInvoiceById,
+  updateInvoice,
+  uploadInvoiceAttachments,
+  type InvoiceAttachment,
+  fetchInvoiceNumberPreference,
+  updateInvoiceNumberPreference,
+} from './invoices.api';
+import { fetchSalesOrderById, updateSalesOrder } from '../sales-orders/sales-orders.api';
+import { AddBillBatchesModal } from '../../purchases/bills/AddBillBatchesModal';
 
 import { itemsApi } from '../../items/items.api';
-import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+} from '../../configuration/locations/locations.api';
 import { fetchCustomers, updateCustomer, type Customer } from '../customers/customers.api';
-import { SalesOrderNumberConfigModal } from './SalesOrderNumberConfigModal';
+import { InvoiceNumberConfigModal } from './InvoiceNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
-import { DeliveryAddressModal } from './DeliveryAddressModal';
 import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
 import { CreateCustomerModal } from '../customers/CreateCustomerModal';
 import { AdditionalAddressModal } from '../customers/AdditionalAddressModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
 import { ItemStockAndBatchDisplay } from '../../items/components/ItemStockAndBatchDisplay';
-
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -113,15 +115,16 @@ function ItemImage({
   );
 }
 
-export function CreateSalesOrder() {
+export function CreateInvoice() {
   const navigate = useNavigate();
   const location = useLocation();
   const { orgId, id } = useParams<{ orgId: string; id?: string }>();
   const [searchParams] = useSearchParams();
   const cloneFrom = searchParams.get('cloneFrom');
+  const convertFromSo = searchParams.get('convertFromSo');
   const queryClient = useQueryClient();
 
-  const poIdToFetch = id || cloneFrom;
+  const invoiceIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
   const isClone = Boolean(cloneFrom);
 
@@ -130,18 +133,30 @@ export function CreateSalesOrder() {
   const [itemModalIndex, setItemModalIndex] = useState<number | null>(null);
   const [isMultiSelectItemModalOpen, setIsMultiSelectItemModalOpen] = useState(false);
   const [multiSelectTargetIndex, setMultiSelectTargetIndex] = useState<number | null>(null);
+  const [batchModalIndex, setBatchModalIndex] = useState<number | null>(null);
 
-  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'sales_order');
+  const { data: customFields = [] } = useActiveCustomFields(orgId!, 'invoice');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
 
-  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, {
+    moduleId: 'invoices',
+    status: 'ACTIVE',
+  });
   const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
-    queryKey: ['salesOrder', orgId, poIdToFetch],
-    queryFn: () => fetchSalesOrderById(orgId!, poIdToFetch!),
-    enabled: Boolean(orgId && poIdToFetch),
+    queryKey: ['invoice', orgId, invoiceIdToFetch],
+    queryFn: () => fetchInvoiceById(orgId!, invoiceIdToFetch!),
+    enabled: Boolean(orgId && invoiceIdToFetch && !convertFromSo),
   });
+
+  const { data: sourceSo } = useQuery({
+    queryKey: ['sales-order', orgId, convertFromSo],
+    queryFn: () => fetchSalesOrderById(orgId!, convertFromSo!),
+    enabled: Boolean(orgId && convertFromSo),
+  });
+
+  const sourceData = existingPo || sourceSo;
 
   const { data: customersPage } = useQuery({
     queryKey: ['customers', orgId],
@@ -160,6 +175,12 @@ export function CreateSalesOrder() {
     queryFn: () => fetchPaymentTerms(orgId!),
   });
 
+  const { data: preference } = useQuery({
+    queryKey: ['invoice-number-preference', orgId],
+    queryFn: () => fetchInvoiceNumberPreference(orgId!),
+    enabled: !!orgId,
+  });
+
   const {
     register,
     control,
@@ -169,11 +190,10 @@ export function CreateSalesOrder() {
     reset,
     trigger,
     formState: { errors },
-  } = useForm<CreateSalesOrderData>({
+  } = useForm<CreateInvoiceData>({
     defaultValues: {
       status: 'Draft',
       date: new Date().toISOString().split('T')[0],
-      deliveryType: 'Location',
       lineItems: [
         {
           itemId: '',
@@ -182,7 +202,7 @@ export function CreateSalesOrder() {
           discountValue: '' as unknown as number,
           discountType: 'percentage',
           itemTotal: 0,
-        } as SalesOrderItem,
+        } as InvoiceItem,
       ],
       subTotal: 0,
       totalAmount: 0,
@@ -190,8 +210,8 @@ export function CreateSalesOrder() {
   });
 
   useEffect(() => {
-    if (existingPo) {
-      const formattedLineItems = (existingPo.lineItems || []).map((item) => {
+    if (sourceData) {
+      const formattedLineItems = (sourceData.lineItems || []).map((item) => {
         const discountVal =
           item.discountValue !== undefined && item.discountValue !== null
             ? item.discountValue
@@ -204,31 +224,35 @@ export function CreateSalesOrder() {
           discountValue: discountVal || ('' as unknown as number),
           discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           itemTotal: item.itemTotal || 0,
+          batches: isClone ? undefined : 'batches' in item ? item.batches : undefined,
         };
       });
 
-      const resetData: CreateSalesOrderData = {
-        customerId: existingPo.customerId || '',
-        soNumber: isClone ? '' : existingPo.soNumber || '',
-        date: isClone
-          ? new Date().toISOString().split('T')[0]
-          : existingPo.date
-            ? new Date(existingPo.date).toISOString().split('T')[0]
-            : new Date().toISOString().split('T')[0],
-        deliveryDate: existingPo.deliveryDate
-          ? new Date(existingPo.deliveryDate).toISOString().split('T')[0]
+      const resetData: CreateInvoiceData = {
+        customerId: sourceData.customerId || '',
+        invoiceNumber:
+          isClone || convertFromSo
+            ? preference
+              ? `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`
+              : ''
+            : (sourceData as Invoice).invoiceNumber || '',
+        date:
+          isClone || convertFromSo
+            ? new Date().toISOString().split('T')[0]
+            : sourceData.date
+              ? new Date(sourceData.date).toISOString().split('T')[0]
+              : new Date().toISOString().split('T')[0],
+        dueDate: (sourceData as Invoice).dueDate
+          ? new Date((sourceData as Invoice).dueDate as string).toISOString().split('T')[0]
           : '',
-        paymentTerms: existingPo.paymentTerms || '',
-        deliveryType: existingPo.deliveryType || 'Location',
-        deliveryLocationId: existingPo.deliveryLocationId || '',
-        deliveryCustomerId: existingPo.deliveryCustomerId || '',
-        notes: existingPo.notes || '',
-        termsAndConditions: existingPo.termsAndConditions || '',
-        status: isClone ? 'Draft' : existingPo.status || 'Draft',
-        customFields: existingPo.customFields || null,
+        paymentTerms: sourceData.paymentTerms || '',
+        notes: sourceData.notes || '',
+        termsAndConditions: sourceData.termsAndConditions || '',
+        status: isClone ? 'Draft' : convertFromSo ? 'Open' : sourceData.status || 'Draft',
+        customFields: sourceData.customFields || {},
         lineItems:
           formattedLineItems.length > 0
-            ? (formattedLineItems as unknown as SalesOrderItem[])
+            ? (formattedLineItems as unknown as InvoiceItem[])
             : [
                 {
                   itemId: '',
@@ -237,23 +261,23 @@ export function CreateSalesOrder() {
                   discountValue: '' as unknown as number,
                   discountType: 'percentage',
                   itemTotal: 0,
-                } as SalesOrderItem,
+                } as InvoiceItem,
               ],
-        subTotal: Number(existingPo.subTotal) || 0,
-        totalAmount: Number(existingPo.totalAmount) || 0,
+        subTotal: Number(sourceData.subTotal) || 0,
+        totalAmount: Number(sourceData.totalAmount) || 0,
       };
 
-      if (existingPo.soNumber && !isClone) {
-        resetData.soNumber = existingPo.soNumber;
+      if ((sourceData as Invoice).invoiceNumber && !isClone && !convertFromSo) {
+        resetData.invoiceNumber = (sourceData as Invoice).invoiceNumber;
       }
 
       reset(resetData);
 
-      if (existingPo.documents && Array.isArray(existingPo.documents)) {
-        setAttachedFiles(existingPo.documents);
+      if (sourceData.documents && Array.isArray(sourceData.documents)) {
+        setAttachedFiles(sourceData.documents);
       }
     }
-  }, [existingPo, isClone, reset]);
+  }, [sourceData, isClone, convertFromSo, reset, preference]);
 
   const {
     fields: itemFields,
@@ -265,9 +289,6 @@ export function CreateSalesOrder() {
   });
 
   const watchItems = useWatch({ control, name: 'lineItems' });
-  const watchDeliveryType = watch('deliveryType');
-  const watchDeliveryLocationId = watch('deliveryLocationId');
-  const watchDeliveryCustomerId = watch('deliveryCustomerId');
   const watchLocationId = watch('locationId');
   const watchPoDate = watch('date');
   const watchPaymentTerms = watch('paymentTerms');
@@ -278,7 +299,7 @@ export function CreateSalesOrder() {
       if (term && term.dueAfterDays !== undefined && term.dueAfterDays !== null) {
         const d = new Date(watchPoDate);
         d.setDate(d.getDate() + term.dueAfterDays);
-        setValue('deliveryDate', d.toISOString().split('T')[0], {
+        setValue('dueDate', d.toISOString().split('T')[0], {
           shouldValidate: true,
           shouldDirty: true,
         });
@@ -286,13 +307,9 @@ export function CreateSalesOrder() {
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
 
-  const [poPrefix, setPoPrefix] = useState('SO-');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
   const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
-  const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
-  const [_isEditingDeliveryName, setIsEditingDeliveryName] = useState(false);
-  const [customDeliveryName, setCustomDeliveryName] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<SOAttachment[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<InvoiceAttachment[]>([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
 
@@ -323,7 +340,7 @@ export function CreateSalesOrder() {
       for (const f of newFilesArray) {
         formData.append('files', f);
       }
-      const uploadedAttachments = await uploadSOAttachments(orgId!, formData);
+      const uploadedAttachments = await uploadInvoiceAttachments(orgId!, formData);
       setAttachedFiles((prev) => [...prev, ...uploadedAttachments]);
     } catch (err: unknown) {
       const errorMsg =
@@ -377,11 +394,6 @@ export function CreateSalesOrder() {
   });
 
   useEffect(() => {
-    setCustomDeliveryName('');
-    setIsEditingDeliveryName(false);
-  }, [watchDeliveryLocationId, watchDeliveryCustomerId, watchDeliveryType]);
-
-  useEffect(() => {
     if (locations.length > 0) {
       const defaultLocation =
         locations.find((l: Location) => l.isPrimary) ||
@@ -390,16 +402,13 @@ export function CreateSalesOrder() {
         if (!watchLocationId) {
           setValue('locationId', defaultLocation.id);
         }
-        if (!watchDeliveryLocationId && watchDeliveryType === 'Location') {
-          setValue('deliveryLocationId', defaultLocation.id);
-        }
       }
     }
-  }, [locations, watchLocationId, watchDeliveryLocationId, watchDeliveryType, setValue]);
+  }, [locations, watchLocationId, setValue]);
 
   let computedSubTotal = 0;
   let computedTotalDiscount = 0;
-  (watchItems || []).forEach((item: SalesOrderItem) => {
+  (watchItems || []).forEach((item: InvoiceItem) => {
     computedSubTotal += lineGross(item);
     computedTotalDiscount += lineDiscountAmount(item);
   });
@@ -410,58 +419,64 @@ export function CreateSalesOrder() {
     setValue('totalAmount', computedTotalAmount);
   }, [computedSubTotal, computedTotalAmount, setValue]);
 
-  const { data: preference } = useQuery({
-    queryKey: ['po-number-preference', orgId],
-    queryFn: () => fetchSONumberPreference(orgId!),
-    enabled: !!orgId,
-  });
-
   const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
+  const [invoicePrefix, setInvoicePrefix] = useState('INV-');
 
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('soNumber');
+      const currentValue = watch('invoiceNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
-        setValue('soNumber', generatedNumber);
+        setValue('invoiceNumber', generatedNumber);
         setLastPrefilledNumber(generatedNumber);
-        setPoPrefix(preference.prefix);
+        setInvoicePrefix(preference.prefix);
       }
     }
   }, [preference, setValue, watch, lastPrefilledNumber, isEdit]);
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
-      updateSONumberPreference(orgId!, data),
+      updateInvoiceNumberPreference(orgId!, data),
     onSuccess: (data) => {
-      queryClient.setQueryData(['po-number-preference', orgId], data);
-      setValue('soNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
-      setPoPrefix(data.prefix);
+      queryClient.setQueryData(['invoice-number-preference', orgId], data);
+      setValue('invoiceNumber', `${data.prefix}${data.nextNumber.toString().padStart(5, '0')}`);
+      setInvoicePrefix(data.prefix);
       setIsNumberConfigOpen(false);
     },
   });
 
   const mutation = useMutation({
-    mutationFn: (data: CreateSalesOrderData) => {
+    mutationFn: async (data: CreateInvoiceData) => {
       if (isEdit && id) {
-        return updateSalesOrder({ orgId: orgId!, id, data });
+        return updateInvoice({ orgId: orgId!, id, data });
       }
-      return createSalesOrder(orgId!, data);
+      if (convertFromSo) {
+        data.salesOrderId = convertFromSo;
+      }
+      const newInvoice = await createInvoice(orgId!, data);
+      if (convertFromSo && data.status !== 'Draft' && data.status !== 'Pending Approval') {
+        await updateSalesOrder({ orgId: orgId!, id: convertFromSo, data: { status: 'Closed' } });
+      }
+      return newInvoice;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
       if (id) {
-        queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, id] });
+        queryClient.invalidateQueries({ queryKey: ['invoice', orgId, id] });
       }
-      queryClient.invalidateQueries({ queryKey: ['po-number-preference', orgId] });
-      navigate(`/organizations/${orgId}/sales/sales-orders?id=${isEdit && id ? id : data?.id}`);
+      if (convertFromSo) {
+        queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, convertFromSo] });
+        queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['invoice-number-preference', orgId] });
+      navigate(`/organizations/${orgId}/sales/invoices?id=${isEdit && id ? id : data?.id}`);
     },
     onError: (error: AxiosError<{ message?: string }>) => {
       alert(
         error.response?.data?.message ||
           error.message ||
-          `Failed to ${isEdit ? 'update' : 'create'} sales order`,
+          `Failed to ${isEdit ? 'update' : 'create'} invoice`,
       );
     },
   });
@@ -469,7 +484,7 @@ export function CreateSalesOrder() {
   const onInvalid = (errs: unknown) =>
     notify.error(firstErrorMessage(errs) ?? 'Please fix the highlighted fields.');
 
-  const onSubmit = (data: CreateSalesOrderData) => {
+  const onSubmit = (data: CreateInvoiceData) => {
     let hasErrors = false;
     const newLocalCustomFieldErrors: Record<string, string> = {};
 
@@ -514,9 +529,7 @@ export function CreateSalesOrder() {
 
     const finalData = {
       ...data,
-      deliveryCustomerId: data.deliveryCustomerId || null,
-      deliveryLocationId: data.deliveryLocationId || null,
-      deliveryDate: data.deliveryDate || null,
+      dueDate: data.dueDate || null,
       paymentTerms: data.paymentTerms || null,
       notes: data.notes || null,
       termsAndConditions: data.termsAndConditions || null,
@@ -524,12 +537,9 @@ export function CreateSalesOrder() {
       subTotal: computedSubTotal,
       totalAmount: computedTotalAmount,
       documents: attachedFiles,
-      customFields: {
-        ...data.customFields,
-        ...(customDeliveryName ? { customDeliveryName } : {}),
-      },
+      customFields: data.customFields || {},
     };
-    console.log('Submitting SO data:', finalData);
+    console.log('Submitting Invoice data:', finalData);
     mutation.mutate(finalData);
   };
 
@@ -556,7 +566,7 @@ export function CreateSalesOrder() {
   if (isFetchingPo) {
     return (
       <div style={{ padding: '64px', textAlign: 'center', color: '#64748b' }}>
-        Loading sales order details...
+        Loading invoice details...
       </div>
     );
   }
@@ -567,17 +577,17 @@ export function CreateSalesOrder() {
       <div className="page-header">
         <h1 style={{ fontSize: '20px', fontWeight: 600, margin: 0, color: '#1e293b' }}>
           {isEdit
-            ? `Edit Sales Order (${existingPo?.soNumber || ''})`
+            ? `Edit Invoice (${existingPo?.invoiceNumber || ''})`
             : isClone
-              ? 'Clone Sales Order'
-              : 'New Sales Order'}
+              ? 'Clone Invoice'
+              : 'New Invoice'}
         </h1>
         <button
           type="button"
           onClick={() =>
             navigate(
               (location.state as { returnUrl?: string })?.returnUrl ||
-                `/organizations/${orgId}/sales/sales-orders`,
+                `/organizations/${orgId}/sales/invoices`,
             )
           }
           style={{
@@ -868,14 +878,14 @@ export function CreateSalesOrder() {
                 fontSize: '13px',
               }}
             >
-              <label style={{ ...labelStyle, color: '#ef4444' }}>Sales Order#*</label>
+              <label style={{ ...labelStyle, color: '#ef4444' }}>Invoice#*</label>
               <div>
                 <div
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '440px' }}
                 >
                   <input
                     type="text"
-                    {...register('soNumber', { required: true })}
+                    {...register('invoiceNumber', { required: true })}
                     style={{ ...inputStyle, flex: 1 }}
                   />
                   <button
@@ -893,14 +903,14 @@ export function CreateSalesOrder() {
                     <Settings size={18} />
                   </button>
                 </div>
-                {errors.soNumber && (
+                {errors.invoiceNumber && (
                   <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-                    Sales Order# is required
+                    Invoice# is required
                   </div>
                 )}
               </div>
 
-              <label style={{ ...labelStyle, color: '#ef4444' }}>SO Date*</label>
+              <label style={{ ...labelStyle, color: '#ef4444' }}>Invoice Date*</label>
               <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
                 <Controller
                   name="date"
@@ -911,26 +921,26 @@ export function CreateSalesOrder() {
                       value={field.value ?? ''}
                       onChange={(next) => {
                         field.onChange(next);
-                        // Delivery date is validated against this one, so it has to
+                        // Due date is validated against this one, so it has to
                         // be re-checked whenever this moves.
-                        if (watch('deliveryDate')) trigger('deliveryDate');
+                        if (watch('dueDate')) trigger('dueDate');
                       }}
-                      ariaLabel="Sales order date"
+                      ariaLabel="Invoice date"
                       style={{ ...inputStyle, maxWidth: '100%' }}
                     />
                   )}
                 />
               </div>
 
-              <label style={labelStyle}>Delivery Date</label>
+              <label style={labelStyle}>Due Date</label>
               <div style={{ position: 'relative', width: '100%', maxWidth: '440px' }}>
                 <Controller
-                  name="deliveryDate"
+                  name="dueDate"
                   control={control}
                   rules={{
                     validate: (val) => {
                       if (!val || !watchPoDate) return true;
-                      return val >= watchPoDate || 'Delivery date must be on or after SO date';
+                      return val >= watchPoDate || 'Due date must be on or after Invoice date';
                     },
                   }}
                   render={({ field }) => (
@@ -938,14 +948,14 @@ export function CreateSalesOrder() {
                       value={field.value ?? ''}
                       onChange={field.onChange}
                       min={watchPoDate}
-                      ariaLabel="Delivery date"
+                      ariaLabel="Due date"
                       style={{ ...inputStyle, maxWidth: '100%' }}
                     />
                   )}
                 />
-                {errors.deliveryDate && (
+                {errors.dueDate && (
                   <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
-                    {errors.deliveryDate.message || 'Delivery date must be on or after SO date'}
+                    {errors.dueDate.message || 'Due date must be on or after Invoice date'}
                   </div>
                 )}
               </div>
@@ -969,16 +979,18 @@ export function CreateSalesOrder() {
           </div>
 
           {/* Custom Fields Section */}
-          <div style={{ marginBottom: '32px' }}>
-            <CustomFieldsSection
-              orgId={orgId!}
-              entityType="sales_order"
-              values={(watch('customFields') as Record<string, unknown>) ?? {}}
-              onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
-              errors={localCustomFieldErrors}
-              applyDefaults={!isEdit && !isClone}
-            />
-          </div>
+          {customFields.length > 0 && (
+            <div style={{ marginBottom: '32px' }}>
+              <CustomFieldsSection
+                orgId={orgId!}
+                entityType="invoice"
+                values={(watch('customFields') as Record<string, unknown>) ?? {}}
+                onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+                errors={localCustomFieldErrors}
+                applyDefaults={!isEdit && !isClone}
+              />
+            </div>
+          )}
 
           {/* Items Table Section */}
           <div
@@ -1285,10 +1297,16 @@ export function CreateSalesOrder() {
                               orgId={orgId!}
                               itemId={selectedItem.id}
                               unit={selectedItem.stockingUom?.symbol}
-                              deliveryLocationId={watchLocationId || watchDeliveryLocationId || ''}
+                              deliveryLocationId={watchLocationId || ''}
                               locations={locations}
                               trackInventory={selectedItem.trackInventory}
                               inventoryTracking={selectedItem.inventoryTracking}
+                              batchButtonLabel={
+                                curItem?.batches && curItem.batches.length > 0
+                                  ? `${curItem.batches.length} Batch${curItem.batches.length > 1 ? 'es' : ''} Added`
+                                  : '+ Add Batches'
+                              }
+                              onBatchClick={() => setBatchModalIndex(index)}
                             />
                           )}
                         </td>
@@ -1472,7 +1490,7 @@ export function CreateSalesOrder() {
                       discountValue: '' as unknown as number,
                       discountType: 'percentage',
                       itemTotal: 0,
-                    } as SalesOrderItem,
+                    } as InvoiceItem,
                     { shouldFocus: false },
                   )
                 }
@@ -1510,7 +1528,7 @@ export function CreateSalesOrder() {
               </label>
               <textarea
                 {...register('notes')}
-                placeholder="Will be displayed on the sales order document"
+                placeholder="Will be displayed on the invoice document"
                 style={{
                   ...inputStyle,
                   maxWidth: '100%',
@@ -1631,7 +1649,7 @@ export function CreateSalesOrder() {
               }}
             >
               <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155', margin: 0 }}>
-                Attach File(s) to Sales Order
+                Attach File(s) to Invoice
               </label>
               <div>
                 <label
@@ -1818,14 +1836,16 @@ export function CreateSalesOrder() {
                   fontSize: '13px',
                 }}
               >
-                {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+                {mutation.isPending && watch('status') === 'Pending Approval'
+                  ? 'Saving...'
+                  : 'Save & Submit for Approval'}
               </button>
             ) : (
               <button
                 type="button"
                 disabled={mutation.isPending}
                 onClick={() => {
-                  setValue('status', 'Confirmed');
+                  setValue('status', 'Paid');
                   handleSubmit(onSubmit, onInvalid)();
                 }}
                 style={{
@@ -1839,7 +1859,7 @@ export function CreateSalesOrder() {
                   fontSize: '13px',
                 }}
               >
-                {mutation.isPending && watch('status') === 'Confirmed' ? 'Saving...' : 'Save as Confirmed'}
+                {mutation.isPending && watch('status') === 'Paid' ? 'Saving...' : 'Save as Paid'}
               </button>
             )}
           </>
@@ -1869,15 +1889,15 @@ export function CreateSalesOrder() {
         </button>
       </div>
 
-      <SalesOrderNumberConfigModal
+      <InvoiceNumberConfigModal
         isOpen={isNumberConfigOpen}
         onClose={() => setIsNumberConfigOpen(false)}
-        initialPrefix={preference?.prefix || poPrefix}
+        initialPrefix={preference?.prefix || invoicePrefix}
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
-            : watch('soNumber')
-              ? watch('soNumber').replace(poPrefix, '')
+            : watch('invoiceNumber')
+              ? watch('invoiceNumber').replace(invoicePrefix, '')
               : '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {
@@ -1899,17 +1919,6 @@ export function CreateSalesOrder() {
         }}
       />
 
-      <DeliveryAddressModal
-        isOpen={isDeliveryAddressModalOpen}
-        onClose={() => setIsDeliveryAddressModalOpen(false)}
-        deliveryType={watchDeliveryType || 'Location'}
-        locations={locations}
-        customers={customers}
-        selectedLocationId={watchDeliveryLocationId || undefined}
-        selectedCustomerId={watchDeliveryCustomerId || undefined}
-        onSelectLocation={(locId) => setValue('deliveryLocationId', locId)}
-        onSelectCustomer={(custId) => setValue('deliveryCustomerId', custId)}
-      />
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}
@@ -1988,7 +1997,7 @@ export function CreateSalesOrder() {
                   discountValue: disc as unknown as number,
                   discountType: item._discountType ?? 'percentage',
                   itemTotal: 0,
-                } as SalesOrderItem,
+                } as InvoiceItem,
                 { shouldFocus: false },
               );
             }
@@ -1998,6 +2007,64 @@ export function CreateSalesOrder() {
           setMultiSelectTargetIndex(null);
         }}
       />
+
+      {batchModalIndex !== null && watchItems?.[batchModalIndex]?.item && (
+        <AddBillBatchesModal
+          isOpen={true}
+          onClose={() => setBatchModalIndex(null)}
+          orgId={orgId!}
+          itemId={watchItems[batchModalIndex].item.id}
+          itemName={watchItems[batchModalIndex].item.name || 'Unknown Item'}
+          locationId={watchLocationId || ''}
+          uomLabel={watchItems[batchModalIndex].item.stockingUom?.symbol}
+          locationName={locations.find((l) => l.id === watchLocationId)?.name || null}
+          lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
+          defaultSellingPrice={
+            watchItems[batchModalIndex].rate?.toString() ||
+            watchItems[batchModalIndex].item.sellingPrice?.toString() ||
+            ''
+          }
+          initialBatches={watchItems[batchModalIndex].batches || []}
+          onSave={(batches, overwriteQty) => {
+            setValue(
+              `lineItems.${batchModalIndex}.batches`,
+              batches.map((b) => ({
+                ...b,
+                quantity: Number(b.quantity) || 0,
+                supplierBatchRef: b.supplierBatchRef === null ? undefined : b.supplierBatchRef,
+                manufacturedDate:
+                  b.manufacturedDate instanceof Date
+                    ? b.manufacturedDate.toISOString()
+                    : b.manufacturedDate,
+                expiryDate:
+                  b.expiryDate instanceof Date ? b.expiryDate.toISOString() : b.expiryDate,
+                units: b.units?.map((u) => ({
+                  ...u,
+                  unitId: u.batchUnitId || '',
+                  label: u.label || '',
+                  quantity: Number(u.quantity) || 0,
+                })),
+              })),
+              {
+                shouldValidate: true,
+                shouldDirty: true,
+              },
+            );
+            if (overwriteQty) {
+              const total = batches.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
+              setValue(
+                `lineItems.${batchModalIndex}.quantity`,
+                total || ('' as unknown as number),
+                {
+                  shouldValidate: true,
+                  shouldDirty: true,
+                },
+              );
+            }
+            setBatchModalIndex(null);
+          }}
+        />
+      )}
 
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}

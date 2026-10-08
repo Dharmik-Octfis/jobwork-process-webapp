@@ -392,7 +392,7 @@ export class ApprovalExecutionService {
     moduleId: string,
     recordId: string,
     recordTitle: string,
-    triggerType: 'CREATE' | 'EDIT',
+    triggerType: 'CREATE' | 'EDIT' | null,
     record: Record<string, unknown>,
     actorUserId?: string,
   ): Promise<{ triggered: boolean; requestId?: string }> {
@@ -1617,8 +1617,8 @@ export class ApprovalExecutionService {
     // Resolve aliases before entering the transaction
     const moduleAliases = await this.resolveAllModuleAliases(moduleId);
 
-    return runAsTenant(organizationId, async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+    const rows = await runAsTenant(organizationId, async (tx) => {
+      return tx.$queryRaw<Array<{ id: string; status: string }>>`
         SELECT "id", "status"
         FROM "approval_requests"
         WHERE "organization_id" = ${organizationId}::uuid
@@ -1626,24 +1626,24 @@ export class ApprovalExecutionService {
           AND "record_id" = ${recordId}
         ORDER BY "submitted_at" DESC
       `;
-
-      if (rows.length === 0) {
-        return { activeRequest: null, allRequests: [] };
-      }
-
-      const allRequests: ApprovalRequestDetails[] = [];
-      let activeRequest: ApprovalRequestDetails | null = null;
-
-      for (const row of rows) {
-        const details = await this.getRequestDetails(organizationId, row.id);
-        allRequests.push(details);
-        if (!activeRequest && (details.status === 'IN_PROGRESS' || details.status === 'PENDING')) {
-          activeRequest = details;
-        }
-      }
-
-      return { activeRequest, allRequests };
     });
+
+    if (rows.length === 0) {
+      return { activeRequest: null, allRequests: [] };
+    }
+
+    const allRequests: ApprovalRequestDetails[] = [];
+    let activeRequest: ApprovalRequestDetails | null = null;
+
+    for (const row of rows) {
+      const details = await this.getRequestDetails(organizationId, row.id);
+      allRequests.push(details);
+      if (!activeRequest && (details.status === 'IN_PROGRESS' || details.status === 'PENDING')) {
+        activeRequest = details;
+      }
+    }
+
+    return { activeRequest, allRequests };
   }
 
   /**
@@ -1752,7 +1752,7 @@ export class ApprovalExecutionService {
         LEFT JOIN "users" u ON u."id" = r."requester_id"
         WHERE r."organization_id" = ${organizationId}::uuid
           AND (${statusFilter ? statusFilter : null}::text[] IS NULL OR r."status" = ANY(${statusFilter}::text[]))
-          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule})
+          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule} OR r."module_id" || 's' = ${normalizedModule} OR r."module_id" = ${normalizedModule} || 's')
           AND (
             ${searchPattern}::text IS NULL OR
             r."record_title" ILIKE ${searchPattern} OR
@@ -1801,7 +1801,7 @@ export class ApprovalExecutionService {
         LEFT JOIN "users" u ON u."id" = r."requester_id"
         WHERE r."organization_id" = ${organizationId}::uuid
           AND (${statusFilter ? statusFilter : null}::text[] IS NULL OR r."status" = ANY(${statusFilter}::text[]))
-          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule})
+          AND (${normalizedModule}::text IS NULL OR r."module_id" = ${normalizedModule} OR r."module_id" || 's' = ${normalizedModule} OR r."module_id" = ${normalizedModule} || 's')
           AND (
             ${searchPattern}::text IS NULL OR
             r."record_title" ILIKE ${searchPattern} OR

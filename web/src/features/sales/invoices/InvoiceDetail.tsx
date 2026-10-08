@@ -18,32 +18,30 @@ interface Html2PdfOptions {
 }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  fetchSalesOrderById,
-  getSOSignedUrl,
-  deleteSalesOrder,
-  updateSalesOrder,
-  type SOAttachment,
-} from './sales-orders.api';
+  fetchInvoiceById,
+  getInvoiceSignedUrl,
+  deleteInvoice,
+  updateInvoice,
+  type InvoiceAttachment,
+} from './invoices.api';
+import { fetchPaymentTerms } from '../customers/payment-terms.api';
 import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
 import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
 import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
 import { useRecordApproval } from '../../approvals/useRecordApproval';
-import { fetchPaymentTerms } from '../customers/payment-terms.api';
-
 import { organizationsApi } from '../../organizations/organizations.api';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import { SalesOrderComments } from './SalesOrderComments';
-import { SalesOrderActivityTimeline } from './SalesOrderActivityTimeline';
-import { type Invoice } from '../invoices/invoices.schemas';
+import { InvoiceComments } from './InvoiceComments';
+import { InvoiceActivityTimeline } from './InvoiceActivityTimeline';
 
-function SOAttachmentLink({ orgId, attachment }: { orgId: string; attachment: SOAttachment }) {
+function InvoiceAttachmentLink({ orgId, attachment }: { orgId: string; attachment: InvoiceAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
   const { data: signedUrl } = useQuery({
     queryKey: ['poAttachmentSignedUrl', orgId, attachment.key],
-    queryFn: () => getSOSignedUrl(orgId, attachment.key!),
+    queryFn: () => getInvoiceSignedUrl(orgId, attachment.key!),
     enabled: Boolean(orgId && attachment.key && !isDirectUrl),
     staleTime: 1000 * 60 * 30,
   });
@@ -67,13 +65,12 @@ function SOAttachmentLink({ orgId, attachment }: { orgId: string; attachment: SO
   return <span style={{ fontWeight: 500 }}>{attachment.name || 'Attachment'}</span>;
 }
 
-export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () => void }) {
+export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
-  const [activeSubTab, setActiveSubTab] = useState('Invoices');
   const [isPdfView, setIsPdfView] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
@@ -81,6 +78,15 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const pdfMenuRef = useRef<HTMLDivElement>(null);
   const pdfTemplateRef = useRef<HTMLDivElement>(null);
+  
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'invoices', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
+
+  useRecordApproval(
+    orgId,
+    'invoices',
+    invoiceId,
+  );
 
   const handleDownloadPdf = async () => {
     setIsPdfMenuOpen(false);
@@ -93,7 +99,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             (window as unknown as { html2pdf?: unknown }).html2pdf;
           const opt: Html2PdfOptions = {
             margin: [8, 8, 8, 8],
-            filename: `${po?.soNumber || 'SO'}.pdf`,
+            filename: `${inv?.invoiceNumber || 'SO'}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -133,54 +139,44 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   }, []);
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteSalesOrder(orgId!, poId),
+    mutationFn: () => deleteInvoice(orgId!, invoiceId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
       setIsConfirmDeleteOpen(false);
       onClose();
     },
   });
 
-  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
-  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
-
-  useRecordApproval(
-    orgId,
-    'sales_orders',
-    poId,
-  );
-
   const submitForApprovalMutation = useMutation({
-    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Pending Approval' } }),
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Pending Approval' } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
-      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
     },
   });
 
   const markAsApprovedMutation = useMutation({
-    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Approved' } }),
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Approved' } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
-      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
     },
   });
 
-  const markAsConfirmedMutation = useMutation({
-    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Confirmed' } }),
+  const markAsPaidMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Paid' } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
-      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
     },
   });
 
 
 
-
-  const { data: po, isLoading } = useQuery({
-    queryKey: ['salesOrder', orgId, poId],
-    queryFn: () => fetchSalesOrderById(orgId!, poId),
-    enabled: Boolean(orgId && poId),
+  const { data: inv, isLoading } = useQuery({
+    queryKey: ['invoice', orgId, invoiceId],
+    queryFn: () => fetchInvoiceById(orgId!, invoiceId),
+    enabled: Boolean(orgId && invoiceId),
   });
 
   const { data: paymentTerms } = useQuery({
@@ -196,8 +192,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   });
   const currentOrg = orgs?.find((o) => o.organizationId === orgId);
 
-  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'sales_order');
-  const printFieldDefs = customFieldDefs.filter((d) => d.showInPrint);
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'invoice');
 
   const getPaymentTermLabel = (termVal?: string | null) => {
     if (!termVal) return '-';
@@ -210,15 +205,15 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   if (isLoading) {
     return (
       <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
-        Loading sales order details...
+        Loading invoice details...
       </div>
     );
   }
 
-  if (!po) {
+  if (!inv) {
     return (
       <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
-        Sales Order not found.
+        Invoice not found.
       </div>
     );
   }
@@ -255,14 +250,23 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             className="detail-title"
             style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
           >
-            {po.soNumber}
+            {inv.invoiceNumber}
           </h2>
           <span
             style={{
               // Lowercased: the column stores "Draft", not "draft" (the filter
               // presets match it capitalised), so the bare compare was never true
               // and a draft SO was painted with the issued colour.
-              background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#3b82f6',
+              background:
+                inv.status?.toLowerCase() === 'draft'
+                  ? '#94a3b8'
+                  : inv.status?.toLowerCase() === 'pending approval'
+                    ? '#d97706'
+                    : inv.status?.toLowerCase() === 'approved'
+                      ? '#0284c7'
+                      : inv.status?.toLowerCase() === 'paid'
+                        ? '#16a34a'
+                        : '#94a3b8',
               color: 'white',
               fontSize: '11px',
               padding: '2px 8px',
@@ -271,7 +275,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               textTransform: 'capitalize',
             }}
           >
-            {po.status || 'Draft'}
+            {inv.status || 'Draft'}
           </span>
         </div>
 
@@ -279,7 +283,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
           <button
             className="action-btn"
             onClick={() =>
-              navigate(`/organizations/${orgId}/sales/sales-orders/${poId}/edit`, {
+              navigate(`/organizations/${orgId}/sales/invoices/${invoiceId}/edit`, {
                 state: { returnUrl: location.pathname + location.search },
               })
             }
@@ -339,7 +343,9 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
-                    navigate(`/organizations/${orgId}/sales/sales-orders/new?cloneFrom=${poId}`);
+                    navigate(
+                      `/organizations/${orgId}/sales/invoices/new?cloneFrom=${invoiceId}`,
+                    );
                   }}
                   style={{
                     padding: '8px 12px',
@@ -407,7 +413,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         {/* Vertical Divider */}
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
-        {/* Convert to Invoice / PDF Print Dropdown next to Activity tab */}
+        {/* Mark as Open / PDF Print Dropdown next to Activity tab */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
 
           <div ref={pdfMenuRef} style={{ position: 'relative' }}>
@@ -442,8 +448,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                   background: 'white',
                   border: '1px solid #eef0f3',
                   borderRadius: '4px',
-                  boxShadow:
-                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                   width: '130px',
                   zIndex: 20,
                   display: 'flex',
@@ -487,7 +492,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             )}
           </div>
 
-          {po?.status?.toLowerCase() === 'draft' && (
+          {inv?.status?.toLowerCase() === 'draft' && (
             isApprovalEnabled ? (
               <button
                 className="action-btn"
@@ -510,8 +515,8 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             ) : (
               <button
                 className="action-btn"
-                onClick={() => markAsConfirmedMutation.mutate()}
-                disabled={markAsConfirmedMutation.isPending}
+                onClick={() => markAsPaidMutation.mutate()}
+                disabled={markAsPaidMutation.isPending}
                 style={{
                   padding: '6px 12px',
                   border: '1px solid #16a34a',
@@ -519,17 +524,17 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                   color: 'white',
                   borderRadius: '4px',
                   fontSize: '13px',
-                  cursor: markAsConfirmedMutation.isPending ? 'not-allowed' : 'pointer',
+                  cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
                   fontWeight: 500,
-                  opacity: markAsConfirmedMutation.isPending ? 0.7 : 1,
+                  opacity: markAsPaidMutation.isPending ? 0.7 : 1,
                 }}
               >
-                {markAsConfirmedMutation.isPending ? 'Saving...' : 'Mark as Confirmed'}
+                {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
               </button>
             )
           )}
 
-          {isApprovalEnabled && po?.status?.toLowerCase() === 'pending approval' && (
+          {isApprovalEnabled && inv?.status?.toLowerCase() === 'pending approval' && (
             <button
               className="action-btn"
               onClick={() => markAsApprovedMutation.mutate()}
@@ -549,45 +554,41 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
             </button>
           )}
-
-          {(!po.invoices || po.invoices.length === 0) && (po?.status?.toLowerCase() === 'approved' || po?.status?.toLowerCase() === 'confirmed') && (
-            <>
-              <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
-              <button
-                className="action-btn"
-                onClick={() => navigate(`/organizations/${orgId}/sales/invoices/new?convertFromSo=${poId}`)}
-                style={{
-                  padding: '6px 16px',
-                  background: '#0062ff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <FileText size={16} /> Convert to Invoice
-              </button>
-            </>
+    {inv?.status?.toLowerCase() === 'approved' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsPaidMutation.mutate()}
+              disabled={markAsPaidMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #16a34a',
+                background: '#16a34a',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsPaidMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
+            </button>
           )}
+
         </div>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
         {/* Zoho-style Top Record Approval Banner */}
-        {orgId && poId && activeTab !== 'Approvals' && (
+        {orgId && invoiceId && activeTab !== 'Approvals' && (
           <div style={{ padding: '24px 24px 0 24px' }}>
             <RecordApprovalBanner
               organizationId={orgId}
-              moduleId="sales_orders"
-              recordId={poId}
+              moduleId="invoices"
+              recordId={invoiceId}
               onActionComplete={() =>
-                queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] })
+                queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] })
               }
             />
           </div>
@@ -600,169 +601,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             padding: '16px 24px',
           }}
         >
-          {/* Invoices Top Bar */}
-          <div
-            style={{
-              padding: '0 16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            <div style={{ display: 'flex', gap: '20px' }}>
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('Invoices')}
-                style={{
-                  padding: '12px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom:
-                    activeSubTab === 'Invoices' ? '2px solid #0062ff' : '2px solid transparent',
-                  color: activeSubTab === 'Invoices' ? '#0062ff' : '#475569',
-                  fontWeight: activeSubTab === 'Invoices' ? 600 : 500,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                Invoices{' '}
-                <span
-                  style={{
-                    background: '#eff6ff',
-                    color: '#0062ff',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                  }}
-                >
-                  {po.invoices?.length || 0}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Invoices List View */}
-          {!isPdfView && activeSubTab === 'Invoices' && po.invoices && po.invoices.length > 0 && (
-            <div
-              style={{
-                marginBottom: '24px',
-                overflow: 'hidden',
-              }}
-            >
-              <div className="responsive-table-wrapper">
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'left',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#64748b',
-                        }}
-                      >
-                        Invoice#
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'left',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#64748b',
-                        }}
-                      >
-                        Date
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'left',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#64748b',
-                        }}
-                      >
-                        Status
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'left',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#64748b',
-                        }}
-                      >
-                        Due Date
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 16px',
-                          textAlign: 'right',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#64748b',
-                        }}
-                      >
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {po.invoices.map((inv: Invoice) => (
-                      <tr
-                        key={inv.id}
-                        style={{ borderBottom: '1px solid #f1f5f9' }}
-                      >
-                        <td style={{ padding: '14px 16px', fontSize: '13px' }}>
-                          <Link
-                            to={`/organizations/${orgId}/sales/invoices?id=${inv.id}`}
-                            style={{ color: '#0062ff', fontWeight: 500, textDecoration: 'none' }}
-                          >
-                            {inv.invoiceNumber}
-                          </Link>
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
-                          {inv.date ? format(new Date(inv.date), 'dd-MM-yyyy') : '-'}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 16px',
-                            fontSize: '13px',
-                            color: '#64748b',
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {inv.status}
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
-                          {inv.dueDate ? format(new Date(inv.dueDate), 'dd-MM-yyyy') : '-'}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 16px',
-                            fontSize: '13px',
-                            color: '#0f172a',
-                            fontWeight: 500,
-                            textAlign: 'right',
-                          }}
-                        >
-                          ₹{Number(inv.totalAmount || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
           {/* Status Bar & PDF View Toggle */}
           <div
             style={{
@@ -847,10 +685,10 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                       margin: '0 0 4px 0',
                     }}
                   >
-                    SALES ORDER
+                    INVOICE
                   </h1>
                   <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
-                    Sales Order# <strong style={{ color: '#0f172a' }}>{po.soNumber}</strong>
+                    Invoice# <strong style={{ color: '#0f172a' }}>{inv.invoiceNumber}</strong>
                   </div>
                 </div>
 
@@ -875,11 +713,11 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         marginBottom: '2px',
                       }}
                     >
-                      {po.customer?.contactName || po.customer?.companyName || '-'}
+                      {inv.customer?.contactName || inv.customer?.companyName || '-'}
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
-                      {po.customer?.email && <div>{po.customer.email}</div>}
-                      {po.customer?.phone && <div>{po.customer.phone}</div>}
+                      {inv.customer?.email && <div>{inv.customer.email}</div>}
+                      {inv.customer?.phone && <div>{inv.customer.phone}</div>}
                     </div>
                   </div>
                 </div>
@@ -909,10 +747,19 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '12px', color: '#475569' }}>Order:</span>
+                      <span style={{ fontSize: '12px', color: '#475569' }}>Invoice:</span>
                       <span
                         style={{
-                          background: po.status?.toLowerCase() === 'draft' ? '#94a3b8' : '#16a34a',
+                          background:
+                            inv.status?.toLowerCase() === 'draft'
+                              ? '#94a3b8'
+                              : inv.status?.toLowerCase() === 'pending approval'
+                                ? '#d97706'
+                                : inv.status?.toLowerCase() === 'approved'
+                                  ? '#0284c7'
+                                  : inv.status?.toLowerCase() === 'paid'
+                                    ? '#16a34a'
+                                    : '#94a3b8',
                           color: 'white',
                           fontSize: '10px',
                           padding: '1px 6px',
@@ -921,42 +768,40 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           textTransform: 'uppercase',
                         }}
                       >
-                        {po.status || 'Draft'}
+                        {inv.status || 'Draft'}
                       </span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569' }}>
                       Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Invoice: <span style={{ color: po.invoices?.length > 0 ? '#16a34a' : '#64748b' }}>
-                        {po.invoices?.length > 0 ? 'Invoiced' : 'Not Invoiced'}
-                      </span>
+                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <div style={labelStyle}>SO DATE</div>
+                  <div style={labelStyle}>INVOICE DATE</div>
                   <div style={valueStyle}>
-                    {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
+                    {inv.date ? format(new Date(inv.date), 'dd-MM-yyyy') : '-'}
                   </div>
 
-                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY DATE</div>
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>DUE DATE</div>
                   <div style={valueStyle}>
-                    {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd-MM-yyyy') : '-'}
+                    {inv.dueDate ? format(new Date(inv.dueDate), 'dd-MM-yyyy') : '-'}
                   </div>
                 </div>
 
                 <div>
                   <div style={labelStyle}>PAYMENT TERMS</div>
-                  <div style={valueStyle}>{getPaymentTermLabel(po.paymentTerms)}</div>
+                  <div style={valueStyle}>{getPaymentTermLabel(inv.paymentTerms)}</div>
 
                   <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
-                  <div style={valueStyle}>{po.deliveryType || 'Location'}</div>
+                  <div style={valueStyle}>{inv.deliveryType || 'Location'}</div>
                 </div>
 
                 <div>
-                  <div style={labelStyle}>SO TYPE</div>
+                  <div style={labelStyle}>INVOICE TYPE</div>
                   <div style={valueStyle}>Standard</div>
                 </div>
               </div>
@@ -979,7 +824,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     <div key={def.id}>
                       <div style={labelStyle}>{def.label?.toUpperCase()}</div>
                       <div style={valueStyle}>
-                        {formatCustomFieldValue(po.customFields?.[def.key], def) || '-'}
+                        {formatCustomFieldValue(inv.customFields?.[def.key], def) || '-'}
                       </div>
                     </div>
                   ))}
@@ -1060,7 +905,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     </tr>
                   </thead>
                   <tbody>
-                    {(po.lineItems || []).map((item, index) => {
+                    {(inv.lineItems || []).map((item, index) => {
                       const discVal = Number(
                         item.discountValue !== undefined && item.discountValue !== null
                           ? item.discountValue
@@ -1071,7 +916,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
 
                       return (
                         <tr
-                          key={item.id || item.lineItemId || index}
+                          key={item.id || (item as { lineItemId?: string }).lineItemId || index}
                           style={{ borderBottom: '1px solid #f1f5f9' }}
                         >
                           <td
@@ -1109,7 +954,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                               verticalAlign: 'top',
                             }}
                           >
-                            {po.deliveryLocation?.name || 'Head Office'}
+                            {inv.location?.name || 'Head Office'}
                           </td>
                           <td
                             style={{
@@ -1163,7 +1008,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                 }}
               >
                 <div style={{ flex: 1, fontSize: '13px', color: '#475569' }}>
-                  {po.notes && (
+                  {inv.notes && (
                     <div style={{ marginBottom: '16px' }}>
                       <strong
                         style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
@@ -1171,12 +1016,12 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         Notes:
                       </strong>
                       <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
-                        {po.notes}
+                        {inv.notes}
                       </div>
                     </div>
                   )}
 
-                  {po.termsAndConditions && (
+                  {inv.termsAndConditions && (
                     <div style={{ marginBottom: '16px' }}>
                       <strong
                         style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
@@ -1184,12 +1029,12 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         Terms & Conditions:
                       </strong>
                       <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
-                        {po.termsAndConditions}
+                        {inv.termsAndConditions}
                       </div>
                     </div>
                   )}
 
-                  {po.documents && Array.isArray(po.documents) && po.documents.length > 0 && (
+                  {inv.documents && Array.isArray(inv.documents) && inv.documents.length > 0 && (
                     <div>
                       <strong
                         style={{
@@ -1211,7 +1056,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           marginTop: '8px',
                         }}
                       >
-                        {po.documents.map((att: SOAttachment, index: number) => (
+                        {inv.documents.map((att: InvoiceAttachment, index: number) => (
                           <div
                             key={index}
                             style={{
@@ -1223,7 +1068,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                             }}
                           >
                             <FileText size={14} color="#0062ff" />
-                            <SOAttachmentLink orgId={orgId!} attachment={att} />
+                            <InvoiceAttachmentLink orgId={orgId!} attachment={att} />
                             {att.size && (
                               <span style={{ color: '#94a3b8', fontSize: '11px' }}>
                                 ({(att.size / (1024 * 1024)).toFixed(2)} MB)
@@ -1255,10 +1100,10 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                   >
                     <span style={{ color: '#64748b' }}>Sub Total</span>
                     <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                      ₹{Number(po.subTotal || 0).toFixed(2)}
+                      ₹{Number(inv.subTotal || 0).toFixed(2)}
                     </span>
                   </div>
-                  {Number(po.subTotal || 0) > Number(po.totalAmount || 0) && (
+                  {Number(inv.subTotal || 0) > Number(inv.totalAmount || 0) && (
                     <div
                       style={{
                         display: 'flex',
@@ -1270,7 +1115,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     >
                       <span>Total Discount</span>
                       <span style={{ fontWeight: 600 }}>
-                        -₹{(Number(po.subTotal) - Number(po.totalAmount)).toFixed(2)}
+                        -₹{(Number(inv.subTotal) - Number(inv.totalAmount)).toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -1287,7 +1132,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     }}
                   >
                     <span>Total</span>
-                    <span>₹{Number(po.totalAmount || 0).toFixed(2)}</span>
+                    <span>₹{Number(inv.totalAmount || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -1298,7 +1143,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
           {isPdfView && (
             <div
               ref={pdfTemplateRef}
-              className="po-print-template"
+              className="inv-print-template"
               style={{
                 background: '#fff',
                 border: '1px solid #cbd5e1',
@@ -1312,7 +1157,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               }}
             >
               {/* PDF Header Table Grid */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1383,7 +1228,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                             letterSpacing: '1px',
                           }}
                         >
-                          SALES ORDER
+                          INVOICE
                         </h2>
                       </td>
                     </tr>
@@ -1391,8 +1236,8 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                 </table>
               </div>
 
-              {/* PDF SO Meta Table */}
-              <div className="responsive-table-wrapper">
+              {/* PDF Invoice Meta Table */}
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1407,7 +1252,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                       <td
                         style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                       >
-                        <strong>SO No.</strong> : <strong>{po.soNumber}</strong>
+                        <strong>Invoice No.</strong> : <strong>{inv.invoiceNumber}</strong>
                       </td>
                       <td style={{ width: '50%', padding: '6px 10px' }}>
                         <strong>Place Of Supply</strong> : Gujarat (24)
@@ -1418,16 +1263,16 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                       >
                         <strong>Date</strong> :{' '}
-                        {po.date ? format(new Date(po.date), 'dd-MM-yyyy') : '-'}
+                        {inv.date ? format(new Date(inv.date), 'dd-MM-yyyy') : '-'}
                       </td>
                       <td style={{ width: '50%', padding: '6px 10px' }}>
-                        <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
+                        <strong>Terms</strong> : {getPaymentTermLabel(inv.paymentTerms)}
                       </td>
                     </tr>
-                    {printFieldDefs.length > 0 &&
-                      Array.from({ length: Math.ceil(printFieldDefs.length / 2) }).map((_, i) => {
-                        const def1 = printFieldDefs[i * 2];
-                        const def2 = printFieldDefs[i * 2 + 1];
+                    {customFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = customFieldDefs[i * 2];
+                        const def2 = customFieldDefs[i * 2 + 1];
                         return (
                           <tr key={i} style={{ borderTop: '1px solid #000' }}>
                             <td
@@ -1438,13 +1283,13 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                               }}
                             >
                               <strong>{def1.label}</strong> :{' '}
-                              {formatCustomFieldValue(po.customFields?.[def1.key], def1) || '-'}
+                              {formatCustomFieldValue(inv.customFields?.[def1.key], def1) || '-'}
                             </td>
                             <td style={{ width: '50%', padding: '6px 10px' }}>
                               {def2 ? (
                                 <>
                                   <strong>{def2.label}</strong> :{' '}
-                                  {formatCustomFieldValue(po.customFields?.[def2.key], def2) || '-'}
+                                  {formatCustomFieldValue(inv.customFields?.[def2.key], def2) || '-'}
                                 </>
                               ) : null}
                             </td>
@@ -1456,7 +1301,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               </div>
 
               {/* Customer Address Grid */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1487,11 +1332,9 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           lineHeight: 1.5,
                         }}
                       >
-                        <strong>
-                          {po.customer?.contactName || po.customer?.companyName || '-'}
-                        </strong>
-                        {po.customer?.email && <div>{po.customer.email}</div>}
-                        {po.customer?.phone && <div>{po.customer.phone}</div>}
+                        <strong>{inv.customer?.contactName || inv.customer?.companyName || '-'}</strong>
+                        {inv.customer?.email && <div>{inv.customer.email}</div>}
+                        {inv.customer?.phone && <div>{inv.customer.phone}</div>}
                       </td>
                     </tr>
                   </tbody>
@@ -1499,7 +1342,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               </div>
 
               {/* PDF Items Table */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1535,16 +1378,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           padding: '6px 8px',
                           borderRight: '1px solid #000',
                           textAlign: 'center',
-                          width: '85px',
-                        }}
-                      >
-                        Delivery Date
-                      </th>
-                      <th
-                        style={{
-                          padding: '6px 8px',
-                          borderRight: '1px solid #000',
-                          textAlign: 'center',
                           width: '65px',
                         }}
                       >
@@ -1566,7 +1399,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                     </tr>
                   </thead>
                   <tbody>
-                    {(po.lineItems || []).map((item, index) => (
+                    {(inv.lineItems || []).map((item, index) => (
                       <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
                         <td
                           style={{
@@ -1586,15 +1419,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                               {item.description}
                             </div>
                           )}
-                        </td>
-                        <td
-                          style={{
-                            padding: '8px',
-                            borderRight: '1px solid #000',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd-MM-yyyy') : '-'}
                         </td>
                         <td
                           style={{
@@ -1624,7 +1448,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               </div>
 
               {/* PDF Totals & Signatures Grid */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1652,15 +1476,15 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         >
                           <strong>Notes:</strong>
                           <br />
-                          {po.notes ||
+                          {inv.notes ||
                             'With reference to your above quotation, we request you to supply the following materials subject to terms and conditions.'}
                         </div>
 
-                        {po.termsAndConditions && (
+                        {inv.termsAndConditions && (
                           <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                             <strong>Terms & Conditions:</strong>
                             <br />
-                            {po.termsAndConditions}
+                            {inv.termsAndConditions}
                           </div>
                         )}
                       </td>
@@ -1680,7 +1504,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           }}
                         >
                           <span>Sub Total:</span>
-                          <strong>₹{Number(po.subTotal || 0).toFixed(2)}</strong>
+                          <strong>₹{Number(inv.subTotal || 0).toFixed(2)}</strong>
                         </div>
                         <div
                           style={{
@@ -1693,7 +1517,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           }}
                         >
                           <span>Total:</span>
-                          <strong>₹{Number(po.totalAmount || 0).toFixed(2)}</strong>
+                          <strong>₹{Number(inv.totalAmount || 0).toFixed(2)}</strong>
                         </div>
 
                         <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
@@ -1712,26 +1536,29 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         </div>
 
         <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
-          <SalesOrderComments orgId={orgId!} poId={poId} />
+          <InvoiceComments orgId={orgId!} invoiceId={invoiceId} />
         </div>
         <div style={{ display: activeTab === 'Activity' ? 'block' : 'none', padding: '16px' }}>
-          <SalesOrderActivityTimeline orgId={orgId!} poId={poId} />
+          <InvoiceActivityTimeline orgId={orgId!} invoiceId={invoiceId} />
         </div>
         <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '16px' }}>
-          {orgId && poId && (
-            <RecordApprovalHistoryTimeline organizationId={orgId} moduleId="sales_orders" recordId={poId} />
+          {orgId && invoiceId && (
+            <RecordApprovalHistoryTimeline organizationId={orgId} moduleId="invoices" recordId={invoiceId} />
           )}
         </div>
       </div>
 
       <ConfirmDialog
         isOpen={isConfirmDeleteOpen}
-        title="Delete Sales Order"
-        message={`Are you sure you want to delete Sales Order ${po.soNumber}? This action cannot be undone.`}
+        title="Delete Invoice"
+        message={`Are you sure you want to delete Invoice ${inv.invoiceNumber}? This action cannot be undone.`}
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
       />
+
+
     </div>
   );
 }
+

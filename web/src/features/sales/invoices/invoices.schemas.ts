@@ -2,16 +2,39 @@
 import { z } from 'zod';
 import { paginatedSchema, type Paginated } from '../../../lib/pagination';
 
-export const SalesOrderItemSchema = z.object({
+export const invoiceItemSchema = z.object({
   id: z.string().optional(),
-  lineItemId: z.string().optional(),
   itemId: z.string().min(1, 'Item is required'),
+  batchId: z.string().nullable().optional(),
   quantity: z.number().or(z.string()).optional(),
   rate: z.number().or(z.string()).optional(),
   discountPercentage: z.number().or(z.string()).nullable().optional(),
   discount: z.number().or(z.string()).nullable().optional(),
   itemTotal: z.number().or(z.string()).optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
+  batches: z
+    .array(
+      z.object({
+        batchId: z.string().optional(),
+        supplierBatchRef: z.string().optional(),
+        manufacturerBatch: z.string().nullable().optional(),
+        manufacturedDate: z.string().nullable().optional(),
+        expiryDate: z.string().nullable().optional(),
+        mrp: z.number().or(z.string()).nullable().optional(),
+        sellingPrice: z.number().or(z.string()).nullable().optional(),
+        quantity: z.number().or(z.string()),
+        units: z
+          .array(
+            z.object({
+              unitId: z.string(),
+              label: z.string(),
+              quantity: z.number().or(z.string()),
+            }),
+          )
+          .optional(),
+      }),
+    )
+    .optional(),
   // Frontend virtual fields for display
   description: z.string().nullable().optional(),
   item: z.any().optional(),
@@ -19,16 +42,14 @@ export const SalesOrderItemSchema = z.object({
   discountValue: z.number().or(z.string()).nullable().optional(),
 });
 
-export const SalesOrderSchema = z.object({
+export const InvoiceSchema = z.object({
   id: z.string(),
   customerId: z.string().nullable().optional(),
   locationId: z.string().nullable().optional(),
-  deliveryLocationId: z.string().nullable().optional(),
-  deliveryCustomerId: z.string().nullable().optional(),
-  soNumber: z.string(),
+  invoiceNumber: z.string(),
+  salesOrderId: z.string().nullable().optional(),
   date: z.string(),
-  deliveryType: z.string().nullable().optional(),
-  deliveryDate: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
   paymentTerms: z.string().nullable().optional(),
   subTotal: z.number().or(z.string()).nullable().optional(),
   totalAmount: z.number().or(z.string()).nullable().optional(),
@@ -36,33 +57,31 @@ export const SalesOrderSchema = z.object({
   termsAndConditions: z.string().nullable().optional(),
   documents: z.any().nullable().optional(),
   status: z.string().nullable().optional(),
+  deliveryType: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.any()).nullable().optional(),
-  lineItems: z.array(SalesOrderItemSchema).nullable().optional(),
+  lineItems: z.array(invoiceItemSchema).nullable().optional(),
   // Included relations
   customer: z.any().optional(),
   location: z.any().optional(),
-  deliveryLocation: z.any().optional(),
-  deliveryCustomer: z.any().optional(),
-  invoices: z.any().optional(),
 });
 
-export const salesOrdersPageSchema = paginatedSchema(SalesOrderSchema);
-export type SalesOrdersPage = Paginated<SalesOrder>;
+export const invoicesPageSchema = paginatedSchema(InvoiceSchema);
+export type InvoicesPage = Paginated<Invoice>;
 
-export type SalesOrderItem = z.infer<typeof SalesOrderItemSchema>;
-export type SalesOrder = z.infer<typeof SalesOrderSchema>;
-export type CreateSalesOrderData = Omit<
-  SalesOrder,
+export type InvoiceItem = z.infer<typeof invoiceItemSchema>;
+export type Invoice = z.infer<typeof InvoiceSchema>;
+export type CreateInvoiceData = Omit<
+  Invoice,
   'id' | 'customer' | 'location'
 >;
-export type UpdateSalesOrderData = Partial<CreateSalesOrderData>;
+export type UpdateInvoiceData = Partial<CreateInvoiceData>;
 
-export const SalesOrderActivitySchema = z.object({
+export const InvoiceActivitySchema = z.object({
   id: z.string(),
-  salesOrderId: z.string(),
+  invoiceId: z.string(),
   title: z.string(),
   description: z.string().nullable().optional(),
   performedBy: z.string().nullable().optional(),
   createdAt: z.string(),
 });
-export type SalesOrderActivity = z.infer<typeof SalesOrderActivitySchema>;
+export type InvoiceActivity = z.infer<typeof InvoiceActivitySchema>;
