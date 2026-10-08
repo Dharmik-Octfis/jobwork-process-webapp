@@ -19,9 +19,9 @@ model ApprovalProcess {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser User?                    @relation("ApprovalProcessCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?                    @relation("ApprovalProcessUpdatedBy", fields: [updatedBy], references: [id])
+  organization  Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser User?                    @relation("ApprovalProcessCreatedBy", fields: [createdBy], references: [id], onUpdate: NoAction)
+  updatedByUser User?                    @relation("ApprovalProcessUpdatedBy", fields: [updatedBy], references: [id], onUpdate: NoAction)
   rules         ApprovalProcessRule[]
   versions      ApprovalProcessVersion[]
   admins        ApprovalProcessAdmin[]
@@ -41,9 +41,9 @@ model ApprovalProcessVersion {
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  process       ApprovalProcess   @relation(fields: [processId], references: [id], onDelete: Cascade)
-  createdByUser User?             @relation("ApprovalProcessVersionCreatedBy", fields: [createdBy], references: [id])
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  process       ApprovalProcess   @relation(fields: [processId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser User?             @relation("ApprovalProcessVersionCreatedBy", fields: [createdBy], references: [id], onUpdate: NoAction)
   requests      ApprovalRequest[]
 
   @@index([processId, versionNumber], map: "idx_approval_process_versions_proc")
@@ -64,10 +64,10 @@ model ApprovalProcessRule {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  process       ApprovalProcess   @relation(fields: [processId], references: [id], onDelete: Cascade)
-  createdByUser User?             @relation("ApprovalProcessRuleCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?             @relation("ApprovalProcessRuleUpdatedBy", fields: [updatedBy], references: [id])
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  process       ApprovalProcess   @relation(fields: [processId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser User?             @relation("ApprovalProcessRuleCreatedBy", fields: [createdBy], references: [id], onUpdate: NoAction)
+  updatedByUser User?             @relation("ApprovalProcessRuleUpdatedBy", fields: [updatedBy], references: [id], onUpdate: NoAction)
   stages        ApprovalStage[]
   actions       ApprovalAction[]
   requests      ApprovalRequest[]
@@ -93,10 +93,10 @@ model ApprovalStage {
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  rule            ApprovalProcessRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  createdByUser   User?                  @relation("ApprovalStageCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser   User?                  @relation("ApprovalStageUpdatedBy", fields: [updatedBy], references: [id])
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rule            ApprovalProcessRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser   User?                  @relation("ApprovalStageCreatedBy", fields: [createdBy], references: [id], onUpdate: NoAction)
+  updatedByUser   User?                  @relation("ApprovalStageUpdatedBy", fields: [updatedBy], references: [id], onUpdate: NoAction)
   actions         ApprovalAction[]
   requestStages   ApprovalRequestStage[]
   currentRequests ApprovalRequest[]
@@ -119,11 +119,11 @@ model ApprovalAction {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  rule          ApprovalProcessRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  stage         ApprovalStage?            @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  createdByUser User?                     @relation("ApprovalActionCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?                     @relation("ApprovalActionUpdatedBy", fields: [updatedBy], references: [id])
+  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rule          ApprovalProcessRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stage         ApprovalStage?            @relation(fields: [stageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser User?                     @relation("ApprovalActionCreatedBy", fields: [createdBy], references: [id], onUpdate: NoAction)
+  updatedByUser User?                     @relation("ApprovalActionUpdatedBy", fields: [updatedBy], references: [id], onUpdate: NoAction)
   executions    ApprovalActionExecution[]
 
   @@index([ruleId, triggerEvent, isDeleted], map: "idx_approval_actions_rule")
@@ -139,9 +139,9 @@ model ApprovalProcessAdmin {
   canReassign    Boolean  @default(true) @map("can_reassign")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  process      ApprovalProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  process      ApprovalProcess @relation(fields: [processId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([processId, userId], map: "uq_approval_process_admin")
   @@map("approval_process_admins")
@@ -169,14 +169,14 @@ model ApprovalRequest {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  process          ApprovalProcess           @relation(fields: [processId], references: [id], onDelete: Cascade)
-  processVersion   ApprovalProcessVersion?   @relation(fields: [processVersionId], references: [id], onDelete: SetNull)
-  rule             ApprovalProcessRule?      @relation(fields: [ruleId], references: [id], onDelete: SetNull)
-  currentStage     ApprovalStage?            @relation(fields: [currentStageId], references: [id], onDelete: SetNull)
-  requester        User?                     @relation("ApprovalRequestRequester", fields: [requesterId], references: [id], onDelete: SetNull)
-  createdByUser    User?                     @relation("ApprovalRequestCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser    User?                     @relation("ApprovalRequestUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  process          ApprovalProcess           @relation(fields: [processId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  processVersion   ApprovalProcessVersion?   @relation(fields: [processVersionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  rule             ApprovalProcessRule?      @relation(fields: [ruleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  currentStage     ApprovalStage?            @relation(fields: [currentStageId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  requester        User?                     @relation("ApprovalRequestRequester", fields: [requesterId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  createdByUser    User?                     @relation("ApprovalRequestCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  updatedByUser    User?                     @relation("ApprovalRequestUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
   stages           ApprovalRequestStage[]
   history          ApprovalHistory[]
   actionExecutions ApprovalActionExecution[]
@@ -200,9 +200,9 @@ model ApprovalRequestStage {
   startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
   completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
 
-  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  request      ApprovalRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  stage        ApprovalStage?            @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request      ApprovalRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stage        ApprovalStage?            @relation(fields: [stageId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   approvers    ApprovalRequestApprover[]
 
   @@index([requestId, stageOrder], map: "idx_approval_request_stages_req")
@@ -220,9 +220,9 @@ model ApprovalRequestApprover {
   ipAddress      String?   @map("ip_address") @db.VarChar(45)
   userAgent      String?   @map("user_agent") @db.VarChar(255)
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  requestStage ApprovalRequestStage @relation(fields: [requestStageId], references: [id], onDelete: Cascade)
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requestStage ApprovalRequestStage @relation(fields: [requestStageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId, status], map: "idx_approval_request_approvers_user")
   @@index([requestStageId], map: "idx_approval_request_approvers_stage")
@@ -241,9 +241,9 @@ model ApprovalHistory {
   metadata       Json?    @db.JsonB
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  actor        User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  actor        User?           @relation(fields: [actorId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([requestId, createdAt], map: "idx_approval_history_req")
   @@map("approval_history")
@@ -264,9 +264,9 @@ model ApprovalActionExecution {
   executedAt       DateTime  @default(now()) @map("executed_at") @db.Timestamptz(6)
   nextRetryAt      DateTime? @map("next_retry_at") @db.Timestamptz(6)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  action       ApprovalAction? @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  action       ApprovalAction? @relation(fields: [actionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([requestId, status], map: "idx_approval_action_executions_req")
   @@map("approval_action_executions")
@@ -283,9 +283,9 @@ model ApprovalNotification {
   isRead         Boolean  @default(false) @map("is_read")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  recipient    User            @relation("ApprovalNotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request      ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipient    User            @relation("ApprovalNotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([recipientId, isRead], map: "idx_approval_notifications_recip")
   @@map("approval_notifications")
