@@ -616,7 +616,7 @@ export class ItemsService {
               salesOrder: {
                 organizationId,
                 locationId: primaryLoc.id,
-                status: 'Approved',
+                status: { in: ['Approved', 'Confirmed'] },
                 isDeleted: false,
               },
             },
@@ -664,7 +664,7 @@ export class ItemsService {
           salesOrder: {
             organizationId,
             locationId,
-            status: 'Approved',
+            status: { in: ['Approved', 'Confirmed'] },
             isDeleted: false,
           },
         },
@@ -902,6 +902,110 @@ export class ItemsService {
           rate: Number(row.rate),
           amount: Number(row.itemTotal),
           status: row.bill?.status,
+        })),
+      };
+    });
+  }
+
+  async getItemInvoices(itemId: string, organizationId: string, opts: ListQuery) {
+    const { page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!item) {
+        throw ApiError.notFound('Item not found');
+      }
+
+      const rows = await tx.invoiceItem.findMany({
+        where: {
+          itemId: itemId,
+          isDeleted: false,
+          invoice: {
+            organizationId: organizationId,
+            isDeleted: false,
+            ...searchWhere<Prisma.InvoiceWhereInput>(opts.search, ['invoiceNumber', 'status']),
+          },
+        },
+        orderBy: { invoice: { date: 'desc' } },
+        skip: (page - 1) * perPage,
+        take: takeForPage(perPage),
+        include: {
+          invoice: {
+            include: {
+              customer: { select: { contactName: true } },
+            },
+          },
+        },
+      });
+
+      const paginated = pageSlice(rows, page, perPage);
+
+      return {
+        ...paginated,
+        results: paginated.results.map((row) => ({
+          id: row.id,
+          invoiceId: row.invoice?.id,
+          invoiceDate: row.invoice?.date,
+          invoiceNumber: row.invoice?.invoiceNumber,
+          customerName: row.invoice?.customer?.contactName,
+          quantity: Number(row.quantity),
+          rate: Number(row.rate),
+          amount: Number(row.itemTotal),
+          status: row.invoice?.status,
+        })),
+      };
+    });
+  }
+
+  async getItemSalesOrders(itemId: string, organizationId: string, opts: ListQuery) {
+    const { page, perPage } = opts;
+    return runAsTenant(organizationId, async (tx) => {
+      const item = await tx.item.findFirst({
+        where: { id: itemId, organizationId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!item) {
+        throw ApiError.notFound('Item not found');
+      }
+
+      const rows = await tx.salesOrderItem.findMany({
+        where: {
+          itemId: itemId,
+          isDeleted: false,
+          salesOrder: {
+            organizationId: organizationId,
+            isDeleted: false,
+            ...searchWhere<Prisma.SalesOrderWhereInput>(opts.search, ['soNumber', 'status']),
+          },
+        },
+        orderBy: { salesOrder: { date: 'desc' } },
+        skip: (page - 1) * perPage,
+        take: takeForPage(perPage),
+        include: {
+          salesOrder: {
+            include: {
+              customer: { select: { contactName: true } },
+            },
+          },
+        },
+      });
+
+      const paginated = pageSlice(rows, page, perPage);
+
+      return {
+        ...paginated,
+        results: paginated.results.map((row) => ({
+          id: row.id,
+          salesOrderId: row.salesOrder?.id,
+          salesOrderDate: row.salesOrder?.date,
+          salesOrderNumber: row.salesOrder?.soNumber,
+          customerName: row.salesOrder?.customer?.contactName,
+          quantity: Number(row.quantity),
+          rate: Number(row.rate),
+          amount: Number(row.itemTotal),
+          status: row.salesOrder?.status,
         })),
       };
     });

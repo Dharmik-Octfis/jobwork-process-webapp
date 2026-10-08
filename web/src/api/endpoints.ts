@@ -152,6 +152,9 @@ export const endpoints = {
     salesOrders: (orgId: string) => `/organizations/${orgId}/sales/sales-orders`,
     salesOrderPreferences: (orgId: string) =>
       `/organizations/${orgId}/sales/sales-orders/preferences/number-sequence`,
+    invoices: (orgId: string) => `/organizations/${orgId}/sales/invoices`,
+    invoicePreferences: (orgId: string) =>
+      `/organizations/${orgId}/sales/invoices/preferences/number-sequence`,
   },
   configuration: {
     locations: (orgId: string) => `/organizations/${orgId}/configuration/locations`,

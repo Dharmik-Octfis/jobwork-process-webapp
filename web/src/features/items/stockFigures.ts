@@ -25,9 +25,11 @@ export function stockOnHandOf(row: ItemOpeningStockLocationRowDto): number {
  * yet assigned to a batch (the server leaves that out of `availableForSale`), less
  * what is committed. */
 export function availableOf(row: ItemOpeningStockLocationRowDto): number {
+  if (row.availableForSale !== undefined && row.availableForSale !== null) {
+    return Number(row.availableForSale);
+  }
   const committed = Number(row.committedStock ?? 0) || 0;
-  const issuable = Number(row.availableForSale ?? stockOnHandOf(row)) || 0;
-  return issuable - committed;
+  return stockOnHandOf(row) - committed;
 }
 
 /** The opening figure declared for this location; 0 where none was declared (a

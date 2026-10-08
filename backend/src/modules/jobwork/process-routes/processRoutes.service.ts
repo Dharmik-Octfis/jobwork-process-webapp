@@ -217,15 +217,15 @@ function assertNoRepeatedItem(
   }
 }
 
-/** 🔴 Exactly one primary output per step (§9.2.1) — the one that will carry the
- * step's cost when a job order runs this template. */
+/** Exactly one primary output per step — the main output a job order copies from
+ * this template. It no longer decides cost (landed-cost R1–R7). */
 function flagPrimaryOutput(rows: readonly RouteStepRow[], stepIndex: number): ResolvedRow[] {
   const flagged = rows.filter((row) => row.isPrimary);
   if (flagged.length > 1) {
     throw new ApiError(
       400,
       `Step ${stepIndex + 1} marks ${flagged.length} outputs as primary. Only one output can ` +
-        'carry the cost of the step.',
+        'be the main one.',
       { [`steps.${stepIndex}.outputs`]: 'Mark exactly one output as primary.' },
     );
   }

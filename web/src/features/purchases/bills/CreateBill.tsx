@@ -70,46 +70,69 @@ import { invalidateStockQueries } from '../../jobwork/stockCache';
  * A job receipt is billed as the job worker's SERVICE, never as the goods: the
  * receipt already valued its output at material + agreed charge. The user picks the
  * process's service item and types qty and rate; the server refuses anything else.
+ *
+ * One line per output with accepted quantity: outputs can be in different units at
+ * different rates, so one summed line would add pieces to kilograms and charge the
+ * by-products at the main output's rate.
  */
-function receiptChargeLine(receipt: {
+function receiptChargeLines(receipt: {
   id: string;
   receiptNumber: string;
   jobOrder?: { jobOrderNumber?: string | null } | null;
   outputs?: {
     acceptedQty?: string | number | null;
     rate?: string | number | null;
-    isPrimary?: boolean;
+    item?: { name: string } | null;
+    uom?: { unitName: string; symbol?: string | null } | null;
   }[];
   totalAcceptedQty?: string | number;
-}): BillItem {
-  let qtyNum = 0;
-  let rateNum = 0;
-
-  if (receipt.outputs && Array.isArray(receipt.outputs)) {
-    qtyNum = receipt.outputs.reduce((acc, curr) => acc + (Number(curr.acceptedQty) || 0), 0);
-    const primary = receipt.outputs.find((o) => o.isPrimary) || receipt.outputs[0];
-    if (primary) {
-      rateNum = Number(primary.rate) || 0;
-    }
-  } else if ('totalAcceptedQty' in receipt) {
-    qtyNum = Number(receipt.totalAcceptedQty) || 0;
-  }
-
-  const quantity = qtyNum > 0 ? qtyNum : ('' as unknown as number);
-  const rate = rateNum > 0 ? rateNum : ('' as unknown as number);
-  const amount = qtyNum * rateNum || 0;
-
-  return {
-    itemId: '',
-    quantity,
-    rate,
-    discountValue: '' as unknown as number,
-    discountType: 'percentage',
-    amount,
-    itemTotal: amount,
-    jobReceiptId: receipt.id,
-    description: `Job work charges for Job Order ${receipt.jobOrder?.jobOrderNumber ?? ''} / Receive ${receipt.receiptNumber}`,
+}): BillItem[] {
+  const base = `Job work charges for Job Order ${receipt.jobOrder?.jobOrderNumber ?? ''} / Receive ${receipt.receiptNumber}`;
+  const line = (qtyNum: number, rateNum: number, description: string): BillItem => {
+    const amount = qtyNum * rateNum || 0;
+    return {
+      itemId: '',
+      quantity: qtyNum > 0 ? qtyNum : ('' as unknown as number),
+      rate: rateNum > 0 ? rateNum : ('' as unknown as number),
+      discountValue: '' as unknown as number,
+      discountType: 'percentage',
+      amount,
+      itemTotal: amount,
+      jobReceiptId: receipt.id,
+      description,
+    };
   };
+
+  const accepted = (receipt.outputs ?? []).filter((o) => Number(o.acceptedQty) > 0);
+  if (accepted.length === 0) {
+    return [line(Number(receipt.totalAcceptedQty) || 0, 0, base)];
+  }
+  // With the item left for the user to pick, the description is what tells two lines apart.
+  return accepted.map((o) => {
+    const unit = o.uom ? (o.uom.symbol ?? o.uom.unitName) : null;
+    const label = o.item?.name ? ` — ${o.item.name}${unit ? ` (${unit})` : ''}` : '';
+    return line(
+      Number(o.acceptedQty),
+      Number(o.rate) || 0,
+      accepted.length > 1 ? `${base}${label}` : base,
+    );
+  });
+}
+
+/** Writes receipt lines from the first blank row onward, filling blank rows before appending. */
+function placeReceiptLines(currentItems: BillItem[], lines: BillItem[]): BillItem[] {
+  const newItems = [...currentItems];
+  let index = newItems.findIndex((item) => !item.itemId);
+  if (index === -1) index = newItems.length;
+  for (const itemData of lines) {
+    if (index < newItems.length && !newItems[index].itemId) {
+      newItems[index] = { ...newItems[index], ...itemData };
+    } else {
+      newItems.push(itemData);
+    }
+    index++;
+  }
+  return newItems;
 }
 
 function getImageKey(img: unknown): string | null {
@@ -414,21 +437,10 @@ export function CreateBill() {
     if (jobReceiptId && openJobReceipts.length > 0 && !hasAutoFilledJobReceipt) {
       const receipt = openJobReceipts.find((r) => r.id === jobReceiptId);
       if (receipt) {
-        const currentItems = getValues('lineItems') ?? [];
-        let startIndex = currentItems.findIndex((item) => !item.itemId);
-
-        if (startIndex === -1) {
-          startIndex = currentItems.length;
-        }
-
-        const newItems = [...currentItems];
-        const itemData = receiptChargeLine(receipt);
-        if (startIndex < newItems.length && !newItems[startIndex].itemId) {
-          newItems[startIndex] = { ...newItems[startIndex], ...itemData };
-        } else {
-          newItems.push(itemData);
-        }
-
+        const newItems = placeReceiptLines(
+          getValues('lineItems') ?? [],
+          receiptChargeLines(receipt),
+        );
         setValue('lineItems', newItems, { shouldValidate: true });
         setHasAutoFilledJobReceipt(true);
       }
@@ -502,7 +514,7 @@ export function CreateBill() {
 
   useEffect(() => {
     if (sourceJobReceipt && isFromJobReceipt) {
-      const formattedLineItems: BillItem[] = [receiptChargeLine(sourceJobReceipt)];
+      const formattedLineItems: BillItem[] = receiptChargeLines(sourceJobReceipt);
 
       const resetData: CreateBillData = {
         vendorId: sourceJobReceipt.processorId || '',
@@ -2219,26 +2231,10 @@ export function CreateBill() {
         onClose={() => setIsJobReceiptModalOpen(false)}
         jobReceipts={openJobReceipts}
         onAdd={(selectedReceipts) => {
-          const currentItems = getValues('lineItems') ?? [];
-          let startIndex = currentItems.findIndex((item) => !item.itemId);
-
-          if (startIndex === -1) {
-            startIndex = currentItems.length;
-          }
-
-          const newItems = [...currentItems];
-
-          selectedReceipts.forEach((receipt) => {
-            // If the targeted row is empty, overwrite it, else push new
-            const itemData = receiptChargeLine(receipt);
-            if (startIndex < newItems.length && !newItems[startIndex].itemId) {
-              newItems[startIndex] = { ...newItems[startIndex], ...itemData };
-            } else {
-              newItems.push(itemData);
-            }
-            startIndex++;
-          });
-
+          const newItems = placeReceiptLines(
+            getValues('lineItems') ?? [],
+            selectedReceipts.flatMap(receiptChargeLines),
+          );
           setValue('lineItems', newItems, { shouldValidate: true });
         }}
       />

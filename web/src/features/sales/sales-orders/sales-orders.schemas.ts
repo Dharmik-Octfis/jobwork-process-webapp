@@ -46,8 +46,8 @@ export const SalesOrderSchema = z.object({
   location: z.any().optional(),
   deliveryLocation: z.any().optional(),
   deliveryCustomer: z.any().optional(),
-  bills: z.any().optional(),
-}).passthrough();
+  invoices: z.any().optional(),
+});
 
 export const salesOrdersPageSchema = paginatedSchema(SalesOrderSchema);
 export type SalesOrdersPage = Paginated<SalesOrder>;

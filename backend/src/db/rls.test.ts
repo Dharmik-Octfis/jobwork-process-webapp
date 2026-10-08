@@ -20,6 +20,10 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
 const TENANT_TABLES = [
   'bills',
   'bill_items',
+  'invoices',
+  'invoice_items',
+  'invoice_activities',
+  'invoice_comments',
   // What a bill line says it received, broken down by batch and package. Added in
   // 20260908075034_add_bill_item_batches. It carries its own `organization_id`
   // — denormalised from the parent bill — so it takes the direct policy form,

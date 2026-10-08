@@ -39,8 +39,8 @@ const nullableUuid = z.string().uuid().nullable().optional();
  * depends on what actually went out, and a template that guessed it would put a
  * number on the receipt screen nobody had reason to believe.
  *
- * `isPrimary` is likewise meaningful on outputs alone — it names the output that
- * will absorb the step's cost (§9.2.1). Both live on this one shared shape and
+ * `isPrimary` is likewise meaningful on outputs alone — it names the step's main
+ * output (it no longer decides cost). Both live on this one shared shape and
  * the service ignores each on the side it means nothing.
  */
 export const routeStepRowSchema = z.object({

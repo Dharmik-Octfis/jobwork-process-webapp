@@ -337,20 +337,20 @@ function assertNoRepeatedItem(
 }
 
 /**
- * 🔴 EXACTLY ONE PRIMARY OUTPUT PER STEP (§9.2.1).
+ * EXACTLY ONE PRIMARY OUTPUT PER STEP — when nobody chooses, the first row is it.
  *
- * It absorbs the step's whole cost, so two of them would mean the operation was
- * paid for twice and none would mean the cost lands nowhere. Apportioning by
- * quantity is not available as a fallback — 2,880 PCS and 80 KG have no ratio
- * between them — so when nobody chooses, the first row is it.
+ * It is the step's headline: what the next step is offered to carry on, what a
+ * receipt's header totals describe, and the only output whose expected quantity
+ * is derived. It no longer decides cost — every output is costed by recipe or
+ * share (landed-cost R1–R7, 2026-09-18).
  */
 function flagPrimaryOutput(rows: readonly StepOutputRow[], stepIndex: number): ResolvedOutput[] {
   const flagged = rows.filter((row) => row.isPrimary);
   if (flagged.length > 1) {
     throw new ApiError(
       400,
-      `Step ${stepIndex + 1} marks ${flagged.length} outputs as primary. Only one output can carry ` +
-        'the cost of the step; the others take an explicit value.',
+      `Step ${stepIndex + 1} marks ${flagged.length} outputs as primary. Only one output can be ` +
+        'the main one.',
       { [`steps.${stepIndex}.outputs`]: 'Mark exactly one output as primary.' },
     );
   }

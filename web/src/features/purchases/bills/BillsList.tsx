@@ -237,7 +237,7 @@ export function BillsList() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: selectedPoId ? '12px 16px' : '16px 24px',
+                padding: selectedPoId ? '20px 16px' : '20px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
                 gap: 8,

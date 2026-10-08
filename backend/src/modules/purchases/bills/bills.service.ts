@@ -1484,6 +1484,7 @@ export async function getOpenJobReceiptsForVendor(organizationId: string, vendor
                 inventoryTracking: true,
               },
             },
+            uom: { select: { id: true, unitName: true, symbol: true } },
             outputBatch: { select: { id: true, batchNumber: true } },
             batches: {
               include: { batch: { select: { id: true, supplierBatchRef: true } } },

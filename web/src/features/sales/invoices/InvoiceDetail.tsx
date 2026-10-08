@@ -1,0 +1,1564 @@
+import { format } from 'date-fns';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
+interface Html2PdfOptions {
+  margin?: number | [number, number] | [number, number, number, number];
+  filename?: string;
+  image?: {
+    type?: 'jpeg' | 'png' | 'webp';
+    quality?: number;
+  };
+  enableLinks?: boolean;
+  html2canvas?: object;
+  jsPDF?: {
+    unit?: string;
+    format?: string | [number, number];
+    orientation?: 'portrait' | 'landscape';
+  };
+}
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  fetchInvoiceById,
+  getInvoiceSignedUrl,
+  deleteInvoice,
+  updateInvoice,
+  type InvoiceAttachment,
+} from './invoices.api';
+import { fetchPaymentTerms } from '../customers/payment-terms.api';
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
+import { organizationsApi } from '../../organizations/organizations.api';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { InvoiceComments } from './InvoiceComments';
+import { InvoiceActivityTimeline } from './InvoiceActivityTimeline';
+
+function InvoiceAttachmentLink({ orgId, attachment }: { orgId: string; attachment: InvoiceAttachment }) {
+  const isDirectUrl = Boolean(attachment.data || attachment.url);
+  const { data: signedUrl } = useQuery({
+    queryKey: ['poAttachmentSignedUrl', orgId, attachment.key],
+    queryFn: () => getInvoiceSignedUrl(orgId, attachment.key!),
+    enabled: Boolean(orgId && attachment.key && !isDirectUrl),
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const finalUrl = isDirectUrl ? attachment.data || attachment.url : signedUrl;
+
+  if (finalUrl) {
+    return (
+      <a
+        href={finalUrl}
+        download={attachment.name || 'attachment'}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: '#0062ff', textDecoration: 'none', fontWeight: 500 }}
+      >
+        {attachment.name || 'Attachment'}
+      </a>
+    );
+  }
+
+  return <span style={{ fontWeight: 500 }}>{attachment.name || 'Attachment'}</span>;
+}
+
+export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
+  const { orgId } = useParams<{ orgId: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('Overview');
+  const [isPdfView, setIsPdfView] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const pdfMenuRef = useRef<HTMLDivElement>(null);
+  const pdfTemplateRef = useRef<HTMLDivElement>(null);
+  
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'invoices', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
+
+  useRecordApproval(
+    orgId,
+    'invoices',
+    invoiceId,
+  );
+
+  const handleDownloadPdf = async () => {
+    setIsPdfMenuOpen(false);
+    setIsPdfView(true);
+    setTimeout(async () => {
+      if (pdfTemplateRef.current) {
+        try {
+          const html2pdfModule =
+            (await import('html2pdf.js')).default ||
+            (window as unknown as { html2pdf?: unknown }).html2pdf;
+          const opt: Html2PdfOptions = {
+            margin: [8, 8, 8, 8],
+            filename: `${inv?.invoiceNumber || 'SO'}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          };
+          if (typeof html2pdfModule === 'function') {
+            html2pdfModule().set(opt).from(pdfTemplateRef.current).save();
+          } else {
+            window.print();
+          }
+        } catch (err) {
+          console.error('PDF generation error:', err);
+          window.print();
+        }
+      }
+    }, 150);
+  };
+
+  const handlePrint = () => {
+    setIsPdfMenuOpen(false);
+    setIsPdfView(true);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreOpen(false);
+      }
+      if (pdfMenuRef.current && !pdfMenuRef.current.contains(event.target as Node)) {
+        setIsPdfMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteInvoice(orgId!, invoiceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+      setIsConfirmDeleteOpen(false);
+      onClose();
+    },
+  });
+
+  const submitForApprovalMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Pending Approval' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+    },
+  });
+
+  const markAsApprovedMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Approved' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+    },
+  });
+
+  const markAsPaidMutation = useMutation({
+    mutationFn: () => updateInvoice({ orgId: orgId!, id: invoiceId, data: { status: 'Paid' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+    },
+  });
+
+
+
+  const { data: inv, isLoading } = useQuery({
+    queryKey: ['invoice', orgId, invoiceId],
+    queryFn: () => fetchInvoiceById(orgId!, invoiceId),
+    enabled: Boolean(orgId && invoiceId),
+  });
+
+  const { data: paymentTerms } = useQuery({
+    queryKey: ['paymentTerms', orgId],
+    queryFn: () => fetchPaymentTerms(orgId!),
+    enabled: Boolean(orgId),
+  });
+
+  const { data: orgs } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => organizationsApi.getOrganizations(),
+    enabled: Boolean(orgId),
+  });
+  const currentOrg = orgs?.find((o) => o.organizationId === orgId);
+
+  const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'invoice');
+
+  const getPaymentTermLabel = (termVal?: string | null) => {
+    if (!termVal) return '-';
+    const found = paymentTerms?.find(
+      (pt) => pt.id.toString() === termVal || pt.termName === termVal,
+    );
+    return found ? found.termName : termVal;
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
+        Loading invoice details...
+      </div>
+    );
+  }
+
+  if (!inv) {
+    return (
+      <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
+        Invoice not found.
+      </div>
+    );
+  }
+
+  const tabs = ['Overview', 'Comments', 'Activity', 'Approvals'];
+
+  const labelStyle = {
+    fontSize: '11px',
+    color: '#64748b',
+    marginBottom: '2px',
+  };
+
+  const valueStyle = {
+    fontSize: '12px',
+    color: '#1e293b',
+    fontWeight: 500,
+    marginBottom: '12px',
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: '#fff',
+        borderLeft: '1px solid #eef0f3',
+      }}
+    >
+      {/* Header */}
+      <div className="detail-page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h2
+            className="detail-title"
+            style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b', margin: 0 }}
+          >
+            {inv.invoiceNumber}
+          </h2>
+          <span
+            style={{
+              // Lowercased: the column stores "Draft", not "draft" (the filter
+              // presets match it capitalised), so the bare compare was never true
+              // and a draft SO was painted with the issued colour.
+              background:
+                inv.status?.toLowerCase() === 'draft'
+                  ? '#94a3b8'
+                  : inv.status?.toLowerCase() === 'pending approval'
+                    ? '#d97706'
+                    : inv.status?.toLowerCase() === 'approved'
+                      ? '#0284c7'
+                      : inv.status?.toLowerCase() === 'paid'
+                        ? '#16a34a'
+                        : '#94a3b8',
+              color: 'white',
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontWeight: 500,
+              textTransform: 'capitalize',
+            }}
+          >
+            {inv.status || 'Draft'}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className="action-btn"
+            onClick={() =>
+              navigate(`/organizations/${orgId}/sales/invoices/${invoiceId}/edit`, {
+                state: { returnUrl: location.pathname + location.search },
+              })
+            }
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #d1d5db',
+              background: 'white',
+              borderRadius: '4px',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <Edit size={14} /> <span className="action-btn-text">Edit</span>
+          </button>
+
+          <div style={{ position: 'relative' }} ref={moreMenuRef}>
+            <button
+              className="action-btn"
+              onClick={() => setIsMoreOpen(!isMoreOpen)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              <span className="action-btn-text">More</span> <ChevronDown size={14} />
+            </button>
+
+            {isMoreOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #eef0f3',
+                  borderRadius: '4px',
+                  boxShadow:
+                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  width: '140px',
+                  zIndex: 10,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    navigate(
+                      `/organizations/${orgId}/sales/invoices/new?cloneFrom=${invoiceId}`,
+                    );
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Copy size={14} /> Clone
+                </div>
+                <div
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    setIsConfirmDeleteOpen(true);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#ef4444',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Trash2 size={14} /> Delete
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '6px 8px',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              color: '#64748b',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="detail-page-tabs">
+        {tabs.map((tab) => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
+        ))}
+
+        {/* Vertical Divider */}
+        <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
+
+        {/* Mark as Open / PDF Print Dropdown next to Activity tab */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+
+          <div ref={pdfMenuRef} style={{ position: 'relative' }}>
+            <button
+              className="action-btn"
+              onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
+              style={{
+                padding: '12px 0',
+                border: 'none',
+                background: 'transparent',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#777777',
+                fontWeight: 400,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#222222')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#777777')}
+            >
+              <FileText size={16} /> PDF/<span className="action-btn-text">Print</span>{' '}
+              <ChevronDown size={14} />
+            </button>
+            {isPdfMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #eef0f3',
+                  borderRadius: '4px',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  width: '130px',
+                  zIndex: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={handleDownloadPdf}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <FileText size={14} /> Download PDF
+                </div>
+                <div
+                  onClick={handlePrint}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Printer size={14} /> Print
+                </div>
+              </div>
+            )}
+          </div>
+
+          {inv?.status?.toLowerCase() === 'draft' && (
+            isApprovalEnabled ? (
+              <button
+                className="action-btn"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d97706',
+                  background: '#d97706',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                className="action-btn"
+                onClick={() => markAsPaidMutation.mutate()}
+                disabled={markAsPaidMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #16a34a',
+                  background: '#16a34a',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: markAsPaidMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
+              </button>
+            )
+          )}
+
+          {isApprovalEnabled && inv?.status?.toLowerCase() === 'pending approval' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsApprovedMutation.mutate()}
+              disabled={markAsApprovedMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #0062ff',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
+            </button>
+          )}
+    {inv?.status?.toLowerCase() === 'approved' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsPaidMutation.mutate()}
+              disabled={markAsPaidMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #16a34a',
+                background: '#16a34a',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsPaidMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
+            </button>
+          )}
+
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && invoiceId && activeTab !== 'Approvals' && (
+          <div style={{ padding: '24px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="invoices"
+              recordId={invoiceId}
+              onActionComplete={() =>
+                queryClient.invalidateQueries({ queryKey: ['invoice', orgId, invoiceId] })
+              }
+            />
+          </div>
+        )}
+
+        <div
+          style={{
+            display: activeTab === 'Overview' ? 'flex' : 'none',
+            flexDirection: 'column',
+            padding: '16px 24px',
+          }}
+        >
+          {/* Status Bar & PDF View Toggle */}
+          <div
+            style={{
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              marginBottom: '20px',
+              fontSize: '13px',
+            }}
+          >
+            {/* Toggle Switch */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{ fontSize: '13px', fontStyle: 'italic', color: '#475569', fontWeight: 500 }}
+              >
+                Show PDF View
+              </span>
+              <label
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                  width: '38px',
+                  height: '20px',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isPdfView}
+                  onChange={(e) => setIsPdfView(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: isPdfView ? '#0062ff' : '#cbd5e1',
+                    transition: '0.3s',
+                    borderRadius: '20px',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    content: '""',
+                    height: '14px',
+                    width: '14px',
+                    left: isPdfView ? '20px' : '3px',
+                    bottom: '3px',
+                    backgroundColor: 'white',
+                    transition: '0.3s',
+                    borderRadius: '50%',
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* VIEW MODE 1: Standard Web View (isPdfView === false) */}
+          {!isPdfView && (
+            <div
+              style={{
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '24px 32px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              }}
+            >
+              {/* Header Title & Addresses */}
+              <div className="detail-top-section">
+                <div>
+                  <h1
+                    style={{
+                      fontSize: '24px',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      margin: '0 0 4px 0',
+                    }}
+                  >
+                    INVOICE
+                  </h1>
+                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
+                    Invoice# <strong style={{ color: '#0f172a' }}>{inv.invoiceNumber}</strong>
+                  </div>
+                </div>
+
+                <div className="detail-top-right">
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      CUSTOMER ADDRESS
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '13px',
+                        color: '#0062ff',
+                        fontWeight: 600,
+                        marginBottom: '2px',
+                      }}
+                    >
+                      {inv.customer?.contactName || inv.customer?.companyName || '-'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                      {inv.customer?.email && <div>{inv.customer.email}</div>}
+                      {inv.customer?.phone && <div>{inv.customer.phone}</div>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status & Order Details Grid */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '20px',
+                  marginBottom: '28px',
+                  background: '#fafafa',
+                  padding: '16px 20px',
+                  borderRadius: '6px',
+                  border: '1px solid #f1f5f9',
+                }}
+              >
+                <div>
+                  <div style={labelStyle}>STATUS</div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      marginTop: '4px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', color: '#475569' }}>Invoice:</span>
+                      <span
+                        style={{
+                          background:
+                            inv.status?.toLowerCase() === 'draft'
+                              ? '#94a3b8'
+                              : inv.status?.toLowerCase() === 'pending approval'
+                                ? '#d97706'
+                                : inv.status?.toLowerCase() === 'approved'
+                                  ? '#0284c7'
+                                  : inv.status?.toLowerCase() === 'paid'
+                                    ? '#16a34a'
+                                    : '#94a3b8',
+                          color: 'white',
+                          fontSize: '10px',
+                          padding: '1px 6px',
+                          borderRadius: '3px',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {inv.status || 'Draft'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569' }}>
+                      Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569' }}>
+                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>INVOICE DATE</div>
+                  <div style={valueStyle}>
+                    {inv.date ? format(new Date(inv.date), 'dd-MM-yyyy') : '-'}
+                  </div>
+
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>DUE DATE</div>
+                  <div style={valueStyle}>
+                    {inv.dueDate ? format(new Date(inv.dueDate), 'dd-MM-yyyy') : '-'}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>PAYMENT TERMS</div>
+                  <div style={valueStyle}>{getPaymentTermLabel(inv.paymentTerms)}</div>
+
+                  <div style={{ ...labelStyle, marginTop: '8px' }}>DELIVERY TYPE</div>
+                  <div style={valueStyle}>{inv.deliveryType || 'Location'}</div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>INVOICE TYPE</div>
+                  <div style={valueStyle}>Standard</div>
+                </div>
+              </div>
+
+              {/* Custom Fields Section */}
+              {customFieldDefs.length > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '20px',
+                    marginBottom: '28px',
+                    background: '#fafafa',
+                    padding: '16px 20px',
+                    borderRadius: '6px',
+                    border: '1px solid #f1f5f9',
+                  }}
+                >
+                  {customFieldDefs.map((def) => (
+                    <div key={def.id}>
+                      <div style={labelStyle}>{def.label?.toUpperCase()}</div>
+                      <div style={valueStyle}>
+                        {formatCustomFieldValue(inv.customFields?.[def.key], def) || '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Line Items Table */}
+              <div className="responsive-table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        ITEMS & DESCRIPTION
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'center',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        ORDERED
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        LOCATION
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        RATE
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        DISCOUNT
+                      </th>
+                      <th
+                        style={{
+                          padding: '10px 12px',
+                          textAlign: 'right',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        AMOUNT
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(inv.lineItems || []).map((item, index) => {
+                      const discVal = Number(
+                        item.discountValue !== undefined && item.discountValue !== null
+                          ? item.discountValue
+                          : item.discountPercentage || item.discount || 0,
+                      );
+                      const discDisplay =
+                        item.discountType === 'fixed' ? `₹${discVal.toFixed(2)}` : `${discVal}%`;
+
+                      return (
+                        <tr
+                          key={item.id || (item as { lineItemId?: string }).lineItemId || index}
+                          style={{ borderBottom: '1px solid #f1f5f9' }}
+                        >
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#0062ff',
+                              fontWeight: 500,
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {item.item?.name || 'Item'}
+                            {item.description && (
+                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                                {item.description}
+                              </div>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#1e293b',
+                              textAlign: 'center',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {item.quantity} PCS
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#475569',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {inv.location?.name || 'Head Office'}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#1e293b',
+                              textAlign: 'right',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            ₹{Number(item.rate || 0).toFixed(2)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#475569',
+                              textAlign: 'right',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            {discVal > 0 ? discDisplay : '₹0.00'}
+                          </td>
+                          <td
+                            style={{
+                              padding: '14px 12px',
+                              fontSize: '13px',
+                              color: '#0f172a',
+                              textAlign: 'right',
+                              fontWeight: 600,
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            ₹{Number(item.itemTotal || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals & Notes Section */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '32px',
+                  borderTop: '1px solid #f1f5f9',
+                  paddingTop: '20px',
+                }}
+              >
+                <div style={{ flex: 1, fontSize: '13px', color: '#475569' }}>
+                  {inv.notes && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <strong
+                        style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
+                      >
+                        Notes:
+                      </strong>
+                      <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
+                        {inv.notes}
+                      </div>
+                    </div>
+                  )}
+
+                  {inv.termsAndConditions && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <strong
+                        style={{ color: '#1e293b', fontSize: '12px', textTransform: 'uppercase' }}
+                      >
+                        Terms & Conditions:
+                      </strong>
+                      <div style={{ marginTop: '4px', lineHeight: 1.5, color: '#475569' }}>
+                        {inv.termsAndConditions}
+                      </div>
+                    </div>
+                  )}
+
+                  {inv.documents && Array.isArray(inv.documents) && inv.documents.length > 0 && (
+                    <div>
+                      <strong
+                        style={{
+                          fontSize: '12px',
+                          color: '#475569',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        <Paperclip size={13} /> Attachments:
+                      </strong>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          marginTop: '8px',
+                        }}
+                      >
+                        {inv.documents.map((att: InvoiceAttachment, index: number) => (
+                          <div
+                            key={index}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              fontSize: '12px',
+                              color: '#1e293b',
+                            }}
+                          >
+                            <FileText size={14} color="#0062ff" />
+                            <InvoiceAttachmentLink orgId={orgId!} attachment={att} />
+                            {att.size && (
+                              <span style={{ color: '#94a3b8', fontSize: '11px' }}>
+                                ({(att.size / (1024 * 1024)).toFixed(2)} MB)
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    width: '280px',
+                    background: '#f8fafc',
+                    padding: '16px 20px',
+                    borderRadius: '8px',
+                    border: '1px solid #f1f5f9',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: '10px',
+                      fontSize: '13px',
+                    }}
+                  >
+                    <span style={{ color: '#64748b' }}>Sub Total</span>
+                    <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                      ₹{Number(inv.subTotal || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  {Number(inv.subTotal || 0) > Number(inv.totalAmount || 0) && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        marginBottom: '10px',
+                        fontSize: '13px',
+                        color: '#16a34a',
+                      }}
+                    >
+                      <span>Total Discount</span>
+                      <span style={{ fontWeight: 600 }}>
+                        -₹{(Number(inv.subTotal) - Number(inv.totalAmount)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginTop: '12px',
+                      paddingTop: '12px',
+                      borderTop: '1px solid #e2e8f0',
+                      fontWeight: 700,
+                      fontSize: '16px',
+                      color: '#0f172a',
+                    }}
+                  >
+                    <span>Total</span>
+                    <span>₹{Number(inv.totalAmount || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW MODE 2: Printable PDF View (isPdfView === true) */}
+          {isPdfView && (
+            <div
+              ref={pdfTemplateRef}
+              className="inv-print-template"
+              style={{
+                background: '#fff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                padding: '36px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                maxWidth: '850px',
+                margin: '0 auto',
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            >
+              {/* PDF Header Table Grid */}
+              <div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                  }}
+                >
+                  <tbody>
+                    <tr>
+                      <td
+                        style={{
+                          width: '50%',
+                          padding: '12px',
+                          verticalAlign: 'top',
+                          borderRight: '1px solid #000',
+                        }}
+                      >
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: '#000' }}>
+                          {currentOrg?.name || 'Company Name'}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: '#333',
+                            marginTop: '4px',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {currentOrg?.address?.streetAddress1 && (
+                            <>
+                              {currentOrg.address.streetAddress1}
+                              <br />
+                            </>
+                          )}
+                          {currentOrg?.address?.city ||
+                          currentOrg?.address?.stateCode ||
+                          currentOrg?.address?.zip ? (
+                            <>
+                              {[
+                                currentOrg.address.city,
+                                currentOrg.address.stateCode,
+                                currentOrg.address.zip,
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              <br />
+                            </>
+                          ) : null}
+                          {currentOrg?.address?.country && <>{currentOrg.address.country}</>}
+                        </div>
+                      </td>
+                      <td
+                        style={{
+                          width: '50%',
+                          padding: '12px',
+                          verticalAlign: 'middle',
+                          textAlign: 'right',
+                        }}
+                      >
+                        <h2
+                          className="detail-title"
+                          style={{
+                            fontSize: '26px',
+                            fontWeight: 800,
+                            color: '#000',
+                            margin: 0,
+                            letterSpacing: '1px',
+                          }}
+                        >
+                          INVOICE
+                        </h2>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PDF Invoice Meta Table */}
+              <div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <tbody>
+                    <tr>
+                      <td
+                        style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
+                      >
+                        <strong>Invoice No.</strong> : <strong>{inv.invoiceNumber}</strong>
+                      </td>
+                      <td style={{ width: '50%', padding: '6px 10px' }}>
+                        <strong>Place Of Supply</strong> : Gujarat (24)
+                      </td>
+                    </tr>
+                    <tr style={{ borderTop: '1px solid #000' }}>
+                      <td
+                        style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
+                      >
+                        <strong>Date</strong> :{' '}
+                        {inv.date ? format(new Date(inv.date), 'dd-MM-yyyy') : '-'}
+                      </td>
+                      <td style={{ width: '50%', padding: '6px 10px' }}>
+                        <strong>Terms</strong> : {getPaymentTermLabel(inv.paymentTerms)}
+                      </td>
+                    </tr>
+                    {customFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = customFieldDefs[i * 2];
+                        const def2 = customFieldDefs[i * 2 + 1];
+                        return (
+                          <tr key={i} style={{ borderTop: '1px solid #000' }}>
+                            <td
+                              style={{
+                                width: '50%',
+                                padding: '6px 10px',
+                                borderRight: '1px solid #000',
+                              }}
+                            >
+                              <strong>{def1.label}</strong> :{' '}
+                              {formatCustomFieldValue(inv.customFields?.[def1.key], def1) || '-'}
+                            </td>
+                            <td style={{ width: '50%', padding: '6px 10px' }}>
+                              {def2 ? (
+                                <>
+                                  <strong>{def2.label}</strong> :{' '}
+                                  {formatCustomFieldValue(inv.customFields?.[def2.key], def2) || '-'}
+                                </>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Customer Address Grid */}
+              <div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
+                      <th
+                        style={{
+                          padding: '6px 10px',
+                          textAlign: 'left',
+                        }}
+                      >
+                        Customer Address
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td
+                        style={{
+                          padding: '10px',
+                          verticalAlign: 'top',
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <strong>{inv.customer?.contactName || inv.customer?.companyName || '-'}</strong>
+                        {inv.customer?.email && <div>{inv.customer.email}</div>}
+                        {inv.customer?.phone && <div>{inv.customer.phone}</div>}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PDF Items Table */}
+              <div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    marginBottom: '-1px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #000' }}>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'center',
+                          width: '35px',
+                        }}
+                      >
+                        S No
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'left',
+                        }}
+                      >
+                        Material Code & Description
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'center',
+                          width: '65px',
+                        }}
+                      >
+                        Qty (UoM)
+                      </th>
+                      <th
+                        style={{
+                          padding: '6px 8px',
+                          borderRight: '1px solid #000',
+                          textAlign: 'right',
+                          width: '85px',
+                        }}
+                      >
+                        Unit Rate (INR)
+                      </th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right', width: '95px' }}>
+                        Total Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(inv.lineItems || []).map((item, index) => (
+                      <tr key={item.id || index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {index + 1}
+                        </td>
+                        <td
+                          style={{ padding: '8px', borderRight: '1px solid #000', fontWeight: 600 }}
+                        >
+                          {item.item?.name || 'Item'}
+                          {item.description && (
+                            <div style={{ fontWeight: 400, color: '#475569', marginTop: '2px' }}>
+                              {item.description}
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {item.quantity}
+                        </td>
+                        <td
+                          style={{
+                            padding: '8px',
+                            borderRight: '1px solid #000',
+                            textAlign: 'right',
+                          }}
+                        >
+                          ₹{Number(item.rate || 0).toFixed(2)}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+                          ₹{Number(item.itemTotal || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PDF Totals & Signatures Grid */}
+              <div>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #000',
+                    fontSize: '11px',
+                  }}
+                >
+                  <tbody>
+                    <tr>
+                      <td
+                        style={{
+                          width: '60%',
+                          padding: '12px',
+                          verticalAlign: 'top',
+                          borderRight: '1px solid #000',
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom: '12px',
+                            wordBreak: 'break-word',
+                            whiteSpace: 'pre-wrap',
+                          }}
+                        >
+                          <strong>Notes:</strong>
+                          <br />
+                          {inv.notes ||
+                            'With reference to your above quotation, we request you to supply the following materials subject to terms and conditions.'}
+                        </div>
+
+                        {inv.termsAndConditions && (
+                          <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                            <strong>Terms & Conditions:</strong>
+                            <br />
+                            {inv.termsAndConditions}
+                          </div>
+                        )}
+                      </td>
+                      <td
+                        style={{
+                          width: '40%',
+                          padding: '12px',
+                          verticalAlign: 'top',
+                          textAlign: 'right',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          <span>Sub Total:</span>
+                          <strong>₹{Number(inv.subTotal || 0).toFixed(2)}</strong>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            borderTop: '1px solid #000',
+                            paddingTop: '6px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>Total:</span>
+                          <strong>₹{Number(inv.totalAmount || 0).toFixed(2)}</strong>
+                        </div>
+
+                        <div style={{ marginTop: '40px', fontSize: '11px', color: '#333' }}>
+                          <div>For, {currentOrg?.name || 'Company Name'}</div>
+                          <div style={{ marginTop: '30px', fontWeight: 600 }}>
+                            Authorized Signature
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: activeTab === 'Comments' ? 'block' : 'none', padding: '16px' }}>
+          <InvoiceComments orgId={orgId!} invoiceId={invoiceId} />
+        </div>
+        <div style={{ display: activeTab === 'Activity' ? 'block' : 'none', padding: '16px' }}>
+          <InvoiceActivityTimeline orgId={orgId!} invoiceId={invoiceId} />
+        </div>
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '16px' }}>
+          {orgId && invoiceId && (
+            <RecordApprovalHistoryTimeline organizationId={orgId} moduleId="invoices" recordId={invoiceId} />
+          )}
+        </div>
+      </div>
+
+      <ConfirmDialog
+        isOpen={isConfirmDeleteOpen}
+        title="Delete Invoice"
+        message={`Are you sure you want to delete Invoice ${inv.invoiceNumber}? This action cannot be undone.`}
+        confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+        onConfirm={() => deleteMutation.mutate()}
+        onCancel={() => setIsConfirmDeleteOpen(false)}
+      />
+
+
+    </div>
+  );
+}
+

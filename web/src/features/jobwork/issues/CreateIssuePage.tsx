@@ -155,8 +155,8 @@ export function CreateIssuePage() {
               alignItems: 'center',
             }}
           >
-            <label style={{ fontSize: 13, color: '#4b5563', margin: 0, fontWeight: 500 }}>
-              Job Order
+            <label style={{ fontSize: 13, color: '#ef4444', margin: 0, fontWeight: 500 }}>
+              Job Order*
             </label>
             <JobOrderComboBox
               orgId={orgId!}
@@ -169,8 +169,8 @@ export function CreateIssuePage() {
               placeholder="Select Job Order..."
             />
 
-            <label style={{ fontSize: 13, color: '#4b5563', margin: 0, fontWeight: 500 }}>
-              Step
+            <label style={{ fontSize: 13, color: '#ef4444', margin: 0, fontWeight: 500 }}>
+              Step*
             </label>
             <LocalComboBox
               value={effectiveStepId || null}

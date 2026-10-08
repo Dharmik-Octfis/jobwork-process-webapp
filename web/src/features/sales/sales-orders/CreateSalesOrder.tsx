@@ -40,15 +40,19 @@ import {
   type SOAttachment,
 } from './sales-orders.api';
 
+
 import { itemsApi } from '../../items/items.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
 import { fetchCustomers, updateCustomer, type Customer } from '../customers/customers.api';
 import { SalesOrderNumberConfigModal } from './SalesOrderNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
 import { DeliveryAddressModal } from './DeliveryAddressModal';
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
 import { CreateCustomerModal } from '../customers/CreateCustomerModal';
 import { AdditionalAddressModal } from '../customers/AdditionalAddressModal';
 import { CreateItemModal } from '../../items/CreateItemModal';
+import { ItemStockAndBatchDisplay } from '../../items/components/ItemStockAndBatchDisplay';
+
 function getImageKey(img: unknown): string | null {
   if (!img) return null;
   if (typeof img === 'string') return img;
@@ -129,6 +133,9 @@ export function CreateSalesOrder() {
 
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'sales_order');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
+
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
     queryKey: ['salesOrder', orgId, poIdToFetch],
@@ -1152,8 +1159,8 @@ export function CreateSalesOrder() {
                                   if (selected) {
                                     setValue(
                                       `lineItems.${index}.rate`,
-                                      (selected.costPrice ||
-                                        selected.sellingPrice ||
+                                      (selected.sellingPrice ||
+                                        selected.costPrice ||
                                         '') as unknown as number,
                                     );
                                     setValue(`lineItems.${index}.quantity`, 1 as unknown as number);
@@ -1273,6 +1280,17 @@ export function CreateSalesOrder() {
                               borderRadius: '6px',
                             }}
                           />
+                          {selectedItem?.id && (
+                            <ItemStockAndBatchDisplay
+                              orgId={orgId!}
+                              itemId={selectedItem.id}
+                              unit={selectedItem.stockingUom?.symbol}
+                              deliveryLocationId={watchLocationId || watchDeliveryLocationId || ''}
+                              locations={locations}
+                              trackInventory={selectedItem.trackInventory}
+                              inventoryTracking={selectedItem.inventoryTracking}
+                            />
+                          )}
                         </td>
                         <td
                           style={{
@@ -1739,46 +1757,93 @@ export function CreateSalesOrder() {
 
       {/* Fixed Bottom Action Bar */}
       <div className="form-actions-footer page-footer">
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => {
-            setValue('status', 'Draft');
-            handleSubmit(onSubmit, onInvalid)();
-          }}
-          style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#0f172a',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
-        </button>
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => {
-            setValue('status', 'Approved');
-            handleSubmit(onSubmit, onInvalid)();
-          }}
-          style={{
-            padding: '6px 20px',
-            background: '#16a34a',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watch('status') === 'Approved' ? 'Saving...' : 'Save as Open'}
-        </button>
+        {isEdit ? (
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => {
+              handleSubmit(onSubmit, onInvalid)();
+            }}
+            style={{
+              padding: '6px 20px',
+              background: '#0062ff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
+          >
+            {mutation.isPending ? 'Saving...' : 'Save'}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => {
+                setValue('status', 'Draft');
+                handleSubmit(onSubmit, onInvalid)();
+              }}
+              style={{
+                padding: '6px 20px',
+                background: 'white',
+                color: '#0f172a',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}
+            >
+              {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
+            </button>
+            {isApprovalEnabled ? (
+              <button
+                type="button"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setValue('status', 'Pending Approval');
+                  handleSubmit(onSubmit, onInvalid)();
+                }}
+                style={{
+                  padding: '6px 20px',
+                  background: '#0062ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                }}
+              >
+                {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setValue('status', 'Confirmed');
+                  handleSubmit(onSubmit, onInvalid)();
+                }}
+                style={{
+                  padding: '6px 20px',
+                  background: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                }}
+              >
+                {mutation.isPending && watch('status') === 'Confirmed' ? 'Saving...' : 'Save as Confirmed'}
+              </button>
+            )}
+          </>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -1889,7 +1954,7 @@ export function CreateSalesOrder() {
             const isEmptyRow = !targetRow?.itemId;
 
             const qty = item._quantity ?? 1;
-            const rate = item._rate ?? (item.costPrice || item.sellingPrice || '');
+            const rate = item._rate ?? (item.sellingPrice || item.costPrice || '');
             const disc = item._discount ?? '';
 
             if (isFirst && isEmptyRow) {
@@ -1933,6 +1998,7 @@ export function CreateSalesOrder() {
           setMultiSelectTargetIndex(null);
         }}
       />
+
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}

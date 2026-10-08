@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
 import { ssoRouter } from '../modules/auth/sso/sso.routes.ts';
 import { organizationsRouter } from '../modules/settings/organization/organizations/organizations.routes.ts';
@@ -17,6 +17,7 @@ import { purchaseOrdersRouter } from '../modules/purchases/purchase-orders/purch
 import { billsRouter } from '../modules/purchases/bills/bills.routes.ts';
 import { customersRouter } from '../modules/sales/customers/customers.routes.ts';
 import { salesOrderRouter } from '../modules/sales/sales-orders/sales-orders.routes.ts';
+import { invoiceRouter } from '../modules/sales/invoices/invoices.routes.ts';
 import { uomRouter } from '../modules/settings/inventory/uom/uom.routes.ts';
 import { currenciesRouter } from '../modules/settings/configuration/currencies/currencies.routes.ts';
 import { paymentTermsRouter } from '../modules/settings/configuration/payment-terms/payment-terms.routes.ts';
@@ -61,12 +62,12 @@ import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { zohoRouter, zohoCallbackRouter } from '../modules/integrations/zoho/zoho.routes.ts';
 import { env } from '../config/env.ts';
 
-/** Mounts every module router under `/api` (architecture §4). */
+/** Mounts every module router under `/api` (architecture Â§4). */
 export const apiRouter = Router();
 
 // 200 even when the database is unreachable, deliberately: the process IS
 // serving, and a platform that reads this for liveness must not recycle a
-// container over a database it will reconnect to on its own — recycling is the
+// container over a database it will reconnect to on its own â€” recycling is the
 // crash loop this endpoint exists to make visible. Read `database` when
 // `/health` answers but real endpoints 500.
 apiRouter.get('/health', (_req, res) => {
@@ -77,7 +78,7 @@ apiRouter.get('/health', (_req, res) => {
 });
 
 // Ops-only latency probe. NOT mounted unless a token is configured, so a
-// deployment that never sets `DIAGNOSTICS_TOKEN` genuinely has no such route —
+// deployment that never sets `DIAGNOSTICS_TOKEN` genuinely has no such route â€”
 // the safest possible default for something that reports infrastructure shape.
 if (env.diagnosticsToken) {
   apiRouter.use('/diagnostics', diagnosticsRouter);
@@ -88,12 +89,12 @@ if (env.diagnosticsToken) {
 apiRouter.use('/auth/sso', ssoRouter);
 apiRouter.use('/auth', authRouter);
 
-// Tenant-scoped modules nest under `/organizations/:orgId/…` so the organization
+// Tenant-scoped modules nest under `/organizations/:orgId/â€¦` so the organization
 // is part of the URL: explicit, bookmarkable, and shareable. `tenantContext`
 // reads `:orgId` and verifies membership before any handler runs.
 //
 // Registered BEFORE `/organizations` deliberately. Express matches in mount
-// order, and `use('/organizations', …)` also matches this longer path — it would
+// order, and `use('/organizations', â€¦)` also matches this longer path â€” it would
 // hand the request to organizationsRouter, find no route, and fall through here
 // anyway, but only after running that router's `authenticate` a second time.
 // Specific before general keeps the path short and the middleware chain honest.
@@ -102,12 +103,13 @@ apiRouter.use('/organizations/:orgId/purchases/purchase-orders', purchaseOrdersR
 apiRouter.use('/organizations/:orgId/purchases/bills', billsRouter);
 apiRouter.use('/organizations/:orgId/sales/customers', customersRouter);
 apiRouter.use('/organizations/:orgId/sales/sales-orders', salesOrderRouter);
-// Jobwork, Sprints 1–4 (plan §8.1).
+apiRouter.use('/organizations/:orgId/sales/invoices', invoiceRouter);
+// Jobwork, Sprints 1â€“4 (plan Â§8.1).
 //
-// 🔴 `stock_ledger` still has NO router and must never get one. It is plumbing
+// ðŸ”´ `stock_ledger` still has NO router and must never get one. It is plumbing
 // behind stockLedger.service.ts, and an HTTP surface on it would be a way to
 // write history from outside the documents that caused it. `batches` gets a
-// READ-ONLY router — the Issue dialog's picker needs the availability query, and
+// READ-ONLY router â€” the Issue dialog's picker needs the availability query, and
 // nothing else.
 apiRouter.use('/organizations/:orgId/jobwork/processes', processesRouter);
 apiRouter.use('/organizations/:orgId/jobwork/routes', processRoutesRouter);
@@ -149,7 +151,7 @@ apiRouter.use('/organizations/:orgId/reports/customers', customersReportRouter);
 apiRouter.use('/organizations/:orgId/reports/vendors', vendorsReportRouter);
 apiRouter.use('/organizations/:orgId/reports/purchase-orders', purchaseOrdersReportRouter);
 apiRouter.use('/organizations/:orgId/reports/bills', billsReportRouter);
-// The Reports Center list + per-user visit/favourite — after the specific reports above.
+// The Reports Center list + per-user visit/favourite â€” after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
 apiRouter.use('/organizations/:orgId/settings/integrations/zoho', zohoRouter);
 apiRouter.use('/organizations/:orgId/integrations/zoho', zohoRouter);
@@ -159,8 +161,9 @@ apiRouter.use('/seed-data', globalSeedDataRouter);
 
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/invitations', invitationsRouter);
-// The recipient's own inbox — authenticated, addressed by invitation id. Distinct
+// The recipient's own inbox â€” authenticated, addressed by invitation id. Distinct
 // from `/invitations/:token` above, which is public and token-addressed.
 apiRouter.use('/me/invitations', myInvitationsRouter);
 apiRouter.use('/modules', appModulesRouter);
 apiRouter.use('/storage', storageRouter);
+

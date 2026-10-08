@@ -168,8 +168,8 @@ export interface StepItemRow {
   /** Outputs, job orders only — share of the input's material, in % (R1b). Only
    * asked on a step `shareSplitRows` picks out; never defaulted. */
   sharePct?: number | null;
-  /** Outputs only — the one that absorbs the step's cost (§9.2.1). No longer
-   * asked for on the grid; see `primaryOutputIndex`. */
+  /** Outputs only — the step's main output. No longer asked for on the grid; see
+   * `primaryOutputIndex`. */
   isPrimary?: boolean;
   /**
    * Inputs, job orders only. Which batches the planner means this row to come out
@@ -732,8 +732,8 @@ export function receiptCostPreview(input: {
 export { EXTERNAL_LOCATION_TYPES } from '../configuration/locations/locations.api';
 
 /**
- * 🔴 WHICH OUTPUT CARRIES THE STEP'S COST — the client's copy of the server's
- * `flagPrimaryOutput` (§9.2.1).
+ * 🔴 WHICH OUTPUT IS THE STEP'S MAIN ONE — the client's copy of the server's
+ * `flagPrimaryOutput`.
  *
  * The grid stopped asking: a radio decided nothing in the common case (one item
  * back) and was one more thing to get wrong in the uncommon one — the same call
