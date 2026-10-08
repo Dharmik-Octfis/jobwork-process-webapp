@@ -219,6 +219,7 @@ export function CreateInvoice() {
           discountValue: discountVal || ('' as unknown as number),
           discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           itemTotal: item.itemTotal || 0,
+          batches: isClone ? undefined : item.batches,
         };
       });
 
@@ -445,7 +446,7 @@ export function CreateInvoice() {
         data.salesOrderId = convertFromSo;
       }
       const newInvoice = await createInvoice(orgId!, data);
-      if (convertFromSo) {
+      if (convertFromSo && data.status !== 'Draft' && data.status !== 'Pending Approval') {
         await updateSalesOrder({ orgId: orgId!, id: convertFromSo, data: { status: 'Closed' } });
       }
       return newInvoice;
@@ -1294,7 +1295,7 @@ export function CreateInvoice() {
                               inventoryTracking={selectedItem.inventoryTracking}
                               batchButtonLabel={
                                 curItem?.batches && curItem.batches.length > 0
-                                  ? `${curItem.batches.length} Batch${curItem.batches.length > 1 ? 'es' : ''} Selected`
+                                  ? `${curItem.batches.length} Batch${curItem.batches.length > 1 ? 'es' : ''} Added`
                                   : '+ Add Batches'
                               }
                               onBatchClick={() => setBatchModalIndex(index)}
@@ -1766,32 +1767,11 @@ export function CreateInvoice() {
 
       {/* Fixed Bottom Action Bar */}
       <div className="form-actions-footer page-footer">
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => {
-            setValue('status', 'Draft');
-            handleSubmit(onSubmit, onInvalid)();
-          }}
-          style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#0f172a',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
-        </button>
-        {isApprovalEnabled ? (
+        {isEdit ? (
           <button
             type="button"
             disabled={mutation.isPending}
             onClick={() => {
-              setValue('status', 'Pending Approval');
               handleSubmit(onSubmit, onInvalid)();
             }}
             style={{
@@ -1805,29 +1785,74 @@ export function CreateInvoice() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+            {mutation.isPending ? 'Saving...' : 'Save'}
           </button>
         ) : (
-          <button
-            type="button"
-            disabled={mutation.isPending}
-            onClick={() => {
-              setValue('status', 'Paid');
-              handleSubmit(onSubmit, onInvalid)();
-            }}
-            style={{
-              padding: '6px 20px',
-              background: '#16a34a',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {mutation.isPending && watch('status') === 'Paid' ? 'Saving...' : 'Save as Paid'}
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => {
+                setValue('status', 'Draft');
+                handleSubmit(onSubmit, onInvalid)();
+              }}
+              style={{
+                padding: '6px 20px',
+                background: 'white',
+                color: '#0f172a',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}
+            >
+              {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
+            </button>
+            {isApprovalEnabled ? (
+              <button
+                type="button"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setValue('status', 'Pending Approval');
+                  handleSubmit(onSubmit, onInvalid)();
+                }}
+                style={{
+                  padding: '6px 20px',
+                  background: '#0062ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                }}
+              >
+                {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setValue('status', 'Paid');
+                  handleSubmit(onSubmit, onInvalid)();
+                }}
+                style={{
+                  padding: '6px 20px',
+                  background: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                }}
+              >
+                {mutation.isPending && watch('status') === 'Paid' ? 'Saving...' : 'Save as Paid'}
+              </button>
+            )}
+          </>
         )}
         <button
           type="button"

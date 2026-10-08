@@ -409,9 +409,9 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* Convert to Invoice / PDF Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
 
-          <div ref={pdfMenuRef}>
+          <div ref={pdfMenuRef} style={{ position: 'relative' }}>
             <button
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}

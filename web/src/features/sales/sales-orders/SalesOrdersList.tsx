@@ -157,7 +157,7 @@ export function SalesOrdersList() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: selectedPoId ? '12px 16px' : '16px 24px',
+                padding: selectedPoId ? '20px 16px' : '20px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
                 gap: 8,
@@ -299,6 +299,7 @@ export function SalesOrdersList() {
                         color: '#64748b',
                         background: '#f9f9fb',
                         borderBottom: '1px solid #eef0f3',
+                        textTransform: 'uppercase',
                       }}
                     >
                       Sales Orders
@@ -337,8 +338,27 @@ export function SalesOrdersList() {
                           <span style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
                             {po.soNumber}
                           </span>
-                          <span style={{ fontSize: '12px', color: '#64748b' }}>
-                            {renderPoCell(po, 'status', paymentTerms)}
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '2px 8px',
+                              borderRadius: 12,
+                              fontSize: 12,
+                              fontWeight: 500,
+                              background:
+                                po.status === 'Draft' ? '#f1f5f9' :
+                                po.status === 'Pending Approval' ? '#fef3c7' :
+                                po.status === 'Approved' ? '#e0f2fe' :
+                                po.status === 'Confirmed' ? '#dcfce7' : '#f1f5f9',
+                              color:
+                                po.status === 'Draft' ? '#475569' :
+                                po.status === 'Pending Approval' ? '#92400e' :
+                                po.status === 'Approved' ? '#0284c7' :
+                                po.status === 'Confirmed' ? '#166534' : '#475569',
+                            }}
+                          >
+                            {po.status}
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
@@ -427,7 +447,32 @@ export function SalesOrdersList() {
                                   fontWeight: col.key === 'soNumber' ? 500 : 400,
                                 }}
                               >
-                                {renderPoCell(po, col.key, paymentTerms)}
+                                {col.key === 'status' ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      padding: '2px 8px',
+                                      borderRadius: 12,
+                                      fontSize: 12,
+                                      fontWeight: 500,
+                                      background:
+                                        po.status === 'Draft' ? '#f1f5f9' :
+                                        po.status === 'Pending Approval' ? '#fef3c7' :
+                                        po.status === 'Approved' ? '#e0f2fe' :
+                                        po.status === 'Confirmed' ? '#dcfce7' : '#f1f5f9',
+                                      color:
+                                        po.status === 'Draft' ? '#475569' :
+                                        po.status === 'Pending Approval' ? '#92400e' :
+                                        po.status === 'Approved' ? '#0284c7' :
+                                        po.status === 'Confirmed' ? '#166534' : '#475569',
+                                    }}
+                                  >
+                                    {po.status}
+                                  </span>
+                                ) : (
+                                  renderPoCell(po, col.key, paymentTerms)
+                                )}
                               </td>
                             ))}
                           </tr>

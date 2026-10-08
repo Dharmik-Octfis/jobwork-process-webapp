@@ -200,6 +200,13 @@ export async function createInvoice(
             await postMovements(tx, movementInputs);
           }
         }
+        
+        if (invoice.salesOrderId) {
+          await tx.salesOrder.updateMany({
+            where: { id: invoice.salesOrderId, status: { not: 'Closed' } },
+            data: { status: 'Closed' }
+          });
+        }
       }
 
       if (invoice.status === 'Pending Approval') {
@@ -365,6 +372,13 @@ export async function updateInvoice(
           if (movementInputs.length > 0) {
             await postMovements(tx, movementInputs);
           }
+        }
+
+        if (fullInvoice?.salesOrderId) {
+          await tx.salesOrder.updateMany({
+            where: { id: fullInvoice.salesOrderId, status: { not: 'Closed' } },
+            data: { status: 'Closed', updatedBy: userId }
+          });
         }
       }
 

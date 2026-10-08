@@ -1757,32 +1757,11 @@ export function CreateSalesOrder() {
 
       {/* Fixed Bottom Action Bar */}
       <div className="form-actions-footer page-footer">
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => {
-            setValue('status', 'Draft');
-            handleSubmit(onSubmit, onInvalid)();
-          }}
-          style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#0f172a',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
-        </button>
-        {isApprovalEnabled ? (
+        {isEdit ? (
           <button
             type="button"
             disabled={mutation.isPending}
             onClick={() => {
-              setValue('status', 'Pending Approval');
               handleSubmit(onSubmit, onInvalid)();
             }}
             style={{
@@ -1796,29 +1775,74 @@ export function CreateSalesOrder() {
               fontSize: '13px',
             }}
           >
-            {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+            {mutation.isPending ? 'Saving...' : 'Save'}
           </button>
         ) : (
-          <button
-            type="button"
-            disabled={mutation.isPending}
-            onClick={() => {
-              setValue('status', 'Confirmed');
-              handleSubmit(onSubmit, onInvalid)();
-            }}
-            style={{
-              padding: '6px 20px',
-              background: '#16a34a',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-            }}
-          >
-            {mutation.isPending && watch('status') === 'Confirmed' ? 'Saving...' : 'Save as Confirmed'}
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => {
+                setValue('status', 'Draft');
+                handleSubmit(onSubmit, onInvalid)();
+              }}
+              style={{
+                padding: '6px 20px',
+                background: 'white',
+                color: '#0f172a',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}
+            >
+              {mutation.isPending && watch('status') === 'Draft' ? 'Saving...' : 'Save as Draft'}
+            </button>
+            {isApprovalEnabled ? (
+              <button
+                type="button"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setValue('status', 'Pending Approval');
+                  handleSubmit(onSubmit, onInvalid)();
+                }}
+                style={{
+                  padding: '6px 20px',
+                  background: '#0062ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                }}
+              >
+                {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setValue('status', 'Confirmed');
+                  handleSubmit(onSubmit, onInvalid)();
+                }}
+                style={{
+                  padding: '6px 20px',
+                  background: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                }}
+              >
+                {mutation.isPending && watch('status') === 'Confirmed' ? 'Saving...' : 'Save as Confirmed'}
+              </button>
+            )}
+          </>
         )}
         <button
           type="button"

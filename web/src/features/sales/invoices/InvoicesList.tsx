@@ -158,7 +158,7 @@ export default function InvoicesList() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: selectedInvoiceId ? '12px 16px' : '16px 24px',
+                padding: selectedInvoiceId ? '20px 16px' : '20px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
                 gap: 8,
@@ -280,153 +280,176 @@ export default function InvoicesList() {
                 </button>
               </div>
             ) : (
-              <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  textAlign: 'left',
-                  tableLayout: selectedInvoiceId ? 'fixed' : 'auto',
-                }}
-              >
-                <thead style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
-                  <tr>
-                    {!selectedInvoiceId && (
-                      <th style={{ ...headerStyle, width: 40, textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.length === invoices.length && invoices.length > 0}
-                          onChange={toggleAll}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </th>
-                    )}
-                    {selectedInvoiceId ? (
-                      <th style={{ ...headerStyle, paddingLeft: 24 }}>Invoice Details</th>
-                    ) : (
-                      columns.map((col) => (
-                        <th key={col.key} style={headerStyle}>
-                          {col.label}
-                        </th>
-                      ))
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoices.map((inv) => {
-                    const isSelected = selectedInvoiceId === inv.id;
-                    const isChecked = selectedIds.includes(inv.id);
-                    return (
-                      <tr
+              <div>
+                {selectedInvoiceId ? (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#64748b',
+                        background: '#f9f9fb',
+                        borderBottom: '1px solid #eef0f3',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Invoices
+                    </div>
+                    {invoices.map((inv) => (
+                      <div
                         key={inv.id}
-                        onClick={(e) => {
-                          const target = e.target as HTMLElement;
-                          if (target.closest('input[type="checkbox"]')) return;
-                          if (target.closest('button')) return;
-                          setSearchParams(new URLSearchParams({ id: inv.id }));
-                        }}
+                        onClick={() => setSearchParams(prev => { prev.set('id', inv.id); return prev; })}
                         style={{
+                          padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
                           cursor: 'pointer',
-                          background: isSelected ? '#f1f5f9' : isChecked ? '#f8fafc' : '#fff',
-                          transition: 'background 0.2s',
+                          background: selectedInvoiceId === inv.id ? '#f1f5f9' : 'transparent',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedInvoiceId !== inv.id) e.currentTarget.style.background = '#f8fafc';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedInvoiceId !== inv.id)
+                            e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        {!selectedInvoiceId && (
-                          <td style={{ padding: '12px 16px', textAlign: 'center', width: 40 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
+                            {inv.invoiceNumber}
+                          </span>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '2px 8px',
+                              borderRadius: 12,
+                              fontSize: 12,
+                              fontWeight: 500,
+                              background:
+                                inv.status === 'Draft' ? '#f1f5f9' :
+                                inv.status === 'Pending Approval' ? '#fef3c7' :
+                                inv.status === 'Approved' ? '#e0f2fe' :
+                                inv.status === 'Paid' ? '#dcfce7' : '#f1f5f9',
+                              color:
+                                inv.status === 'Draft' ? '#475569' :
+                                inv.status === 'Pending Approval' ? '#92400e' :
+                                inv.status === 'Approved' ? '#0284c7' :
+                                inv.status === 'Paid' ? '#166534' : '#475569',
+                            }}
+                          >
+                            {inv.status}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{inv.customer?.contactName || '-'}</span>
+                          <span>{renderInvoiceCell(inv, 'totalAmount', paymentTerms)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="responsive-table-wrapper">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
+                        <tr>
+                          <th style={{ ...headerStyle, width: 40, textAlign: 'center' }}>
                             <input
                               type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleSelection(inv.id)}
+                              checked={selectedIds.length === invoices.length && invoices.length > 0}
+                              onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
-                          </td>
-                        )}
-                        {selectedInvoiceId ? (
-                          <td style={{ padding: '12px 24px' }}>
-                            <div
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                marginBottom: 4,
-                              }}
-                            >
-                              <span style={{ fontWeight: 500, color: '#0f172a' }}>
-                                {inv.invoiceNumber}
-                              </span>
-                              <span style={{ color: '#0052cc', fontWeight: 500, fontSize: 13 }}>
-                                {renderInvoiceCell(inv, 'totalAmount', paymentTerms)}
-                              </span>
-                            </div>
-                            <div
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                fontSize: 13,
-                                color: '#64748b',
-                              }}
-                            >
-                              <span>{inv.customer?.contactName || '-'}</span>
-                              <span>{formatDate(inv.date)}</span>
-                            </div>
-                          </td>
-                        ) : (
-                          columns.map((col) => (
-                            <td
-                              key={col.key}
-                              style={{
-                                padding: '12px 16px',
-                                fontSize: 13,
-                                color: '#334155',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                maxWidth: 250,
-                              }}
-                            >
-                              {col.key === 'status' ? (
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    padding: '2px 8px',
-                                    borderRadius: 12,
-                                    fontSize: 12,
-                                    fontWeight: 500,
-                                    background:
-                                      inv.status === 'Draft'
-                                        ? '#f1f5f9'
-                                        : inv.status === 'Pending Approval'
-                                          ? '#fef3c7'
-                                          : inv.status === 'Approved'
-                                            ? '#e0f2fe'
-                                            : inv.status === 'Paid'
-                                              ? '#dcfce7'
-                                              : '#f1f5f9',
-                                    color:
-                                      inv.status === 'Draft'
-                                        ? '#475569'
-                                        : inv.status === 'Pending Approval'
-                                          ? '#92400e'
-                                          : inv.status === 'Approved'
-                                            ? '#0284c7'
-                                            : inv.status === 'Paid'
-                                              ? '#166534'
-                                              : '#475569',
-                                  }}
-                                >
-                                  {inv.status}
-                                </span>
-                              ) : (
-                                renderInvoiceCell(inv, col.key, paymentTerms)
-                              )}
+                          </th>
+                          {columns.map((col) => (
+                            <th key={col.key} style={headerStyle}>
+                              {col.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoices.map((inv) => (
+                          <tr
+                            key={inv.id}
+                            onClick={(e) => {
+                              const target = e.target as HTMLElement;
+                              if (target.closest('input[type="checkbox"]')) return;
+                              if (target.closest('button')) return;
+                              setSearchParams(new URLSearchParams({ id: inv.id }));
+                            }}
+                            style={{
+                              borderBottom: '1px solid #eef0f3',
+                              cursor: 'pointer',
+                              background: selectedIds.includes(inv.id) ? '#f8fafc' : '#fff',
+                              transition: 'background 0.2s',
+                            }}
+                          >
+                            <td style={{ padding: '12px 16px', textAlign: 'center', width: 40 }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(inv.id)}
+                                onChange={() => toggleSelection(inv.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
                             </td>
-                          ))
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '12px 16px',
+                                  fontSize: 13,
+                                  color: '#334155',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: 250,
+                                }}
+                              >
+                                {col.key === 'status' ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      padding: '2px 8px',
+                                      borderRadius: 12,
+                                      fontSize: 12,
+                                      fontWeight: 500,
+                                      background:
+                                        inv.status === 'Draft' ? '#f1f5f9' :
+                                        inv.status === 'Pending Approval' ? '#fef3c7' :
+                                        inv.status === 'Approved' ? '#e0f2fe' :
+                                        inv.status === 'Paid' ? '#dcfce7' : '#f1f5f9',
+                                      color:
+                                        inv.status === 'Draft' ? '#475569' :
+                                        inv.status === 'Pending Approval' ? '#92400e' :
+                                        inv.status === 'Approved' ? '#0284c7' :
+                                        inv.status === 'Paid' ? '#166534' : '#475569',
+                                    }}
+                                  >
+                                    {inv.status}
+                                  </span>
+                                ) : (
+                                  renderInvoiceCell(inv, col.key, paymentTerms)
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           {/* Pagination — hidden while a SO is selected (narrow master pane) */}

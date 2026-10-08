@@ -205,7 +205,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
   if (isLoading) {
     return (
       <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', color: '#64748b' }}>
-        Loading sales order details...
+        Loading invoice details...
       </div>
     );
   }
@@ -414,73 +414,9 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
         {/* Mark as Open / PDF Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {inv?.status?.toLowerCase() === 'draft' && (
-            isApprovalEnabled ? (
-              <button
-                className="action-btn"
-                onClick={() => submitForApprovalMutation.mutate()}
-                disabled={submitForApprovalMutation.isPending}
-                style={{
-                  padding: '6px 12px',
-                  border: '1px solid #d97706',
-                  background: '#d97706',
-                  color: 'white',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
-                  fontWeight: 500,
-                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
-              </button>
-            ) : (
-              <button
-                className="action-btn"
-                onClick={() => markAsPaidMutation.mutate()}
-                disabled={markAsPaidMutation.isPending}
-                style={{
-                  padding: '6px 12px',
-                  border: '1px solid #16a34a',
-                  background: '#16a34a',
-                  color: 'white',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
-                  fontWeight: 500,
-                  opacity: markAsPaidMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
-              </button>
-            )
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
 
-          {isApprovalEnabled && inv?.status?.toLowerCase() === 'pending approval' && (
-            <button
-              className="action-btn"
-              onClick={() => markAsApprovedMutation.mutate()}
-              disabled={markAsApprovedMutation.isPending}
-              style={{
-                padding: '6px 12px',
-                border: '1px solid #0062ff',
-                background: '#0062ff',
-                color: 'white',
-                borderRadius: '4px',
-                fontSize: '13px',
-                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
-            </button>
-          )}
-
-
-
-          <div ref={pdfMenuRef}>
+          <div ref={pdfMenuRef} style={{ position: 'relative' }}>
             <button
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
@@ -555,6 +491,69 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               </div>
             )}
           </div>
+
+          {inv?.status?.toLowerCase() === 'draft' && (
+            isApprovalEnabled ? (
+              <button
+                className="action-btn"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d97706',
+                  background: '#d97706',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                className="action-btn"
+                onClick={() => markAsPaidMutation.mutate()}
+                disabled={markAsPaidMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #16a34a',
+                  background: '#16a34a',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: markAsPaidMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: markAsPaidMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {markAsPaidMutation.isPending ? 'Saving...' : 'Mark as Paid'}
+              </button>
+            )
+          )}
+
+          {isApprovalEnabled && inv?.status?.toLowerCase() === 'pending approval' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsApprovedMutation.mutate()}
+              disabled={markAsApprovedMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #0062ff',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
+            </button>
+          )}
     {inv?.status?.toLowerCase() === 'approved' && (
             <button
               className="action-btn"
@@ -1158,7 +1157,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               }}
             >
               {/* PDF Header Table Grid */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1229,7 +1228,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
                             letterSpacing: '1px',
                           }}
                         >
-                          SALES ORDER
+                          INVOICE
                         </h2>
                       </td>
                     </tr>
@@ -1237,8 +1236,8 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
                 </table>
               </div>
 
-              {/* PDF SO Meta Table */}
-              <div className="responsive-table-wrapper">
+              {/* PDF Invoice Meta Table */}
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1253,7 +1252,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
                       <td
                         style={{ width: '50%', padding: '6px 10px', borderRight: '1px solid #000' }}
                       >
-                        <strong>SO No.</strong> : <strong>{inv.invoiceNumber}</strong>
+                        <strong>Invoice No.</strong> : <strong>{inv.invoiceNumber}</strong>
                       </td>
                       <td style={{ width: '50%', padding: '6px 10px' }}>
                         <strong>Place Of Supply</strong> : Gujarat (24)
@@ -1302,7 +1301,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               </div>
 
               {/* Customer Address Grid */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1343,7 +1342,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               </div>
 
               {/* PDF Items Table */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
@@ -1449,7 +1448,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string; onClo
               </div>
 
               {/* PDF Totals & Signatures Grid */}
-              <div className="responsive-table-wrapper">
+              <div>
                 <table
                   style={{
                     width: '100%',
