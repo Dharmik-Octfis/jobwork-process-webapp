@@ -46,6 +46,12 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
     { key: 'rejected', label: 'Rejected Customers', where: { status: 'Rejected' } },
     { key: 'inactive', label: 'Inactive Customers', where: { status: 'inactive' } },
   ],
+  invoice: [
+    { key: 'all', label: 'All Invoices', where: {} },
+    { key: 'draft', label: 'Draft Invoices', where: { status: 'Draft' } },
+    { key: 'sent', label: 'Sent Invoices', where: { status: 'Sent' } },
+    { key: 'paid', label: 'Paid Invoices', where: { status: 'Paid' } },
+  ],
   item: [
     { key: 'all', label: 'All Items', where: {} },
     { key: 'active', label: 'Active Items', where: { isActive: true } },

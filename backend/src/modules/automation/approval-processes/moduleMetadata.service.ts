@@ -44,6 +44,15 @@ function toEntityType(codeOrId: string): string {
     case 'RECEIPTS':
     case 'JOB_RECEIPT':
       return 'job_receipt';
+    case 'SALES_ORDERS':
+    case 'SALES_ORDER':
+      return 'sales_order';
+    case 'INVOICES':
+    case 'INVOICE':
+      return 'invoice';
+    case 'QUOTATIONS':
+    case 'QUOTATION':
+      return 'quotation';
     case 'MEMBERS':
     case 'MEMBER':
     case 'USERS':
@@ -232,8 +241,8 @@ async function resolveTableName(
   // Verify candidate tables against PostgreSQL's live catalog
   const candidateList = Array.from(candidates);
   try {
-    const matchingTables = await prisma.$queryRawUnsafe<Array<{ table_name: string }>>(
-      `SELECT table_name 
+    const matchingTables = await prisma.$queryRawUnsafe<Array<{ tableName: string }>>(
+      `SELECT table_name AS "tableName" 
        FROM information_schema.tables 
        WHERE table_schema = 'public' 
          AND table_type = 'BASE TABLE'
@@ -244,7 +253,7 @@ async function resolveTableName(
 
     const match = matchingTables[0];
     if (match) {
-      return match.table_name;
+      return match.tableName;
     }
   } catch (err) {
     console.error('Error resolving table name from PostgreSQL catalog:', err);
@@ -421,7 +430,7 @@ export class ModuleMetadataService {
     );
 
     return operationalModules.map((m) => ({
-      id: m.id,
+      id: toEntityType(m.code),
       code: m.code,
       name: m.name,
       category: m.parent?.name || 'General',
@@ -483,19 +492,19 @@ export class ModuleMetadataService {
       try {
         const dbColumns = await prisma.$queryRawUnsafe<
           Array<{
-            column_name: string;
-            data_type: string;
-            udt_name: string;
-            is_nullable: string;
-            is_primary_key: boolean;
+            columnName: string;
+            dataType: string;
+            udtName: string;
+            isNullable: string;
+            isPrimaryKey: boolean;
           }>
         >(
           `SELECT 
-             c.column_name, 
-             c.data_type, 
-             c.udt_name,
-             c.is_nullable,
-             CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_primary_key
+             c.column_name AS "columnName", 
+             c.data_type AS "dataType", 
+             c.udt_name AS "udtName",
+             c.is_nullable AS "isNullable",
+             CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS "isPrimaryKey"
            FROM information_schema.columns c
            LEFT JOIN (
              SELECT kcu.column_name
@@ -525,27 +534,27 @@ export class ModuleMetadataService {
 
         for (const col of dbColumns) {
           // CRITICAL: NEVER send primary key in get field response
-          if (col.is_primary_key || col.column_name.toLowerCase() === 'id') {
+          if (col.isPrimaryKey || col.columnName.toLowerCase() === 'id') {
             continue;
           }
 
           // Filter out internal system/tenant isolation columns
-          if (IGNORED_COLUMNS.has(col.column_name.toLowerCase())) {
+          if (IGNORED_COLUMNS.has(col.columnName.toLowerCase())) {
             continue;
           }
 
-          const camelKey = toCamelCase(col.column_name);
-          const label = formatColumnLabel(col.column_name);
-          const dataType = mapPgTypeToFieldType(col.data_type, col.udt_name, col.column_name);
+          const camelKey = toCamelCase(col.columnName);
+          const label = formatColumnLabel(col.columnName);
+          const dataType = mapPgTypeToFieldType(col.dataType, col.udtName, col.columnName);
 
-          const relatedMod = inferRelatedModule(col.column_name);
+          const relatedMod = inferRelatedModule(col.columnName);
           fields.push({
             id: camelKey,
             moduleId,
             apiName: camelKey,
             label,
             dataType,
-            required: col.is_nullable === 'NO' && !['created_at', 'updated_at'].includes(col.column_name),
+            required: col.isNullable === 'NO' && !['created_at', 'updated_at'].includes(col.columnName),
             isActive: true,
             isCustom: false,
             options: getFieldOptions(entityType, camelKey),

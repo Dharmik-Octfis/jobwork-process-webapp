@@ -71,6 +71,7 @@ export async function getSalesOrderById(orgId: string, id: string) {
         },
         customer: { select: { contactName: true, email: true, phone: true, addresses: true } },
         location: true,
+        invoices: { where: { isDeleted: false } },
       },
     }),
   );

@@ -83,6 +83,22 @@ export const itemsApi = {
     return response.data;
   },
 
+  fetchItemInvoices: async (orgId: string, id: string, params: PageParams = {}) => {
+    const response = await apiClient.get(
+      `${endpoints.seedData.items(orgId)}/${id}/transactions/invoices`,
+      { params },
+    );
+    return response.data;
+  },
+
+  fetchItemSalesOrders: async (orgId: string, id: string, params: PageParams = {}) => {
+    const response = await apiClient.get(
+      `${endpoints.seedData.items(orgId)}/${id}/transactions/sales-orders`,
+      { params },
+    );
+    return response.data;
+  },
+
   uploadImages: async (orgId: string, id: string, formData: FormData): Promise<Item> => {
     const response = await apiClient.postForm(
       `${endpoints.seedData.items(orgId)}/${id}/images`,

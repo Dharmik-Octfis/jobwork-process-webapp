@@ -16,7 +16,7 @@ interface ItemTransactionsProps {
   itemId: string;
 }
 
-type TransactionFilter = 'Bills' | 'Issues' | 'Receives' | 'Inventory Adjustments';
+type TransactionFilter = 'Bills' | 'Invoices' | 'Sales Orders' | 'Issues' | 'Receives' | 'Inventory Adjustments';
 
 interface TransactionRow {
   id: string;
@@ -29,7 +29,14 @@ interface TransactionRow {
   billNumber?: string;
   issueNumber?: string;
   receiptNumber?: string;
+  invoiceId?: string;
+  invoiceDate?: string;
+  invoiceNumber?: string;
+  salesOrderId?: string;
+  salesOrderDate?: string;
+  salesOrderNumber?: string;
   vendorName?: string;
+  customerName?: string;
   quantity?: number;
   rate?: number;
   amount?: number;
@@ -64,7 +71,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
       else next.add(key);
       return next;
     });
-  const showBatchColumn = filterBy !== 'Bills';
+  const showBatchColumn = filterBy !== 'Bills' && filterBy !== 'Invoices' && filterBy !== 'Sales Orders';
   const hasUnits = (batch: TransactionBatch) => unitLabel.enabled && batch.units.length > 0;
 
   useEffect(() => {
@@ -95,13 +102,29 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
     enabled: Boolean(orgId && itemId) && filterBy === 'Receives',
   });
 
-  const data = filterBy === 'Bills' ? billsData : filterBy === 'Issues' ? issuesData : receiptsData;
+  const { data: invoicesData, isLoading: isLoadingInvoices } = useQuery({
+    queryKey: ['itemInvoices', orgId, itemId, page, perPage],
+    queryFn: () => itemsApi.fetchItemInvoices(orgId, itemId, { page, perPage }),
+    enabled: Boolean(orgId && itemId) && filterBy === 'Invoices',
+  });
+
+  const { data: salesOrdersData, isLoading: isLoadingSalesOrders } = useQuery({
+    queryKey: ['itemSalesOrders', orgId, itemId, page, perPage],
+    queryFn: () => itemsApi.fetchItemSalesOrders(orgId, itemId, { page, perPage }),
+    enabled: Boolean(orgId && itemId) && filterBy === 'Sales Orders',
+  });
+
+  const data = filterBy === 'Bills' ? billsData : filterBy === 'Invoices' ? invoicesData : filterBy === 'Sales Orders' ? salesOrdersData : filterBy === 'Issues' ? issuesData : receiptsData;
   const isLoading =
     filterBy === 'Bills'
       ? isLoadingBills
-      : filterBy === 'Issues'
-        ? isLoadingIssues
-        : isLoadingReceipts;
+      : filterBy === 'Invoices'
+        ? isLoadingInvoices
+        : filterBy === 'Sales Orders'
+          ? isLoadingSalesOrders
+          : filterBy === 'Issues'
+            ? isLoadingIssues
+            : isLoadingReceipts;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
@@ -159,7 +182,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                 overflow: 'hidden',
               }}
             >
-              {['Bills', 'Issues', 'Receives', 'Inventory Adjustments'].map((option) => (
+              {['Bills', 'Invoices', 'Sales Orders', 'Issues', 'Receives', 'Inventory Adjustments'].map((option) => (
                 <button
                   key={option}
                   onClick={() => {
@@ -249,7 +272,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {filterBy === 'Bills' ? 'BILL#' : filterBy === 'Issues' ? 'ISSUE#' : 'RECEIPT#'}
+                  {filterBy === 'Bills' ? 'BILL#' : filterBy === 'Invoices' ? 'INVOICE#' : filterBy === 'Sales Orders' ? 'SALES ORDER#' : filterBy === 'Issues' ? 'ISSUE#' : 'RECEIPT#'}
                 </th>
                 <th
                   style={{
@@ -261,7 +284,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  VENDOR NAME
+                  {filterBy === 'Invoices' || filterBy === 'Sales Orders' ? 'CUSTOMER NAME' : 'VENDOR NAME'}
                 </th>
                 {showBatchColumn && (
                   <th
@@ -290,11 +313,13 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                 >
                   {filterBy === 'Bills'
                     ? 'QUANTITY PURCHASED'
-                    : filterBy === 'Issues'
-                      ? 'QUANTITY ISSUED'
-                      : 'QUANTITY RECEIVED'}
+                    : filterBy === 'Invoices' || filterBy === 'Sales Orders'
+                      ? 'QUANTITY SOLD'
+                      : filterBy === 'Issues'
+                        ? 'QUANTITY ISSUED'
+                        : 'QUANTITY RECEIVED'}
                 </th>
-                {filterBy === 'Bills' && (
+                {(filterBy === 'Bills' || filterBy === 'Invoices' || filterBy === 'Sales Orders') && (
                   <>
                     <th
                       style={{
@@ -376,13 +401,21 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                             ? row.billDate
                               ? format(new Date(row.billDate), 'dd/MM/yyyy')
                               : '-'
-                            : filterBy === 'Issues'
-                              ? row.issueDate
-                                ? format(new Date(row.issueDate), 'dd/MM/yyyy')
+                            : filterBy === 'Invoices'
+                              ? row.invoiceDate
+                                ? format(new Date(row.invoiceDate), 'dd/MM/yyyy')
                                 : '-'
-                              : row.receiptDate
-                                ? format(new Date(row.receiptDate), 'dd/MM/yyyy')
-                                : '-'}
+                              : filterBy === 'Sales Orders'
+                                ? row.salesOrderDate
+                                  ? format(new Date(row.salesOrderDate), 'dd/MM/yyyy')
+                                  : '-'
+                                : filterBy === 'Issues'
+                                  ? row.issueDate
+                                    ? format(new Date(row.issueDate), 'dd/MM/yyyy')
+                                    : '-'
+                                  : row.receiptDate
+                                    ? format(new Date(row.receiptDate), 'dd/MM/yyyy')
+                                    : '-'}
                         </td>
                         <td style={{ padding: '12px 24px', fontSize: '13px', color: '#2563eb' }}>
                           {filterBy === 'Bills' ? (
@@ -401,6 +434,40 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                               </Link>
                             ) : (
                               row.billNumber
+                            )
+                          ) : filterBy === 'Invoices' ? (
+                            row.invoiceId ? (
+                              <Link
+                                to={`/organizations/${orgId}/sales/invoices?id=${row.invoiceId}`}
+                                style={{ color: '#2563eb', textDecoration: 'none' }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.textDecoration = 'underline')
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.textDecoration = 'none')
+                                }
+                              >
+                                {row.invoiceNumber}
+                              </Link>
+                            ) : (
+                              row.invoiceNumber
+                            )
+                          ) : filterBy === 'Sales Orders' ? (
+                            row.salesOrderId ? (
+                              <Link
+                                to={`/organizations/${orgId}/sales/sales-orders?id=${row.salesOrderId}`}
+                                style={{ color: '#2563eb', textDecoration: 'none' }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.textDecoration = 'underline')
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.textDecoration = 'none')
+                                }
+                              >
+                                {row.salesOrderNumber}
+                              </Link>
+                            ) : (
+                              row.salesOrderNumber
                             )
                           ) : filterBy === 'Issues' ? (
                             row.issueId ? (
@@ -435,7 +502,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                           )}
                         </td>
                         <td style={{ padding: '12px 24px', fontSize: '13px', color: '#1e293b' }}>
-                          {row.vendorName || '-'}
+                          {row.vendorName || row.customerName || '-'}
                         </td>
                         {showBatchColumn && (
                           <td
@@ -491,7 +558,7 @@ export function ItemTransactions({ orgId, itemId }: ItemTransactionsProps) {
                         >
                           {row.quantity}
                         </td>
-                        {filterBy === 'Bills' && (
+                        {(filterBy === 'Bills' || filterBy === 'Invoices' || filterBy === 'Sales Orders') && (
                           <>
                             <td
                               style={{

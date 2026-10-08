@@ -1,16 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '../../../lib/formatDate';
 import {
-  fetchSalesOrders,
-  fetchSalesOrderCount,
-  deleteSalesOrder,
-} from './sales-orders.api';
+  fetchInvoices,
+  fetchInvoiceCount,
+  deleteInvoice,
+} from './invoices.api';
 import { fetchPaymentTerms, type PaymentTerm } from '../customers/payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
-import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import { SalesOrderDetail } from './SalesOrderDetail';
+import { InvoiceDetail } from './InvoiceDetail';
 import { Pagination } from '../../../components/ui/Pagination';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { useListCount } from '../../../hooks/useListCount';
@@ -19,45 +19,46 @@ import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsMo
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
-import type { SalesOrder } from './sales-orders.schemas';
+import type { Invoice } from './invoices.schemas';
 
-function renderPoCell(po: SalesOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
+function renderInvoiceCell(invoice: Invoice, key: string, paymentTerms: PaymentTerm[] = []): string {
   if (key === 'paymentTerms') {
-    const term = paymentTerms.find((t) => t.id === po.paymentTerms);
-    return term ? term.termName : po.paymentTerms || '-';
+    const term = paymentTerms.find((t) => t.id === invoice.paymentTerms);
+    return term ? term.termName : invoice.paymentTerms || '-';
   }
   if (key.startsWith(CUSTOM_FIELD_PREFIX)) {
-    const value = po.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
+    const value = invoice.customFields?.[key.slice(CUSTOM_FIELD_PREFIX.length)];
     if (value === null || value === undefined || value === '') return '-';
     return Array.isArray(value) ? value.join(', ') : String(value);
   }
   if (key === 'customer') {
-    return po.customer?.contactName || '-';
+    return invoice.customer?.contactName || '-';
   }
   if (key === 'totalAmount' || key === 'total') {
-    return `₹${Number((po as Record<string, unknown>).total || po.totalAmount || 0).toFixed(2)}`;
+    return `₹${Number((invoice as Record<string, unknown>).total || invoice.totalAmount || 0).toFixed(2)}`;
   }
-  const value = (po as unknown as Record<string, unknown>)[key];
+  const value = (invoice as unknown as Record<string, unknown>)[key];
   if (value === null || value === undefined || value === '') return '-';
-  if (key === 'date' || key === 'deliveryDate' || key === 'createdAt' || key === 'updatedAt') {
+  if (key === 'date' || key === 'dueDate' || key === 'createdAt' || key === 'updatedAt') {
     return formatDate(String(value));
   }
   return String(value);
 }
 
-export function SalesOrdersList() {
+export default function InvoicesList() {
   const navigate = useNavigate();
   const location = useLocation();
+
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedPoId = searchParams.get('id');
+  const selectedInvoiceId = searchParams.get('id');
 
   const { search, filter, setFilter, perPage, setPerPage, page, setPage } = useListSearch();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['salesOrders', orgId, search, filter, page, perPage],
+    queryKey: ['invoices', orgId, search, filter, page, perPage],
     queryFn: () =>
-      fetchSalesOrders(orgId!, { search: search || undefined, filter, page, perPage }),
+      fetchInvoices(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
   });
@@ -68,31 +69,31 @@ export function SalesOrdersList() {
     enabled: Boolean(orgId),
   });
 
-  const salesOrders = data?.results ?? [];
+  const invoices = data?.results ?? [];
   const pageContext = data?.pageContext;
 
   const {
     total,
     isCounting,
     request: requestCount,
-  } = useListCount(['salesOrders-count', orgId, search, filter], () =>
-    fetchSalesOrderCount(orgId!, { search: search || undefined, filter }),
+  } = useListCount(['invoices-count', orgId, search, filter], () =>
+    fetchInvoiceCount(orgId!, { search: search || undefined, filter }),
   );
 
-  const { catalog, visible, filters, columns, save } = useListColumns(orgId, 'sales_order');
+  const { catalog, visible, filters, columns, save } = useListColumns(orgId, 'invoice');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
 
   const queryClient = useQueryClient();
-  const [poToDelete, setPoToDelete] = useState<string | null>(null);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteSalesOrder(orgId!, id),
+    mutationFn: (id: string) => deleteInvoice(orgId!, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
-      setPoToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+      setInvoiceToDelete(null);
     },
   });
 
@@ -105,10 +106,10 @@ export function SalesOrdersList() {
   };
 
   const toggleAll = () => {
-    if (selectedIds.length === salesOrders.length) {
+    if (selectedIds.length === invoices.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(salesOrders.map((i) => i.id));
+      setSelectedIds(invoices.map((i) => i.id));
     }
   };
 
@@ -131,20 +132,20 @@ export function SalesOrdersList() {
       }}
     >
       <div
-        className={`master-detail-container ${selectedPoId ? 'has-selection' : ''}`}
+        className={`master-detail-container ${selectedInvoiceId ? 'has-selection' : ''}`}
         style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#f8fafc' }}
       >
         <div
           className="master-pane"
           style={{
-            flex: selectedPoId ? '0 0 320px' : 1,
-            borderRight: selectedPoId ? '1px solid #eef0f3' : 'none',
+            flex: selectedInvoiceId ? '0 0 320px' : 1,
+            borderRight: selectedInvoiceId ? '1px solid #eef0f3' : 'none',
             display: 'flex',
             flexDirection: 'column',
             background: '#fff',
           }}
         >
-          {!selectedPoId && selectedIds.length > 0 ? (
+          {!selectedInvoiceId && selectedIds.length > 0 ? (
             <BulkActionBar
               selectedCount={selectedIds.length}
               onClearSelection={() => setSelectedIds([])}
@@ -157,7 +158,7 @@ export function SalesOrdersList() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: selectedPoId ? '20px 16px' : '20px 24px',
+                padding: selectedInvoiceId ? '20px 16px' : '20px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
                 gap: 8,
@@ -168,12 +169,12 @@ export function SalesOrdersList() {
                   filters={filters}
                   value={filter}
                   onChange={setFilter}
-                  fallbackLabel="All Sales Orders"
+                  fallbackLabel="All Invoices"
                 />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {!selectedPoId && (
+                {!selectedInvoiceId && (
                   <button
                     onClick={() => setIsColumnsOpen(true)}
                     title="Customize Columns"
@@ -197,7 +198,7 @@ export function SalesOrdersList() {
 
                 <button
                   onClick={() =>
-                    navigate(`/organizations/${orgId}/sales/sales-orders/new`, {
+                    navigate(`/organizations/${orgId}/sales/invoices/new`, {
                       state: { returnUrl: location.pathname + location.search },
                     })
                   }
@@ -222,16 +223,16 @@ export function SalesOrdersList() {
             </header>
           )}
 
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ flex: 1, overflow: 'auto' }}>
             {isLoading ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                Loading Sales Orders...
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                Loading...
               </div>
             ) : isError ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#ef4444' }}>
-                Error loading Sales Orders. Please try again.
+              <div style={{ padding: '24px', textAlign: 'center', color: '#ef4444' }}>
+                Failed to load invoices.
               </div>
-            ) : salesOrders.length === 0 ? (
+            ) : invoices.length === 0 ? (
               <div
                 style={{
                   padding: '64px 32px',
@@ -250,46 +251,37 @@ export function SalesOrdersList() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: '16px',
+                    marginBottom: 16,
                   }}
                 >
-                  <FileText size={40} color="#94a3b8" />
+                  <FileText size={32} color="#94a3b8" />
                 </div>
-                <h2
-                  style={{ fontSize: 20, fontWeight: 600, color: '#1e293b', margin: '0 0 8px 0' }}
-                >
-                  No Sales Orders Found
-                </h2>
-                <p
-                  style={{ color: '#64748b', maxWidth: 400, margin: '0 0 24px 0', lineHeight: 1.5 }}
-                >
-                  {search
-                    ? `No Sales Orders match "${search}".`
-                    : "You haven't created any Sales Orders yet."}
+                <h3 style={{ margin: '0 0 8px', color: '#0f172a', fontSize: 16 }}>No invoices found</h3>
+                <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: 14, maxWidth: 320 }}>
+                  Get started by creating your first invoice, or try adjusting your search and filters.
                 </p>
                 <button
-                  onClick={() =>
-                    navigate(`/organizations/${orgId}/sales/sales-orders/new`, {
-                      state: { returnUrl: location.pathname + location.search },
-                    })
-                  }
+                  onClick={() => navigate(`/organizations/${orgId}/sales/invoices/new`)}
                   style={{
-                    background: '#28a745',
+                    background: '#186337',
                     color: 'white',
                     border: 'none',
-                    padding: '10px 24px',
+                    padding: '8px 16px',
                     borderRadius: '4px',
-                    fontWeight: 600,
-                    fontSize: 14,
+                    fontWeight: 500,
+                    fontSize: '14px',
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                 >
-                  Create Sales Order
+                  <Plus size={18} /> New Invoice
                 </button>
               </div>
             ) : (
               <div>
-                {selectedPoId ? (
+                {selectedInvoiceId ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <div
                       style={{
@@ -302,30 +294,27 @@ export function SalesOrdersList() {
                         textTransform: 'uppercase',
                       }}
                     >
-                      Sales Orders
+                      Invoices
                     </div>
-                    {salesOrders.map((po) => (
+                    {invoices.map((inv) => (
                       <div
-                        key={po.id}
-                        onClick={() => setSearchParams(prev => { prev.set('id', po.id ); return prev; })}
+                        key={inv.id}
+                        onClick={() => setSearchParams(prev => { prev.set('id', inv.id); return prev; })}
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
                           cursor: 'pointer',
-                          background: selectedPoId === po.id ? '#f1f5f9' : 'transparent',
+                          background: selectedInvoiceId === inv.id ? '#f1f5f9' : 'transparent',
                           transition: 'background 0.1s',
                         }}
                         onMouseEnter={(e) => {
-                          if (selectedPoId !== po.id) e.currentTarget.style.background = '#f8fafc';
+                          if (selectedInvoiceId !== inv.id) e.currentTarget.style.background = '#f8fafc';
                         }}
                         onMouseLeave={(e) => {
-                          if (selectedPoId !== po.id)
+                          if (selectedInvoiceId !== inv.id)
                             e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        {/* Status rides along here too: while the detail is open
-                            this pane is the only view of the other SOs, and the
-                            table column it comes from is off screen. */}
                         <div
                           style={{
                             display: 'flex',
@@ -336,7 +325,7 @@ export function SalesOrdersList() {
                           }}
                         >
                           <span style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b' }}>
-                            {po.soNumber}
+                            {inv.invoiceNumber}
                           </span>
                           <span
                             style={{
@@ -347,23 +336,23 @@ export function SalesOrdersList() {
                               fontSize: 12,
                               fontWeight: 500,
                               background:
-                                po.status === 'Draft' ? '#f1f5f9' :
-                                po.status === 'Pending Approval' ? '#fef3c7' :
-                                po.status === 'Approved' ? '#e0f2fe' :
-                                po.status === 'Confirmed' ? '#dcfce7' : '#f1f5f9',
+                                inv.status === 'Draft' ? '#f1f5f9' :
+                                inv.status === 'Pending Approval' ? '#fef3c7' :
+                                inv.status === 'Approved' ? '#e0f2fe' :
+                                inv.status === 'Paid' ? '#dcfce7' : '#f1f5f9',
                               color:
-                                po.status === 'Draft' ? '#475569' :
-                                po.status === 'Pending Approval' ? '#92400e' :
-                                po.status === 'Approved' ? '#0284c7' :
-                                po.status === 'Confirmed' ? '#166534' : '#475569',
+                                inv.status === 'Draft' ? '#475569' :
+                                inv.status === 'Pending Approval' ? '#92400e' :
+                                inv.status === 'Approved' ? '#0284c7' :
+                                inv.status === 'Paid' ? '#166534' : '#475569',
                             }}
                           >
-                            {po.status}
+                            {inv.status}
                           </span>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          {po.customer?.contactName || '-'} • ₹
-                          {(po as Record<string, unknown>).total || po.totalAmount || 0}
+                        <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{inv.customer?.contactName || '-'}</span>
+                          <span>{renderInvoiceCell(inv, 'totalAmount', paymentTerms)}</span>
                         </div>
                       </div>
                     ))}
@@ -371,28 +360,12 @@ export function SalesOrdersList() {
                 ) : (
                   <div className="responsive-table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                      <thead>
-                        <tr
-                          style={{
-                            background: '#f9f9fb',
-                            borderTop: '1px solid #eef0f3',
-                            borderBottom: '1px solid #eef0f3',
-                          }}
-                        >
-                          <th
-                            style={{
-                              width: 48,
-                              ...headerStyle,
-                              paddingRight: 0,
-                              textAlign: 'center',
-                            }}
-                          >
+                      <thead style={{ background: '#f8fafc', borderBottom: '1px solid #eef0f3' }}>
+                        <tr>
+                          <th style={{ ...headerStyle, width: 40, textAlign: 'center' }}>
                             <input
                               type="checkbox"
-                              checked={
-                                salesOrders.length > 0 &&
-                                selectedIds.length === salesOrders.length
-                              }
+                              checked={selectedIds.length === invoices.length && invoices.length > 0}
                               onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
@@ -405,35 +378,27 @@ export function SalesOrdersList() {
                         </tr>
                       </thead>
                       <tbody>
-                        {salesOrders.map((po) => (
+                        {invoices.map((inv) => (
                           <tr
-                            key={po.id}
-                            onClick={() => setSearchParams(prev => { prev.set('id', po.id ); return prev; })}
+                            key={inv.id}
+                            onClick={(e) => {
+                              const target = e.target as HTMLElement;
+                              if (target.closest('input[type="checkbox"]')) return;
+                              if (target.closest('button')) return;
+                              setSearchParams(new URLSearchParams({ id: inv.id }));
+                            }}
                             style={{
                               borderBottom: '1px solid #eef0f3',
-                              transition: 'background 0.1s',
                               cursor: 'pointer',
-                              background: selectedIds.includes(po.id) ? '#f8fafc' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                            onMouseLeave={(e) => {
-                              if (!selectedIds.includes(po.id))
-                                e.currentTarget.style.background = 'transparent';
+                              background: selectedIds.includes(inv.id) ? '#f8fafc' : '#fff',
+                              transition: 'background 0.2s',
                             }}
                           >
-                            <td
-                              style={{
-                                width: 48,
-                                padding: '12px 16px',
-                                paddingRight: 0,
-                                textAlign: 'center',
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <td style={{ padding: '12px 16px', textAlign: 'center', width: 40 }}>
                               <input
                                 type="checkbox"
-                                checked={selectedIds.includes(po.id)}
-                                onChange={() => toggleSelection(po.id)}
+                                checked={selectedIds.includes(inv.id)}
+                                onChange={() => toggleSelection(inv.id)}
                                 style={{ cursor: 'pointer' }}
                               />
                             </td>
@@ -442,9 +407,12 @@ export function SalesOrdersList() {
                                 key={col.key}
                                 style={{
                                   padding: '12px 16px',
-                                  color: col.key === 'soNumber' ? '#0062ff' : '#333',
                                   fontSize: 13,
-                                  fontWeight: col.key === 'soNumber' ? 500 : 400,
+                                  color: '#334155',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: 250,
                                 }}
                               >
                                 {col.key === 'status' ? (
@@ -457,21 +425,21 @@ export function SalesOrdersList() {
                                       fontSize: 12,
                                       fontWeight: 500,
                                       background:
-                                        po.status === 'Draft' ? '#f1f5f9' :
-                                        po.status === 'Pending Approval' ? '#fef3c7' :
-                                        po.status === 'Approved' ? '#e0f2fe' :
-                                        po.status === 'Confirmed' ? '#dcfce7' : '#f1f5f9',
+                                        inv.status === 'Draft' ? '#f1f5f9' :
+                                        inv.status === 'Pending Approval' ? '#fef3c7' :
+                                        inv.status === 'Approved' ? '#e0f2fe' :
+                                        inv.status === 'Paid' ? '#dcfce7' : '#f1f5f9',
                                       color:
-                                        po.status === 'Draft' ? '#475569' :
-                                        po.status === 'Pending Approval' ? '#92400e' :
-                                        po.status === 'Approved' ? '#0284c7' :
-                                        po.status === 'Confirmed' ? '#166534' : '#475569',
+                                        inv.status === 'Draft' ? '#475569' :
+                                        inv.status === 'Pending Approval' ? '#92400e' :
+                                        inv.status === 'Approved' ? '#0284c7' :
+                                        inv.status === 'Paid' ? '#166534' : '#475569',
                                     }}
                                   >
-                                    {po.status}
+                                    {inv.status}
                                   </span>
                                 ) : (
-                                  renderPoCell(po, col.key, paymentTerms)
+                                  renderInvoiceCell(inv, col.key, paymentTerms)
                                 )}
                               </td>
                             ))}
@@ -484,7 +452,6 @@ export function SalesOrdersList() {
               </div>
             )}
           </div>
-
           {/* Pagination — hidden while a SO is selected (narrow master pane) */}
           <Pagination
               pageContext={pageContext}
@@ -498,56 +465,63 @@ export function SalesOrdersList() {
             />
         </div>
 
-        {/* Right Panel - Detail */}
-        {selectedPoId && (
-          <div className="detail-pane" style={{ flex: 1, overflowY: 'auto' }}>
-            <SalesOrderDetail poId={selectedPoId} onClose={() => setSearchParams(prev => { prev.delete('id'); return prev; })} />
+        {selectedInvoiceId && (
+          <div
+            className="detail-pane"
+            style={{
+              flex: 2,
+              background: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <InvoiceDetail invoiceId={selectedInvoiceId} onClose={() => setSearchParams({})} />
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(invoiceToDelete)}
+        title="Delete Invoice"
+        message="Are you sure you want to delete this invoice? This action cannot be undone."
+        confirmText="Delete"
+        isConfirming={deleteMutation.isPending}
+        onConfirm={() => {
+          if (invoiceToDelete) deleteMutation.mutate(invoiceToDelete);
+        }}
+        onCancel={() => setInvoiceToDelete(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={isBulkDeleteDialogOpen}
+        title="Delete Invoices"
+        message={`Are you sure you want to delete ${selectedIds.length} invoice(s)? This action cannot be undone.`}
+        confirmText="Delete All"
+        isConfirming={isProcessing}
+        onConfirm={async () => {
+          setIsProcessing(true);
+          try {
+            for (const id of selectedIds) {
+              await deleteInvoice(orgId!, id);
+            }
+            queryClient.invalidateQueries({ queryKey: ['invoices', orgId] });
+            setSelectedIds([]);
+            setIsBulkDeleteDialogOpen(false);
+          } finally {
+            setIsProcessing(false);
+          }
+        }}
+        onCancel={() => setIsBulkDeleteDialogOpen(false)}
+      />
 
       <CustomizeColumnsModal
         isOpen={isColumnsOpen}
         catalog={catalog}
         visible={visible}
+        onSave={(cols) => save.mutate(cols)}
         onClose={() => setIsColumnsOpen(false)}
-        onSave={(keys) => {
-          save.mutate(keys);
-          setIsColumnsOpen(false);
-        }}
-        isSaving={save.isPending}
-      />
-
-      <ConfirmDialog
-        isOpen={!!poToDelete}
-        title="Delete Sales Order"
-        message="Are you sure you want to delete this Sales Order? This action cannot be undone."
-        confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-        onConfirm={() => {
-          if (poToDelete) {
-            deleteMutation.mutate(poToDelete);
-          }
-        }}
-        onCancel={() => setPoToDelete(null)}
-      />
-
-      <ConfirmDialog
-        isOpen={isBulkDeleteDialogOpen}
-        title="Delete Selected Sales Orders"
-        message={`Are you sure you want to delete ${selectedIds.length} Sales Order(s)? This action cannot be undone.`}
-        confirmText={isProcessing ? 'Deleting...' : 'Delete'}
-        onConfirm={async () => {
-          setIsProcessing(true);
-          try {
-            await Promise.allSettled(selectedIds.map((id) => deleteSalesOrder(orgId!, id)));
-            queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
-            setSelectedIds([]);
-          } finally {
-            setIsProcessing(false);
-            setIsBulkDeleteDialogOpen(false);
-          }
-        }}
-        onCancel={() => setIsBulkDeleteDialogOpen(false)}
       />
     </div>
   );

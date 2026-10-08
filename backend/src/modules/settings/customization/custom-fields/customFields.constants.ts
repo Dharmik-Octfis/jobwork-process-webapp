@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared catalog for the dynamic custom-fields feature. Both the definition
  * service (which validates config) and the value engine (which validates saved
  * values) read from here, so the list of supported types lives in ONE place.
@@ -8,9 +8,9 @@
  * Modules that support custom fields today. Extend as new entities gain them.
  *
  * This tuple drives three things at once, and TypeScript enforces all three:
- * `LIST_COLUMNS` and `LIST_FILTERS` are `Record<EntityType, …>`, so adding a name
+ * `LIST_COLUMNS` and `LIST_FILTERS` are `Record<EntityType, â€¦>`, so adding a name
  * here fails the build until that module also has a column catalog and a filter
- * set. That is deliberate — a module with custom fields but no list catalog would
+ * set. That is deliberate â€” a module with custom fields but no list catalog would
  * render an empty table.
  *
  * `member` is the Users module. Its custom-field values live on `memberships`, so
@@ -20,22 +20,22 @@
 export const ENTITY_TYPES = [
   'vendor',
   'customer',
-  'sales_order',
+  'sales_order', 'invoice',
   'item',
   'purchase_order',
   'bill',
   'member',
   /**
-   * Sprints 2–4. Every one of these tables carries `customFields`, which is
+   * Sprints 2â€“4. Every one of these tables carries `customFields`, which is
    * where the mind map's "extra fields at time of receipt" lands
-   * (field-sources §2.6). Those must never become hardcoded columns: one org's
+   * (field-sources Â§2.6). Those must never become hardcoded columns: one org's
    * cutper is another org's nothing.
    *
    * `job_issue` was removed 2026-08-10 (no section to fill it in) and came back
    * 2026-10-05 with one on the Issue form, alongside `stock_adjustment`.
    *
-   * `batch` has no list page of its own — batches are picked from an availability
-   * query, not browsed — but it earns an entry because Material In writes a batch
+   * `batch` has no list page of its own â€” batches are picked from an availability
+   * query, not browsed â€” but it earns an entry because Material In writes a batch
    * and an org needs somewhere to record the tag details it cares about.
    */
   'job_order',
@@ -97,7 +97,7 @@ export type FieldStatus = (typeof FIELD_STATUSES)[number];
 export const MAX_ACTIVE_FIELDS = 50;
 
 /**
- * Turn a human label into an immutable, DB-safe key ("Truck Number" -> "truck_no"…
+ * Turn a human label into an immutable, DB-safe key ("Truck Number" -> "truck_no"â€¦
  * actually "truck_number"). Generated ONCE at create; never regenerated on rename.
  * Uniqueness (incl. archived rows) is resolved by the service, which may suffix _2.
  */
@@ -115,3 +115,4 @@ export function slugifyKey(label: string): string {
 
   return key.slice(0, 80);
 }
+

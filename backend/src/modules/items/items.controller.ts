@@ -60,6 +60,24 @@ export class ItemsController {
     );
   }
 
+  async getItemInvoices(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(
+      res,
+      await itemsService.getItemInvoices(req.params.id as string, req.tenantId!, parsed.data),
+    );
+  }
+
+  async getItemSalesOrders(req: Request, res: Response) {
+    const parsed = listQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest('Invalid search parameters.');
+    sendSuccess(
+      res,
+      await itemsService.getItemSalesOrders(req.params.id as string, req.tenantId!, parsed.data),
+    );
+  }
+
   async createItem(req: Request, res: Response) {
     const item = await itemsService.create(req.tenantId!, req.body as CreateItemDto, req.user?.id);
     sendSuccess(res, item, 'Item created.', 201);

@@ -95,13 +95,7 @@ export function CustomFieldsSection({
   }
 
   if (fields.length === 0) {
-    return (
-      <div style={{ padding: '32px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
-        No custom fields yet. An organization admin can add them under
-        <br />
-        <strong>Settings → Modules</strong>.
-      </div>
-    );
+    return null;
   }
 
   const setField = (key: string, value: unknown) => {

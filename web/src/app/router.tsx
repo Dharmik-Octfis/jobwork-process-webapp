@@ -255,9 +255,17 @@ const SalesOrdersList = lazyPage(
   () => import('../features/sales/sales-orders/SalesOrdersList'),
   'SalesOrdersList',
 );
+const InvoicesList = lazyPage(
+  () => import('../features/sales/invoices/InvoicesList'),
+  'default',
+);
 const CreateSalesOrder = lazyPage(
   () => import('../features/sales/sales-orders/CreateSalesOrder'),
   'CreateSalesOrder',
+);
+const CreateInvoice = lazyPage(
+  () => import('../features/sales/invoices/CreateInvoice'),
+  'CreateInvoice',
 );
 const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
@@ -557,6 +565,18 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/sales/sales-orders/:id/edit',
                     element: <CreateSalesOrder />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/invoices',
+                    element: <InvoicesList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/invoices/new',
+                    element: <CreateInvoice />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/invoices/:id/edit',
+                    element: <CreateInvoice />,
                   },
                   {
                     path: '/organizations/:orgId/sales/customers/new',
