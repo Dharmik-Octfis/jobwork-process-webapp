@@ -8,7 +8,7 @@ import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
-import { reportsApi } from './reports.api';
+import { reportsApi, type FifoCostLotTrackingRow } from './reports.api';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
@@ -354,8 +354,16 @@ export function FifoCostLotTrackingPage() {
     if (appliedFilters.reportBasis === 'product_out') {
       return [
         [
-          { content: 'PRODUCT OUT', colSpan: 4, styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: 'PRODUCT IN', colSpan: 7, styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          {
+            content: 'PRODUCT OUT',
+            colSpan: 4,
+            styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+          },
+          {
+            content: 'PRODUCT IN',
+            colSpan: 7,
+            styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+          },
         ],
         [
           { content: 'DATE', styles: { halign: 'left' } },
@@ -374,8 +382,16 @@ export function FifoCostLotTrackingPage() {
     }
     return [
       [
-        { content: 'PRODUCT IN', colSpan: 7, styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: 'PRODUCT OUT', colSpan: 4, styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        {
+          content: 'PRODUCT IN',
+          colSpan: 7,
+          styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+        },
+        {
+          content: 'PRODUCT OUT',
+          colSpan: 4,
+          styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+        },
       ],
       [
         { content: 'DATE', styles: { halign: 'left' } },
@@ -438,7 +454,7 @@ export function FifoCostLotTrackingPage() {
   };
 
   const buildFifoRows = (rows: FifoCostLotTrackingRow[]) => {
-    const out: any[] = [];
+    const out: unknown[][] = [];
     for (const r of rows) {
       if (r.itemName) {
         out.push([
@@ -527,7 +543,8 @@ export function FifoCostLotTrackingPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -577,7 +594,9 @@ export function FifoCostLotTrackingPage() {
                 {formatHeaderDate(appliedFilters.fromDate)
                   ? `From ${formatHeaderDate(appliedFilters.fromDate)}`
                   : ''}{' '}
-                {formatHeaderDate(appliedFilters.toDate) ? `To ${formatHeaderDate(appliedFilters.toDate)}` : ''}
+                {formatHeaderDate(appliedFilters.toDate)
+                  ? `To ${formatHeaderDate(appliedFilters.toDate)}`
+                  : ''}
                 {!appliedFilters.fromDate && !appliedFilters.toDate && 'All Time'}
               </span>
             </div>
@@ -775,7 +794,9 @@ export function FifoCostLotTrackingPage() {
               {formatHeaderDate(appliedFilters.fromDate)
                 ? `From ${formatHeaderDate(appliedFilters.fromDate)}`
                 : ''}{' '}
-              {formatHeaderDate(appliedFilters.toDate) ? `To ${formatHeaderDate(appliedFilters.toDate)}` : ''}
+              {formatHeaderDate(appliedFilters.toDate)
+                ? `To ${formatHeaderDate(appliedFilters.toDate)}`
+                : ''}
               {!appliedFilters.fromDate && !appliedFilters.toDate && 'All Time'}
             </div>
             <div

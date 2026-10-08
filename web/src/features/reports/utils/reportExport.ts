@@ -14,12 +14,21 @@ export interface ExportReportOptions {
   reportTitle: string;
   dateSubtitle: string;
   columns: ReportColumnExportDef[];
-  data: (string | number | { content: string | number; colSpan?: number; rowSpan?: number; styles?: any })[][];
+  data: (
+    | string
+    | number
+    | {
+        content: string | number;
+        colSpan?: number;
+        rowSpan?: number;
+        styles?: Record<string, unknown>;
+      }
+  )[][];
   totalRow?: (string | number)[];
   footnote?: string;
   filename: string;
   orientation?: 'portrait' | 'landscape';
-  customHead?: any[];
+  customHead?: unknown[];
 }
 
 export function exportReportToExcel({
@@ -153,9 +162,9 @@ export async function exportReportToPDF({
 
   autoTable(doc, {
     startY: currentY + 16,
-    head: headers as any,
+    head: headers as unknown as string[][],
     body: bodyRows,
-    foot: footRows as any,
+    foot: footRows as unknown as { content: string; styles: Record<string, unknown> }[][],
     showFoot: 'lastPage',
     theme: 'plain',
     margin: { left: 28, right: 28, top: 32, bottom: 32 },
@@ -196,7 +205,9 @@ export async function exportReportToPDF({
   });
 
   // Render footnote if present
-  const lastTableY = (doc as any).lastAutoTable?.finalY || currentY + 40;
+  const lastTableY =
+    (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ||
+    currentY + 40;
   if (footnote) {
     if (lastTableY + 30 > pageHeight - 30) {
       doc.addPage();
@@ -215,4 +226,3 @@ export async function exportReportToPDF({
   const finalPdfFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
   doc.save(finalPdfFilename);
 }
-

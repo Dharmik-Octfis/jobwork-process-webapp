@@ -12,17 +12,35 @@ export interface ReportExportMenuProps {
   reportTitle: string;
   dateSubtitle?: string;
   columns?: ReportColumnExportDef[];
-  data?: (string | number | { content: string | number; colSpan?: number; rowSpan?: number; styles?: any })[][];
+  data?: (
+    | string
+    | number
+    | {
+        content: string | number;
+        colSpan?: number;
+        rowSpan?: number;
+        styles?: Record<string, unknown>;
+      }
+  )[][];
   totalRow?: (string | number)[];
   footnote?: string;
   filename?: string;
   orientation?: 'portrait' | 'landscape';
   disabled?: boolean;
-  customHead?: any[];
+  customHead?: unknown[];
   onExportExcel?: () => void | Promise<void>;
   onExportPDF?: () => void | Promise<void>;
   fetchExportData?: () => Promise<{
-    data: (string | number | { content: string | number; colSpan?: number; rowSpan?: number; styles?: any })[][];
+    data: (
+      | string
+      | number
+      | {
+          content: string | number;
+          colSpan?: number;
+          rowSpan?: number;
+          styles?: Record<string, unknown>;
+        }
+    )[][];
     totalRow?: (string | number)[];
   }>;
 }
@@ -60,8 +78,7 @@ export function ReportExportMenu({
   }, []);
 
   const baseFilename =
-    filename ||
-    `${reportTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`;
+    filename || `${reportTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`;
 
   const handleExportXLSX = async () => {
     try {

@@ -40,7 +40,6 @@ import {
   type SOAttachment,
 } from './sales-orders.api';
 
-
 import { itemsApi } from '../../items/items.api';
 import { isOwnLocation, type Location } from '../../configuration/locations/locations.api';
 import { fetchCustomers, updateCustomer, type Customer } from '../customers/customers.api';
@@ -134,7 +133,10 @@ export function CreateSalesOrder() {
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'sales_order');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
 
-  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, {
+    moduleId: 'sales_orders',
+    status: 'ACTIVE',
+  });
   const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
@@ -164,7 +166,7 @@ export function CreateSalesOrder() {
     register,
     control,
     handleSubmit,
-    watch,
+    getValues,
     setValue,
     reset,
     trigger,
@@ -188,6 +190,34 @@ export function CreateSalesOrder() {
       totalAmount: 0,
     },
   });
+
+  const {
+    fields: itemFields,
+    append: appendItem,
+    remove: removeItem,
+  } = useFieldArray({
+    control,
+    name: 'lineItems',
+  });
+
+  const [poPrefix, setPoPrefix] = useState('SO-');
+  const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
+  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
+  const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
+  const [_isEditingDeliveryName, setIsEditingDeliveryName] = useState(false);
+  const [customDeliveryName, setCustomDeliveryName] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<SOAttachment[]>([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+  const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
+
+  const watchItems = useWatch({ control, name: 'lineItems' });
+  const watchDeliveryType = useWatch({ control, name: 'deliveryType' });
+  const watchDeliveryLocationId = useWatch({ control, name: 'deliveryLocationId' });
+  const watchDeliveryCustomerId = useWatch({ control, name: 'deliveryCustomerId' });
+  const watchLocationId = useWatch({ control, name: 'locationId' });
+  const watchPoDate = useWatch({ control, name: 'date' });
+  const watchPaymentTerms = useWatch({ control, name: 'paymentTerms' });
 
   useEffect(() => {
     if (existingPo) {
@@ -250,27 +280,11 @@ export function CreateSalesOrder() {
       reset(resetData);
 
       if (existingPo.documents && Array.isArray(existingPo.documents)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setAttachedFiles(existingPo.documents);
       }
     }
   }, [existingPo, isClone, reset]);
-
-  const {
-    fields: itemFields,
-    append: appendItem,
-    remove: removeItem,
-  } = useFieldArray({
-    control,
-    name: 'lineItems',
-  });
-
-  const watchItems = useWatch({ control, name: 'lineItems' });
-  const watchDeliveryType = watch('deliveryType');
-  const watchDeliveryLocationId = watch('deliveryLocationId');
-  const watchDeliveryCustomerId = watch('deliveryCustomerId');
-  const watchLocationId = watch('locationId');
-  const watchPoDate = watch('date');
-  const watchPaymentTerms = watch('paymentTerms');
 
   useEffect(() => {
     if (watchPoDate && watchPaymentTerms && paymentTerms) {
@@ -285,16 +299,6 @@ export function CreateSalesOrder() {
       }
     }
   }, [watchPoDate, watchPaymentTerms, paymentTerms, setValue]);
-
-  const [poPrefix, setPoPrefix] = useState('SO-');
-  const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
-  const [isPaymentTermModalOpen, setIsPaymentTermModalOpen] = useState(false);
-  const [isDeliveryAddressModalOpen, setIsDeliveryAddressModalOpen] = useState(false);
-  const [_isEditingDeliveryName, setIsEditingDeliveryName] = useState(false);
-  const [customDeliveryName, setCustomDeliveryName] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<SOAttachment[]>([]);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setFileUploadError(null);
@@ -341,7 +345,8 @@ export function CreateSalesOrder() {
     setFileUploadError(null);
   };
 
-  const selectedCustomer = customers.find((c: Customer) => c.id === watch('customerId'));
+  const watchedCustomerId = useWatch({ control, name: 'customerId' });
+  const selectedCustomer = customers.find((c: Customer) => c.id === watchedCustomerId);
 
   const updateSpecificAddressMutation = useMutation({
     mutationFn: async ({
@@ -377,6 +382,7 @@ export function CreateSalesOrder() {
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomDeliveryName('');
     setIsEditingDeliveryName(false);
   }, [watchDeliveryLocationId, watchDeliveryCustomerId, watchDeliveryType]);
@@ -416,20 +422,19 @@ export function CreateSalesOrder() {
     enabled: !!orgId,
   });
 
-  const [lastPrefilledNumber, setLastPrefilledNumber] = useState('');
-
   useEffect(() => {
     if (preference && !isEdit) {
       const generatedNumber = `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`;
-      const currentValue = watch('soNumber');
+      const currentValue = getValues('soNumber');
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
         setValue('soNumber', generatedNumber);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLastPrefilledNumber(generatedNumber);
         setPoPrefix(preference.prefix);
       }
     }
-  }, [preference, setValue, watch, lastPrefilledNumber, isEdit]);
+  }, [preference, setValue, getValues, lastPrefilledNumber, isEdit]);
 
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
@@ -908,7 +913,13 @@ export function CreateSalesOrder() {
                   rules={{ required: 'Date is required' }}
                   render={({ field }) => (
                     <DateInput
-                      value={field.value ?? ''}
+                      value={
+                        typeof field.value === 'string'
+                          ? field.value
+                          : field.value
+                            ? new Date(field.value).toISOString().slice(0, 10)
+                            : ''
+                      }
                       onChange={(next) => {
                         field.onChange(next);
                         // Delivery date is validated against this one, so it has to
@@ -929,19 +940,41 @@ export function CreateSalesOrder() {
                   control={control}
                   rules={{
                     validate: (val) => {
-                      if (!val || !watchPoDate) return true;
-                      return val >= watchPoDate || 'Delivery date must be on or after SO date';
+                      const soDate = watch('date');
+                      if (!val || !soDate) return true;
+                      const valStr =
+                        typeof val === 'string' ? val : new Date(val).toISOString().slice(0, 10);
+                      const soDateStr =
+                        typeof soDate === 'string'
+                          ? soDate
+                          : new Date(soDate).toISOString().slice(0, 10);
+                      return valStr >= soDateStr || 'Delivery date must be on or after SO date';
                     },
                   }}
-                  render={({ field }) => (
-                    <DateInput
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      min={watchPoDate}
-                      ariaLabel="Delivery date"
-                      style={{ ...inputStyle, maxWidth: '100%' }}
-                    />
-                  )}
+                  render={({ field }) => {
+                    const soDate = watch('date');
+                    const minDate =
+                      typeof soDate === 'string'
+                        ? soDate
+                        : soDate
+                          ? new Date(soDate).toISOString().slice(0, 10)
+                          : undefined;
+                    return (
+                      <DateInput
+                        value={
+                          typeof field.value === 'string'
+                            ? field.value
+                            : field.value
+                              ? new Date(field.value).toISOString().slice(0, 10)
+                              : ''
+                        }
+                        onChange={field.onChange}
+                        min={minDate}
+                        ariaLabel="Delivery date"
+                        style={{ ...inputStyle, maxWidth: '100%' }}
+                      />
+                    );
+                  }}
                 />
                 {errors.deliveryDate && (
                   <div style={{ color: '#e54d4d', fontSize: '12px', marginTop: '4px' }}>
@@ -1818,7 +1851,9 @@ export function CreateSalesOrder() {
                   fontSize: '13px',
                 }}
               >
-                {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+                {mutation.isPending && watch('status') === 'Pending Approval'
+                  ? 'Saving...'
+                  : 'Save & Submit for Approval'}
               </button>
             ) : (
               <button
@@ -1839,7 +1874,9 @@ export function CreateSalesOrder() {
                   fontSize: '13px',
                 }}
               >
-                {mutation.isPending && watch('status') === 'Confirmed' ? 'Saving...' : 'Save as Confirmed'}
+                {mutation.isPending && watch('status') === 'Confirmed'
+                  ? 'Saving...'
+                  : 'Save as Confirmed'}
               </button>
             )}
           </>
@@ -1876,9 +1913,7 @@ export function CreateSalesOrder() {
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
-            : watch('soNumber')
-              ? watch('soNumber').replace(poPrefix, '')
-              : '00001'
+            : (watch('soNumber') || '').replace(poPrefix, '') || '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {
           const parsed = parseInt(newNextNumberStr, 10);

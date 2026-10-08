@@ -240,7 +240,7 @@ export function JobOrderLossReportPage() {
           case 'jobOrderNumber':
             return row.jobOrderNumber || '-';
           case 'step':
-            return `Step ${row.stepIndex + 1}: ${row.processName}`;
+            return `${row.stepSeq}. ${row.processName}`;
           case 'challanNumber':
             return row.challanNumber || '-';
           case 'processorName':
@@ -260,12 +260,15 @@ export function JobOrderLossReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
   }, [sortedRows, exportColumns]);
 
   const grandTotalLossValue = data?.grandTotalValue ?? 0;
-  const totalLossQty = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0), [rows]);
+  const totalLossQty = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0),
+    [rows],
+  );
 
   const exportTotalRow = useMemo(() => {
     return exportColumns.map((col, idx) => {
@@ -297,7 +300,7 @@ export function JobOrderLossReportPage() {
           case 'jobOrderNumber':
             return row.jobOrderNumber || '-';
           case 'step':
-            return `Step ${row.stepIndex + 1}: ${row.processName}`;
+            return `${row.stepSeq}. ${row.processName}`;
           case 'challanNumber':
             return row.challanNumber || '-';
           case 'processorName':
@@ -317,7 +320,7 @@ export function JobOrderLossReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
     const allTotalLossQty = allRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
     const allGrandTotalLossValue = allRes?.grandTotalValue ?? grandTotalLossValue;
@@ -342,7 +345,8 @@ export function JobOrderLossReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}

@@ -732,6 +732,7 @@ export interface BillsReportRow {
 
 export interface PaginatedBillsReportResponse {
   items: BillsReportRow[];
+  totalAmount?: number;
   pagination: {
     page: number;
     pageSize: number;

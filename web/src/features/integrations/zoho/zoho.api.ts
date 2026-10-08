@@ -52,7 +52,9 @@ export function useZohoOrganizations(orgId: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_ORGS_QUERY_KEY, orgId],
     queryFn: async (): Promise<ZohoOrganization[]> => {
-      const res = await apiClient.get(`/organizations/${orgId}/settings/integrations/zoho/organizations`);
+      const res = await apiClient.get(
+        `/organizations/${orgId}/settings/integrations/zoho/organizations`,
+      );
       return res.data;
     },
     enabled: Boolean(orgId) && enabled,
@@ -72,7 +74,9 @@ export function useZohoConnect(orgId: string) {
       if (params?.returnTo) searchParams.set('return_to', params.returnTo);
 
       const qs = searchParams.toString() ? `?${searchParams.toString()}` : '';
-      const res = await apiClient.get(`/organizations/${orgId}/settings/integrations/zoho/connect${qs}`);
+      const res = await apiClient.get(
+        `/organizations/${orgId}/settings/integrations/zoho/connect${qs}`,
+      );
       return res.data as { url: string; state: string };
     },
   });
@@ -150,7 +154,7 @@ export const ZOHO_SYNC_HISTORY_QUERY_KEY = 'zoho-sync-history';
 export function useZohoEntityFields(orgId: string, entity: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_FIELDS_QUERY_KEY, orgId, entity],
-    queryFn: async (): Promise<any> => {
+    queryFn: async (): Promise<Record<string, unknown>> => {
       const res = await apiClient.get(
         `/organizations/${orgId}/settings/integrations/zoho/fields?entity=${encodeURIComponent(entity)}`,
       );
@@ -167,7 +171,7 @@ export function useZohoEntityFields(orgId: string, entity: string, enabled = tru
 export function useZohoSyncSettings(orgId: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId],
-    queryFn: async (): Promise<any> => {
+    queryFn: async (): Promise<Record<string, unknown>> => {
       const res = await apiClient.get(`/organizations/${orgId}/settings/integrations/zoho/sync`);
       return res.data;
     },
@@ -183,7 +187,7 @@ export function useSaveZohoSyncConfig(orgId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiClient.post(
         `/organizations/${orgId}/settings/integrations/zoho/sync/configure`,
         data,
@@ -224,7 +228,13 @@ export function useInstantZohoSync(orgId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { module: string; fullSync?: boolean; syncMode?: 'incremental' | 'full' }) => {
+    mutationFn: async (data: {
+      module: string;
+      fullSync?: boolean;
+      syncMode?: 'incremental' | 'full';
+      syncAddresses?: boolean;
+      syncContactPersons?: boolean;
+    }) => {
       const res = await apiClient.post(
         `/organizations/${orgId}/settings/integrations/zoho/sync/instant`,
         data,
@@ -271,7 +281,7 @@ export function useSyncAllZohoModules(orgId: string) {
 export function useZohoSyncHistory(orgId: string, module?: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_SYNC_HISTORY_QUERY_KEY, orgId, module || 'all'],
-    queryFn: async (): Promise<any[]> => {
+    queryFn: async (): Promise<Record<string, unknown>[]> => {
       const qs = module ? `?module=${encodeURIComponent(module)}` : '';
       const res = await apiClient.get(
         `/organizations/${orgId}/settings/integrations/zoho/sync/history${qs}`,

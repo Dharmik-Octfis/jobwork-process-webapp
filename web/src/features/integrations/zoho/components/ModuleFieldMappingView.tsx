@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { toast } from 'react-hot-toast';
+import { notify } from '../../../../lib/notify';
 import {
   ArrowLeft,
   HelpCircle,
@@ -13,7 +13,6 @@ import {
   Search,
   Plus,
   Trash2,
-  Layers,
   Sparkles,
 } from 'lucide-react';
 import {
@@ -59,7 +58,6 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   const [syncContactPersons, setSyncContactPersons] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'standard' | 'custom' | 'mapped'>('all');
-  const [isInstantSyncing, setIsInstantSyncing] = useState(false);
 
   // User-added custom field mapping definitions on the fly
   const [userAddedFields, setUserAddedFields] = useState<AppFieldDefinition[]>([]);
@@ -98,9 +96,18 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   const meta = moduleTitles[module];
 
   // Available Zoho Fields
-  const availableZohoFields: ZohoField[] = fieldsData?.zohoFields || [];
-  const standardZohoFields = useMemo(() => availableZohoFields.filter((f) => !f.is_custom_field), [availableZohoFields]);
-  const customZohoFields = useMemo(() => availableZohoFields.filter((f) => f.is_custom_field), [availableZohoFields]);
+  const availableZohoFields: ZohoField[] = useMemo(
+    () => fieldsData?.zohoFields || [],
+    [fieldsData?.zohoFields],
+  );
+  const standardZohoFields = useMemo(
+    () => availableZohoFields.filter((f) => !f.is_custom_field),
+    [availableZohoFields],
+  );
+  const customZohoFields = useMemo(
+    () => availableZohoFields.filter((f) => f.is_custom_field),
+    [availableZohoFields],
+  );
 
   // Combine backend appFields with any active client custom fields and user added fields
   const allAppFields: AppFieldDefinition[] = useMemo(() => {
@@ -123,7 +130,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
             ? 'number'
             : dt === 'checkbox' || dt === 'boolean'
               ? 'boolean'
-              : 'string') as any,
+              : 'string') as 'string' | 'number' | 'boolean' | 'date',
           required: Boolean(cf.isRequired),
           isSystem: false,
           isCustomField: true,
@@ -149,18 +156,30 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
     const restoredUserFields: AppFieldDefinition[] = [];
 
     if (existingConfig && existingConfig.fieldMappings && existingConfig.fieldMappings.length > 0) {
-      setDuplicationPref(existingConfig.duplicationPreference || (module === 'item' ? 'Item Name' : 'Contact Name'));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDuplicationPref(
+        existingConfig.duplicationPreference || (module === 'item' ? 'Item Name' : 'Contact Name'),
+      );
       setConflictResolution(existingConfig.conflictResolution || 'Clone');
       setSyncDirection(existingConfig.syncDirection || 'ZOHO_TO_APP');
       setSyncStatus(existingConfig.status || 'ACTIVE');
-      setSyncAddresses(existingConfig.syncAddresses !== undefined ? existingConfig.syncAddresses : true);
-      setSyncContactPersons(existingConfig.syncContactPersons !== undefined ? existingConfig.syncContactPersons : true);
+      setSyncAddresses(
+        existingConfig.syncAddresses !== undefined ? existingConfig.syncAddresses : true,
+      );
+      setSyncContactPersons(
+        existingConfig.syncContactPersons !== undefined ? existingConfig.syncContactPersons : true,
+      );
 
       for (const m of existingConfig.fieldMappings) {
         if (m.appField && m.zohoField) {
           dict[m.appField] = m.zohoField;
           if (m.appField.startsWith('customFields.')) {
-            const label = m.appFieldLabel || m.appField.slice(13).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+            const label =
+              m.appFieldLabel ||
+              m.appField
+                .slice(13)
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (c: string) => c.toUpperCase());
             restoredUserFields.push({
               key: m.appField,
               label,
@@ -222,12 +241,16 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   const handleSave = async () => {
     // Validate required fields
     const missingRequired = allAppFields.filter(
-      (f) => (f.required || f.isSystem) && (!fieldMappingDict[f.key] || fieldMappingDict[f.key].trim() === ''),
+      (f) =>
+        (f.required || f.isSystem) &&
+        (!fieldMappingDict[f.key] || fieldMappingDict[f.key].trim() === ''),
     );
 
     if (missingRequired.length > 0) {
       const names = missingRequired.map((f) => f.label).join(', ');
-      toast.error(`Required field mapping(s) missing: ${names}. Please map all required fields before saving.`);
+      toast.error(
+        `Required field mapping(s) missing: ${names}. Please map all required fields before saving.`,
+      );
       return;
     }
 
@@ -279,10 +302,10 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
         syncAddresses,
         syncContactPersons,
       });
-      toast.success('Sync settings and field mappings saved successfully!');
+      notify.success('Sync settings and field mappings saved successfully!');
       refetchSettings();
     } catch (err) {
-      toast.error(toApiErrorMessage(err));
+      notify.error(toApiErrorMessage(err));
     }
   };
 
@@ -291,12 +314,16 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   const handleSync = async (fullSync = false) => {
     // Validate required fields before syncing
     const missingRequired = allAppFields.filter(
-      (f) => (f.required || f.isSystem) && (!fieldMappingDict[f.key] || fieldMappingDict[f.key].trim() === ''),
+      (f) =>
+        (f.required || f.isSystem) &&
+        (!fieldMappingDict[f.key] || fieldMappingDict[f.key].trim() === ''),
     );
 
     if (missingRequired.length > 0) {
       const names = missingRequired.map((f) => f.label).join(', ');
-      toast.error(`Cannot sync: Required field mapping(s) missing: ${names}. Please map all required fields first.`);
+      notify.error(
+        `Cannot sync: Required field mapping(s) missing: ${names}. Please map all required fields first.`,
+      );
       return;
     }
 
@@ -309,13 +336,12 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
         syncAddresses,
         syncContactPersons,
       });
-      toast.success(
-        res?.message ||
-          `${fullSync ? 'Full sync' : 'Instant sync'} completed successfully!`,
+      notify.success(
+        res?.message || `${fullSync ? 'Full sync' : 'Instant sync'} completed successfully!`,
       );
       refetchSettings();
     } catch (err) {
-      toast.error(toApiErrorMessage(err));
+      notify.error(toApiErrorMessage(err));
     } finally {
       setSyncingType(null);
     }
@@ -324,19 +350,22 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
   const handleAddCustomField = () => {
     const label = newCustomLabel.trim();
     if (!label) {
-      toast.error('Please enter a custom field label');
+      notify.error('Please enter a custom field label');
       return;
     }
 
     const key = newCustomKey.trim()
       ? newCustomKey.trim().startsWith('customFields.')
         ? newCustomKey.trim()
-        : `customFields.${newCustomKey.trim().replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()}`
+        : `customFields.${newCustomKey
+            .trim()
+            .replace(/[^a-zA-Z0-9_]/g, '_')
+            .toLowerCase()}`
       : `customFields.${label.toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
     const chosenZoho = newCustomCustomZohoInput.trim() || newCustomZohoField.trim();
     if (!chosenZoho) {
-      toast.error('Please select or specify a Zoho Books field to map to');
+      notify.error('Please select or specify a Zoho Books field to map to');
       return;
     }
 
@@ -359,7 +388,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
     setNewCustomZohoField('');
     setNewCustomCustomZohoInput('');
     setShowAddCustomModal(false);
-    toast.success(`Custom field "${label}" added to mapping!`);
+    notify.success(`Custom field "${label}" added to mapping!`);
   };
 
   const handleRemoveCustomField = (fieldKey: string) => {
@@ -369,7 +398,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
       delete next[fieldKey];
       return next;
     });
-    toast.success('Custom field mapping removed');
+    notify.success('Custom field mapping removed');
   };
 
   const standardFieldsCount = useMemo(
@@ -484,7 +513,9 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
               htmlFor="duplication-pref-select"
               style={{ fontSize: '14px', color: '#334155', fontWeight: 500 }}
             >
-              Choose the preference for {module === 'item' ? 'Item' : module === 'customer' ? 'Customer' : 'Vendor'} duplication
+              Choose the preference for{' '}
+              {module === 'item' ? 'Item' : module === 'customer' ? 'Customer' : 'Vendor'}{' '}
+              duplication
             </label>
             <select
               id="duplication-pref-select"
@@ -531,7 +562,8 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
               htmlFor="conflict-resolution-select"
               style={{ fontSize: '14px', color: '#334155', fontWeight: 500 }}
             >
-              What needs to be done on Zoho Books's {module === 'item' ? 'item' : 'record'} when the same record is modified on both sides?
+              What needs to be done on Zoho Books's {module === 'item' ? 'item' : 'record'} when the
+              same record is modified on both sides?
             </label>
             <select
               id="conflict-resolution-select"
@@ -640,24 +672,39 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                 <div>
                   <label
                     htmlFor="sync-addresses-check"
-                    style={{ fontSize: '14px', color: '#334155', fontWeight: 500, display: 'block' }}
+                    style={{
+                      fontSize: '14px',
+                      color: '#334155',
+                      fontWeight: 500,
+                      display: 'block',
+                    }}
                   >
                     Sync Addresses
                   </label>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    Sync billing & shipping addresses into {module === 'customer' ? 'Customer' : 'Vendor'} address directory
+                    Sync billing & shipping addresses into{' '}
+                    {module === 'customer' ? 'Customer' : 'Vendor'} address directory
                   </span>
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                >
                   <input
                     id="sync-addresses-check"
                     type="checkbox"
                     checked={syncAddresses}
                     onChange={(e) => setSyncAddresses(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--navy-600, #2563eb)' }}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      cursor: 'pointer',
+                      accentColor: 'var(--navy-600, #2563eb)',
+                    }}
                   />
                   <span style={{ fontSize: '14px', color: '#1e293b' }}>
-                    {syncAddresses ? 'Enabled (Sync addresses)' : 'Disabled (Do not sync addresses)'}
+                    {syncAddresses
+                      ? 'Enabled (Sync addresses)'
+                      : 'Disabled (Do not sync addresses)'}
                   </span>
                 </label>
               </div>
@@ -674,7 +721,12 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                 <div>
                   <label
                     htmlFor="sync-contact-persons-check"
-                    style={{ fontSize: '14px', color: '#334155', fontWeight: 500, display: 'block' }}
+                    style={{
+                      fontSize: '14px',
+                      color: '#334155',
+                      fontWeight: 500,
+                      display: 'block',
+                    }}
                   >
                     Sync Contact Persons
                   </label>
@@ -682,16 +734,25 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                     Sync primary and additional contact persons into contact persons directory
                   </span>
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                >
                   <input
                     id="sync-contact-persons-check"
                     type="checkbox"
                     checked={syncContactPersons}
                     onChange={(e) => setSyncContactPersons(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--navy-600, #2563eb)' }}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      cursor: 'pointer',
+                      accentColor: 'var(--navy-600, #2563eb)',
+                    }}
                   />
                   <span style={{ fontSize: '14px', color: '#1e293b' }}>
-                    {syncContactPersons ? 'Enabled (Sync contact persons)' : 'Disabled (Do not sync contact persons)'}
+                    {syncContactPersons
+                      ? 'Enabled (Sync contact persons)'
+                      : 'Disabled (Do not sync contact persons)'}
                   </span>
                 </label>
               </div>
@@ -701,9 +762,19 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
 
         {/* Map Fields Section matching Screenshot 4 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}>
+              <h3
+                style={{ fontSize: '18px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}
+              >
                 Map Fields
               </h3>
               <span
@@ -722,7 +793,16 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               {/* Filter Tabs */}
-              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: '#f1f5f9',
+                  padding: '3px',
+                  borderRadius: '8px',
+                  gap: '2px',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => setActiveTab('all')}
@@ -890,7 +970,8 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
             >
               <div>
                 <div style={{ color: 'var(--navy-900)', fontWeight: 600 }}>
-                  {module === 'item' ? 'Item' : module === 'customer' ? 'Customer' : 'Vendor'} Fields
+                  {module === 'item' ? 'Item' : module === 'customer' ? 'Customer' : 'Vendor'}{' '}
+                  Fields
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 400 }}>
                   Jobwork Project Field (Fixed)
@@ -902,9 +983,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
               </div>
 
               <div>
-                <div style={{ color: 'var(--navy-900)', fontWeight: 600 }}>
-                  Zoho Books Field
-                </div>
+                <div style={{ color: 'var(--navy-900)', fontWeight: 600 }}>Zoho Books Field</div>
                 <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 400 }}>
                   Select Zoho Field to Map
                 </div>
@@ -928,7 +1007,9 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                 Loading available fields from Zoho Books API...
               </div>
             ) : filteredAppFields.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
+              <div
+                style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}
+              >
                 No fields match your search "{searchQuery}".
               </div>
             ) : (
@@ -937,7 +1018,9 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                   const reqKey = module === 'item' ? 'name' : 'displayName';
                   const isMandatorySystem = field.key === reqKey || Boolean(field.isSystem);
                   const currentMappedZoho = fieldMappingDict[field.key] || '';
-                  const isUserCustomField = Boolean(field.isCustomField || field.key.startsWith('customFields.'));
+                  const isUserCustomField = Boolean(
+                    field.isCustomField || field.key.startsWith('customFields.'),
+                  );
 
                   return (
                     <div
@@ -947,17 +1030,27 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                         gridTemplateColumns: 'minmax(240px, 1fr) 50px minmax(280px, 1fr)',
                         alignItems: 'center',
                         padding: '14px 24px',
-                        borderBottom: index < filteredAppFields.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        borderBottom:
+                          index < filteredAppFields.length - 1 ? '1px solid #f1f5f9' : 'none',
                         backgroundColor: isMandatorySystem ? '#fafafa' : '#fff',
                       }}
                     >
                       {/* Left Side: Fixed Jobwork Project Field */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
                         <span style={{ fontSize: '14px', fontWeight: 500, color: '#1e293b' }}>
                           {field.label}
                         </span>
                         {field.required && (
-                          <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '-4px' }}>*</span>
+                          <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '-4px' }}>
+                            *
+                          </span>
                         )}
                         {isMandatorySystem && (
                           <span
@@ -1007,12 +1100,28 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                       </div>
 
                       {/* Middle: Mapping Connector Arrow */}
-                      <div style={{ textAlign: 'center', color: currentMappedZoho ? '#2563eb' : (field.required ? '#ef4444' : '#cbd5e1') }}>
+                      <div
+                        style={{
+                          textAlign: 'center',
+                          color: currentMappedZoho
+                            ? '#2563eb'
+                            : field.required
+                              ? '#ef4444'
+                              : '#cbd5e1',
+                        }}
+                      >
                         <ArrowRightLeft size={16} />
                       </div>
 
                       {/* Right Side: Zoho Field Dropdown and Actions */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '340px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          maxWidth: '340px',
+                        }}
+                      >
                         <select
                           value={currentMappedZoho}
                           onChange={(e) => handleMappingChange(field.key, e.target.value)}
@@ -1021,11 +1130,12 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                             width: '100%',
                             padding: '8px 12px',
                             fontSize: '14px',
-                            border: !currentMappedZoho && (field.required || isMandatorySystem)
-                              ? '1px solid #ef4444'
-                              : currentMappedZoho
-                              ? '1px solid #93c5fd'
-                              : '1px solid #d1d5db',
+                            border:
+                              !currentMappedZoho && (field.required || isMandatorySystem)
+                                ? '1px solid #ef4444'
+                                : currentMappedZoho
+                                  ? '1px solid #93c5fd'
+                                  : '1px solid #d1d5db',
                             borderRadius: '6px',
                             backgroundColor: isMandatorySystem ? '#f1f5f9' : '#fff',
                             color: currentMappedZoho ? '#1e293b' : '#9ca3af',
@@ -1118,7 +1228,9 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
         >
           <Info size={16} color="#2563eb" style={{ flexShrink: 0 }} />
           <span>
-            Fields on the left side represent all standard and custom fields configured in your Jobwork project. Select the corresponding Zoho Books field on the right side to synchronize data seamlessly.
+            Fields on the left side represent all standard and custom fields configured in your
+            Jobwork project. Select the corresponding Zoho Books field on the right side to
+            synchronize data seamlessly.
           </span>
         </div>
 
@@ -1326,7 +1438,15 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
             <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Field Label Input */}
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#334155', marginBottom: '6px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: '#334155',
+                    marginBottom: '6px',
+                  }}
+                >
                   Custom Field Label <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
@@ -1353,7 +1473,15 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
 
               {/* Field Key Input */}
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#334155', marginBottom: '6px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: '#334155',
+                    marginBottom: '6px',
+                  }}
+                >
                   Custom Field Key
                 </label>
                 <input
@@ -1373,14 +1501,24 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                     outline: 'none',
                   }}
                 />
-                <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
+                <span
+                  style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}
+                >
                   Stored under the entity's custom fields attribute.
                 </span>
               </div>
 
               {/* Zoho Field Select */}
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#334155', marginBottom: '6px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: '#334155',
+                    marginBottom: '6px',
+                  }}
+                >
                   Map to Zoho Books Field <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <select
@@ -1419,8 +1557,12 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
                 </select>
 
                 {/* Or Custom Zoho API Name input */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Or enter custom Zoho key:</span>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}
+                >
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>
+                    Or enter custom Zoho key:
+                  </span>
                   <input
                     type="text"
                     placeholder="e.g. cf_batch_no"
@@ -1495,4 +1637,3 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
     </div>
   );
 };
-

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { X, Filter, Columns, Download } from 'lucide-react';
+import { X, Filter, Columns } from 'lucide-react';
 import { format, endOfDay, startOfMonth } from 'date-fns';
 import { notify } from '../../lib/notify';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
@@ -142,7 +142,8 @@ export function JobworkChallansRegisterPage() {
       processorName: valueOf('processorName'),
       processName: valueOf('processName'),
       jobOrderNumber: valueOf('jobOrderNumber'),
-      minAgeDays: applied.conditions.find((c) => c.field === 'minAgeDays')?.value as number | undefined,
+      minAgeDays: applied.conditions.find((c) => c.field === 'minAgeDays')?.value as
+        number | undefined,
       page,
       perPage,
     };
@@ -246,9 +247,13 @@ export function JobworkChallansRegisterPage() {
           case 'toBeIssuedQty':
             return lines.map((l) => Number(l.toBeIssuedQty || 0).toFixed(2)).join('\n') || '0.00';
           case 'daysOutstanding':
-            return row.daysOutstanding !== undefined && row.daysOutstanding !== null ? String(row.daysOutstanding) : '-';
+            return row.daysOutstanding !== undefined && row.daysOutstanding !== null
+              ? String(row.daysOutstanding)
+              : '-';
           case 'status':
-            return ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status;
+            return (
+              ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status
+            );
           default:
             return '-';
         }
@@ -258,7 +263,11 @@ export function JobworkChallansRegisterPage() {
 
   const fetchExportData = async () => {
     if (!orgId) return { data: [] };
-    const allRes = await reportsApi.getJobworkChallans(orgId, { ...query, page: undefined, perPage: undefined });
+    const allRes = await reportsApi.getJobworkChallans(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
     const allRows = allRes?.results ?? [];
     const out = allRows.map((row) => {
       const lines = row.lines || [];
@@ -283,9 +292,13 @@ export function JobworkChallansRegisterPage() {
           case 'toBeIssuedQty':
             return lines.map((l) => Number(l.toBeIssuedQty || 0).toFixed(2)).join('\n') || '0.00';
           case 'daysOutstanding':
-            return row.daysOutstanding !== undefined && row.daysOutstanding !== null ? String(row.daysOutstanding) : '-';
+            return row.daysOutstanding !== undefined && row.daysOutstanding !== null
+              ? String(row.daysOutstanding)
+              : '-';
           case 'status':
-            return ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status;
+            return (
+              ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status
+            );
           default:
             return '-';
         }
@@ -301,7 +314,8 @@ export function JobworkChallansRegisterPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -337,7 +351,11 @@ export function JobworkChallansRegisterPage() {
             onExportExcel={async () => {
               if (!orgId) return;
               notify.info('Fetching all challans for Excel export...');
-              const allRes = await reportsApi.getJobworkChallans(orgId, { ...query, page: undefined, perPage: undefined });
+              const allRes = await reportsApi.getJobworkChallans(orgId, {
+                ...query,
+                page: undefined,
+                perPage: undefined,
+              });
               const allRows = allRes?.results ?? [];
               if (allRows.length === 0) {
                 notify.error('No challan records to export.');
@@ -562,13 +580,18 @@ export function JobworkChallansRegisterPage() {
                   sortedRows.map((row) => (
                     <React.Fragment key={row.id}>
                       {row.lines.map((line, lineIndex) => (
-                        <tr
-                          key={line.id}
-                        >
+                        <tr key={line.id}>
                           {visibleColumns.map((key) => {
-                            const isLineCol = ['items', 'plannedQty', 'issuedQty', 'toBeIssuedQty', 'daysOutstanding', 'status'].includes(key);
+                            const isLineCol = [
+                              'items',
+                              'plannedQty',
+                              'issuedQty',
+                              'toBeIssuedQty',
+                              'daysOutstanding',
+                              'status',
+                            ].includes(key);
                             if (!isLineCol && lineIndex > 0) return null;
-                            
+
                             return (
                               <td
                                 key={key}

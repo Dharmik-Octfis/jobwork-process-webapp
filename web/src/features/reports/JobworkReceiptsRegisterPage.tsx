@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { X, Filter, Columns, Download } from 'lucide-react';
+import { X, Filter, Columns } from 'lucide-react';
 import { format, endOfDay, startOfMonth } from 'date-fns';
 import { notify } from '../../lib/notify';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
@@ -229,7 +229,9 @@ export function JobworkReceiptsRegisterPage() {
       case 'toBeReceivedQty':
         return line.toBeReceivedQty?.toFixed(2) || '0.00';
       case 'status':
-        return RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label || row.status;
+        return (
+          RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label || row.status
+        );
       default:
         return null;
     }
@@ -267,7 +269,10 @@ export function JobworkReceiptsRegisterPage() {
           case 'toBeReceivedQty':
             return lines.map((l) => Number(l.toBeReceivedQty || 0).toFixed(2)).join('\n') || '0.00';
           case 'status':
-            return RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label || row.status;
+            return (
+              RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label ||
+              row.status
+            );
           default:
             return '-';
         }
@@ -277,7 +282,11 @@ export function JobworkReceiptsRegisterPage() {
 
   const fetchExportData = async () => {
     if (!orgId) return { data: [] };
-    const allRes = await reportsApi.getJobworkReceipts(orgId, { ...query, page: undefined, perPage: undefined });
+    const allRes = await reportsApi.getJobworkReceipts(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
     const allRows = allRes?.results ?? [];
     const out = allRows.map((row) => {
       const lines = row.lines || [];
@@ -302,7 +311,10 @@ export function JobworkReceiptsRegisterPage() {
           case 'toBeReceivedQty':
             return lines.map((l) => Number(l.toBeReceivedQty || 0).toFixed(2)).join('\n') || '0.00';
           case 'status':
-            return RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label || row.status;
+            return (
+              RECEIPT_STATUS_META[row.status as keyof typeof RECEIPT_STATUS_META]?.label ||
+              row.status
+            );
           default:
             return '-';
         }
@@ -318,7 +330,8 @@ export function JobworkReceiptsRegisterPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -354,7 +367,11 @@ export function JobworkReceiptsRegisterPage() {
             onExportExcel={async () => {
               if (!orgId) return;
               notify.info('Fetching all receipts for Excel export...');
-              const allRes = await reportsApi.getJobworkReceipts(orgId, { ...query, page: undefined, perPage: undefined });
+              const allRes = await reportsApi.getJobworkReceipts(orgId, {
+                ...query,
+                page: undefined,
+                perPage: undefined,
+              });
               const allRows = allRes?.results ?? [];
               if (allRows.length === 0) {
                 notify.error('No receipt records to export.');
@@ -581,9 +598,14 @@ export function JobworkReceiptsRegisterPage() {
                       {row.lines?.map((line, lineIndex) => (
                         <tr key={line.id}>
                           {visibleColumns.map((key) => {
-                            const isLineCol = ['items', 'plannedQty', 'receivedQty', 'toBeReceivedQty'].includes(key);
+                            const isLineCol = [
+                              'items',
+                              'plannedQty',
+                              'receivedQty',
+                              'toBeReceivedQty',
+                            ].includes(key);
                             if (!isLineCol && lineIndex > 0) return null;
-                            
+
                             return (
                               <td
                                 key={key}

@@ -128,7 +128,10 @@ export function StockSummaryReportPage() {
   const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
 
   const locationOptions = useMemo(
-    () => locations.filter(loc => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })),
+    () =>
+      locations
+        .filter((loc) => isOwnLocation(loc))
+        .map((loc) => ({ label: loc.name, value: loc.id })),
     [locations],
   );
 
@@ -369,7 +372,7 @@ export function StockSummaryReportPage() {
             return '-';
           }
         }
-      })
+      }),
     );
   }, [sortedRows, exportColumns]);
 
@@ -438,19 +441,19 @@ export function StockSummaryReportPage() {
             return '-';
           }
         }
-      })
+      }),
     );
     const allTotalRow = exportColumns.map((col, idx) => {
       if (idx === 0) return 'TOTAL';
       switch (col.key) {
         case 'openingStock':
-          return Number(res?.totals?.totalOpeningStock ?? grandTotalOpening ?? 0).toFixed(2);
+          return Number(res?.grandTotalOpening ?? grandTotalOpening ?? 0).toFixed(2);
         case 'quantityIn':
-          return Number(res?.totals?.totalQuantityIn ?? grandTotalIn ?? 0).toFixed(2);
+          return Number(res?.grandTotalIn ?? grandTotalIn ?? 0).toFixed(2);
         case 'quantityOut':
-          return Number(res?.totals?.totalQuantityOut ?? grandTotalOut ?? 0).toFixed(2);
+          return Number(res?.grandTotalOut ?? grandTotalOut ?? 0).toFixed(2);
         case 'closingStock':
-          return Number(res?.totals?.totalClosingStock ?? grandTotalClosing ?? 0).toFixed(2);
+          return Number(res?.grandTotalClosing ?? grandTotalClosing ?? 0).toFixed(2);
         default:
           return '';
       }
@@ -465,7 +468,8 @@ export function StockSummaryReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -706,29 +710,139 @@ export function StockSummaryReportPage() {
                   {visibleColumns.map((colKey) => {
                     switch (colKey) {
                       case 'itemName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="ITEM NAME"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'categoryName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="CATEGORY NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="CATEGORY NAME"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'sku':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="SKU" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="SKU"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'hsnCode':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="HSN CODE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="HSN CODE"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'uomName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="UNIT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="UNIT"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'openingStock':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="OPENING STOCK" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="OPENING STOCK"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'quantityIn':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="QUANTITY IN" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="QUANTITY IN"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'quantityOut':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="QUANTITY OUT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="QUANTITY OUT"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'closingStock':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="CLOSING STOCK" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="CLOSING STOCK"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       default:
                         if (colKey.startsWith('cf_')) {
                           const cfKey = colKey.replace('cf_', '');
                           const cfLabel =
                             customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
-                          return <SortableHeader key={colKey} sortKey={colKey} label={cfLabel.toUpperCase()} currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                          return (
+                            <SortableHeader
+                              key={colKey}
+                              sortKey={colKey}
+                              label={cfLabel.toUpperCase()}
+                              currentSortField={sortField as string}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              style={thStyle}
+                              align="left"
+                            />
+                          );
                         }
                         return null;
                     }
