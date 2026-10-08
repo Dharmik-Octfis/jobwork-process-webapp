@@ -12,7 +12,7 @@ import { ReportDateFilter } from './components/ReportDateFilter';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
 import { useRecordReportVisit } from './useRecordReportVisit';
-import { reportsApi, type SalesOrdersReportQuery, type SalesOrdersReportRow } from './reports.api';
+import { reportsApi, type InvoicesReportQuery, type InvoicesReportRow } from './reports.api';
 import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { fetchCustomers } from '../sales/customers/customers.api';
 import { fetchPaymentTerms } from '../sales/customers/payment-terms.api';
@@ -20,11 +20,11 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
 
 const COLUMN_CATALOG = [
-  { key: 'soNumber', label: 'SO NUMBER', locked: true, defaultVisible: true },
+  { key: 'invoiceNumber', label: 'INVOICE NUMBER', locked: true, defaultVisible: true },
   { key: 'customerName', label: 'CUSTOMER NAME', defaultVisible: true },
   { key: 'locationName', label: 'LOCATION', defaultVisible: true },
-  { key: 'date', label: 'SO DATE', defaultVisible: true },
-  { key: 'deliveryDate', label: 'DELIVERY DATE', defaultVisible: true },
+  { key: 'date', label: 'INVOICE DATE', defaultVisible: true },
+  { key: 'dueDate', label: 'DUE DATE', defaultVisible: true },
   { key: 'paymentTerms', label: 'PAYMENT TERMS', defaultVisible: true },
   { key: 'total', label: 'TOTAL', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
@@ -38,13 +38,13 @@ interface Applied {
   toDate: Date;
 }
 
-export function SalesOrdersReportPage() {
+export function InvoicesReportPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
   const organizationName = useOrganizationName();
-  useRecordReportVisit(orgId, 'sales_order_report');
+  useRecordReportVisit(orgId, 'invoice_report');
 
-  const storageKey = `SalesOrdersReportState_${orgId}`;
+  const storageKey = `InvoicesReportState_${orgId}`;
   const initialState = useMemo(() => {
     try {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
@@ -175,12 +175,11 @@ export function SalesOrdersReportPage() {
       { label: 'Draft', value: 'Draft' },
       { label: 'Approved', value: 'Approved' },
       { label: 'Pending Approval', value: 'Pending Approval' },
-      { label: 'Confirmed', value: 'Confirmed' },
-      { label: 'Closed', value: 'Closed' },
+      { label: 'Paid', value: 'Paid' },
     ];
 
     return [
-      { key: 'soNumber', label: 'SO Number', dataType: 'string', group: 'Report' },
+      { key: 'invoiceNumber', label: 'INVOICE NUMBER', dataType: 'string', group: 'Report' },
       {
         key: 'customerName',
         label: 'Customer Name',
@@ -209,7 +208,7 @@ export function SalesOrdersReportPage() {
 
   const { page, setPage, perPage, setPerPage } = useListSearch();
 
-  const query = useMemo<SalesOrdersReportQuery>(() => {
+  const query = useMemo<InvoicesReportQuery>(() => {
     const valueOf = (field: string) => {
       const value = applied.conditions.find((c) => c.field === field)?.value;
       return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -241,11 +240,11 @@ export function SalesOrdersReportPage() {
       }
     }
 
-    const q: SalesOrdersReportQuery = {
+    const q: InvoicesReportQuery = {
       page,
       perPage,
       status: valueOf('status'),
-      soNumber: valueOf('soNumber'),
+      invoiceNumber: valueOf('invoiceNumber'),
       customerName: valueOf('customerName'),
       paymentTerms: valueOf('paymentTerms'),
       minTotal,
@@ -268,15 +267,15 @@ export function SalesOrdersReportPage() {
       }
     });
     if (Object.keys(customFields).length > 0) {
-      q.salesOrderCustomFields = customFields;
+      q.invoiceCustomFields = customFields;
     }
 
     return q;
   }, [applied, page, perPage]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports', 'salesOrders', orgId, query],
-    queryFn: () => reportsApi.getSalesOrdersReport(orgId!, query),
+    queryKey: ['reports', 'Invoices', orgId, query],
+    queryFn: () => reportsApi.getInvoicesReport(orgId!, query),
     enabled: Boolean(orgId),
   });
 
@@ -284,15 +283,15 @@ export function SalesOrdersReportPage() {
   const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.pagination.totalCount || 0;
 
-  const cell = (row: SalesOrdersReportRow, key: string) => {
-    if (key === 'soNumber') {
+  const cell = (row: InvoicesReportRow, key: string) => {
+    if (key === 'invoiceNumber') {
       return (
         <Link
-          to={`/organizations/${orgId}/sales/sales-orders?id=${row.id}`}
+          to={`/organizations/${orgId}/sales/invoices?id=${row.id}`}
           className="text-blue-600 hover:underline"
           style={{ color: '#0062ff' }}
         >
-          {row[key as keyof SalesOrdersReportRow] as string}
+          {row[key as keyof InvoicesReportRow] as string}
         </Link>
       );
     }
@@ -319,12 +318,12 @@ export function SalesOrdersReportPage() {
     if (key === 'total') {
       return `₹${Number(row.total || 0).toFixed(2)}`;
     }
-    if (key === 'date' || key === 'deliveryDate') {
-      const val = row[key as keyof SalesOrdersReportRow];
+    if (key === 'date' || key === 'dueDate') {
+      const val = row[key as keyof InvoicesReportRow];
       return val ? formatDate(val as string) : '-';
     }
 
-    const val = row[key as keyof SalesOrdersReportRow];
+    const val = row[key as keyof InvoicesReportRow];
     if (val === null || val === undefined || val === '') return '-';
     return String(val);
   };
@@ -355,7 +354,7 @@ export function SalesOrdersReportPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Sales</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
-            Sales Order Report
+            Invoice Report
             <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
               • From {format(applied.fromDate, 'dd-MM-yyyy')} To{' '}
               {format(applied.toDate, 'dd-MM-yyyy')}
@@ -526,7 +525,7 @@ export function SalesOrdersReportPage() {
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
-              Sales Order Report
+              Invoice Report
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
               From {format(applied.fromDate, 'dd-MM-yyyy')} To{' '}
@@ -563,7 +562,7 @@ export function SalesOrdersReportPage() {
                         ? 'Loading...'
                         : isError
                           ? 'Could not load the report.'
-                          : 'No Sales Orders found'}
+                          : 'No Invoices found'}
                     </td>
                   </tr>
                 ) : (

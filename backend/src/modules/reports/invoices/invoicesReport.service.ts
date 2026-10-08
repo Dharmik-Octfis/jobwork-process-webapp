@@ -1,7 +1,7 @@
 import { Prisma } from '../../../../generated/prisma/client.ts';
 import { runAsTenant } from '../../../db/prisma.ts';
 
-export async function getSalesOrdersReport(
+export async function getInvoicesReport(
   organizationId: string,
   params: {
     page?: number;
@@ -10,12 +10,12 @@ export async function getSalesOrdersReport(
     status?: string;
     fromDate?: string;
     toDate?: string;
-    soNumber?: string;
+    invoiceNumber?: string;
     customerName?: string;
     paymentTerms?: string;
     minTotal?: number;
     maxTotal?: number;
-    salesOrderCustomFields?: Record<string, unknown>;
+    invoiceCustomFields?: Record<string, unknown>;
   },
 ) {
   const {
@@ -25,18 +25,18 @@ export async function getSalesOrdersReport(
     status,
     fromDate,
     toDate,
-    soNumber,
+    invoiceNumber,
     customerName,
     paymentTerms,
     minTotal,
     maxTotal,
-    salesOrderCustomFields,
+    invoiceCustomFields,
   } = params;
 
   const skip = (page - 1) * pageSize;
 
   return runAsTenant(organizationId, async (tx) => {
-    const where: Prisma.SalesOrderWhereInput = {
+    const where: Prisma.InvoiceWhereInput = {
       organizationId,
       isDeleted: false,
     };
@@ -53,8 +53,8 @@ export async function getSalesOrdersReport(
       if (toDate) where.date.lte = new Date(toDate);
     }
 
-    if (soNumber) {
-      where.soNumber = { contains: soNumber, mode: 'insensitive' };
+    if (invoiceNumber) {
+      where.invoiceNumber = { contains: invoiceNumber, mode: 'insensitive' };
     }
 
     if (customerName) {
@@ -77,9 +77,9 @@ export async function getSalesOrdersReport(
       if (maxTotal !== undefined) where.totalAmount.lte = maxTotal;
     }
 
-    if (salesOrderCustomFields) {
-      const customFieldsWhere: Prisma.SalesOrderWhereInput[] = [];
-      Object.entries(salesOrderCustomFields).forEach(([cfKey, value]) => {
+    if (invoiceCustomFields) {
+      const customFieldsWhere: Prisma.InvoiceWhereInput[] = [];
+      Object.entries(invoiceCustomFields).forEach(([cfKey, value]) => {
         if (value !== undefined && value !== null && value !== '') {
           if (Array.isArray(value)) {
             customFieldsWhere.push({
@@ -103,7 +103,7 @@ export async function getSalesOrdersReport(
     }
 
     const [items, totalCount, paymentTermsList] = await Promise.all([
-      tx.salesOrder.findMany({
+      tx.invoice.findMany({
         where,
         skip,
         take: pageSize,
@@ -113,7 +113,7 @@ export async function getSalesOrdersReport(
           location: true,
         },
       }),
-      tx.salesOrder.count({ where }),
+      tx.invoice.count({ where }),
       tx.paymentTerm.findMany({
         where: { organizationId, isDeleted: false },
         select: { id: true, termName: true },
@@ -130,19 +130,19 @@ export async function getSalesOrdersReport(
     const ptMap = new Map(paymentTermsList.map((pt) => [pt.id, pt.termName]));
     const resolvePt = (pt: string | null | undefined) => (pt ? ptMap.get(pt) || pt : '-');
 
-    const formattedItems = items.map((so) => {
+    const formattedItems = items.map((inv) => {
       return {
-        id: so.id,
-        customerId: so.customerId,
-        soNumber: so.soNumber,
-        customerName: so.customer?.contactName || so.customer?.companyName || '-',
-        locationName: so.location?.name || '-',
-        date: so.date,
-        deliveryDate: so.deliveryDate,
-        paymentTerms: resolvePt(so.paymentTerms || so.customer?.paymentTerms),
-        total: Number(so.totalAmount),
-        status: so.status,
-        customFields: so.customFields,
+        id: inv.id,
+        customerId: inv.customerId,
+        invoiceNumber: inv.invoiceNumber,
+        customerName: inv.customer?.contactName || inv.customer?.companyName || '-',
+        locationName: inv.location?.name || '-',
+        date: inv.date,
+        dueDate: inv.dueDate,
+        paymentTerms: resolvePt(inv.paymentTerms || inv.customer?.paymentTerms),
+        total: Number(inv.totalAmount),
+        status: inv.status,
+        customFields: inv.customFields,
       };
     });
 

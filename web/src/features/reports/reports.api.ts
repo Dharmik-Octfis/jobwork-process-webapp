@@ -248,6 +248,7 @@ export type ReportKey =
   | 'vendor_report'
   | 'purchase_order_report'
   | 'sales_order_report'
+  | 'invoice_report'
   | 'bill_report';
 
 export interface JobOrdersReportQuery {
@@ -668,6 +669,13 @@ export const reportsApi = {
     });
     return response.data as PaginatedSalesOrdersReportResponse;
   },
+  getInvoicesReport: async (
+    orgId: string,
+    params: InvoicesReportQuery = {},
+  ): Promise<PaginatedInvoicesReportResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/invoices`, { params });
+    return response.data as PaginatedInvoicesReportResponse;
+  },
 };
 
 export interface PurchaseOrdersReportQuery {
@@ -757,6 +765,9 @@ export interface SalesOrdersReportQuery {
   toDate?: string;
   soNumber?: string;
   customerName?: string;
+  paymentTerms?: string;
+  minTotal?: number;
+  maxTotal?: number;
   salesOrderCustomFields?: Record<string, unknown>;
   page?: number;
   perPage?: number;
@@ -778,6 +789,45 @@ export interface SalesOrdersReportRow {
 
 export interface PaginatedSalesOrdersReportResponse {
   items: SalesOrdersReportRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
+export interface InvoicesReportQuery {
+  customerId?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  invoiceNumber?: string;
+  customerName?: string;
+  paymentTerms?: string;
+  minTotal?: number;
+  maxTotal?: number;
+  invoiceCustomFields?: Record<string, unknown>;
+  page?: number;
+  perPage?: number;
+}
+
+export interface InvoicesReportRow {
+  id: string;
+  customerId: string;
+  invoiceNumber: string;
+  customerName: string;
+  locationName: string;
+  date: string;
+  dueDate: string | null;
+  paymentTerms: string | null;
+  total: number;
+  status: string;
+  customFields: Record<string, unknown>;
+}
+
+export interface PaginatedInvoicesReportResponse {
+  items: InvoicesReportRow[];
   pagination: {
     page: number;
     pageSize: number;
