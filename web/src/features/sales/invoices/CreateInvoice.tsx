@@ -42,7 +42,11 @@ import { fetchSalesOrderById, updateSalesOrder } from '../sales-orders/sales-ord
 import { AddBillBatchesModal } from '../../purchases/bills/AddBillBatchesModal';
 
 import { itemsApi } from '../../items/items.api';
-import { fetchLocations, isOwnLocation, type Location } from '../../configuration/locations/locations.api';
+import {
+  fetchLocations,
+  isOwnLocation,
+  type Location,
+} from '../../configuration/locations/locations.api';
 import { fetchCustomers, updateCustomer, type Customer } from '../customers/customers.api';
 import { InvoiceNumberConfigModal } from './InvoiceNumberConfigModal';
 import { PaymentTermModal } from '../../sales/customers/PaymentTermModal';
@@ -111,7 +115,6 @@ function ItemImage({
   );
 }
 
-
 export function CreateInvoice() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,7 +124,7 @@ export function CreateInvoice() {
   const convertFromSo = searchParams.get('convertFromSo');
   const queryClient = useQueryClient();
 
-  const invoiceIdToFetch = id || cloneFrom; 
+  const invoiceIdToFetch = id || cloneFrom;
   const isEdit = Boolean(id);
   const isClone = Boolean(cloneFrom);
 
@@ -135,7 +138,10 @@ export function CreateInvoice() {
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'invoice');
   const [localCustomFieldErrors, setLocalCustomFieldErrors] = useState<Record<string, string>>({});
 
-  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'invoices', status: 'ACTIVE' });
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, {
+    moduleId: 'invoices',
+    status: 'ACTIVE',
+  });
   const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
 
   const { data: existingPo, isLoading: isFetchingPo } = useQuery({
@@ -151,7 +157,6 @@ export function CreateInvoice() {
   });
 
   const sourceData = existingPo || sourceSo;
-
 
   const { data: customersPage } = useQuery({
     queryKey: ['customers', orgId],
@@ -219,20 +224,24 @@ export function CreateInvoice() {
           discountValue: discountVal || ('' as unknown as number),
           discountType: item.discountType || (item.discountPercentage ? 'percentage' : 'fixed'),
           itemTotal: item.itemTotal || 0,
-          batches: isClone ? undefined : item.batches,
+          batches: isClone ? undefined : 'batches' in item ? item.batches : undefined,
         };
       });
 
       const resetData: CreateInvoiceData = {
         customerId: sourceData.customerId || '',
-        invoiceNumber: isClone || convertFromSo 
-          ? (preference ? `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}` : '') 
-          : (sourceData as Invoice).invoiceNumber || '',
-        date: isClone || convertFromSo
-          ? new Date().toISOString().split('T')[0]
-          : sourceData.date
-            ? new Date(sourceData.date).toISOString().split('T')[0]
-            : new Date().toISOString().split('T')[0],
+        invoiceNumber:
+          isClone || convertFromSo
+            ? preference
+              ? `${preference.prefix}${preference.nextNumber.toString().padStart(5, '0')}`
+              : ''
+            : (sourceData as Invoice).invoiceNumber || '',
+        date:
+          isClone || convertFromSo
+            ? new Date().toISOString().split('T')[0]
+            : sourceData.date
+              ? new Date(sourceData.date).toISOString().split('T')[0]
+              : new Date().toISOString().split('T')[0],
         dueDate: (sourceData as Invoice).dueDate
           ? new Date((sourceData as Invoice).dueDate as string).toISOString().split('T')[0]
           : '',
@@ -1254,7 +1263,6 @@ export function CreateInvoice() {
                                 )}
                               </div>
                             )}
-
                           </div>
                         </td>
                         <td
@@ -1828,7 +1836,9 @@ export function CreateInvoice() {
                   fontSize: '13px',
                 }}
               >
-                {mutation.isPending && watch('status') === 'Pending Approval' ? 'Saving...' : 'Save & Submit for Approval'}
+                {mutation.isPending && watch('status') === 'Pending Approval'
+                  ? 'Saving...'
+                  : 'Save & Submit for Approval'}
               </button>
             ) : (
               <button
@@ -1908,7 +1918,6 @@ export function CreateInvoice() {
           setIsPaymentTermModalOpen(false);
         }}
       />
-
 
       <CreateCustomerModal
         isOpen={isCustomerModalOpen}
@@ -2008,22 +2017,33 @@ export function CreateInvoice() {
           itemName={watchItems[batchModalIndex].item.name || 'Unknown Item'}
           locationId={watchLocationId || ''}
           uomLabel={watchItems[batchModalIndex].item.stockingUom?.symbol}
-          locationName={locations.find(l => l.id === watchLocationId)?.name || null}
+          locationName={locations.find((l) => l.id === watchLocationId)?.name || null}
           lineQty={Number(watchItems[batchModalIndex].quantity) || 0}
-          defaultSellingPrice={watchItems[batchModalIndex].rate?.toString() || watchItems[batchModalIndex].item.sellingPrice?.toString() || ''}
+          defaultSellingPrice={
+            watchItems[batchModalIndex].rate?.toString() ||
+            watchItems[batchModalIndex].item.sellingPrice?.toString() ||
+            ''
+          }
           initialBatches={watchItems[batchModalIndex].batches || []}
           onSave={(batches, overwriteQty) => {
             setValue(
               `lineItems.${batchModalIndex}.batches`,
               batches.map((b) => ({
                 ...b,
+                quantity: Number(b.quantity) || 0,
+                supplierBatchRef: b.supplierBatchRef === null ? undefined : b.supplierBatchRef,
                 manufacturedDate:
                   b.manufacturedDate instanceof Date
                     ? b.manufacturedDate.toISOString()
                     : b.manufacturedDate,
                 expiryDate:
                   b.expiryDate instanceof Date ? b.expiryDate.toISOString() : b.expiryDate,
-                units: b.units?.map((u) => ({ ...u, unitId: u.batchUnitId || '', label: u.label || '' })),
+                units: b.units?.map((u) => ({
+                  ...u,
+                  unitId: u.batchUnitId || '',
+                  label: u.label || '',
+                  quantity: Number(u.quantity) || 0,
+                })),
               })),
               {
                 shouldValidate: true,
@@ -2032,10 +2052,14 @@ export function CreateInvoice() {
             );
             if (overwriteQty) {
               const total = batches.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
-              setValue(`lineItems.${batchModalIndex}.quantity`, total || ('' as unknown as number), {
-                shouldValidate: true,
-                shouldDirty: true,
-              });
+              setValue(
+                `lineItems.${batchModalIndex}.quantity`,
+                total || ('' as unknown as number),
+                {
+                  shouldValidate: true,
+                  shouldDirty: true,
+                },
+              );
             }
             setBatchModalIndex(null);
           }}
@@ -2087,4 +2111,3 @@ export function CreateInvoice() {
     </div>
   );
 }
-
