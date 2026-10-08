@@ -15,7 +15,7 @@ export async function getPurchaseOrdersReport(
     poNumber?: string;
     vendorName?: string;
     purchaseOrderCustomFields?: Record<string, unknown>;
-  }
+  },
 ) {
   const {
     page,
@@ -30,7 +30,7 @@ export async function getPurchaseOrdersReport(
     vendorName,
     purchaseOrderCustomFields,
   } = params;
-  
+
   const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
@@ -53,11 +53,11 @@ export async function getPurchaseOrdersReport(
       if (fromDate) where.date.gte = new Date(fromDate);
       if (toDate) where.date.lte = new Date(toDate);
     }
-    
+
     if (poNumber) {
       where.poNumber = { contains: poNumber, mode: 'insensitive' };
     }
-    
+
     if (vendorName) {
       where.vendor = {
         isDeleted: false,
@@ -67,7 +67,7 @@ export async function getPurchaseOrdersReport(
         ],
       };
     }
-    
+
     if (purchaseOrderCustomFields) {
       const customFieldsWhere: Prisma.PurchaseOrderWhereInput[] = [];
       Object.entries(purchaseOrderCustomFields).forEach(([cfKey, value]) => {
@@ -93,7 +93,7 @@ export async function getPurchaseOrdersReport(
       }
     }
 
-    const [items, totalCount] = await Promise.all([
+    const [items, totalCount, paymentTermsList] = await Promise.all([
       tx.purchaseOrder.findMany({
         where,
         ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
@@ -103,9 +103,13 @@ export async function getPurchaseOrdersReport(
           deliveryLocation: true,
           deliveryCustomer: true,
           location: true, // For issue location if needed
-        }
+        },
       }),
       tx.purchaseOrder.count({ where }),
+      tx.paymentTerm.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, termName: true },
+      }),
     ]);
 
     if (items.length === 0) {
@@ -115,11 +119,24 @@ export async function getPurchaseOrdersReport(
       };
     }
 
+    const ptMap = new Map(paymentTermsList.map((pt) => [pt.id, pt.termName]));
+    const resolvePt = (pt: string | null | undefined) => (pt ? ptMap.get(pt) || pt : '-');
+
     const formattedItems = items.map((po) => {
       let deliveryAddress = '-';
       let locationName = po.location?.name;
       if (po.deliveryType === 'Location' && po.deliveryLocation) {
-        deliveryAddress = po.deliveryLocation.addressString || [po.deliveryLocation.street1, po.deliveryLocation.city, po.deliveryLocation.state, po.deliveryLocation.country].filter(Boolean).join(', ') || '-';
+        deliveryAddress =
+          po.deliveryLocation.addressString ||
+          [
+            po.deliveryLocation.street1,
+            po.deliveryLocation.city,
+            po.deliveryLocation.state,
+            po.deliveryLocation.country,
+          ]
+            .filter(Boolean)
+            .join(', ') ||
+          '-';
         locationName = locationName || po.deliveryLocation.name;
       } else if (po.deliveryType === 'Customer' && po.deliveryCustomer) {
         deliveryAddress = po.deliveryCustomer.companyName || po.deliveryCustomer.contactName || '-';
@@ -135,10 +152,7 @@ export async function getPurchaseOrdersReport(
         deliveryAddress,
         date: po.date,
         deliveryDate: po.deliveryDate,
-        paymentTerms: (() => {
-          console.log(`PO: ${po.poNumber}, paymentTerms: ${po.paymentTerms}, vendor.paymentTerms: ${po.vendor?.paymentTerms}`);
-          return po.paymentTerms || po.vendor?.paymentTerms || '-';
-        })(),
+        paymentTerms: resolvePt(po.paymentTerms || po.vendor?.paymentTerms),
         total: Number(po.totalAmount),
         status: po.status,
         customFields: po.customFields,

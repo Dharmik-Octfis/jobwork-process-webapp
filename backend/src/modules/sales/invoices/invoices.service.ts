@@ -9,7 +9,90 @@ import { ApiError, withUniqueViolation } from '../../../lib/apiError.ts';
 import { assertOnOrAfterMigration } from '../../../lib/migrationDate.ts';
 import { priceLines } from '../../../lib/linePricing.ts';
 import { allocateOutward } from '../../inventory/stock-ledger/allocateOutward.ts';
-import { postMovements, reverseMovement } from '../../inventory/stock-ledger/stockLedger.service.ts';
+import {
+  postMovements,
+  reverseMovement,
+} from '../../inventory/stock-ledger/stockLedger.service.ts';
+import { registerApprovalOutcomeHandler } from '../../automation/approval-processes/approvalOutcome.registry.ts';
+
+registerApprovalOutcomeHandler('invoices', async (outcome) => {
+  const { organizationId, recordId: id } = outcome;
+  const move = (from: string, to: string) =>
+    runAsTenant(organizationId, (tx) =>
+      tx.invoice.updateMany({
+        where: { id, organizationId, isDeleted: false, status: from },
+        data: { status: to },
+      }),
+    );
+
+  if (outcome.status === 'Pending Approval') {
+    await move('Draft', 'Pending Approval');
+    return;
+  }
+  if (outcome.status === 'Rejected') {
+    await move('Pending Approval', 'Rejected');
+    return;
+  }
+  if (outcome.status !== 'Approved') return;
+
+  const approved = await move('Pending Approval', 'Open');
+  if (approved.count !== 1) return;
+
+  // post stock
+  await runAsTenant(organizationId, async (tx) => {
+    const invoice = await tx.invoice.findUnique({
+      where: { id },
+      include: { lineItems: { where: { isDeleted: false } } },
+    });
+    if (!invoice || !invoice.locationId) return;
+
+    const requests = invoice.lineItems.map((item, index) => ({
+      itemId: item.itemId,
+      name: `Invoice Line ${index + 1}`,
+      required: new Prisma.Decimal(item.quantity),
+    }));
+
+    if (requests.length > 0) {
+      const allocations = await allocateOutward(tx, {
+        organizationId,
+        locationId: invoice.locationId,
+        requests,
+        taking: 'invoiced',
+        detailKey: 'lines',
+      });
+
+      const movementInputs = [];
+      for (const alloc of allocations) {
+        const line = invoice.lineItems[alloc.requestIndex];
+        if (!line) continue;
+        movementInputs.push({
+          organizationId,
+          batchId: alloc.batchId,
+          batchUnitId: alloc.batchUnitId,
+          locationId: invoice.locationId,
+          movementType: 'issue' as const,
+          stockEffect: 'both' as const,
+          qtyOut: alloc.qty,
+          sourceDocType: 'invoice' as const,
+          sourceDocId: invoice.id,
+          sourceDocLineId: line.id,
+          postedAt: invoice.date,
+          userId: invoice.updatedBy ?? invoice.createdBy,
+        });
+      }
+      if (movementInputs.length > 0) {
+        await postMovements(tx, movementInputs);
+      }
+    }
+    if (invoice.salesOrderId) {
+      await tx.salesOrder.updateMany({
+        where: { id: invoice.salesOrderId, status: { not: 'Closed' } },
+        data: { status: 'Closed' },
+      });
+    }
+  });
+});
+
 const DUPLICATE_NUMBER = 'A Invoice with this Invoice Number already exists.';
 
 function invoiceListWhere(organizationId: string, opts: ListQuery): Prisma.InvoiceWhereInput {
@@ -79,11 +162,7 @@ export async function getInvoiceById(orgId: string, id: string) {
   );
 }
 
-export async function createInvoice(
-  orgId: string,
-  userId: string,
-  data: CreateInvoicePayload,
-) {
+export async function createInvoice(orgId: string, userId: string, data: CreateInvoicePayload) {
   const { lineItems: rawLineItems, ...soData } = data;
   const { lines: lineItems, subTotal, totalAmount } = priceLines(rawLineItems);
   return runAsTenant(orgId, async (tx) => {
@@ -166,16 +245,16 @@ export async function createInvoice(
         const requests = invoice.lineItems.map((item, index) => ({
           itemId: item.itemId,
           name: `Invoice Line ${index + 1}`,
-          required: new Prisma.Decimal(item.quantity)
+          required: new Prisma.Decimal(item.quantity),
         }));
-        
+
         if (requests.length > 0) {
           const allocations = await allocateOutward(tx, {
             organizationId: orgId,
             locationId: invoice.locationId,
             requests,
             taking: 'invoiced',
-            detailKey: 'lines'
+            detailKey: 'lines',
           });
 
           const movementInputs = [];
@@ -193,18 +272,19 @@ export async function createInvoice(
               sourceDocType: 'invoice' as const,
               sourceDocId: invoice.id,
               sourceDocLineId: line.id,
-              userId: userId
+              postedAt: invoice.date,
+              userId: userId,
             });
           }
           if (movementInputs.length > 0) {
             await postMovements(tx, movementInputs);
           }
         }
-        
+
         if (invoice.salesOrderId) {
           await tx.salesOrder.updateMany({
             where: { id: invoice.salesOrderId, status: { not: 'Closed' } },
-            data: { status: 'Closed' }
+            data: { status: 'Closed' },
           });
         }
       }
@@ -312,14 +392,14 @@ export async function updateInvoice(
           organizationId: orgId,
           sourceDocType: 'invoice',
           sourceDocId: id,
-          movementType: 'issue'
-        }
+          movementType: 'issue',
+        },
       });
       for (const entry of oldEntries) {
         await reverseMovement(tx, orgId, entry.id, {
           sourceDocType: 'invoice',
           sourceDocId: id,
-          userId
+          userId,
         });
       }
 
@@ -330,7 +410,7 @@ export async function updateInvoice(
       });
       const checkStatus = soData.status ?? fullInvoice?.status ?? 'Draft';
       const locId = soData.locationId !== undefined ? soData.locationId : fullInvoice?.locationId;
-      
+
       if (checkStatus !== 'Draft' && checkStatus !== 'Pending Approval') {
         if (!locId) {
           throw ApiError.badRequest('Location is required for an active invoice to deduct stock.');
@@ -340,15 +420,15 @@ export async function updateInvoice(
           const requests = currentLines.map((item, index) => ({
             itemId: item.itemId,
             name: `Invoice Line ${index + 1}`,
-            required: new Prisma.Decimal(item.quantity)
+            required: new Prisma.Decimal(item.quantity),
           }));
-          
+
           const allocations = await allocateOutward(tx, {
             organizationId: orgId,
             locationId: locId,
             requests,
             taking: 'invoiced',
-            detailKey: 'lines'
+            detailKey: 'lines',
           });
 
           const movementInputs = [];
@@ -366,7 +446,8 @@ export async function updateInvoice(
               sourceDocType: 'invoice' as const,
               sourceDocId: id,
               sourceDocLineId: line.id ?? id, // fallback if new line
-              userId: userId
+              postedAt: fullInvoice!.date,
+              userId: userId,
             });
           }
           if (movementInputs.length > 0) {
@@ -377,7 +458,7 @@ export async function updateInvoice(
         if (fullInvoice?.salesOrderId) {
           await tx.salesOrder.updateMany({
             where: { id: fullInvoice.salesOrderId, status: { not: 'Closed' } },
-            data: { status: 'Closed', updatedBy: userId }
+            data: { status: 'Closed', updatedBy: userId },
           });
         }
       }
@@ -429,14 +510,14 @@ export async function deleteInvoice(orgId: string, id: string, userId?: string) 
         organizationId: orgId,
         sourceDocType: 'invoice',
         sourceDocId: id,
-        movementType: 'issue'
-      }
+        movementType: 'issue',
+      },
     });
     for (const entry of oldEntries) {
       await reverseMovement(tx, orgId, entry.id, {
         sourceDocType: 'invoice',
         sourceDocId: id,
-        userId
+        userId,
       });
     }
 
@@ -561,5 +642,3 @@ export async function deleteInvoiceComment(
     });
   });
 }
-
-

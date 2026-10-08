@@ -494,5 +494,25 @@ async function describeParties(
       }),
     );
   }
+  const invoiceIds = idsOf('invoice');
+  if (invoiceIds.length) {
+    const docs = await tx.invoice.findMany({
+      where: { id: { in: invoiceIds } },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        customerId: true,
+        customer: { select: { contactName: true } },
+      },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, {
+        number: d.invoiceNumber,
+        partyName: d.customer?.contactName || null,
+        partyId: d.customerId,
+        partyType: 'customer',
+      }),
+    );
+  }
   return info;
 }

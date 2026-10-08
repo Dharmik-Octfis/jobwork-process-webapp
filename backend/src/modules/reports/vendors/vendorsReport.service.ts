@@ -11,7 +11,7 @@ export async function getVendorsReport(
     companyName?: string;
     status?: string;
     vendorType?: string;
-  }
+  },
 ) {
   const {
     page,
@@ -22,7 +22,7 @@ export async function getVendorsReport(
     status,
     vendorType,
   } = params;
-  
+
   const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
@@ -44,13 +44,17 @@ export async function getVendorsReport(
       where.vendorTypes = { has: vendorType };
     }
 
-    const [items, totalCount] = await Promise.all([
+    const [items, totalCount, paymentTermsList] = await Promise.all([
       tx.vendor.findMany({
         where,
         ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { createdAt: 'desc' },
       }),
       tx.vendor.count({ where }),
+      tx.paymentTerm.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, termName: true },
+      }),
     ]);
 
     if (items.length === 0) {
@@ -60,17 +64,23 @@ export async function getVendorsReport(
       };
     }
 
+    const ptMap = new Map(paymentTermsList.map((pt) => [pt.id, pt.termName]));
+    const resolvePt = (pt: string | null | undefined) => (pt ? ptMap.get(pt) || pt : '-');
+
     const formattedItems = items.map((vendor) => {
       return {
         id: vendor.id,
         contactNumber: vendor.contactNumber,
         companyName: vendor.companyName,
         contactName: vendor.contactName,
-        primaryContact: [vendor.primaryContactFirstName, vendor.primaryContactLastName].filter(Boolean).join(' ') || null,
+        primaryContact:
+          [vendor.primaryContactFirstName, vendor.primaryContactLastName]
+            .filter(Boolean)
+            .join(' ') || null,
         email: vendor.email,
         phone: vendor.phone,
         currency: vendor.currency,
-        paymentTerms: vendor.paymentTerms,
+        paymentTerms: resolvePt(vendor.paymentTerms),
         notes: vendor.notes,
         customFields: vendor.customFields,
         createdAt: vendor.createdAt,

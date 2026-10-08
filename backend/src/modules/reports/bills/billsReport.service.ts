@@ -19,7 +19,7 @@ export async function getBillsReport(
     toDeliveryDate?: string;
     total?: string;
     billCustomFields?: Record<string, unknown>;
-  }
+  },
 ) {
   const {
     page,
@@ -38,7 +38,7 @@ export async function getBillsReport(
     total,
     billCustomFields,
   } = params;
-  
+
   const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
@@ -58,11 +58,11 @@ export async function getBillsReport(
       if (fromDate) where.billDate.gte = new Date(fromDate);
       if (toDate) where.billDate.lte = new Date(toDate);
     }
-    
+
     if (billNumber) {
       where.billNumber = { contains: billNumber, mode: 'insensitive' };
     }
-    
+
     if (vendorName) {
       where.vendor = {
         isDeleted: false,
@@ -72,27 +72,27 @@ export async function getBillsReport(
         ],
       };
     }
-    
+
     if (locationName) {
       where.location = {
         name: { contains: locationName, mode: 'insensitive' },
       };
     }
-    
+
     if (paymentTerms) {
       where.paymentTerms = { contains: paymentTerms, mode: 'insensitive' };
     }
-    
+
     if (total) {
       where.totalAmount = Number(total);
     }
-    
+
     if (fromDeliveryDate || toDeliveryDate) {
       where.dueDate = {};
       if (fromDeliveryDate) where.dueDate.gte = new Date(fromDeliveryDate);
       if (toDeliveryDate) where.dueDate.lte = new Date(toDeliveryDate);
     }
-    
+
     if (billCustomFields) {
       const customFieldsWhere: Prisma.BillWhereInput[] = [];
       Object.entries(billCustomFields).forEach(([cfKey, value]) => {
@@ -118,7 +118,7 @@ export async function getBillsReport(
       }
     }
 
-    const [items, totalCount] = await Promise.all([
+    const [items, totalCount, paymentTermsList] = await Promise.all([
       tx.bill.findMany({
         where,
         ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
@@ -126,9 +126,13 @@ export async function getBillsReport(
         include: {
           vendor: { select: { contactName: true, companyName: true, paymentTerms: true } },
           location: true,
-        }
+        },
       }),
       tx.bill.count({ where }),
+      tx.paymentTerm.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, termName: true },
+      }),
     ]);
 
     if (items.length === 0) {
@@ -137,6 +141,9 @@ export async function getBillsReport(
         pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
+
+    const ptMap = new Map(paymentTermsList.map((pt) => [pt.id, pt.termName]));
+    const resolvePt = (pt: string | null | undefined) => (pt ? ptMap.get(pt) || pt : '-');
 
     const formattedItems = items.map((bill) => {
       const locationName = bill.location?.name;
@@ -149,9 +156,7 @@ export async function getBillsReport(
         locationName: locationName || '-',
         date: bill.billDate,
         deliveryDate: bill.dueDate,
-        paymentTerms: (() => {
-          return bill.paymentTerms || bill.vendor?.paymentTerms || '-';
-        })(),
+        paymentTerms: resolvePt(bill.paymentTerms || bill.vendor?.paymentTerms),
         total: Number(bill.totalAmount),
         status: bill.status,
         customFields: bill.customFields,

@@ -510,6 +510,16 @@ export function CreateInvoice() {
       return;
     }
 
+    const batchMissingItem = (data.lineItems || []).find(
+      (item) =>
+        item.item?.inventoryTracking === 'batch' && (!item.batches || item.batches.length === 0),
+    );
+
+    if (batchMissingItem) {
+      notify.error('Please specify batches for batch tracked items.');
+      return;
+    }
+
     const finalItems = (data.lineItems || []).map((item) => {
       const qty = isNaN(Number(item?.quantity)) ? 0 : Number(item?.quantity);
       const rate = isNaN(Number(item?.rate)) ? 0 : Number(item?.rate);

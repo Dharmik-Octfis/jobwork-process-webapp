@@ -349,6 +349,14 @@ export async function getItemLedger(
       });
       docs.forEach((d) => docNumbers.set(d.id, d.poNumber));
     }
+    const invoiceIds = idsOf('invoice');
+    if (invoiceIds.length > 0) {
+      const docs = await tx.invoice.findMany({
+        where: { organizationId, id: { in: invoiceIds } },
+        select: { id: true, invoiceNumber: true },
+      });
+      docs.forEach((d) => docNumbers.set(d.id, d.invoiceNumber));
+    }
 
     /**
      * A value adjustment prints like Zoho's: per purchase entry it changed, the

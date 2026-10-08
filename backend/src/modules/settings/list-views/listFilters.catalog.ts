@@ -48,9 +48,10 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   ],
   invoice: [
     { key: 'all', label: 'All Invoices', where: {} },
-    { key: 'draft', label: 'Draft Invoices', where: { status: 'Draft' } },
-    { key: 'sent', label: 'Sent Invoices', where: { status: 'Sent' } },
-    { key: 'paid', label: 'Paid Invoices', where: { status: 'Paid' } },
+    { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'paid', label: 'Paid', where: { status: 'Paid' } },
   ],
   item: [
     { key: 'all', label: 'All Items', where: {} },
@@ -179,9 +180,10 @@ export const LIST_FILTERS: Record<ListEntityType, readonly FilterPreset[]> = {
   sales_order: [
     { key: 'all', label: 'All Sales Orders', where: {} },
     { key: 'draft', label: 'Draft', where: { status: 'Draft' } },
-    { key: 'issued', label: 'Issued', where: { status: 'Issued' } },
+    { key: 'approved', label: 'Approved', where: { status: 'Approved' } },
+    { key: 'pending_approval', label: 'Pending Approval', where: { status: 'Pending Approval' } },
+    { key: 'confirmed', label: 'Confirmed', where: { status: 'Confirmed' } },
     { key: 'closed', label: 'Closed', where: { status: 'Closed' } },
-    { key: 'cancelled', label: 'Cancelled', where: { status: 'Cancelled' } },
   ],
 };
 

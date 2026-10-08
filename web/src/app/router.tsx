@@ -186,6 +186,14 @@ const PurchaseOrdersReportPage = lazyPage(
   () => import('../features/reports/PurchaseOrdersReportPage'),
   'PurchaseOrdersReportPage',
 );
+const SalesOrdersReportPage = lazyPage(
+  () => import('../features/reports/SalesOrdersReportPage'),
+  'SalesOrdersReportPage',
+);
+const InvoicesReportPage = lazyPage(
+  () => import('../features/reports/InvoicesReportPage'),
+  'InvoicesReportPage',
+);
 const BillsReportPage = lazyPage(
   () => import('../features/reports/BillsReportPage'),
   'BillsReportPage',
@@ -541,6 +549,14 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/reports/purchase-orders',
                     element: <PurchaseOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/sales-orders',
+                    element: <SalesOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/invoices',
+                    element: <InvoicesReportPage />,
                   },
                   {
                     path: '/organizations/:orgId/reports/bills',

@@ -1,10 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '../../../lib/formatDate';
-import {
-  fetchInvoices,
-  fetchInvoiceCount,
-  deleteInvoice,
-} from './invoices.api';
+import { fetchInvoices, fetchInvoiceCount, deleteInvoice } from './invoices.api';
 import { fetchPaymentTerms, type PaymentTerm } from '../customers/payment-terms.api';
 import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
@@ -21,7 +17,11 @@ import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import type { Invoice } from './invoices.schemas';
 
-function renderInvoiceCell(invoice: Invoice, key: string, paymentTerms: PaymentTerm[] = []): string {
+function renderInvoiceCell(
+  invoice: Invoice,
+  key: string,
+  paymentTerms: PaymentTerm[] = [],
+): string {
   if (key === 'paymentTerms') {
     const term = paymentTerms.find((t) => t.id === invoice.paymentTerms);
     return term ? term.termName : invoice.paymentTerms || '-';
@@ -57,8 +57,7 @@ export default function InvoicesList() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['invoices', orgId, search, filter, page, perPage],
-    queryFn: () =>
-      fetchInvoices(orgId!, { search: search || undefined, filter, page, perPage }),
+    queryFn: () => fetchInvoices(orgId!, { search: search || undefined, filter, page, perPage }),
     enabled: Boolean(orgId),
     placeholderData: (prev) => prev,
   });
@@ -256,9 +255,12 @@ export default function InvoicesList() {
                 >
                   <FileText size={32} color="#94a3b8" />
                 </div>
-                <h3 style={{ margin: '0 0 8px', color: '#0f172a', fontSize: 16 }}>No invoices found</h3>
+                <h3 style={{ margin: '0 0 8px', color: '#0f172a', fontSize: 16 }}>
+                  No invoices found
+                </h3>
                 <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: 14, maxWidth: 320 }}>
-                  Get started by creating your first invoice, or try adjusting your search and filters.
+                  Get started by creating your first invoice, or try adjusting your search and
+                  filters.
                 </p>
                 <button
                   onClick={() => navigate(`/organizations/${orgId}/sales/invoices/new`)}
@@ -299,7 +301,12 @@ export default function InvoicesList() {
                     {invoices.map((inv) => (
                       <div
                         key={inv.id}
-                        onClick={() => setSearchParams(prev => { prev.set('id', inv.id); return prev; })}
+                        onClick={() =>
+                          setSearchParams((prev) => {
+                            prev.set('id', inv.id);
+                            return prev;
+                          })
+                        }
                         style={{
                           padding: '12px 16px',
                           borderBottom: '1px solid #eef0f3',
@@ -308,7 +315,8 @@ export default function InvoicesList() {
                           transition: 'background 0.1s',
                         }}
                         onMouseEnter={(e) => {
-                          if (selectedInvoiceId !== inv.id) e.currentTarget.style.background = '#f8fafc';
+                          if (selectedInvoiceId !== inv.id)
+                            e.currentTarget.style.background = '#f8fafc';
                         }}
                         onMouseLeave={(e) => {
                           if (selectedInvoiceId !== inv.id)
@@ -336,21 +344,38 @@ export default function InvoicesList() {
                               fontSize: 12,
                               fontWeight: 500,
                               background:
-                                inv.status === 'Draft' ? '#f1f5f9' :
-                                inv.status === 'Pending Approval' ? '#fef3c7' :
-                                inv.status === 'Approved' ? '#e0f2fe' :
-                                inv.status === 'Paid' ? '#dcfce7' : '#f1f5f9',
+                                inv.status === 'Draft'
+                                  ? '#f1f5f9'
+                                  : inv.status === 'Pending Approval'
+                                    ? '#fef3c7'
+                                    : inv.status === 'Approved'
+                                      ? '#e0f2fe'
+                                      : inv.status === 'Paid'
+                                        ? '#dcfce7'
+                                        : '#f1f5f9',
                               color:
-                                inv.status === 'Draft' ? '#475569' :
-                                inv.status === 'Pending Approval' ? '#92400e' :
-                                inv.status === 'Approved' ? '#0284c7' :
-                                inv.status === 'Paid' ? '#166534' : '#475569',
+                                inv.status === 'Draft'
+                                  ? '#475569'
+                                  : inv.status === 'Pending Approval'
+                                    ? '#92400e'
+                                    : inv.status === 'Approved'
+                                      ? '#0284c7'
+                                      : inv.status === 'Paid'
+                                        ? '#166534'
+                                        : '#475569',
                             }}
                           >
                             {inv.status}
                           </span>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                        <div
+                          style={{
+                            fontSize: '12px',
+                            color: '#64748b',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                          }}
+                        >
                           <span>{inv.customer?.contactName || '-'}</span>
                           <span>{renderInvoiceCell(inv, 'totalAmount', paymentTerms)}</span>
                         </div>
@@ -365,7 +390,9 @@ export default function InvoicesList() {
                           <th style={{ ...headerStyle, width: 40, textAlign: 'center' }}>
                             <input
                               type="checkbox"
-                              checked={selectedIds.length === invoices.length && invoices.length > 0}
+                              checked={
+                                selectedIds.length === invoices.length && invoices.length > 0
+                              }
                               onChange={toggleAll}
                               style={{ cursor: 'pointer' }}
                             />
@@ -408,7 +435,8 @@ export default function InvoicesList() {
                                 style={{
                                   padding: '12px 16px',
                                   fontSize: 13,
-                                  color: '#334155',
+                                  color: col.key === 'invoiceNumber' ? '#0062ff' : '#334155',
+                                  fontWeight: col.key === 'invoiceNumber' ? 500 : 400,
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -425,15 +453,25 @@ export default function InvoicesList() {
                                       fontSize: 12,
                                       fontWeight: 500,
                                       background:
-                                        inv.status === 'Draft' ? '#f1f5f9' :
-                                        inv.status === 'Pending Approval' ? '#fef3c7' :
-                                        inv.status === 'Approved' ? '#e0f2fe' :
-                                        inv.status === 'Paid' ? '#dcfce7' : '#f1f5f9',
+                                        inv.status === 'Draft'
+                                          ? '#f1f5f9'
+                                          : inv.status === 'Pending Approval'
+                                            ? '#fef3c7'
+                                            : inv.status === 'Approved'
+                                              ? '#e0f2fe'
+                                              : inv.status === 'Paid'
+                                                ? '#dcfce7'
+                                                : '#f1f5f9',
                                       color:
-                                        inv.status === 'Draft' ? '#475569' :
-                                        inv.status === 'Pending Approval' ? '#92400e' :
-                                        inv.status === 'Approved' ? '#0284c7' :
-                                        inv.status === 'Paid' ? '#166534' : '#475569',
+                                        inv.status === 'Draft'
+                                          ? '#475569'
+                                          : inv.status === 'Pending Approval'
+                                            ? '#92400e'
+                                            : inv.status === 'Approved'
+                                              ? '#0284c7'
+                                              : inv.status === 'Paid'
+                                                ? '#166534'
+                                                : '#475569',
                                     }}
                                   >
                                     {inv.status}
@@ -454,15 +492,15 @@ export default function InvoicesList() {
           </div>
           {/* Pagination — hidden while a SO is selected (narrow master pane) */}
           <Pagination
-              pageContext={pageContext}
-              page={page}
-              perPage={perPage}
-              onPageChange={setPage}
-              onPerPageChange={setPerPage}
-              total={total}
-              isCounting={isCounting}
-              onRequestCount={requestCount}
-            />
+            pageContext={pageContext}
+            page={page}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+            total={total}
+            isCounting={isCounting}
+            onRequestCount={requestCount}
+          />
         </div>
 
         {selectedInvoiceId && (
