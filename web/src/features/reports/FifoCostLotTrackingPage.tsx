@@ -453,8 +453,18 @@ export function FifoCostLotTrackingPage() {
     return isNaN(dateObj.getTime()) ? '' : format(dateObj, 'dd-MM-yyyy');
   };
 
-  const buildFifoRows = (rows: FifoCostLotTrackingRow[]) => {
-    const out: unknown[][] = [];
+  type ExportCell =
+    | string
+    | number
+    | {
+        content: string | number;
+        colSpan?: number;
+        rowSpan?: number;
+        styles?: Record<string, unknown>;
+      };
+
+  const buildFifoRows = (rows: FifoCostLotTrackingRow[]): ExportCell[][] => {
+    const out: ExportCell[][] = [];
     for (const r of rows) {
       if (r.itemName) {
         out.push([

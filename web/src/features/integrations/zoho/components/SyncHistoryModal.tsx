@@ -163,8 +163,8 @@ export const SyncHistoryModal: React.FC<SyncHistoryModalProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {logs.map((log: ZohoSyncHistoryItem) => {
                 const isSuccess = log.status === 'SUCCESS' || log.status === 'Completed';
-                const synced = log.addedCount ?? log.syncedCount ?? 0;
-                const failed = log.failureCount ?? log.failedCount ?? 0;
+                const synced = log.addedCount ?? 0;
+                const failed = log.failureCount ?? 0;
                 const displayName =
                   log.moduleName || (log.module ? `${log.module} Sync` : 'Sync Log');
 

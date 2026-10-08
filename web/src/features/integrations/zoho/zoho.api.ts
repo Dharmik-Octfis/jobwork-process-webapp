@@ -6,6 +6,9 @@ import type {
   SelectZohoOrgInput,
   ConfigureZohoCredentialsInput,
   ZohoSyncHistoryResponse,
+  ZohoEntityFieldsResponse,
+  ZohoSyncSettings,
+  SaveZohoSyncConfigInput,
 } from './zoho.schemas';
 
 const ZOHO_STATUS_QUERY_KEY = 'zoho-integration-status';
@@ -155,7 +158,7 @@ export const ZOHO_SYNC_HISTORY_QUERY_KEY = 'zoho-sync-history';
 export function useZohoEntityFields(orgId: string, entity: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_FIELDS_QUERY_KEY, orgId, entity],
-    queryFn: async (): Promise<Record<string, unknown>> => {
+    queryFn: async (): Promise<ZohoEntityFieldsResponse> => {
       const res = await apiClient.get(
         `/organizations/${orgId}/settings/integrations/zoho/fields?entity=${encodeURIComponent(entity)}`,
       );
@@ -172,7 +175,7 @@ export function useZohoEntityFields(orgId: string, entity: string, enabled = tru
 export function useZohoSyncSettings(orgId: string, enabled = true) {
   return useQuery({
     queryKey: [ZOHO_SYNC_SETTINGS_QUERY_KEY, orgId],
-    queryFn: async (): Promise<Record<string, unknown>> => {
+    queryFn: async (): Promise<ZohoSyncSettings> => {
       const res = await apiClient.get(`/organizations/${orgId}/settings/integrations/zoho/sync`);
       return res.data;
     },
@@ -188,7 +191,7 @@ export function useSaveZohoSyncConfig(orgId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
+    mutationFn: async (data: SaveZohoSyncConfigInput) => {
       const res = await apiClient.post(
         `/organizations/${orgId}/settings/integrations/zoho/sync/configure`,
         data,

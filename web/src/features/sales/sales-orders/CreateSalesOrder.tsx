@@ -166,6 +166,7 @@ export function CreateSalesOrder() {
     register,
     control,
     handleSubmit,
+    watch,
     getValues,
     setValue,
     reset,
@@ -280,7 +281,6 @@ export function CreateSalesOrder() {
       reset(resetData);
 
       if (existingPo.documents && Array.isArray(existingPo.documents)) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setAttachedFiles(existingPo.documents);
       }
     }
@@ -382,7 +382,6 @@ export function CreateSalesOrder() {
   });
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCustomDeliveryName('');
     setIsEditingDeliveryName(false);
   }, [watchDeliveryLocationId, watchDeliveryCustomerId, watchDeliveryType]);
@@ -429,7 +428,7 @@ export function CreateSalesOrder() {
 
       if (!currentValue || currentValue === lastPrefilledNumber) {
         setValue('soNumber', generatedNumber);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
+
         setLastPrefilledNumber(generatedNumber);
         setPoPrefix(preference.prefix);
       }
@@ -1874,7 +1873,7 @@ export function CreateSalesOrder() {
                   fontSize: '13px',
                 }}
               >
-                {mutation.isPending && watch('status') === 'Confirmed'
+                {mutation.isPending && getValues('status') === 'Confirmed'
                   ? 'Saving...'
                   : 'Save as Confirmed'}
               </button>
@@ -1913,7 +1912,7 @@ export function CreateSalesOrder() {
         initialNextNumber={
           preference?.nextNumber !== undefined
             ? preference.nextNumber.toString().padStart(5, '0')
-            : (watch('soNumber') || '').replace(poPrefix, '') || '00001'
+            : (getValues('soNumber') || '').replace(poPrefix, '') || '00001'
         }
         onSave={(newPrefix, newNextNumberStr) => {
           const parsed = parseInt(newNextNumberStr, 10);
@@ -1981,7 +1980,7 @@ export function CreateSalesOrder() {
           if (selectedItems.length === 0 || multiSelectTargetIndex === null) return;
 
           const targetIndex = multiSelectTargetIndex;
-          const currentItems = watch('lineItems');
+          const currentItems = getValues('lineItems');
 
           selectedItems.forEach((item, i) => {
             const isFirst = i === 0;
