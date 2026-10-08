@@ -192,8 +192,8 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
     (draft?.customFields as CustomFieldValues) ?? {},
   );
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
-  const [overrideReason] = useState('');
-  const [_needsOverride, setNeedsOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState(draft?.toleranceOverrideReason ?? '');
+  const [needsOverride, setNeedsOverride] = useState(Boolean(draft?.toleranceOverrideReason));
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /**
@@ -1355,8 +1355,16 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
           {/* Label, choice, list — stacked, the way every other field on this form
               reads. `maxWidth` so the control does not stretch the width of a 1440px
               monitor just because it now has a row to itself. */}
-          <label style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}>
-            Issue from
+          <label
+            style={{
+              ...labelStyle,
+              color: '#ef4444',
+              whiteSpace: 'nowrap',
+              marginBottom: 0,
+              marginTop: 10,
+            }}
+          >
+            Issue from*
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Processor-to-processor is a real move (§5.4), so the Vendor side is
@@ -1475,12 +1483,13 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
               <label
                 style={{
                   ...labelStyle,
+                  color: '#ef4444',
                   whiteSpace: 'nowrap',
                   marginBottom: 0,
                   alignSelf: 'center',
                 }}
               >
-                Processor
+                Processor*
               </label>
               <div style={{ width: 320 }}>
                 <LocalComboBox
@@ -1517,6 +1526,42 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
               style={{ ...inputStyle, width: '100%' }}
             />
           </div>
+
+          {/* Shown once the server refuses a save for passing the tolerance ceiling —
+              only it knows what has already gone out against the step. */}
+          {needsOverride && (
+            <>
+              <label
+                style={{
+                  ...labelStyle,
+                  color: '#ef4444',
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  alignSelf: 'center',
+                }}
+                htmlFor="issue-override"
+              >
+                Override reason*
+              </label>
+              <div style={{ width: 320 }}>
+                <input
+                  id="issue-override"
+                  type="text"
+                  required
+                  aria-required="true"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Why go past the tolerance?"
+                  title="Recorded on the challan"
+                  style={{
+                    ...inputStyle,
+                    width: '100%',
+                    borderColor: overrideReason.trim() ? '#d1d5db' : '#ef4444',
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
       </section>
 
@@ -1576,8 +1621,11 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                   <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
                     To Be Issued
                   </th>
-                  <th style={{ ...lineTh, textAlign: 'center', width: 110 }} scope="col">
-                    Quantity
+                  <th
+                    style={{ ...lineTh, textAlign: 'center', width: 110, color: '#ef4444' }}
+                    scope="col"
+                  >
+                    Quantity*
                   </th>
                   <th style={{ ...lineTh, width: 70 }} scope="col">
                     Unit
@@ -1591,7 +1639,7 @@ export function IssueForm({ jobOrder, step, onIssued, onCancel, draft }: Props) 
                 {inputItems.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       style={{ padding: 24, textAlign: 'center', fontSize: 13, color: '#64748b' }}
                     >
                       This step lists nothing to issue.
