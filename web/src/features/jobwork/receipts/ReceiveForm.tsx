@@ -656,10 +656,10 @@ export function ReceiveForm({
   const returnedRows: ReturnedRow[] = useMemo(() => {
     if (returnedEdits) return returnedEdits;
     if (!prefill || isLoadingTopUps) return [];
-    // 🔴 The step's own main output leads the list, because the FIRST row is what
-    // carries the cost (see the note on the Value column). Left in seq order, a
-    // step whose main output happened to be typed second would put the cost on a
-    // by-product.
+    // 🔴 The step's own main output leads the list, because the FIRST row is sent
+    // as the receipt's primary — the one its header totals describe. Left in seq
+    // order, a step whose main output happened to be typed second would headline
+    // a by-product.
     const planned = [...prefill.outputs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const saved = new Map(draft?.outputs?.map((output) => [output.itemId, output]) ?? []);
 

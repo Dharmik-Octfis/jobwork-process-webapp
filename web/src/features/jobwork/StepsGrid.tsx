@@ -711,8 +711,7 @@ function ItemList({
                     </div>
                   ))}
 
-                {/* 🔴 No "Main" radio. One output absorbs the step's cost
-                    (§9.2.1) and it is the FIRST row — the server's own fallback
+                {/* 🔴 No "Main" radio. The main output is the FIRST row — the server's own fallback
                     (`flagPrimaryOutput`), mirrored client-side by
                     `primaryOutputIndex` so the chain badge says the same thing.
                     Asking decided nothing in the common case, one item back, and

@@ -82,10 +82,9 @@ export type StepInputRow = z.infer<typeof stepInputRowSchema>;
  * One item a step is expected to produce. Cutting returns panels AND offcuts
  * AND waste (§5.7).
  *
- * 🔴 `isPrimary` is sent rather than inferred from row order, because the primary
- * output is the one that absorbs the step's whole cost (§9.2.1) — a judgement,
- * not a position. Offcuts can perfectly well be typed first. Exactly one row may
- * carry it; the service flags the first row when nobody does.
+ * `isPrimary` names the step's main output — what the next step carries on and
+ * what receipt totals describe. It no longer decides cost (landed-cost R1–R7).
+ * Exactly one row may carry it; the service flags the first row when nobody does.
  */
 export const stepOutputRowSchema = z.object({
   itemId: z.string().uuid({ message: 'Every output row needs an item.' }),

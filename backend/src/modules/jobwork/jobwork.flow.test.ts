@@ -981,8 +981,7 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
     expect(step.inputs.every((row) => row.fromStock)).toBe(true);
 
     expect(step.outputs.map((row) => row.itemId)).toEqual([sewnId, rejectsId]);
-    // 🔴 Exactly one primary — the output that absorbs the step's whole cost
-    // (§9.2.1). The rejects are a by-product and take an explicit value later.
+    // 🔴 Exactly one primary — the step's main output. The rejects are a by-product.
     expect(step.outputs.filter((row) => row.isPrimary)).toHaveLength(1);
     expect(step.outputs[0]!.isPrimary).toBe(true);
     expect(Number(step.outputs[0]!.expectedQty)).toBe(2880);
@@ -1824,8 +1823,6 @@ describe('jobwork — multi-item steps', { timeout: 60_000 }, () => {
       order([
         {
           processId: stitching.id,
-          // Two outputs absorbing the cost means the operation was paid for
-          // twice; none means it lands nowhere (§9.2.1).
           outputs: [
             { itemId: shirtsId, isPrimary: true },
             { itemId: rejectsId, isPrimary: true },

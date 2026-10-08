@@ -16,8 +16,7 @@ interface Props {
 }
 
 /** One label → value line, the shape the Item detail reads in. */
-/** One list of a step's items, one per line. `Main` marks the output that will
- * carry the step's cost when a job order runs this template (§9.2.1).
+/** One list of a step's items, one per line. `Main` marks the step's main output.
  *
  * A consumed row prints its default quantity when the template carries one —
  * "5000 M" rather than a bare unit — because a number saved and never shown back
