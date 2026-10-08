@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes.ts';
 import { ssoRouter } from '../modules/auth/sso/sso.routes.ts';
 import { organizationsRouter } from '../modules/settings/organization/organizations/organizations.routes.ts';
@@ -57,6 +57,7 @@ import { jobOrdersReportRouter } from '../modules/reports/job-orders/jobOrdersRe
 import { customersReportRouter } from '../modules/reports/customers/customersReport.routes.ts';
 import { vendorsReportRouter } from '../modules/reports/vendors/vendorsReport.routes.ts';
 import { purchaseOrdersReportRouter } from '../modules/reports/purchase-orders/purchaseOrdersReport.routes.ts';
+import salesOrdersReportRouter from '../modules/reports/sales-orders/salesOrdersReport.routes.ts';
 import { billsReportRouter } from '../modules/reports/bills/billsReport.routes.ts';
 import { reportsRouter } from '../modules/reports/reports.routes.ts';
 import { env } from '../config/env.ts';
@@ -149,6 +150,7 @@ apiRouter.use('/organizations/:orgId/reports/job-orders', jobOrdersReportRouter)
 apiRouter.use('/organizations/:orgId/reports/customers', customersReportRouter);
 apiRouter.use('/organizations/:orgId/reports/vendors', vendorsReportRouter);
 apiRouter.use('/organizations/:orgId/reports/purchase-orders', purchaseOrdersReportRouter);
+apiRouter.use('/organizations/:orgId/reports/sales-orders', salesOrdersReportRouter);
 apiRouter.use('/organizations/:orgId/reports/bills', billsReportRouter);
 // The Reports Center list + per-user visit/favourite â€” after the specific reports above.
 apiRouter.use('/organizations/:orgId/reports', reportsRouter);
@@ -162,4 +164,3 @@ apiRouter.use('/invitations', invitationsRouter);
 apiRouter.use('/me/invitations', myInvitationsRouter);
 apiRouter.use('/modules', appModulesRouter);
 apiRouter.use('/storage', storageRouter);
-

@@ -247,6 +247,7 @@ export type ReportKey =
   | 'customer_report'
   | 'vendor_report'
   | 'purchase_order_report'
+  | 'sales_order_report'
   | 'bill_report';
 
 export interface JobOrdersReportQuery {
@@ -658,6 +659,15 @@ export const reportsApi = {
     const response = await apiClient.get(endpoints.reports.billsReport(orgId), { params });
     return response.data as PaginatedBillsReportResponse;
   },
+  getSalesOrdersReport: async (
+    orgId: string,
+    params: SalesOrdersReportQuery = {},
+  ): Promise<PaginatedSalesOrdersReportResponse> => {
+    const response = await apiClient.get(`/organizations/${orgId}/reports/sales-orders`, {
+      params,
+    });
+    return response.data as PaginatedSalesOrdersReportResponse;
+  },
 };
 
 export interface PurchaseOrdersReportQuery {
@@ -732,6 +742,42 @@ export interface BillsReportRow {
 
 export interface PaginatedBillsReportResponse {
   items: BillsReportRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
+export interface SalesOrdersReportQuery {
+  customerId?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  soNumber?: string;
+  customerName?: string;
+  salesOrderCustomFields?: Record<string, unknown>;
+  page?: number;
+  perPage?: number;
+}
+
+export interface SalesOrdersReportRow {
+  id: string;
+  customerId: string;
+  soNumber: string;
+  customerName: string;
+  locationName: string;
+  date: string;
+  deliveryDate: string | null;
+  paymentTerms: string | null;
+  total: number;
+  status: string;
+  customFields: Record<string, unknown>;
+}
+
+export interface PaginatedSalesOrdersReportResponse {
+  items: SalesOrdersReportRow[];
   pagination: {
     page: number;
     pageSize: number;
