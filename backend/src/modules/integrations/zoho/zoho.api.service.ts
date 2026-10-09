@@ -1002,9 +1002,9 @@ export async function getZohoSyncSettings(organizationId: string): Promise<ZohoS
           };
 
           const modRows = historyRows.filter(isMatchingRow);
-          if (modRows.length > 0) {
+          const latestSync = modRows[0];
+          if (latestSync) {
             // Latest overall sync (any direction: PULL or PUSH)
-            const latestSync = modRows[0];
             const syncDate = latestSync.completedAt || latestSync.createdAt;
             if (syncDate) {
               modConfig.lastSyncAt =
