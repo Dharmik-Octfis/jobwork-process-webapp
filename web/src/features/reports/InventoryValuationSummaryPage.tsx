@@ -132,7 +132,10 @@ export function InventoryValuationSummaryPage() {
   const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
 
   const locationOptions = useMemo(
-    () => locations.filter(loc => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })),
+    () =>
+      locations
+        .filter((loc) => isOwnLocation(loc))
+        .map((loc) => ({ label: loc.name, value: loc.id })),
     [locations],
   );
 
@@ -365,7 +368,7 @@ export function InventoryValuationSummaryPage() {
             return '-';
           }
         }
-      })
+      }),
     );
   }, [sortedRows, exportColumns]);
 
@@ -397,7 +400,7 @@ export function InventoryValuationSummaryPage() {
     const hsnCond = appliedFilters.conditions.find((c) => c.field === 'hsnCode');
     if (hsnCond && hsnCond.value) query.hsnCode = hsnCond.value as string;
 
-    const itemCustomFields: Record<string, any> = {};
+    const itemCustomFields: Record<string, unknown> = {};
     appliedFilters.conditions.forEach((c) => {
       if (
         c.field.startsWith('cf_') &&
@@ -440,7 +443,7 @@ export function InventoryValuationSummaryPage() {
             return '-';
           }
         }
-      })
+      }),
     );
     const allTotalRow = exportColumns.map((col, idx) => {
       if (idx === 0) return 'TOTAL';
@@ -463,7 +466,8 @@ export function InventoryValuationSummaryPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -752,25 +756,113 @@ export function InventoryValuationSummaryPage() {
                   {visibleColumns.map((colKey) => {
                     switch (colKey) {
                       case 'itemName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="ITEM NAME"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'categoryName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="CATEGORY NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="CATEGORY NAME"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'sku':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="SKU" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="SKU"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'hsnCode':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="HSN CODE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="HSN CODE"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'uomName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="UNIT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="UNIT"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'stockOnHand':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="STOCK ON HAND" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="STOCK ON HAND"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'inventoryAssetValue':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="INVENTORY ASSET VALUE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="INVENTORY ASSET VALUE"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       default:
                         if (colKey.startsWith('cf_')) {
                           const cfKey = colKey.replace('cf_', '');
                           const cfLabel =
                             customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
-                          return <SortableHeader key={colKey} sortKey={colKey} label={cfLabel.toUpperCase()} currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                          return (
+                            <SortableHeader
+                              key={colKey}
+                              sortKey={colKey}
+                              label={cfLabel.toUpperCase()}
+                              currentSortField={sortField as string}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              style={thStyle}
+                              align="left"
+                            />
+                          );
                         }
                         return null;
                     }
