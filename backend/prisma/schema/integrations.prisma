@@ -3,81 +3,81 @@
 /// Multi-tenant: one row per tenant organization (`organization_id` unique).
 /// Refresh tokens and access tokens are encrypted at rest using AES-256-GCM.
 model ZohoIntegration {
-  id                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId           String        @unique @map("organization_id") @db.Uuid
-  provider                 String        @default("ZOHO_BOOKS") @map("provider") @db.VarChar(50)
-  status                   String        @default("NOT_CONNECTED") @map("status") @db.VarChar(50) // NOT_CONNECTED | CONFIGURED | AUTHORIZING | PENDING_ORGANIZATION_SELECTION | CONNECTED | TOKEN_EXPIRED | ERROR | DISCONNECTED
-  clientId                 String?       @map("client_id") @db.VarChar(255)
-  clientSecret             String?       @map("client_secret") @db.Text
-  refreshToken             String?       @map("refresh_token") @db.Text
-  accessToken              String?       @map("access_token") @db.Text
-  tokenType                String?       @default("Bearer") @map("token_type") @db.VarChar(50)
-  expiresAt                DateTime?     @map("expires_at") @db.Timestamptz(6)
-  apiDomain                String?       @map("api_domain") @db.VarChar(255)
-  accountsServer           String?       @map("accounts_server") @db.VarChar(255)
-  zohoLocation             String?       @map("zoho_location") @db.VarChar(50)
-  selectedOrganizationId   String?       @map("selected_organization_id") @db.VarChar(100)
-  selectedOrganizationName String?       @map("selected_organization_name") @db.VarChar(255)
-  connectedAt              DateTime?     @map("connected_at") @db.Timestamptz(6)
-  isDeleted                Boolean       @default(false) @map("is_deleted")
-  createdBy                String?       @map("created_by") @db.Uuid
-  updatedBy                String?       @map("updated_by") @db.Uuid
-  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String    @unique @map("organization_id") @db.Uuid
+  provider                 String    @default("ZOHO_BOOKS") @map("provider") @db.VarChar(50)
+  status                   String    @default("NOT_CONNECTED") @map("status") @db.VarChar(50) // NOT_CONNECTED | CONFIGURED | AUTHORIZING | PENDING_ORGANIZATION_SELECTION | CONNECTED | TOKEN_EXPIRED | ERROR | DISCONNECTED
+  clientId                 String?   @map("client_id") @db.VarChar(255)
+  clientSecret             String?   @map("client_secret") @db.Text
+  refreshToken             String?   @map("refresh_token") @db.Text
+  accessToken              String?   @map("access_token") @db.Text
+  tokenType                String?   @default("Bearer") @map("token_type") @db.VarChar(50)
+  expiresAt                DateTime? @map("expires_at") @db.Timestamptz(6)
+  apiDomain                String?   @map("api_domain") @db.VarChar(255)
+  accountsServer           String?   @map("accounts_server") @db.VarChar(255)
+  zohoLocation             String?   @map("zoho_location") @db.VarChar(50)
+  selectedOrganizationId   String?   @map("selected_organization_id") @db.VarChar(100)
+  selectedOrganizationName String?   @map("selected_organization_name") @db.VarChar(255)
+  connectedAt              DateTime? @map("connected_at") @db.Timestamptz(6)
+  isDeleted                Boolean   @default(false) @map("is_deleted")
+  createdBy                String?   @map("created_by") @db.Uuid
+  updatedBy                String?   @map("updated_by") @db.Uuid
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization             Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser            User?         @relation("ZohoIntegrationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser            User?         @relation("ZohoIntegrationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdByUser User?        @relation("ZohoIntegrationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  updatedByUser User?        @relation("ZohoIntegrationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
+  @@index([organizationId, status], map: "idx_zoho_integrations_org")
   @@map("zoho_integrations")
 }
 
 /// Ephemeral OAuth State for CSRF protection and multi-tenant context tracking during Zoho OAuth flow.
 model OAuthState {
-  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  state          String        @unique @map("state") @db.VarChar(128)
-  organizationId String        @map("organization_id") @db.Uuid
-  userId         String        @map("user_id") @db.Uuid
-  provider       String        @default("ZOHO_BOOKS") @map("provider") @db.VarChar(50)
-  accountsServer String?       @map("accounts_server") @db.VarChar(255)
-  returnTo       String?       @map("return_to") @db.VarChar(255)
-  expiresAt      DateTime      @map("expires_at") @db.Timestamptz(6)
-  usedAt         DateTime?     @map("used_at") @db.Timestamptz(6)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  state          String    @unique @map("state") @db.VarChar(128)
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  provider       String    @default("ZOHO_BOOKS") @map("provider") @db.VarChar(50)
+  accountsServer String?   @map("accounts_server") @db.VarChar(255)
+  returnTo       String?   @map("return_to") @db.VarChar(255)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([organizationId])
-  @@index([state])
-  @@index([expiresAt])
+  @@index([organizationId], map: "idx_oauth_states_org")
+  @@index([state], map: "idx_oauth_states_state")
+  @@index([expiresAt], map: "idx_oauth_states_expires_at")
   @@map("oauth_states")
 }
 
 /// Stores execution history and audit logs for Zoho integration sync runs.
 /// References `app_modules` master data table and `organizations`.
 model ZohoSyncHistory {
-  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  appModuleId    String?      @map("app_module_id") @db.Uuid
-  moduleName     String       @map("module_name") @db.VarChar(255)
-  syncType       String       @map("sync_type") @db.VarChar(100)
-  syncDirection  String       @default("PUSH") @map("sync_direction") @db.VarChar(20)
-  status         String       @default("Completed") @map("status") @db.VarChar(50)
-  addedCount     Int          @default(0) @map("added_count")
-  updatedCount   Int          @default(0) @map("updated_count")
-  deletedCount   Int          @default(0) @map("deleted_count")
-  failureCount   Int          @default(0) @map("failure_count")
-  details        String?      @map("details") @db.Text
-  errorLogs      Json?        @map("error_logs") @db.JsonB
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  completedAt    DateTime?    @map("completed_at") @db.Timestamptz(6)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  appModuleId    String?   @map("app_module_id") @db.Uuid
+  moduleName     String    @map("module_name") @db.VarChar(255)
+  syncType       String    @map("sync_type") @db.VarChar(100)
+  syncDirection  String    @default("PUSH") @map("sync_direction") @db.VarChar(20)
+  status         String    @default("Completed") @map("status") @db.VarChar(50)
+  addedCount     Int       @default(0) @map("added_count")
+  updatedCount   Int       @default(0) @map("updated_count")
+  deletedCount   Int       @default(0) @map("deleted_count")
+  failureCount   Int       @default(0) @map("failure_count")
+  details        String?   @map("details") @db.Text
+  errorLogs      Json?     @map("error_logs") @db.JsonB
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  appModule      AppModule?   @relation(fields: [appModuleId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  appModule    AppModule?   @relation(fields: [appModuleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  @@index([organizationId, createdAt(sort: Desc)])
-  @@index([organizationId, appModuleId])
+  @@index([organizationId, createdAt(sort: Desc)], map: "idx_zoho_sync_history_org_time")
+  @@index([organizationId, appModuleId], map: "idx_zoho_sync_history_module")
   @@map("zoho_sync_history")
 }
-
