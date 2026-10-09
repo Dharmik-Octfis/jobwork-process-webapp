@@ -130,13 +130,26 @@ Unauthenticated. Return **only** this flag — never the issuer URL or client id
 route; the browser reaches it by full page navigation (never `fetch`). It returns **no JSON** —
 only a `302` whose `Location` header is the `accounts.octfis.com/auth?...` URL in step 3, which
 already exists on accounts. Your library builds that URL (`openid-client`'s
-`buildAuthorizationUrl`); accounts later sends the browser back to your §5.3 callback.
+`buildAuthorizationUrl`, or `buildAuthorizationUrlWithPAR` — see the PAR note below); accounts later
+sends the browser back to your §5.3 callback.
 
-| Query                    | Meaning                                                                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `returnTo` (optional)    | A path inside your app to land on afterwards, e.g. `/invite/accept?token=…`. Must start with `/` and not `//` (else ignore it — open-redirect guard). |
-| `email` (optional)       | Sent to accounts as `login_hint` to prefill the email box (used by invitations). A hint only.                                                         |
-| `prompt=none` (optional) | **Silent** sign-in: no screen at all. See §7.                                                                                                         |
+| Query                    | Meaning                                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `returnTo` (optional)    | A path inside your app to land on afterwards, e.g. `/invite/accept?token=…`. Must start with `/` and not `//` (else ignore it — open-redirect guard).                                                         |
+| `invite` (optional)      | An invitation's **raw token**. Look it up server-side; only a pending, unexpired one becomes `login_hint` (its stored email). Anything else → no hint, sign-in carries on. Ignored for `prompt=none`. See §9. |
+| `prompt=none` (optional) | **Silent** sign-in: no screen at all. See §7.                                                                                                                                                                 |
+
+🔴 **Never accept an email from the query string as `login_hint`.** For a client with
+`require_par`, accounts uses the hint to choose Create Account vs Sign In (§9), so an address the
+browser chose would let anyone ask "does X have an account?" through your endpoint. Jobwork used to
+take `?email=`; since 2026-10-09 it ignores it.
+
+**PAR (needed for the §9 invitation screens).** With `buildAuthorizationUrlWithPAR`, your server
+POSTs the step-3 parameters to accounts' `/request` (authenticated with your client secret) and
+redirects the browser to `/auth?client_id=…&request_uri=…`. Use it for **every** sign-in, silent
+ones too, once your client has `require_par`: accounts then refuses any plain `/auth` from it. It
+adds one server-to-server call per sign-in. Give this route the same failure handler as the callback
+(→ `/login?sso=manual&error=signin_failed`), because accounts being unreachable now fails here.
 
 What it does:
 
@@ -150,7 +163,8 @@ What it does:
    `sso_flow` — `HttpOnly; SameSite=Lax; Secure; Path=/api/auth/sso; Max-Age=1800` (30 min).
    🔴 `Lax`, not `Strict` (Strict drops it on the way back and every login fails).
    🔴 30 min, not less — a new user may wait for an email code mid-sign-in.
-3. Redirects (302) to accounts:
+3. Redirects (302) to accounts. These are the parameters; with PAR they go in the server-to-server
+   POST, and the browser gets `…/auth?client_id=…&request_uri=…` instead:
 
 ```
 https://accounts.octfis.com/auth
@@ -162,7 +176,7 @@ https://accounts.octfis.com/auth
   &nonce=<nonce>
   &code_challenge=<BASE64URL(SHA256(code_verifier))>
   &code_challenge_method=S256
-  [&login_hint=<email>] [&prompt=none]
+  [&login_hint=<invited email, from the invitation>] [&prompt=none]
 ```
 
 ### 5.3 `GET /api/auth/sso/callback` — finish sign-in
@@ -345,14 +359,14 @@ else's address at accounts takes over that person's account in your app.
 
 ## 7. Frontend rules
 
-| Page             | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App start        | Before rendering any route, call `POST /api/auth/refresh-token` once. 200 → keep `accessToken` in memory and the `user` in state: signed in. 401 → signed out. Do the same, once, whenever an API call returns 401, then retry that call. This is how the app gets its token after the §5.3 callback **and** after a reload.                                                                                                                               |
-| `/login`         | With SSO on it is a **redirector**, not a form: home-type visit (`/`, `/home`) → silent sign-in `…/sso/login?prompt=none&returnTo=/home`; a deep link or `?email=` → normal sign-in `…/sso/login?returnTo=<link>&email=<email>`. Show a manual "Access MyApp" button only for `?sso=manual` or after the session was ended elsewhere. With `?error=signin_failed` also show one line above the button: _"That sign-in didn't complete. Please try again."_ |
-| `/home`          | Your app's one "home" decision (jobwork: last organization used). Every entry point lands here.                                                                                                                                                                                                                                                                                                                                                            |
-| `/no-access`     | Public page for refused sign-ins: short message + "Sign out and use another account" → `/api/auth/sso/logout`.                                                                                                                                                                                                                                                                                                                                             |
-| Protected routes | No session → send to `/login` (which decides silent vs normal).                                                                                                                                                                                                                                                                                                                                                                                            |
-| Logout button    | `window.location.assign('/api/auth/sso/logout')` — full navigation. 🔴 Do **not** clear the local session first: that re-renders into `/login`, whose own redirect cancels the sign-out, and the user is signed straight back in. The page unloads anyway; the server revokes the session.                                                                                                                                                                 |
+| Page             | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| App start        | Before rendering any route, call `POST /api/auth/refresh-token` once. 200 → keep `accessToken` in memory and the `user` in state: signed in. 401 → signed out. Do the same, once, whenever an API call returns 401, then retry that call. This is how the app gets its token after the §5.3 callback **and** after a reload.                                                                                                                                 |
+| `/login`         | With SSO on it is a **redirector**, not a form: home-type visit (`/`, `/home`) → silent sign-in `…/sso/login?prompt=none&returnTo=/home`; a deep link or `?invite=` → normal sign-in `…/sso/login?returnTo=<link>&invite=<token>`. Show a manual "Access MyApp" button only for `?sso=manual` or after the session was ended elsewhere. With `?error=signin_failed` also show one line above the button: _"That sign-in didn't complete. Please try again."_ |
+| `/home`          | Your app's one "home" decision (jobwork: last organization used). Every entry point lands here.                                                                                                                                                                                                                                                                                                                                                              |
+| `/no-access`     | Public page for refused sign-ins: short message + "Sign out and use another account" → `/api/auth/sso/logout`.                                                                                                                                                                                                                                                                                                                                               |
+| Protected routes | No session → send to `/login` (which decides silent vs normal).                                                                                                                                                                                                                                                                                                                                                                                              |
+| Logout button    | `window.location.assign('/api/auth/sso/logout')` — full navigation. 🔴 Do **not** clear the local session first: that re-renders into `/login`, whose own redirect cancels the sign-out, and the user is signed straight back in. The page unloads anyway; the server revokes the session.                                                                                                                                                                   |
 
 🔴 **Always a full navigation** (`window.location.assign`) to `/api/auth/sso/*`, never `fetch`
 and never a router `navigate()`. The browser itself must visit accounts so it can present its
@@ -390,12 +404,16 @@ Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `useLogout
 1. Admin invites → your DB stores `invitations` row: org, email, role, `token_hash` (SHA-256 of a
    random 32-byte token), `expires_at` (e.g. 7 days), `status='pending'`. No user yet.
 2. Email link: `https://myapp.octfis.com/invite/accept?token=<raw token>`.
-3. Invite page, not signed in → `/login?email=<invited>&next=/invite/accept?token=…` → normal
-   sign-in with `login_hint`.
-4. At accounts:
-   - **Has an account** → types password (or no screen if already signed in).
-   - **No account** → "Create Account" (email prefilled) → name + password → 6-digit code by email
-     → code accepted = **signed in**, straight back to your app. No second password.
+3. Invite page, not signed in → `/login?invite=<raw token>&next=/invite/accept?token=…` → normal
+   sign-in. Your `/sso/login` resolves the token to the invited email and sends it as `login_hint`
+   by PAR (§5.2).
+4. At accounts (with `require_par` on for your client; without it, today's editable Sign In):
+   - **No account** → **Create Account** with the email **locked** → name + password → 6-digit
+     code by email → code accepted = **signed in**, straight back to your app. No second password.
+   - **Has an account** → **Sign In** with the email **locked** (or no screen if already signed in
+     as that address).
+   - Both screens have "Not you? Use a different account". The lock is enforced by accounts'
+     server, not by the read-only field.
 5. Callback: rule 3 of §6 creates the user (no password). Under invite-only, this is where the
    pending invitation is checked; under self-signup it is not needed here.
 6. Back on the invite page, signed in with the invited email → **accept automatically** →
@@ -403,14 +421,23 @@ Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `useLogout
 
 Edge cases your invite page must handle:
 
-- Signed in as a **different** email → show "This invitation is for X; you're signed in as Y" +
-  **Sign out**. 🔴 Never redirect to `/login` here — accounts returns the same identity and you
-  loop forever.
+- Signed in to **your app** as a **different** email → show "This invitation is for X; you're
+  signed in as Y" + **Switch account**: `POST /api/auth/logout` (your session only — keep accounts'),
+  then a full navigation to `/api/auth/sso/login?returnTo=/invite/accept?token=…&invite=<token>`.
+  Accounts, still signed in as Y, then shows its own "This invitation is for X" screen with
+  **Switch** / **Stay signed in as Y**. 🔴 Never redirect to `/login` here, and never end accounts'
+  session from this button: the first loops forever, the second loses the invitation link.
 - Accept endpoint called without a session while SSO is on → `401 SIGN_IN_REQUIRED`. Never create
   a password-holding user there.
 
+**Turning the locked screens on:** after your deploy sends PAR, the accounts operator runs
+`npm run client:require-par -- --id myapp-production --apply` and restarts accounts
+(`SSO_GUIDE_ACCOUNTS.md` §4). Never before your PAR deploy is live: a flagged client that does not
+send PAR cannot sign anyone in.
+
 Reference: `web/src/features/invitations/AcceptInvitePage.tsx`,
-`backend/src/modules/settings/organization/invitations/`.
+`backend/src/modules/settings/organization/invitations/`, `backend/src/modules/auth/sso/`
+(`startLogin`), and the reasoning in `docs/SSO_INVITE_SIGNUP_PLAN.md`.
 
 ---
 

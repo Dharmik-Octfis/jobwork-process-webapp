@@ -250,53 +250,78 @@ Every attribute on that cookie is doing a job:
 
 #### Where each value goes — this split _is_ PKCE
 
-| Value           | Into the cookie | Into the URL to accounts                                         |
+| Value           | Into the cookie | Into the request to accounts (the PAR push, below)               |
 | --------------- | --------------- | ---------------------------------------------------------------- |
 | `state`         | ✅              | ✅ the same value                                                |
 | `nonce`         | ✅              | ✅ the same value                                                |
 | `code_verifier` | ✅              | 🔴 **never** — only `SHA256(verifier)`, as `code_challenge`      |
 | `returnTo`      | ✅              | ❌ accounts never learns where jobwork will send them afterwards |
 
-Two of them travel in the open and come back; **the verifier never leaves the browser.**
+Two of them go to accounts and come back in the open; **the verifier never leaves the browser's cookie.**
 accounts holds only the hash, so it can _check_ the verifier at step 7a but could never
 produce one — and neither can anyone who reads the code out of a URL, a log or a `Referer`.
 
-Then a redirect:
+Then the parameters go to accounts — **server to server first (PAR), then a redirect.**
+
+Since 2026-10-09 (`8ab912e7`) jobwork does not put these parameters in the browser's URL. It POSTs
+them to accounts' `/request` endpoint, authenticated with its client secret
+(`buildAuthorizationUrlWithPAR`), and gets back a one-time reference:
+
+```http
+POST http://localhost:3100/request
+Authorization: Basic base64(jobwork:<client secret>)
+
+client_id=jobwork
+&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fsso%2Fcallback
+&response_type=code
+&scope=openid+email+profile
+&state=xQ8vN2mK...
+&nonce=pL4tR9wZ...
+&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+&code_challenge_method=S256
+
+→ { "request_uri": "urn:ietf:params:oauth:request_uri:Qx7…", "expires_in": 60 }
+```
+
+and only that reference goes to the browser:
 
 ```http
 302 Found
 Location: http://localhost:3100/auth
             ?client_id=jobwork
-            &redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fsso%2Fcallback
-            &response_type=code
-            &scope=openid+email+profile
-            &state=xQ8vN2mK...
-            &nonce=pL4tR9wZ...
-            &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
-            &code_challenge_method=S256
+            &request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3AQx7…
 ```
+
+Why: accounts can then be sure every parameter came from jobwork, which matters for the one
+parameter below. With `require_par` on jobwork's registration, accounts refuses a plain `/auth`
+from it. If this call fails (accounts unreachable), step 2 redirects to
+`/login?sso=manual&error=signin_failed` instead of showing JSON.
 
 #### One optional extra: `login_hint`
 
-If jobwork already knows which email address is arriving, it adds one more parameter:
+If jobwork knows which email address is arriving, it adds one more parameter to the push:
 
 ```
 &login_hint=james.walker%40example.com
 ```
 
-accounts uses it to fill in the email box on the sign-in page, and passes it on to
-"Create Account" as `/signup?email=…`.
+This is only ever set for someone following an **invitation link**, and only from the invitation
+itself. The sign-in page sends the raw token (`?invite=<token>`), and step 2 looks it up: a pending,
+unexpired invitation contributes its stored email, anything else contributes nothing. An address
+sent by the browser (`?email=`) is ignored.
 
-This is only ever set for someone following an **invitation link**. jobwork's sign-in page
-reads the `?email=` the invitation put there and passes it along. It matters because an
-invitation is addressed to one exact address: if the invitee registers a different one,
-everything appears to work — account created, email verified, signed in — and then step 8
-refuses them, and we cannot explain why without revealing who is invited where. Filling the
-box in removes the chance to get it wrong.
+accounts uses the hint to pick the screen, with the address **locked**: **Create Account** if it has
+no account yet, **Sign In** if it has one. If the browser is already signed in there as someone else,
+it shows "This invitation is for Y — you're signed in as X" first. It matters because an invitation is
+addressed to one exact address: an invitee who registered a different one would get in and then be
+unable to accept.
 
-🔴 **A hint, not a fact.** It comes from a query string, so it is whatever the browser sent.
-It fills a box the user can edit and decides nothing. Entitlement is still checked at step 8
-against the address accounts says it **verified**.
+🔴 **Why it must come from the invitation and arrive by PAR.** Choosing the screen tells the viewer
+whether an address has an account. That's fine for someone holding that address's invitation, which
+only reaches its inbox. A hint the browser could set, in either jobwork's query string or a typed
+`/auth` URL, would answer that question for anyone about anyone. Entitlement is still checked at
+step 8 against the address accounts says it **verified**. Full reasoning:
+`docs/SSO_INVITE_SIGNUP_PLAN.md`.
 
 ```ts
 scope: 'openid email profile',    // and NOT offline_access
@@ -319,15 +344,16 @@ browser is the one that started _this_ login.
 **Library:** `oidc-provider`, mounted at `accounts/src/app.ts`.
 
 accounts validates the request — is `jobwork` a registered client, is that `redirect_uri` an
-**exact** match?
+**exact** match? It reads the parameters jobwork pushed in step 2, by their `request_uri`. With
+`require_par` on, a plain `/auth?client_id=jobwork&redirect_uri=…` is refused here.
 
 **Reads:** `oidc_clients` (loaded once at boot).
 
 ```sql
 -- accounts DB, oidc_clients
-id       | name    | redirect_uris                                        | post_logout_redirect_uris
----------+---------+------------------------------------------------------+---------------------------
-jobwork  | Jobwork | {http://localhost:3000/api/auth/sso/callback}         | {http://localhost:5173/}
+id       | name    | redirect_uris                                        | post_logout_redirect_uris | require_par
+---------+---------+------------------------------------------------------+---------------------------+------------
+jobwork  | Jobwork | {http://localhost:3000/api/auth/sso/callback}         | {http://localhost:5173/}  | true
 ```
 
 > 🔴 `redirect_uris` is matched as an **exact string**. No wildcards, no prefixes. A loose
@@ -1323,8 +1349,10 @@ BROWSER                    web :5173        jobwork API :3000       accounts :31
    │
    │ click "Sign in"
    ├─── GET /api/auth/sso/login ────────────────────────────►│
+   │                                                         ├── POST /request (PAR) ───────►│
+   │                                                         │◄── { request_uri } ───────────┤
    │                                              Set-Cookie: sso_flow
-   │◄─── 302 to :3100/auth?client_id=jobwork&… ──────────────┤
+   │◄─── 302 to :3100/auth?client_id=jobwork&request_uri=… ──┤
    │
    ├─── GET /auth ──────────────────────────────────────────────────────────►│
    │                                                    writes oidc_payloads(Interaction)
@@ -1497,16 +1525,25 @@ and signup does only the first.
 Signing up at accounts creates an identity, nothing more. It does **not** grant jobwork
 access — that still needs an invitation (§8, step 8 branch 3).
 
-**How an invitee actually gets in, end to end** (as built 2026-09-21):
+**How an invitee actually gets in, end to end** (as built 2026-10-09; before that the link carried
+`?email=` and accounts showed an editable Sign In for everyone):
 
 ```
-invite email → /invite/accept?token=…  →  not signed in  →  /login?email=…&next=/invite/accept?token=…
-             →  interactive sign-in (never silent)  →  accounts, invited address prefilled
-             →  "Create Account" → /interaction/:uid/signup  →  6-digit code → /interaction/:uid/verify
+invite email → /invite/accept?token=…  →  not signed in  →  /login?invite=<token>&next=/invite/accept?token=…
+             →  interactive sign-in (never silent)  →  jobwork resolves the token → login_hint, by PAR
+             →  accounts, no account for that address: CREATE ACCOUNT, address locked
+                (has an account: SIGN IN, address locked)
+             →  /interaction/:uid/signup  →  6-digit code → /interaction/:uid/verify
              →  code confirmed = SIGNED IN (interactionFinished)  →  jobwork callback:
                 provisionLocalUser creates the local user (verified email), NO password
              →  returnTo lands back on /invite/accept  →  Case A auto-accepts  →  membership
 ```
+
+Signed in to jobwork as a **different** address, the accept page's **Switch account** ends only
+jobwork's session and starts the sign-in above with the token. Accounts, still signed in as the
+other address, asks "This invitation is for Y — switch?". Switching signs that other address out of
+every Octfis app in the browser (the library's end-session step runs first). The posted email is
+ignored on every locked form: accounts uses the hint.
 
 🔴 **Signup must stay inside the interaction.** Until 2026-09-21 "Create Account" went to a
 standalone `/signup` carrying only `?email=`, which dropped the interaction uid — so an invitee

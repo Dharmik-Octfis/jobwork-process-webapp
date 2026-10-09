@@ -12,6 +12,11 @@ grained, so the numbers differ).
 **Values.** IDs, tokens, hashes and the person (James Walker) are the walkthrough's worked
 example — the right shape, not captured traffic.
 
+**PAR (since 2026-10-09, `8ab912e7`; live once deployed).** Jobwork now pushes the authorization
+parameters to accounts server-to-server (step 1a) and the browser carries only a `request_uri`.
+Before that commit, step 1's `Location` held every parameter in the query string, and an invitee's
+address travelled as `&email=` → `login_hint`.
+
 ---
 
 ## The sequence at a glance
@@ -20,7 +25,8 @@ example — the right shape, not captured traffic.
 | --- | ------------ | ------------------------------------------------------------------ | -------------------- | --------------------------------------- |
 | 0   | website (JS) | `GET  accounts.octfis.com/session/status`                          | XHR, cross-origin    | `{ signedIn }` → button label           |
 | 1   | browser      | `GET  jobwork.octfis.com/api/auth/sso/login`                       | page load            | 302 → accounts `/auth`, sets `sso_flow` |
-| 2   | browser      | `GET  accounts.octfis.com/auth?client_id=jobwork&…`                | page load (redirect) | 302 → `/interaction/:uid`               |
+| 1a  | jobwork API  | `POST accounts.octfis.com/request` (PAR)                           | server to server     | `request_uri`                           |
+| 2   | browser      | `GET  accounts.octfis.com/auth?client_id=jobwork&request_uri=…`    | page load (redirect) | 302 → `/interaction/:uid`               |
 | 3   | browser      | `GET  accounts.octfis.com/interaction/:uid`                        | page load (redirect) | 200 HTML login form                     |
 | 4   | browser      | `POST accounts.octfis.com/interaction/:uid/login`                  | HTML form post       | 303 → `/auth/:uid`                      |
 | 5   | browser      | `GET  accounts.octfis.com/auth/:uid` (twice on a first-ever login) | page load (redirect) | 302 → jobwork callback with `?code=`    |
@@ -32,7 +38,7 @@ example — the right shape, not captured traffic.
 
 Steps 1–6 are **full page navigations**, not API calls from JavaScript — the browser has to visit
 accounts itself so it can present (or receive) the accounts session cookie. Only 0, 7 and 8 are
-`fetch`/XHR, and 6a/6b never touch the browser at all.
+`fetch`/XHR, and 1a, 6a and 6b never touch the browser at all.
 
 ---
 
@@ -63,11 +69,40 @@ GET https://jobwork.octfis.com/api/auth/sso/login
 
 Optional query parameters (the website sends none):
 
-| Parameter        | Set by                                 | Effect                                                         |
-| ---------------- | -------------------------------------- | -------------------------------------------------------------- |
-| `returnTo=/path` | jobwork's `/login` for a deep link     | where step 6 lands; must be a same-app path                    |
-| `email=…`        | jobwork's `/login` for an invitee      | forwarded to accounts as `login_hint` to prefill the email box |
-| `prompt=none`    | jobwork's `/login` with no destination | silent sign-in — see _Variants_                                |
+| Parameter        | Set by                                 | Effect                                                                                                                              |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `returnTo=/path` | jobwork's `/login` for a deep link     | where step 6 lands; must be a same-app path                                                                                         |
+| `invite=<token>` | jobwork's `/login` for an invitee      | looked up server-side; a live invitation's email goes to accounts as `login_hint` (locked Create Account / Sign In, see _Variants_) |
+| `prompt=none`    | jobwork's `/login` with no destination | silent sign-in — see _Variants_                                                                                                     |
+
+A `?email=` is **ignored**: accounts acts on the hint, so it may only come from an invitation the
+server looked up.
+
+### 1a. jobwork pushes the parameters (PAR)
+
+```http
+POST https://accounts.octfis.com/request
+Authorization: Basic base64(jobwork:<client secret>)
+Content-Type: application/x-www-form-urlencoded
+
+client_id=jobwork
+&redirect_uri=https%3A%2F%2Fjobwork.octfis.com%2Fapi%2Fauth%2Fsso%2Fcallback
+&response_type=code
+&scope=openid+email+profile
+&state=xQ8vN2mK...
+&nonce=pL4tR9wZ...
+&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+&code_challenge_method=S256
+[&login_hint=james.walker%40example.com]      (invitation only)
+[&prompt=none]                                (silent only)
+```
+
+```json
+{ "request_uri": "urn:ietf:params:oauth:request_uri:Qx7…", "expires_in": 60 }
+```
+
+If this call fails (accounts unreachable), step 1 answers `302 → /login?sso=manual&error=signin_failed`
+instead of the redirect below.
 
 ```http
 302 Found
@@ -75,22 +110,20 @@ Set-Cookie: sso_flow={"state":"xQ8vN2mK...","nonce":"pL4tR9wZ...","codeVerifier"
             HttpOnly; Secure; SameSite=Lax; Path=/api/auth/sso; Max-Age=1800
 Location: https://accounts.octfis.com/auth
             ?client_id=jobwork
-            &redirect_uri=https%3A%2F%2Fjobwork.octfis.com%2Fapi%2Fauth%2Fsso%2Fcallback
-            &response_type=code
-            &scope=openid+email+profile
-            &state=xQ8vN2mK...
-            &nonce=pL4tR9wZ...
-            &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
-            &code_challenge_method=S256
+            &request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3AQx7…
 ```
 
-The `code_verifier` stays in the cookie; only its SHA-256 (`code_challenge`) goes to accounts.
+The `code_verifier` stays in the cookie; only its SHA-256 (`code_challenge`) goes to accounts, and
+it goes in step 1a, not through the browser.
 
 ## 2. accounts receives the authorization request
 
 ```http
-GET https://accounts.octfis.com/auth?client_id=jobwork&redirect_uri=…&state=…&nonce=…&code_challenge=…
+GET https://accounts.octfis.com/auth?client_id=jobwork&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3AQx7…
 ```
+
+accounts loads the pushed parameters by that reference. With `require_par` on for the client, a
+plain `/auth?client_id=jobwork&redirect_uri=…` is refused.
 
 No `_session` cookie, so accounts parks the request as an `Interaction` row and asks for a login.
 
@@ -132,7 +165,8 @@ Failure — `200` with the form re-rendered and _"That email and password do not
 words and the same timing whether the email or the password was wrong.
 
 A new person clicks **Create Account** instead, which runs `/interaction/:uid/signup` then
-`/interaction/:uid/verify` (a 6-digit emailed code). A confirmed code ends in the same 303.
+`/interaction/:uid/verify` (a 6-digit emailed code). A confirmed code ends in the same 303. An
+invitee doesn't have to click: see _Variants → Arriving from an invitation_.
 
 ## 5. accounts resumes the request and issues a code
 
@@ -348,7 +382,7 @@ Then `/login` redirects without showing a screen:
 | The visitor wanted                      | `/login` starts                                                   |
 | --------------------------------------- | ----------------------------------------------------------------- |
 | nothing in particular (`/`, `/home`)    | `GET /api/auth/sso/login?prompt=none&returnTo=/home` — **silent** |
-| a deep link, or came from an invitation | `GET /api/auth/sso/login?returnTo=<path>[&email=<invitee>]`       |
+| a deep link, or came from an invitation | `GET /api/auth/sso/login?returnTo=<path>[&invite=<token>]`        |
 
 A **silent** sign-in adds `prompt=none` to the step-1 redirect to accounts, and sets a 30-second
 `sso_silent` cookie so a second silent attempt inside that window shows the button instead (the
@@ -360,3 +394,31 @@ loop guard). accounts then never shows a form:
   `/login?sso=manual` where no website URL is configured (local dev).
 
 `/login?sso=manual` skips the redirect and shows the **Access Jobwork** button instead.
+
+### Arriving from an invitation
+
+The emailed link is `https://jobwork.octfis.com/invite/accept?token=<raw token>`. Not signed in,
+the accept page sends the browser to `/login?invite=<token>&next=/invite/accept?token=<token>`,
+which starts an interactive sign-in (never silent):
+
+```http
+GET https://jobwork.octfis.com/api/auth/sso/login?returnTo=%2Finvite%2Faccept%3Ftoken%3D…&invite=…
+```
+
+jobwork looks the token up. A pending, unexpired invitation puts its email in step 1a as
+`login_hint`; anything else sends no hint, and sign-in carries on as usual. Because jobwork's client
+has `require_par`, accounts trusts that hint and step 3 becomes one of:
+
+| The invited address at accounts                          | Step 3 shows                                                                                                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| no account (or a signup never confirmed)                 | **Create Account**, email read-only → `/interaction/:uid/signup` → code → `/interaction/:uid/verify`                                              |
+| has an account                                           | **Sign In**, email read-only, no Create Account link                                                                                              |
+| this browser is signed in at accounts as someone else    | "This invitation is for Y — you're signed in as X": **Switch** (`?invitee=1`, then the row above) or **Stay** (`POST /interaction/:uid/continue`) |
+| this browser is already signed in as the invited address | nothing; straight to step 5                                                                                                                       |
+
+The posted `email` is ignored on every one of those forms: accounts uses the hint. "Not you? Use a
+different account" reopens step 3 as `/interaction/:uid?switch=1`, the ordinary editable form.
+
+Signed in to **jobwork** as a different address, the accept page offers **Switch account**:
+`POST /api/auth/logout` (jobwork's session only), then the `GET` above. Accounts, still signed in as
+the other address, answers with the mismatch screen.

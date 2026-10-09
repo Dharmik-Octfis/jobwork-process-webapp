@@ -14,7 +14,8 @@ code-complete and tested (accounts `invitee.flow.test.ts` drives a real `oidc-pr
 jobwork `sso.silent.test.ts`, `invitations.sso.test.ts`). Not yet done: the accounts migration
 `20261009064336_add_oidc_client_require_par` was **applied to `accounts_dev` on 2026-10-09**. That
 database holds all three registrations (`jobwork`, `jobwork-staging`, `jobwork-production`), all
-still `require_par = false` (§8 step 3), nothing is browser-walked, and the §10 docs are untouched._
+still `require_par = false` (§8 step 3), and nothing is browser-walked. The §10 docs were updated
+2026-10-09 to describe the built behaviour, each noting it is live only once deployed._
 
 _Implementation notes that differ from the text below:_
 
