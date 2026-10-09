@@ -59,7 +59,8 @@ export function BatchReportPage() {
   const catalog = useMemo(() => {
     return COLUMN_CATALOG.map((col) => {
       if (col.key === 'batch') return { ...col, label: trackingLabel.singular.toUpperCase() };
-      if (col.key === 'batchNumber') return { ...col, label: `${trackingLabel.singular.toUpperCase()} NUMBER` };
+      if (col.key === 'batchNumber')
+        return { ...col, label: `${trackingLabel.singular.toUpperCase()} NUMBER` };
       if (col.key === 'takaCount') return { ...col, label: batchUnitLabel.plural.toUpperCase() };
       return col;
     });
@@ -80,7 +81,6 @@ export function BatchReportPage() {
         return isNaN(d.getTime()) ? fallback : d;
       };
 
-
       return {
         dateRange: parsed.dateRange || 'This Month',
         fromDate: safeDate(parsed.fromDate, firstOfMonth()),
@@ -98,14 +98,25 @@ export function BatchReportPage() {
   }, [orgId, storageKey]);
 
   const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
-  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || startOfMonth(new Date()));
+  const [fromDate, setFromDate] = useState<Date>(
+    initialState?.fromDate || startOfMonth(new Date()),
+  );
   const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
-  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() });
+  const [applied, setApplied] = useState<Applied>(
+    initialState?.applied ?? {
+      conditions: [],
+      fromDate: startOfMonth(new Date()),
+      toDate: new Date(),
+    },
+  );
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(storageKey, JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }));
+    sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }),
+    );
   }, [orgId, storageKey, dateRange, fromDate, toDate, conditions, applied]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
@@ -204,27 +215,6 @@ export function BatchReportPage() {
   const cell = (row: BatchReportRow, key: string) => {
     switch (key) {
       case 'batch':
-        if (row.batch && row.takaCount && row.takaCount > 0) {
-          return (
-            <Link
-              to={`/organizations/${orgId}/reports/taka`}
-              className="text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.stopPropagation();
-                const conditions = [
-                  { field: 'batchText', operator: 'equals', value: row.batch }
-                ];
-                sessionStorage.setItem(`takaReportState_${orgId}`, JSON.stringify({
-                  conditions,
-                  applied: { conditions }
-                }));
-              }}
-              style={{ color: '#0062ff' }}
-            >
-              {row.batch}
-            </Link>
-          );
-        }
         return row.batch || '-';
       case 'itemName':
         return (
@@ -242,7 +232,75 @@ export function BatchReportPage() {
       case 'qty':
         return row.qty.toFixed(2);
       case 'takaCount':
-        return row.takaCount ?? '-';
+        if (row.takaCount && row.takaCount > 0) {
+          const countLabel =
+            row.takaCount === 1
+              ? batchUnitLabel.singular.toLowerCase()
+              : batchUnitLabel.plural.toLowerCase();
+          return (
+            <Link
+              to={`/organizations/${orgId}/reports/taka?batchText=${encodeURIComponent(row.batch || '')}`}
+              className="inline-flex items-center justify-center font-semibold transition-all"
+              onClick={(e) => {
+                e.stopPropagation();
+                const conditions = row.batch
+                  ? [{ field: 'batchText', operator: 'equals', value: row.batch }]
+                  : [];
+                sessionStorage.setItem(
+                  `takaReportState_${orgId}`,
+                  JSON.stringify({
+                    dateRange,
+                    fromDate: applied.fromDate,
+                    toDate: applied.toDate,
+                    conditions,
+                    applied: {
+                      conditions,
+                      fromDate: applied.fromDate,
+                      toDate: applied.toDate,
+                    },
+                  }),
+                );
+              }}
+              title={`View ${row.takaCount} ${countLabel} in ${batchUnitLabel.singular} Report`}
+              aria-label={`View ${row.takaCount} ${countLabel} for ${row.batch || 'batch'}`}
+              style={{
+                color: '#0062ff',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '12px',
+                padding: '2px 10px',
+                minWidth: '28px',
+                fontSize: '12px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: '1.4',
+                boxShadow: '0 1px 2px rgba(0, 98, 255, 0.06)',
+                transition: 'all 0.15s ease-in-out',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#dbeafe';
+                e.currentTarget.style.borderColor = '#93c5fd';
+                e.currentTarget.style.color = '#0052d4';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 98, 255, 0.12)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#eff6ff';
+                e.currentTarget.style.borderColor = '#bfdbfe';
+                e.currentTarget.style.color = '#0062ff';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 98, 255, 0.06)';
+              }}
+            >
+              {row.takaCount}
+            </Link>
+          );
+        }
+        return <span style={{ color: '#9ca3af' }}>-</span>;
       case 'receivedOn':
         return row.receivedOn ? format(new Date(row.receivedOn), 'dd-MM-yyyy') : '-';
       case 'ageDays':
@@ -261,11 +319,13 @@ export function BatchReportPage() {
   };
 
   const exportColumns = useMemo(() => {
-    return catalog.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
-      key: c.key,
-      label: c.label,
-      align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
-    }));
+    return catalog
+      .filter((c) => visibleColumns.includes(c.key))
+      .map((c) => ({
+        key: c.key,
+        label: c.label,
+        align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
+      }));
   }, [catalog, visibleColumns]);
 
   const exportRows = useMemo(() => {
@@ -297,13 +357,22 @@ export function BatchReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
   }, [sortedRows, exportColumns]);
 
-  const totalBatchQty = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0), [rows]);
-  const totalBatchTakas = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.takaCount) || 0), 0), [rows]);
-  const calculatedBatchValue = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.value) || 0), 0), [rows]);
+  const totalBatchQty = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0),
+    [rows],
+  );
+  const totalBatchTakas = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.takaCount) || 0), 0),
+    [rows],
+  );
+  const calculatedBatchValue = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.value) || 0), 0),
+    [rows],
+  );
   const grandTotalBatchValue = data?.grandTotalValue ?? calculatedBatchValue;
 
   const exportTotalRow = useMemo(() => {
@@ -358,11 +427,12 @@ export function BatchReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
     const allTotalBatchQty = allRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
     const allTotalBatchTakas = allRows.reduce((acc, r) => acc + (Number(r.takaCount) || 0), 0);
-    const allGrandTotalBatchValue = allRes?.grandTotalValue ?? allRows.reduce((acc, r) => acc + (Number(r.value) || 0), 0);
+    const allGrandTotalBatchValue =
+      allRes?.grandTotalValue ?? allRows.reduce((acc, r) => acc + (Number(r.value) || 0), 0);
     const allTotalRow = exportColumns.map((col, idx) => {
       if (idx === 0) return 'TOTAL';
       switch (col.key) {
@@ -386,7 +456,8 @@ export function BatchReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}

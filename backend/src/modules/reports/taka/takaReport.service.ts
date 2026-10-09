@@ -59,8 +59,8 @@ export async function getTakaReport(
       minAgeDays !== undefined
         ? Prisma.sql`(EXTRACT(DAY FROM CURRENT_TIMESTAMP - bal.last_in_here) >= ${minAgeDays})`
         : null,
-      fromDate ? Prisma.sql`ins.first_in_anywhere >= ${new Date(fromDate)}` : null,
-      toDate ? Prisma.sql`ins.first_in_anywhere <= ${new Date(toDate)}` : null,
+      fromDate ? Prisma.sql`bal.first_in_anywhere >= ${new Date(fromDate)}` : null,
+      toDate ? Prisma.sql`bal.first_in_anywhere <= ${new Date(toDate)}` : null,
       Prisma.sql`b.state != 'draft'`,
       Prisma.sql`b.is_deleted = false`,
       Prisma.sql`i.is_deleted = false`,
@@ -196,7 +196,7 @@ export async function getTakaReport(
     return {
       results,
       total,
-      page: perPage ? (page || 1) : 1,
+      page: perPage ? page || 1 : 1,
       perPage: perPage ?? total,
       totalPages,
       grandTotalValue: Number(totals[0]?.value ?? 0),

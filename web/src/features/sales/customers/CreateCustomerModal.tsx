@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { X } from 'lucide-react';
@@ -6,6 +7,7 @@ import type { AxiosError } from 'axios';
 import { type CreateCustomerData } from './customers.schemas';
 import { createCustomer } from './customers.api';
 import { CustomerForm } from './CustomerForm';
+import { notify } from '../../../lib/notify';
 
 interface CreateCustomerModalProps {
   isOpen: boolean;
@@ -23,6 +25,7 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['customers', orgId] });
       queryClient.invalidateQueries({ queryKey: ['customer-number-preference', orgId] });
+      notify.success('Customer created successfully');
       onSuccess?.(data.id);
       onClose();
     },
@@ -35,7 +38,7 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
         return;
       }
       const errorMsg = error.response?.data?.error || error.response?.data?.message;
-      alert(errorMsg || 'Failed to create customer');
+      notify.error(errorMsg || 'Failed to create customer');
     },
   });
 
@@ -46,12 +49,12 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
@@ -83,21 +86,20 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
         </style>
         <div
           style={{
-            padding: '16px 20px',
+            padding: '16px 24px',
             borderBottom: '1px solid #e2e8f0',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             backgroundColor: '#ffffff',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
+            flexShrink: 0,
           }}
         >
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
             New Customer
           </h2>
           <button
+            type="button"
             onClick={onClose}
             style={{
               background: 'none',
@@ -105,24 +107,35 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
               cursor: 'pointer',
               color: '#64748b',
               padding: '4px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             <X size={20} />
           </button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          <div style={{ padding: '20px' }}>
-            <CustomerForm
-              onSubmit={onSubmit}
-              isSubmitting={mutation.isPending}
-              isEdit={false}
-              customFieldErrors={fieldErrors}
-              isModal={true}
-              onCancel={onClose}
-            />
-          </div>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          <CustomerForm
+            onSubmit={onSubmit}
+            isSubmitting={mutation.isPending}
+            isEdit={false}
+            customFieldErrors={fieldErrors}
+            isModal={true}
+            onCancel={onClose}
+          />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

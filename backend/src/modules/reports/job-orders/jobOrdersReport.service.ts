@@ -20,7 +20,7 @@ export async function getJobOrdersReport(
     routeName?: string;
     ownership?: string;
     processorType?: string;
-  }
+  },
 ) {
   const {
     page,
@@ -110,15 +110,15 @@ export async function getJobOrdersReport(
           isDeleted: false,
         },
       };
-      
+
       if (processorName) {
         where.steps.some!.processorNameSnapshot = { contains: processorName, mode: 'insensitive' };
       }
-      
+
       if (processName) {
         where.steps.some!.process = { name: { contains: processName, mode: 'insensitive' } };
       }
-      
+
       if (processorType) {
         where.steps.some!.processorType = processorType;
       }
@@ -132,6 +132,22 @@ export async function getJobOrdersReport(
       ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
       include: {
         route: { select: { name: true } },
+        _count: {
+          select: {
+            issues: {
+              where: {
+                isDeleted: false,
+                status: POSTED_DOC_STATUS,
+              },
+            },
+            receipts: {
+              where: {
+                isDeleted: false,
+                status: POSTED_DOC_STATUS,
+              },
+            },
+          },
+        },
         steps: {
           where: { isDeleted: false },
           include: {
@@ -154,23 +170,25 @@ export async function getJobOrdersReport(
       const stepPairs: { process: string; doneBy: string; processorName: string }[] = [];
 
       for (const step of jo.steps) {
-        const processName = step.process ? (step.process.code || step.process.name) : '-';
+        const processName = step.process ? step.process.code || step.process.name : '-';
         const doneBy = step.processorType === 'in_house' ? 'In-house' : 'Vendor';
-        
+
         let pName = step.processorNameSnapshot;
         if (!pName && step.processorType === 'in_house' && step.workCentre?.name) {
           pName = step.workCentre.name;
         }
         if (!pName && step.issues.length > 0) {
-          pName = step.issues.find(i => i.processorNameSnapshot)?.processorNameSnapshot ?? null;
+          pName = step.issues.find((i) => i.processorNameSnapshot)?.processorNameSnapshot ?? null;
         }
-        
+
         const processorName = pName || '-';
 
-        let existingPair = stepPairs.find(p => p.process === processName && p.processorName === processorName);
+        let existingPair = stepPairs.find(
+          (p) => p.process === processName && p.processorName === processorName,
+        );
         if (!existingPair) {
-           existingPair = { process: processName, doneBy: doneBy, processorName: processorName };
-           stepPairs.push(existingPair);
+          existingPair = { process: processName, doneBy: doneBy, processorName: processorName };
+          stepPairs.push(existingPair);
         }
       }
 
@@ -182,9 +200,11 @@ export async function getJobOrdersReport(
         route: jo.routeNameSnapshot || jo.route?.name || '-',
         materialBelongsTo: jo.ownership === 'customer' ? 'Customer’s' : 'Ours',
         status: jo.status,
-        process: stepPairs.map(p => p.process),
-        doneBy: stepPairs.map(p => p.doneBy),
-        processorName: stepPairs.map(p => p.processorName),
+        process: stepPairs.map((p) => p.process),
+        doneBy: stepPairs.map((p) => p.doneBy),
+        processorName: stepPairs.map((p) => p.processorName),
+        challansCount: jo._count?.issues ?? 0,
+        receiptsCount: jo._count?.receipts ?? 0,
       };
     });
 

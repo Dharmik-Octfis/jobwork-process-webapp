@@ -279,6 +279,8 @@ export interface JobOrdersReportRow {
   process: string[];
   doneBy: string[];
   processorName: string[];
+  challansCount?: number;
+  receiptsCount?: number;
 }
 
 export interface PaginatedJobOrdersReportResponse {

@@ -149,6 +149,26 @@ export function CustomerForm({
     setDisplayNameOptions(options);
   }, [companyName, primaryContactFirstName, primaryContactLastName, contactNameValue]);
 
+  // Auto-populate Display Name if user hasn't explicitly set a custom one
+  useEffect(() => {
+    if (!isEdit) {
+      const suggestedName =
+        companyName?.trim() ||
+        [primaryContactFirstName, primaryContactLastName].filter(Boolean).join(' ').trim();
+      if (suggestedName && (!contactNameValue || displayNameOptions.includes(contactNameValue))) {
+        setValue('contactName', suggestedName, { shouldValidate: true });
+      }
+    }
+  }, [
+    companyName,
+    primaryContactFirstName,
+    primaryContactLastName,
+    isEdit,
+    displayNameOptions,
+    contactNameValue,
+    setValue,
+  ]);
+
   const updatePreferenceMutation = useMutation({
     mutationFn: (data: { prefix: string; nextNumber: number }) =>
       updateCustomerNumberPreference(orgId!, data),
@@ -238,7 +258,18 @@ export function CustomerForm({
   return (
     <div
       className={isModal ? '' : 'page-container'}
-      style={isModal ? { background: '#fff' } : undefined}
+      style={
+        isModal
+          ? {
+              background: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              minHeight: 0,
+              overflow: 'hidden',
+            }
+          : undefined
+      }
     >
       {/* Header */}
       {!isModal && (
@@ -271,11 +302,17 @@ export function CustomerForm({
         </div>
       )}
 
-      <div className={isModal ? '' : 'page-body'}>
-        <form
-          id="customer-form"
-          style={{ maxWidth: '900px' }}
-          onSubmit={handleSubmit((data) => {
+      <form
+        id="customer-form"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+        onSubmit={handleSubmit(
+          (data) => {
             let hasErrors = false;
             const newLocalCustomFieldErrors: Record<string, string> = {};
 
@@ -316,779 +353,858 @@ export function CustomerForm({
               ),
             };
             onSubmit(cleanedData);
-          })}
+          },
+          (formErrors) => {
+            const errKeys = Object.keys(formErrors);
+            if (errKeys.length > 0) {
+              const firstKey = errKeys[0];
+              const err = formErrors[firstKey as keyof typeof formErrors];
+              const msg =
+                err && 'message' in err && typeof err.message === 'string'
+                  ? err.message
+                  : `Please check the ${firstKey} field`;
+              notify.error(msg);
+            }
+          },
+        )}
+      >
+        <div
+          className={isModal ? '' : 'page-body'}
+          style={
+            isModal
+              ? {
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '24px',
+                }
+              : undefined
+          }
         >
-          {/* Main Details Section */}
-          <div
-            className="form-field-grid"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '200px 1fr',
-              rowGap: '20px',
-              columnGap: '16px',
-              marginBottom: '40px',
-              alignItems: 'center',
-              fontSize: '13px',
-            }}
-          >
-            <label style={labelStyle}>Customer Type</label>
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-              <label
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-              >
-                <input
-                  type="radio"
-                  value="business"
-                  defaultChecked
-                  {...register('customerType')}
-                  style={{ accentColor: '#0062ff' }}
-                />
-                Business
-              </label>
-              <label
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-              >
-                <input
-                  type="radio"
-                  value="individual"
-                  {...register('customerType')}
-                  style={{ accentColor: '#0062ff' }}
-                />
-                Individual
-              </label>
-            </div>
-
-            <label style={labelStyle}>Primary Contact</label>
-            <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
-              <Controller
-                control={control}
-                name="primaryContactSalutation"
-                render={({ field }) => (
-                  <Select
-                    value={field.value || ''}
-                    onChange={field.onChange}
-                    options={[
-                      { value: '', label: 'Salutation' },
-                      { value: 'Mr.', label: 'Mr.' },
-                      { value: 'Mrs.', label: 'Mrs.' },
-                      { value: 'Ms.', label: 'Ms.' },
-                      { value: 'Miss.', label: 'Miss.' },
-                      { value: 'Dr.', label: 'Dr.' },
-                    ]}
-                    minWidth={120}
-                    fullWidth={false}
+          <div style={{ maxWidth: '900px' }}>
+            {/* Main Details Section */}
+            <div
+              className="form-field-grid"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '200px 1fr',
+                rowGap: '20px',
+                columnGap: '16px',
+                marginBottom: '40px',
+                alignItems: 'center',
+                fontSize: '13px',
+              }}
+            >
+              <label style={labelStyle}>Customer Type</label>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                >
+                  <input
+                    type="radio"
+                    value="business"
+                    defaultChecked
+                    {...register('customerType')}
+                    style={{ accentColor: '#0062ff' }}
                   />
-                )}
-              />
-              <input
-                {...register('primaryContactFirstName')}
-                placeholder="First Name"
-                style={{ ...inputStyle, flex: 1 }}
-              />
-              <input
-                {...register('primaryContactLastName')}
-                placeholder="Last Name"
-                style={{ ...inputStyle, flex: 1 }}
-              />
-            </div>
-
-            <label style={labelStyle}>Company Name</label>
-            <input {...register('companyName')} style={inputStyle} />
-
-            <label style={{ ...labelStyle, color: '#ef4444' }}>Display Name*</label>
-            <div>
-              <Controller
-                control={control}
-                name="contactName"
-                render={({ field }) => (
-                  <ComboBox
-                    value={field.value || ''}
-                    onChange={(val) => {
-                      field.onChange(val);
-                    }}
-                    options={displayNameOptions}
-                    placeholder=" Select or Type to add"
-                    hasError={!!errors.contactName}
-                    style={{ maxWidth: '440px' }}
+                  Business
+                </label>
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                >
+                  <input
+                    type="radio"
+                    value="individual"
+                    {...register('customerType')}
+                    style={{ accentColor: '#0062ff' }}
                   />
+                  Individual
+                </label>
+              </div>
+
+              <label style={labelStyle}>Primary Contact</label>
+              <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
+                <Controller
+                  control={control}
+                  name="primaryContactSalutation"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      options={[
+                        { value: '', label: 'Salutation' },
+                        { value: 'Mr.', label: 'Mr.' },
+                        { value: 'Mrs.', label: 'Mrs.' },
+                        { value: 'Ms.', label: 'Ms.' },
+                        { value: 'Miss.', label: 'Miss.' },
+                        { value: 'Dr.', label: 'Dr.' },
+                      ]}
+                      minWidth={120}
+                      fullWidth={false}
+                    />
+                  )}
+                />
+                <input
+                  {...register('primaryContactFirstName')}
+                  placeholder="First Name"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <input
+                  {...register('primaryContactLastName')}
+                  placeholder="Last Name"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              </div>
+
+              <label style={labelStyle}>Company Name</label>
+              <input {...register('companyName')} style={inputStyle} />
+
+              <label style={{ ...labelStyle, color: '#ef4444' }}>Display Name*</label>
+              <div>
+                <Controller
+                  control={control}
+                  name="contactName"
+                  render={({ field }) => (
+                    <ComboBox
+                      value={field.value || ''}
+                      onChange={(val) => {
+                        field.onChange(val);
+                      }}
+                      options={displayNameOptions}
+                      placeholder=" Select or Type to add"
+                      hasError={!!errors.contactName}
+                      style={{ maxWidth: '440px' }}
+                    />
+                  )}
+                />
+                {errors.contactName && (
+                  <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
+                    {errors.contactName.message}
+                  </div>
                 )}
-              />
-              {errors.contactName && (
-                <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                  {errors.contactName.message}
-                </div>
-              )}
-            </div>
+              </div>
 
-            <label style={labelStyle}>Email Address</label>
-            <div style={{ position: 'relative', maxWidth: '440px' }}>
-              <span
-                style={{
-                  position: 'absolute',
-                  left: '8px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#888',
-                }}
-              >
-                ✉
-              </span>
-              <input
-                {...register('email')}
-                type="email"
-                style={{ ...inputStyle, paddingLeft: '28px' }}
-              />
-            </div>
-
-            <label style={{ ...labelStyle, color: '#ef4444' }}>Customer Number*</label>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />
-                <button
-                  type="button"
-                  onClick={() => setIsNumberConfigOpen(true)}
+              <label style={labelStyle}>Email Address</label>
+              <div style={{ position: 'relative', maxWidth: '440px' }}>
+                <span
                   style={{
-                    background: 'none',
-                    border: 'none',
+                    position: 'absolute',
+                    left: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
                     color: '#888',
-                    cursor: 'pointer',
-                    padding: '4px',
-                    display: 'flex',
                   }}
                 >
-                  <Settings size={18} />
-                </button>
-              </div>
-              {errors.contactNumber && (
-                <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                  {errors.contactNumber.message}
-                </div>
-              )}
-            </div>
-
-            <label style={labelStyle}>Phone</label>
-            <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
-              <div style={{ flex: 1 }}>
-                <Controller
-                  control={control}
-                  name="phone"
-                  render={({ field }) => (
-                    <PhoneInput
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      countries={masterData?.countries || []}
-                    />
-                  )}
+                  ✉
+                </span>
+                <input
+                  {...register('email')}
+                  type="email"
+                  style={{ ...inputStyle, paddingLeft: '28px' }}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <Controller
-                  control={control}
-                  name="mobile"
-                  render={({ field }) => (
-                    <PhoneInput
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      countries={masterData?.countries || []}
-                    />
-                  )}
-                />
-              </div>
-            </div>
-          </div>
 
-          {/* Tabs */}
-          <div
-            style={{
-              borderBottom: '1px solid #eef0f3',
-              marginBottom: '24px',
-              display: 'flex',
-              gap: '32px',
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveTab('other')}
-              style={tabBtnStyle(activeTab === 'other')}
-            >
-              Other Details
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('address')}
-              style={tabBtnStyle(activeTab === 'address')}
-            >
-              Address
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('contact')}
-              style={tabBtnStyle(activeTab === 'contact')}
-            >
-              Contact Persons
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('custom')}
-              style={tabBtnStyle(activeTab === 'custom')}
-            >
-              Custom Fields
-              {customFields.some((f) => f.isRequired) && (
-                <span style={{ color: '#ef4444' }}>*</span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('notes')}
-              style={tabBtnStyle(activeTab === 'notes')}
-            >
-              Notes
-            </button>
-          </div>
-
-          {/* Tab Content */}
-          <div style={{ marginBottom: '60px', minHeight: '300px' }}>
-            {/* Other Details Tab */}
-            {activeTab === 'other' && (
-              <div
-                className="form-field-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '200px 1fr',
-                  rowGap: '20px',
-                  columnGap: '16px',
-                  fontSize: '13px',
-                  alignItems: 'center',
-                }}
-              >
-                <label style={labelStyle}>Currency</label>
-                <CurrencyDropdown
-                  value={watch('currency') || ''}
-                  onChange={(val) =>
-                    setValue('currency', val, { shouldValidate: true, shouldDirty: true })
-                  }
-                  currencies={currencies || []}
-                  onAddNew={() => setIsCurrencyModalOpen(true)}
-                  style={{ maxWidth: '440px' }}
-                />
-
-                <label style={labelStyle}>Payment Terms</label>
-                <PaymentTermDropdown
-                  value={watch('paymentTerms') || ''}
-                  onChange={(val) =>
-                    setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })
-                  }
-                  paymentTerms={paymentTerms || []}
-                  onAddNew={() => setIsPaymentTermModalOpen(true)}
-                  style={{ maxWidth: '440px' }}
-                />
-              </div>
-            )}
-
-            {/* Address Tab */}
-            {activeTab === 'address' && (
-              <div style={{ display: 'flex', gap: '64px' }}>
-                {/* Billing */}
-                <div style={{ flex: 1, maxWidth: '500px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '24px' }}>
-                    BILLING ADDRESS
-                  </h3>
-                  <div
-                    className="form-field-grid"
+              <label style={{ ...labelStyle, color: '#ef4444' }}>Customer Number*</label>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />
+                  <button
+                    type="button"
+                    onClick={() => setIsNumberConfigOpen(true)}
                     style={{
-                      gridTemplateColumns: '140px 1fr',
-                      rowGap: '16px',
-                      columnGap: '16px',
-                      alignItems: 'start',
-                      fontSize: '13px',
+                      background: 'none',
+                      border: 'none',
+                      color: '#888',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      display: 'flex',
                     }}
                   >
-                    <label style={labelStyle}>Attention</label>
-                    <input {...register('billingAttention')} style={inputStyle} />
+                    <Settings size={18} />
+                  </button>
+                </div>
+                {errors.contactNumber && (
+                  <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
+                    {errors.contactNumber.message}
+                  </div>
+                )}
+              </div>
 
-                    <label style={labelStyle}>Address</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <textarea
-                        {...register('billingStreet1')}
-                        placeholder="Street 1"
-                        rows={2}
-                        style={{ ...inputStyle, resize: 'vertical' }}
+              <label style={labelStyle}>Phone</label>
+              <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
+                <div style={{ flex: 1 }}>
+                  <Controller
+                    control={control}
+                    name="phone"
+                    render={({ field }) => (
+                      <PhoneInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        countries={masterData?.countries || []}
                       />
-                      <textarea
-                        {...register('billingStreet2')}
-                        placeholder="Street 2"
-                        rows={2}
-                        style={{ ...inputStyle, resize: 'vertical' }}
+                    )}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Controller
+                    control={control}
+                    name="mobile"
+                    render={({ field }) => (
+                      <PhoneInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        countries={masterData?.countries || []}
                       />
-                    </div>
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
 
-                    <label style={labelStyle}>Country/Region</label>
-                    <Controller
-                      control={control}
-                      name="billingCountry"
-                      render={({ field }) => (
-                        <SearchableSelect
-                          value={field.value || ''}
-                          onChange={(val) => {
-                            field.onChange(val);
-                            setValue('billingState', ''); // Reset state on country change
-                            setValue('billingCity', ''); // Reset city on country change
-                          }}
-                          options={
-                            masterData?.countries.map((c) => ({ label: c.name, value: c.name })) ||
-                            []
-                          }
-                          placeholder="Select Country"
-                          disabled={!masterData}
+            {/* Tabs */}
+            <div
+              style={{
+                borderBottom: '1px solid #eef0f3',
+                marginBottom: '24px',
+                display: 'flex',
+                gap: '32px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setActiveTab('other')}
+                style={tabBtnStyle(activeTab === 'other')}
+              >
+                Other Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('address')}
+                style={tabBtnStyle(activeTab === 'address')}
+              >
+                Address
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('contact')}
+                style={tabBtnStyle(activeTab === 'contact')}
+              >
+                Contact Persons
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('custom')}
+                style={tabBtnStyle(activeTab === 'custom')}
+              >
+                Custom Fields
+                {customFields.some((f) => f.isRequired) && (
+                  <span style={{ color: '#ef4444' }}>*</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('notes')}
+                style={tabBtnStyle(activeTab === 'notes')}
+              >
+                Notes
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div style={{ marginBottom: '60px', minHeight: '300px' }}>
+              {/* Other Details Tab */}
+              {activeTab === 'other' && (
+                <div
+                  className="form-field-grid"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '200px 1fr',
+                    rowGap: '20px',
+                    columnGap: '16px',
+                    fontSize: '13px',
+                    alignItems: 'center',
+                  }}
+                >
+                  <label style={labelStyle}>Currency</label>
+                  <CurrencyDropdown
+                    value={watch('currency') || ''}
+                    onChange={(val) =>
+                      setValue('currency', val, { shouldValidate: true, shouldDirty: true })
+                    }
+                    currencies={currencies || []}
+                    onAddNew={() => setIsCurrencyModalOpen(true)}
+                    style={{ maxWidth: '440px' }}
+                  />
+
+                  <label style={labelStyle}>Payment Terms</label>
+                  <PaymentTermDropdown
+                    value={watch('paymentTerms') || ''}
+                    onChange={(val) =>
+                      setValue('paymentTerms', val, { shouldValidate: true, shouldDirty: true })
+                    }
+                    paymentTerms={paymentTerms || []}
+                    onAddNew={() => setIsPaymentTermModalOpen(true)}
+                    style={{ maxWidth: '440px' }}
+                  />
+                </div>
+              )}
+
+              {/* Address Tab */}
+              {activeTab === 'address' && (
+                <div style={{ display: 'flex', gap: '64px' }}>
+                  {/* Billing */}
+                  <div style={{ flex: 1, maxWidth: '500px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '24px' }}>
+                      BILLING ADDRESS
+                    </h3>
+                    <div
+                      className="form-field-grid"
+                      style={{
+                        gridTemplateColumns: '140px 1fr',
+                        rowGap: '16px',
+                        columnGap: '16px',
+                        alignItems: 'start',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <label style={labelStyle}>Attention</label>
+                      <input {...register('billingAttention')} style={inputStyle} />
+
+                      <label style={labelStyle}>Address</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <textarea
+                          {...register('billingStreet1')}
+                          placeholder="Street 1"
+                          rows={2}
+                          style={{ ...inputStyle, resize: 'vertical' }}
                         />
-                      )}
-                    />
+                        <textarea
+                          {...register('billingStreet2')}
+                          placeholder="Street 2"
+                          rows={2}
+                          style={{ ...inputStyle, resize: 'vertical' }}
+                        />
+                      </div>
 
-                    <label style={labelStyle}>State</label>
-                    {billingCountry === 'India' ? (
+                      <label style={labelStyle}>Country/Region</label>
                       <Controller
                         control={control}
-                        name="billingState"
+                        name="billingCountry"
                         render={({ field }) => (
                           <SearchableSelect
                             value={field.value || ''}
                             onChange={(val) => {
                               field.onChange(val);
-                              setValue('billingCity', '');
+                              setValue('billingState', ''); // Reset state on country change
+                              setValue('billingCity', ''); // Reset city on country change
                             }}
-                            options={billingStateOptions}
-                            placeholder="Select State"
-                            disabled={billingStateOptions.length === 0}
+                            options={
+                              masterData?.countries.map((c) => ({
+                                label: c.name,
+                                value: c.name,
+                              })) || []
+                            }
+                            placeholder="Select Country"
+                            disabled={!masterData}
                           />
                         )}
                       />
-                    ) : (
-                      <input {...register('billingState')} style={inputStyle} placeholder="State" />
-                    )}
 
-                    <label style={labelStyle}>City</label>
-                    {billingCountry === 'India' ? (
+                      <label style={labelStyle}>State</label>
+                      {billingCountry === 'India' ? (
+                        <Controller
+                          control={control}
+                          name="billingState"
+                          render={({ field }) => (
+                            <SearchableSelect
+                              value={field.value || ''}
+                              onChange={(val) => {
+                                field.onChange(val);
+                                setValue('billingCity', '');
+                              }}
+                              options={billingStateOptions}
+                              placeholder="Select State"
+                              disabled={billingStateOptions.length === 0}
+                            />
+                          )}
+                        />
+                      ) : (
+                        <input
+                          {...register('billingState')}
+                          style={inputStyle}
+                          placeholder="State"
+                        />
+                      )}
+
+                      <label style={labelStyle}>City</label>
+                      {billingCountry === 'India' ? (
+                        <Controller
+                          control={control}
+                          name="billingCity"
+                          render={({ field }) => (
+                            <SearchableSelect
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              options={billingCityOptions}
+                              placeholder="Select City"
+                              disabled={!watch('billingState') || billingCityOptions.length === 0}
+                            />
+                          )}
+                        />
+                      ) : (
+                        <input {...register('billingCity')} style={inputStyle} placeholder="City" />
+                      )}
+
+                      <label style={labelStyle}>Pin Code</label>
+                      <input {...register('billingPinCode')} style={inputStyle} />
+
+                      <label style={labelStyle}>Phone</label>
                       <Controller
                         control={control}
-                        name="billingCity"
+                        name="billingPhone"
+                        render={({ field }) => (
+                          <PhoneInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            countries={masterData?.countries || []}
+                          />
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Shipping */}
+                  <div style={{ flex: 1, maxWidth: '500px' }}>
+                    <h3
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        marginBottom: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      SHIPPING ADDRESS
+                      <button
+                        type="button"
+                        onClick={handleCopyBillingToShipping}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#0062ff',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                        }}
+                      >
+                        ( ↓ Copy billing address )
+                      </button>
+                    </h3>
+                    <div
+                      className="form-field-grid"
+                      style={{
+                        gridTemplateColumns: '140px 1fr',
+                        rowGap: '16px',
+                        columnGap: '16px',
+                        alignItems: 'start',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <label style={labelStyle}>Attention</label>
+                      <input {...register('shippingAttention')} style={inputStyle} />
+
+                      <label style={labelStyle}>Address</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <textarea
+                          {...register('shippingStreet1')}
+                          placeholder="Street 1"
+                          rows={2}
+                          style={{ ...inputStyle, resize: 'vertical' }}
+                        />
+                        <textarea
+                          {...register('shippingStreet2')}
+                          placeholder="Street 2"
+                          rows={2}
+                          style={{ ...inputStyle, resize: 'vertical' }}
+                        />
+                      </div>
+
+                      <label style={labelStyle}>Country/Region</label>
+                      <Controller
+                        control={control}
+                        name="shippingCountry"
                         render={({ field }) => (
                           <SearchableSelect
                             value={field.value || ''}
-                            onChange={field.onChange}
-                            options={billingCityOptions}
-                            placeholder="Select City"
-                            disabled={!watch('billingState') || billingCityOptions.length === 0}
+                            onChange={(val) => {
+                              field.onChange(val);
+                              setValue('shippingState', ''); // Reset state on country change
+                              setValue('shippingCity', ''); // Reset city on country change
+                            }}
+                            options={
+                              masterData?.countries.map((c) => ({
+                                label: c.name,
+                                value: c.name,
+                              })) || []
+                            }
+                            placeholder="Select Country"
+                            disabled={!masterData}
                           />
                         )}
                       />
-                    ) : (
-                      <input {...register('billingCity')} style={inputStyle} placeholder="City" />
-                    )}
 
-                    <label style={labelStyle}>Pin Code</label>
-                    <input {...register('billingPinCode')} style={inputStyle} />
-
-                    <label style={labelStyle}>Phone</label>
-                    <Controller
-                      control={control}
-                      name="billingPhone"
-                      render={({ field }) => (
-                        <PhoneInput
-                          value={field.value || ''}
-                          onChange={field.onChange}
-                          countries={masterData?.countries || []}
+                      <label style={labelStyle}>State</label>
+                      {shippingCountry === 'India' ? (
+                        <Controller
+                          control={control}
+                          name="shippingState"
+                          render={({ field }) => (
+                            <SearchableSelect
+                              value={field.value || ''}
+                              onChange={(val) => {
+                                field.onChange(val);
+                                setValue('shippingCity', '');
+                              }}
+                              options={shippingStateOptions}
+                              placeholder="Select State"
+                              disabled={shippingStateOptions.length === 0}
+                            />
+                          )}
+                        />
+                      ) : (
+                        <input
+                          {...register('shippingState')}
+                          style={inputStyle}
+                          placeholder="State"
                         />
                       )}
-                    />
+
+                      <label style={labelStyle}>City</label>
+                      {shippingCountry === 'India' ? (
+                        <Controller
+                          control={control}
+                          name="shippingCity"
+                          render={({ field }) => (
+                            <SearchableSelect
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              options={shippingCityOptions}
+                              placeholder="Select City"
+                              disabled={!watch('shippingState') || shippingCityOptions.length === 0}
+                            />
+                          )}
+                        />
+                      ) : (
+                        <input
+                          {...register('shippingCity')}
+                          style={inputStyle}
+                          placeholder="City"
+                        />
+                      )}
+
+                      <label style={labelStyle}>Pin Code</label>
+                      <input {...register('shippingPinCode')} style={inputStyle} />
+
+                      <label style={labelStyle}>Phone</label>
+                      <Controller
+                        control={control}
+                        name="shippingPhone"
+                        render={({ field }) => (
+                          <PhoneInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            countries={masterData?.countries || []}
+                          />
+                        )}
+                      />
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* Shipping */}
-                <div style={{ flex: 1, maxWidth: '500px' }}>
-                  <h3
+              {/* Contact Persons Tab */}
+              {activeTab === 'contact' && (
+                <div>
+                  <div className="responsive-table-wrapper">
+                    <table
+                      style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        marginBottom: '16px',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <thead>
+                        <tr
+                          style={{
+                            borderBottom: '1px solid #ddd',
+                            color: '#555',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <th style={{ padding: '12px 8px' }}>SALUTATION</th>
+                          <th style={{ padding: '12px 8px' }}>FIRST NAME</th>
+                          <th style={{ padding: '12px 8px' }}>LAST NAME</th>
+                          <th style={{ padding: '12px 8px' }}>EMAIL ADDRESS</th>
+                          <th style={{ padding: '12px 8px' }}>WORK PHONE</th>
+                          <th style={{ padding: '12px 8px' }}>MOBILE</th>
+                          <th style={{ padding: '12px 8px', width: '40px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contactPersons.map((field, index) => (
+                          <tr key={field.id} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                              <Controller
+                                control={control}
+                                name={`contactPersons.${index}.salutation`}
+                                render={({ field }) => (
+                                  <Select
+                                    value={field.value || ''}
+                                    onChange={field.onChange}
+                                    options={[
+                                      { value: '', label: '' },
+                                      { value: 'Mr.', label: 'Mr.' },
+                                      { value: 'Mrs.', label: 'Mrs.' },
+                                      { value: 'Ms.', label: 'Ms.' },
+                                    ]}
+                                    minWidth={80}
+                                    fullWidth={false}
+                                  />
+                                )}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                              <input
+                                {...register(`contactPersons.${index}.firstName`)}
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                              <input
+                                {...register(`contactPersons.${index}.lastName`)}
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                              <input
+                                {...register(`contactPersons.${index}.email`)}
+                                type="email"
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                              <Controller
+                                control={control}
+                                name={`contactPersons.${index}.phone`}
+                                render={({ field }) => (
+                                  <PhoneInput
+                                    value={field.value || ''}
+                                    onChange={field.onChange}
+                                    countries={masterData?.countries || []}
+                                  />
+                                )}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                              <Controller
+                                control={control}
+                                name={`contactPersons.${index}.mobile`}
+                                render={({ field }) => (
+                                  <PhoneInput
+                                    value={field.value || ''}
+                                    onChange={field.onChange}
+                                    countries={masterData?.countries || []}
+                                  />
+                                )}
+                              />
+                            </td>
+                            <td
+                              style={{ padding: '6px 8px', fontSize: '13px', textAlign: 'center' }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => removeContactPerson(index)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#e54d4d',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {contactPersons.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={7}
+                              style={{ padding: '24px', textAlign: 'center', color: '#999' }}
+                            >
+                              No contact persons added.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      appendContactPerson({
+                        salutation: '',
+                        firstName: '',
+                        lastName: '',
+                        email: '',
+                        phone: '',
+                        mobile: '',
+                      })
+                    }
                     style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      marginBottom: '24px',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                    }}
-                  >
-                    SHIPPING ADDRESS
-                    <button
-                      type="button"
-                      onClick={handleCopyBillingToShipping}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#0062ff',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        fontWeight: 500,
-                      }}
-                    >
-                      ( ↓ Copy billing address )
-                    </button>
-                  </h3>
-                  <div
-                    className="form-field-grid"
-                    style={{
-                      gridTemplateColumns: '140px 1fr',
-                      rowGap: '16px',
-                      columnGap: '16px',
-                      alignItems: 'start',
+                      padding: '8px 16px',
+                      background: '#f0f4ff',
+                      color: '#0062ff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
                       fontSize: '13px',
                     }}
                   >
-                    <label style={labelStyle}>Attention</label>
-                    <input {...register('shippingAttention')} style={inputStyle} />
-
-                    <label style={labelStyle}>Address</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <textarea
-                        {...register('shippingStreet1')}
-                        placeholder="Street 1"
-                        rows={2}
-                        style={{ ...inputStyle, resize: 'vertical' }}
-                      />
-                      <textarea
-                        {...register('shippingStreet2')}
-                        placeholder="Street 2"
-                        rows={2}
-                        style={{ ...inputStyle, resize: 'vertical' }}
-                      />
-                    </div>
-
-                    <label style={labelStyle}>Country/Region</label>
-                    <Controller
-                      control={control}
-                      name="shippingCountry"
-                      render={({ field }) => (
-                        <SearchableSelect
-                          value={field.value || ''}
-                          onChange={(val) => {
-                            field.onChange(val);
-                            setValue('shippingState', ''); // Reset state on country change
-                            setValue('shippingCity', ''); // Reset city on country change
-                          }}
-                          options={
-                            masterData?.countries.map((c) => ({ label: c.name, value: c.name })) ||
-                            []
-                          }
-                          placeholder="Select Country"
-                          disabled={!masterData}
-                        />
-                      )}
-                    />
-
-                    <label style={labelStyle}>State</label>
-                    {shippingCountry === 'India' ? (
-                      <Controller
-                        control={control}
-                        name="shippingState"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            value={field.value || ''}
-                            onChange={(val) => {
-                              field.onChange(val);
-                              setValue('shippingCity', '');
-                            }}
-                            options={shippingStateOptions}
-                            placeholder="Select State"
-                            disabled={shippingStateOptions.length === 0}
-                          />
-                        )}
-                      />
-                    ) : (
-                      <input
-                        {...register('shippingState')}
-                        style={inputStyle}
-                        placeholder="State"
-                      />
-                    )}
-
-                    <label style={labelStyle}>City</label>
-                    {shippingCountry === 'India' ? (
-                      <Controller
-                        control={control}
-                        name="shippingCity"
-                        render={({ field }) => (
-                          <SearchableSelect
-                            value={field.value || ''}
-                            onChange={field.onChange}
-                            options={shippingCityOptions}
-                            placeholder="Select City"
-                            disabled={!watch('shippingState') || shippingCityOptions.length === 0}
-                          />
-                        )}
-                      />
-                    ) : (
-                      <input {...register('shippingCity')} style={inputStyle} placeholder="City" />
-                    )}
-
-                    <label style={labelStyle}>Pin Code</label>
-                    <input {...register('shippingPinCode')} style={inputStyle} />
-
-                    <label style={labelStyle}>Phone</label>
-                    <Controller
-                      control={control}
-                      name="shippingPhone"
-                      render={({ field }) => (
-                        <PhoneInput
-                          value={field.value || ''}
-                          onChange={field.onChange}
-                          countries={masterData?.countries || []}
-                        />
-                      )}
-                    />
-                  </div>
+                    <Plus size={16} /> Add Contact Person
+                  </button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Contact Persons Tab */}
-            {activeTab === 'contact' && (
-              <div>
-                <div className="responsive-table-wrapper">
-                  <table
-                    style={{
-                      width: '100%',
-                      borderCollapse: 'collapse',
-                      marginBottom: '16px',
-                      fontSize: '13px',
-                    }}
-                  >
-                    <thead>
-                      <tr
-                        style={{ borderBottom: '1px solid #ddd', color: '#555', textAlign: 'left' }}
-                      >
-                        <th style={{ padding: '12px 8px' }}>SALUTATION</th>
-                        <th style={{ padding: '12px 8px' }}>FIRST NAME</th>
-                        <th style={{ padding: '12px 8px' }}>LAST NAME</th>
-                        <th style={{ padding: '12px 8px' }}>EMAIL ADDRESS</th>
-                        <th style={{ padding: '12px 8px' }}>WORK PHONE</th>
-                        <th style={{ padding: '12px 8px' }}>MOBILE</th>
-                        <th style={{ padding: '12px 8px', width: '40px' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contactPersons.map((field, index) => (
-                        <tr key={field.id} style={{ borderBottom: '1px solid #eee' }}>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                            <Controller
-                              control={control}
-                              name={`contactPersons.${index}.salutation`}
-                              render={({ field }) => (
-                                <Select
-                                  value={field.value || ''}
-                                  onChange={field.onChange}
-                                  options={[
-                                    { value: '', label: '' },
-                                    { value: 'Mr.', label: 'Mr.' },
-                                    { value: 'Mrs.', label: 'Mrs.' },
-                                    { value: 'Ms.', label: 'Ms.' },
-                                  ]}
-                                  minWidth={80}
-                                  fullWidth={false}
-                                />
-                              )}
-                            />
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                            <input
-                              {...register(`contactPersons.${index}.firstName`)}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                            <input
-                              {...register(`contactPersons.${index}.lastName`)}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                            <input
-                              {...register(`contactPersons.${index}.email`)}
-                              type="email"
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                            <Controller
-                              control={control}
-                              name={`contactPersons.${index}.phone`}
-                              render={({ field }) => (
-                                <PhoneInput
-                                  value={field.value || ''}
-                                  onChange={field.onChange}
-                                  countries={masterData?.countries || []}
-                                />
-                              )}
-                            />
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                            <Controller
-                              control={control}
-                              name={`contactPersons.${index}.mobile`}
-                              render={({ field }) => (
-                                <PhoneInput
-                                  value={field.value || ''}
-                                  onChange={field.onChange}
-                                  countries={masterData?.countries || []}
-                                />
-                              )}
-                            />
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: '13px', textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => removeContactPerson(index)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#e54d4d',
-                                cursor: 'pointer',
-                                padding: '4px',
-                              }}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {contactPersons.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            style={{ padding: '24px', textAlign: 'center', color: '#999' }}
-                          >
-                            No contact persons added.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    appendContactPerson({
-                      salutation: '',
-                      firstName: '',
-                      lastName: '',
-                      email: '',
-                      phone: '',
-                      mobile: '',
-                    })
-                  }
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 16px',
-                    background: '#f0f4ff',
-                    color: '#0062ff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                    fontSize: '13px',
-                  }}
-                >
-                  <Plus size={16} /> Add Contact Person
-                </button>
-              </div>
-            )}
-
-            {activeTab === 'custom' && orgId && (
-              <CustomFieldsSection
-                orgId={orgId}
-                entityType="customer"
-                values={(watch('customFields') as Record<string, unknown>) ?? {}}
-                onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
-                errors={{ ...customFieldErrors, ...localCustomFieldErrors }}
-                applyDefaults={!isEdit}
-              />
-            )}
-
-            {activeTab === 'notes' && (
-              <div>
-                <label style={labelStyle}>Notes (For Internal Use)</label>
-                <textarea
-                  {...register('notes')}
-                  rows={4}
-                  style={{ ...inputStyle, resize: 'vertical', width: '100%' }}
-                  placeholder="Add notes..."
+              {activeTab === 'custom' && orgId && (
+                <CustomFieldsSection
+                  orgId={orgId}
+                  entityType="customer"
+                  values={(watch('customFields') as Record<string, unknown>) ?? {}}
+                  onChange={(v) => setValue('customFields', v, { shouldDirty: true })}
+                  errors={{ ...customFieldErrors, ...localCustomFieldErrors }}
+                  applyDefaults={!isEdit}
                 />
-              </div>
-            )}
-          </div>
-        </form>
-      </div>
+              )}
 
-      <div
-        className={`form-actions-footer ${isModal ? '' : 'page-footer'}`}
-        style={
-          isModal
-            ? {
-                position: 'sticky',
-                bottom: 0,
-                backgroundColor: '#fff',
-                padding: '16px 20px',
-                borderTop: '1px solid #e2e8f0',
-                zIndex: 10,
-                margin: '0 -20px -20px -20px',
+              {activeTab === 'notes' && (
+                <div>
+                  <label style={labelStyle}>Notes (For Internal Use)</label>
+                  <textarea
+                    {...register('notes')}
+                    rows={4}
+                    style={{ ...inputStyle, resize: 'vertical', width: '100%' }}
+                    placeholder="Add notes..."
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={`form-actions-footer ${isModal ? '' : 'page-footer'}`}
+          style={
+            isModal
+              ? {
+                  backgroundColor: '#f8fafc',
+                  padding: '14px 24px',
+                  borderTop: '1px solid #e2e8f0',
+                  zIndex: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  flexShrink: 0,
+                }
+              : {
+                  minHeight: '52px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '0 24px',
+                  backgroundColor: '#fff',
+                  borderTop: '1px solid #eef0f3',
+                }
+          }
+        >
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '8px 24px',
+              backgroundColor: '#0062ff',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+              fontSize: '13px',
+              lineHeight: '20px',
+              transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+              opacity: isSubmitting ? 0.7 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0052d9';
+            }}
+            onMouseLeave={(e) => {
+              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0062ff';
+            }}
+          >
+            {isSubmitting ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={() => {
+              if (onCancel) {
+                onCancel();
+                return;
               }
-            : undefined
-        }
-      >
-        <button
-          form="customer-form"
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            padding: '6px 20px',
-            background: '#0062ff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          {isSubmitting ? 'Saving...' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (onCancel) {
-              onCancel();
-              return;
-            }
-            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
-            if (returnUrl) {
-              navigate(returnUrl);
-            } else {
-              navigate(-1);
-            }
-          }}
-          style={{
-            padding: '6px 20px',
-            background: 'white',
-            color: '#333',
-            border: '1px solid #d1d5db',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '13px',
-          }}
-        >
-          Cancel
-        </button>
-      </div>
+              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+              if (returnUrl) {
+                navigate(returnUrl);
+              } else {
+                navigate(-1);
+              }
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '8px 20px',
+              backgroundColor: '#ffffff',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+              lineHeight: '20px',
+              transition: 'background-color 0.15s ease, border-color 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#f1f5f9';
+            }}
+            onMouseLeave={(e) => {
+              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#ffffff';
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
 
       <CustomerNumberConfigModal
         isOpen={isNumberConfigOpen}

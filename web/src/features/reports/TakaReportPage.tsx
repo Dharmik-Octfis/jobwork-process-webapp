@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
 import { format, startOfMonth } from 'date-fns';
@@ -50,6 +50,8 @@ interface Applied {
 export function TakaReportPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
+  const [searchParams] = useSearchParams();
+  const batchParam = searchParams.get('batchText');
   const organizationName = useOrganizationName();
   const trackingLabel = useTrackingLabel();
   const batchUnitLabel = useBatchUnitLabel();
@@ -57,7 +59,8 @@ export function TakaReportPage() {
 
   const catalog = useMemo(() => {
     return COLUMN_CATALOG.map((col) => {
-      if (col.key === 'label') return { ...col, label: `${batchUnitLabel.singular.toUpperCase()} NO` };
+      if (col.key === 'label')
+        return { ...col, label: `${batchUnitLabel.singular.toUpperCase()} NO` };
       if (col.key === 'batch') return { ...col, label: trackingLabel.singular.toUpperCase() };
       return col;
     });
@@ -67,8 +70,7 @@ export function TakaReportPage() {
   const initialState = useMemo(() => {
     try {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
-      if (!stored) return null;
-      const parsed = JSON.parse(stored);
+      const parsed = stored ? JSON.parse(stored) : null;
       const firstOfMonth = () => startOfMonth(new Date());
 
       const safeDate = (val: string | number | null | undefined, fallback: Date) => {
@@ -77,28 +79,52 @@ export function TakaReportPage() {
         return isNaN(d.getTime()) ? fallback : d;
       };
 
+      const baseConditions: FilterCondition[] = (parsed?.conditions as FilterCondition[]) || [];
+      const baseAppliedConditions: FilterCondition[] =
+        (parsed?.applied?.conditions as FilterCondition[]) || [];
+
+      let finalConditions = baseConditions;
+      let finalAppliedConditions = baseAppliedConditions;
+
+      if (batchParam) {
+        finalConditions = [
+          ...baseConditions.filter((c) => c.field !== 'batchText'),
+          { field: 'batchText', operator: 'equals', value: batchParam },
+        ];
+        finalAppliedConditions = [
+          ...baseAppliedConditions.filter((c) => c.field !== 'batchText'),
+          { field: 'batchText', operator: 'equals', value: batchParam },
+        ];
+      }
+
       return {
-        dateRange: parsed.dateRange || 'This Month',
-        fromDate: safeDate(parsed.fromDate, firstOfMonth()),
-        toDate: safeDate(parsed.toDate, new Date()),
-        conditions: (parsed.conditions as FilterCondition[]) || [],
+        dateRange: parsed?.dateRange || 'This Month',
+        fromDate: safeDate(parsed?.fromDate, firstOfMonth()),
+        toDate: safeDate(parsed?.toDate, new Date()),
+        conditions: finalConditions,
         applied: {
-          conditions: (parsed.applied?.conditions as FilterCondition[]) || [],
-          fromDate: safeDate(parsed.applied?.fromDate, firstOfMonth()),
-          toDate: safeDate(parsed.applied?.toDate, new Date()),
+          conditions: finalAppliedConditions,
+          fromDate: safeDate(parsed?.applied?.fromDate, firstOfMonth()),
+          toDate: safeDate(parsed?.applied?.toDate, new Date()),
         } satisfies Applied,
       };
     } catch {
       return null;
     }
-  }, [orgId, storageKey]);
+  }, [orgId, storageKey, batchParam]);
 
   const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
-  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || startOfMonth(new Date()));
+  const [fromDate, setFromDate] = useState<Date>(
+    initialState?.fromDate || startOfMonth(new Date()),
+  );
   const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
   const [applied, setApplied] = useState<Applied>(
-    initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() },
+    initialState?.applied ?? {
+      conditions: [],
+      fromDate: startOfMonth(new Date()),
+      toDate: new Date(),
+    },
   );
 
   useEffect(() => {
@@ -166,7 +192,8 @@ export function TakaReportPage() {
       itemName: valueOf('itemName'),
       locationName: valueOf('locationName'),
       batchText: valueOf('batchText'),
-      minAgeDays: applied.conditions.find((c) => c.field === 'minAgeDays')?.value as number | undefined,
+      minAgeDays: applied.conditions.find((c) => c.field === 'minAgeDays')?.value as
+        number | undefined,
       fromDate: applied.fromDate.toISOString(),
       toDate: applied.toDate.toISOString(),
       page,
@@ -224,11 +251,13 @@ export function TakaReportPage() {
   };
 
   const exportColumns = useMemo(() => {
-    return catalog.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
-      key: c.key,
-      label: c.label,
-      align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
-    }));
+    return catalog
+      .filter((c) => visibleColumns.includes(c.key))
+      .map((c) => ({
+        key: c.key,
+        label: c.label,
+        align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
+      }));
   }, [catalog, visibleColumns]);
 
   const exportRows = useMemo(() => {
@@ -258,12 +287,18 @@ export function TakaReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
   }, [sortedRows, exportColumns]);
 
-  const totalTakaQty = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0), [rows]);
-  const calculatedTakaValue = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.value) || 0), 0), [rows]);
+  const totalTakaQty = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0),
+    [rows],
+  );
+  const calculatedTakaValue = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.value) || 0), 0),
+    [rows],
+  );
   const grandTotalTakaValue = data?.grandTotalValue ?? calculatedTakaValue;
 
   const exportTotalRow = useMemo(() => {
@@ -314,10 +349,11 @@ export function TakaReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
     const allTotalTakaQty = allRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
-    const allGrandTotalTakaValue = allRes?.grandTotalValue ?? allRows.reduce((acc, r) => acc + (Number(r.value) || 0), 0);
+    const allGrandTotalTakaValue =
+      allRes?.grandTotalValue ?? allRows.reduce((acc, r) => acc + (Number(r.value) || 0), 0);
     const allTotalRow = exportColumns.map((col, idx) => {
       if (idx === 0) return 'TOTAL';
       switch (col.key) {
@@ -339,7 +375,8 @@ export function TakaReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}

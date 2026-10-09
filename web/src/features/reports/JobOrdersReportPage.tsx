@@ -30,6 +30,8 @@ const COLUMN_CATALOG = [
   { key: 'route', label: 'ROUTE', defaultVisible: true },
   { key: 'materialBelongsTo', label: 'MATERIAL BELONGS TO', defaultVisible: true },
   { key: 'status', label: 'STATUS', defaultVisible: true },
+  { key: 'challans', label: 'CHALLANS', defaultVisible: true },
+  { key: 'receipts', label: 'RECEIPTS', defaultVisible: true },
   { key: 'process', label: 'PROCESS', defaultVisible: true },
   { key: 'doneBy', label: 'DONE BY', defaultVisible: true },
   { key: 'processorName', label: 'PROCESSOR', defaultVisible: true },
@@ -77,15 +79,26 @@ export function JobOrdersReportPage() {
   }, [orgId, storageKey]);
 
   const [dateRange, setDateRange] = useState(initialState?.dateRange || 'This Month');
-  const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate || startOfMonth(new Date()));
+  const [fromDate, setFromDate] = useState<Date>(
+    initialState?.fromDate || startOfMonth(new Date()),
+  );
   const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
-  const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() });
+  const [applied, setApplied] = useState<Applied>(
+    initialState?.applied ?? {
+      conditions: [],
+      fromDate: startOfMonth(new Date()),
+      toDate: new Date(),
+    },
+  );
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.setItem(storageKey, JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }));
+    sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ dateRange, fromDate, toDate, conditions, applied }),
+    );
   }, [orgId, storageKey, dateRange, fromDate, toDate, conditions, applied]);
 
   const [showColumnsModal, setShowColumnsModal] = useState(false);
@@ -143,18 +156,63 @@ export function JobOrdersReportPage() {
     }));
 
     const processOptions = processes.map((p) => ({ label: p.name, value: p.name }));
-    const processorOptions = processors.map((v) => ({ label: v.contactName, value: v.contactName }));
+    const processorOptions = processors.map((v) => ({
+      label: v.contactName,
+      value: v.contactName,
+    }));
     const routeOptions = availableRoutes.map((r) => ({ label: r.name, value: r.name }));
 
     return [
       { key: 'jobOrderNumber', label: 'Job Order#', dataType: 'string', group: 'Report' },
       { key: 'targetDate', label: 'Target Date', dataType: 'date', group: 'Report' },
-      { key: 'routeName', label: 'Route', dataType: 'select', options: routeOptions, group: 'Report' },
-      { key: 'ownership', label: 'Material Belongs To', dataType: 'select', options: [{label: 'Ours', value: 'own'}, {label: 'Customer’s', value: 'customer'}], group: 'Report' },
-      { key: 'status', label: 'Status', dataType: 'select', options: statusOptions, group: 'Report' },
-      { key: 'processName', label: 'Process', dataType: 'select', options: processOptions, group: 'Report' },
-      { key: 'processorType', label: 'Done By', dataType: 'select', options: [{label: 'In-house', value: 'in_house'}, {label: 'Vendor', value: 'vendor'}], group: 'Report' },
-      { key: 'processorName', label: 'Processor', dataType: 'select', options: processorOptions, group: 'Report' },
+      {
+        key: 'routeName',
+        label: 'Route',
+        dataType: 'select',
+        options: routeOptions,
+        group: 'Report',
+      },
+      {
+        key: 'ownership',
+        label: 'Material Belongs To',
+        dataType: 'select',
+        options: [
+          { label: 'Ours', value: 'own' },
+          { label: 'Customer’s', value: 'customer' },
+        ],
+        group: 'Report',
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        dataType: 'select',
+        options: statusOptions,
+        group: 'Report',
+      },
+      {
+        key: 'processName',
+        label: 'Process',
+        dataType: 'select',
+        options: processOptions,
+        group: 'Report',
+      },
+      {
+        key: 'processorType',
+        label: 'Done By',
+        dataType: 'select',
+        options: [
+          { label: 'In-house', value: 'in_house' },
+          { label: 'Vendor', value: 'vendor' },
+        ],
+        group: 'Report',
+      },
+      {
+        key: 'processorName',
+        label: 'Processor',
+        dataType: 'select',
+        options: processorOptions,
+        group: 'Report',
+      },
       ...customFilterFields,
     ];
   }, [customFilterFields, processes, processors, availableRoutes]);
@@ -177,10 +235,15 @@ export function JobOrdersReportPage() {
         return typeof res === 'string' && res.trim() ? res.trim() : undefined;
       }
 
-      const valStr = typeof condition.value === 'string' && condition.value.trim() ? condition.value.trim() : undefined;
+      const valStr =
+        typeof condition.value === 'string' && condition.value.trim()
+          ? condition.value.trim()
+          : undefined;
 
-      if (['before', 'on_or_before', 'lt', 'lte'].includes(condition.operator) && target === 'to') return valStr;
-      if (['after', 'on_or_after', 'gt', 'gte'].includes(condition.operator) && target === 'from') return valStr;
+      if (['before', 'on_or_before', 'lt', 'lte'].includes(condition.operator) && target === 'to')
+        return valStr;
+      if (['after', 'on_or_after', 'gt', 'gte'].includes(condition.operator) && target === 'from')
+        return valStr;
       if (['equals', 'contains'].includes(condition.operator)) return valStr;
 
       return undefined;
@@ -266,7 +329,14 @@ export function JobOrdersReportPage() {
               case 'materialBelongsTo':
                 return r.materialBelongsTo || '-';
               case 'status':
-                return JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label || r.status;
+                return (
+                  JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label ||
+                  r.status
+                );
+              case 'challans':
+                return r.challansCount ?? 0;
+              case 'receipts':
+                return r.receiptsCount ?? 0;
               case 'process':
                 return r.process[rowIndex] || '-';
               case 'doneBy':
@@ -302,7 +372,9 @@ export function JobOrdersReportPage() {
 
       const fromStr = format(applied.fromDate, 'yyyy-MM-dd');
       const toStr = format(applied.toDate, 'yyyy-MM-dd');
-      XLSX.writeFile(workbook, `Job_Order_Report_${fromStr}_to_${toStr}.xlsx`, { bookType: 'xlsx' });
+      XLSX.writeFile(workbook, `Job_Order_Report_${fromStr}_to_${toStr}.xlsx`, {
+        bookType: 'xlsx',
+      });
       notify.success(`Successfully exported ${exportRows.length} report rows as XLSX file.`);
     } catch (err) {
       console.error('Failed to export report:', err);
@@ -333,7 +405,72 @@ export function JobOrdersReportPage() {
       case 'materialBelongsTo':
         return row.materialBelongsTo || '-';
       case 'status':
-        return JOB_ORDER_STATUS_META[row.status as keyof typeof JOB_ORDER_STATUS_META]?.label || row.status;
+        return (
+          JOB_ORDER_STATUS_META[row.status as keyof typeof JOB_ORDER_STATUS_META]?.label ||
+          row.status
+        );
+      case 'challans': {
+        const count = row.challansCount ?? 0;
+        if (count === 0) {
+          return <span style={{ color: '#9ca3af' }}>—</span>;
+        }
+        return (
+          <Link
+            to={`/organizations/${orgId}/reports/jobwork-challans?jobOrderNumber=${encodeURIComponent(row.jobOrderNumber)}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#1d4ed8',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              textDecoration: 'none',
+              cursor: 'pointer',
+            }}
+            title={`View ${count} Challan(s) for ${row.jobOrderNumber}`}
+          >
+            <span>
+              {count} {count === 1 ? 'Challan' : 'Challans'}
+            </span>
+            <span style={{ fontSize: '11px', opacity: 0.8 }}>↗</span>
+          </Link>
+        );
+      }
+      case 'receipts': {
+        const count = row.receiptsCount ?? 0;
+        if (count === 0) {
+          return <span style={{ color: '#9ca3af' }}>—</span>;
+        }
+        return (
+          <Link
+            to={`/organizations/${orgId}/reports/jobwork-receipts?jobOrderNumber=${encodeURIComponent(row.jobOrderNumber)}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#15803d',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              textDecoration: 'none',
+              cursor: 'pointer',
+            }}
+            title={`View ${count} Receipt(s) for ${row.jobOrderNumber}`}
+          >
+            <span>
+              {count} {count === 1 ? 'Receipt' : 'Receipts'}
+            </span>
+            <span style={{ fontSize: '11px', opacity: 0.8 }}>↗</span>
+          </Link>
+        );
+      }
       case 'process':
         return row.process[rowIndex] || '-';
       case 'doneBy':
@@ -368,7 +505,14 @@ export function JobOrdersReportPage() {
           case 'materialBelongsTo':
             return r.materialBelongsTo || '-';
           case 'status':
-            return JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label || r.status;
+            return (
+              JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label ||
+              r.status
+            );
+          case 'challans':
+            return r.challansCount !== undefined ? String(r.challansCount) : '0';
+          case 'receipts':
+            return r.receiptsCount !== undefined ? String(r.receiptsCount) : '0';
           case 'process':
             return (r.process || []).join('\n') || '-';
           case 'doneBy':
@@ -378,7 +522,7 @@ export function JobOrdersReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
   }, [rows, exportColumns]);
 
@@ -404,7 +548,14 @@ export function JobOrdersReportPage() {
           case 'materialBelongsTo':
             return r.materialBelongsTo || '-';
           case 'status':
-            return JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label || r.status;
+            return (
+              JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label ||
+              r.status
+            );
+          case 'challans':
+            return r.challansCount !== undefined ? String(r.challansCount) : '0';
+          case 'receipts':
+            return r.receiptsCount !== undefined ? String(r.receiptsCount) : '0';
           case 'process':
             return (r.process || []).join('\n') || '-';
           case 'doneBy':
@@ -414,7 +565,7 @@ export function JobOrdersReportPage() {
           default:
             return '-';
         }
-      })
+      }),
     );
     return { data: out };
   };
@@ -426,7 +577,8 @@ export function JobOrdersReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -446,7 +598,8 @@ export function JobOrdersReportPage() {
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
             Job Order Report (Ledger View)
             <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
-              • From {format(applied.fromDate, 'dd-MM-yyyy')} To {format(applied.toDate, 'dd-MM-yyyy')}
+              • From {format(applied.fromDate, 'dd-MM-yyyy')} To{' '}
+              {format(applied.toDate, 'dd-MM-yyyy')}
             </span>
           </div>
         </div>
@@ -653,7 +806,8 @@ export function JobOrdersReportPage() {
               Job Order Report (Ledger View)
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
-              From {format(applied.fromDate, 'dd-MM-yyyy')} To {format(applied.toDate, 'dd-MM-yyyy')}
+              From {format(applied.fromDate, 'dd-MM-yyyy')} To{' '}
+              {format(applied.toDate, 'dd-MM-yyyy')}
             </div>
           </div>
 
@@ -694,16 +848,11 @@ export function JobOrdersReportPage() {
                   sortedRows.flatMap((row) => {
                     const rowSpanCount = Math.max(1, row.process.length);
                     return Array.from({ length: rowSpanCount }).map((_, rowIndex) => (
-                      <tr
-                        key={`${row.id}-${rowIndex}`}
-                        className="table-row-hover"
-                      >
+                      <tr key={`${row.id}-${rowIndex}`} className="table-row-hover">
                         {visibleColumns.map((key) => {
-                          const isGroupedColumn = ![
-                            'process',
-                            'doneBy',
-                            'processorName',
-                          ].includes(key);
+                          const isGroupedColumn = !['process', 'doneBy', 'processorName'].includes(
+                            key,
+                          );
 
                           if (isGroupedColumn && rowIndex > 0) {
                             return null;

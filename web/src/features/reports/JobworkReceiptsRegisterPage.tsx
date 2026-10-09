@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
-import { format, endOfDay, startOfMonth } from 'date-fns';
+import { format, endOfDay, startOfMonth, startOfYear, subYears } from 'date-fns';
 import { notify } from '../../lib/notify';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
@@ -50,8 +50,32 @@ export function JobworkReceiptsRegisterPage() {
   const organizationName = useOrganizationName();
   useRecordReportVisit(orgId, 'jobwork_receipt_report');
 
+  const [searchParams] = useSearchParams();
+  const urlJobOrderNumber = searchParams.get('jobOrderNumber')?.trim();
+
   const storageKey = `jobworkReceiptsState_${orgId}`;
   const initialState = useMemo(() => {
+    if (urlJobOrderNumber) {
+      const wideFromDate = startOfYear(subYears(new Date(), 1));
+      const now = new Date();
+      const filterCond: FilterCondition = {
+        field: 'jobOrderNumber',
+        operator: 'equals',
+        value: urlJobOrderNumber,
+      };
+      return {
+        dateRange: 'Custom',
+        fromDate: wideFromDate,
+        toDate: now,
+        conditions: [filterCond],
+        applied: {
+          fromDate: wideFromDate,
+          toDate: now,
+          conditions: [filterCond],
+        } satisfies Applied,
+      };
+    }
+
     try {
       const stored = orgId ? sessionStorage.getItem(storageKey) : null;
       if (!stored) return null;
@@ -74,7 +98,7 @@ export function JobworkReceiptsRegisterPage() {
     } catch {
       return null;
     }
-  }, [orgId, storageKey]);
+  }, [orgId, storageKey, urlJobOrderNumber]);
 
   const [dateRange, setDateRange] = useState(initialState?.dateRange ?? 'This Month');
   const [fromDate, setFromDate] = useState<Date>(initialState?.fromDate ?? firstOfMonth());
@@ -83,6 +107,36 @@ export function JobworkReceiptsRegisterPage() {
   const [applied, setApplied] = useState<Applied>(
     initialState?.applied ?? { fromDate: firstOfMonth(), toDate: new Date(), conditions: [] },
   );
+
+  // Sync state if urlJobOrderNumber changes dynamically after initial mount
+  const [prevJobOrderNumber, setPrevJobOrderNumber] = useState(urlJobOrderNumber);
+  if (urlJobOrderNumber !== prevJobOrderNumber) {
+    setPrevJobOrderNumber(urlJobOrderNumber);
+    if (urlJobOrderNumber) {
+      const wideFromDate = startOfYear(subYears(new Date(), 1));
+      const now = new Date();
+      const filterCond: FilterCondition = {
+        field: 'jobOrderNumber',
+        operator: 'equals',
+        value: urlJobOrderNumber,
+      };
+      setDateRange('Custom');
+      setFromDate(wideFromDate);
+      setToDate(now);
+      setConditions((prev) => {
+        const rest = prev.filter((c) => c.field !== 'jobOrderNumber');
+        return [...rest, filterCond];
+      });
+      setApplied((prev) => {
+        const rest = prev.conditions.filter((c) => c.field !== 'jobOrderNumber');
+        return {
+          fromDate: wideFromDate,
+          toDate: now,
+          conditions: [...rest, filterCond],
+        };
+      });
+    }
+  }
 
   useEffect(() => {
     if (!orgId) return;
