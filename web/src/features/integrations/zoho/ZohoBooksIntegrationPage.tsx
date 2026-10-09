@@ -324,7 +324,7 @@ export function ZohoBooksIntegrationPage() {
       {/* Page Header */}
       <header
         style={{
-          padding: '0 32px',
+          padding: '0 24px',
           height: '60px',
           flexShrink: 0,
           boxSizing: 'border-box',
@@ -458,9 +458,9 @@ export function ZohoBooksIntegrationPage() {
       </header>
 
       {/* Main Content */}
-      <main style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+      <main style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
         {searchParams.get('tab') === 'history' ? (
-          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+          <div style={{ width: '100%' }}>
             <ZohoSyncHistoryPage
               onBack={() => {
                 setSearchParams((p) => {
@@ -471,7 +471,7 @@ export function ZohoBooksIntegrationPage() {
             />
           </div>
         ) : activeMappingModule ? (
-          <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+          <div style={{ width: '100%' }}>
             <ModuleFieldMappingView
               orgId={orgId || ''}
               module={activeMappingModule}
@@ -487,8 +487,7 @@ export function ZohoBooksIntegrationPage() {
         ) : (
           <div
             style={{
-              maxWidth: '840px',
-              margin: '0 auto',
+              width: '100%',
               display: 'flex',
               flexDirection: 'column',
               gap: '24px',
@@ -1737,19 +1736,19 @@ export function ZohoBooksIntegrationPage() {
               </div>
             </div>
 
-            {/* STEP 4: Synchronize & Configure Modules Hub matching Screenshot 2 */}
-            {isConnected && (
-              <ModuleSyncHub
-                orgId={orgId || ''}
-                onConfigureModule={(moduleKey) => {
-                  setActiveMappingModule(moduleKey);
-                  setSearchParams((p) => {
-                    p.set('module', moduleKey);
-                    return p;
-                  });
-                }}
-              />
-            )}
+            {/* STEP 4: Synchronize & Configure Modules Hub (Displays always, disabled before mapping organization) */}
+            <ModuleSyncHub
+              orgId={orgId || ''}
+              disabled={!isConnected}
+              onConfigureModule={(moduleKey) => {
+                if (!isConnected) return;
+                setActiveMappingModule(moduleKey);
+                setSearchParams((p) => {
+                  p.set('module', moduleKey);
+                  return p;
+                });
+              }}
+            />
           </div>
         )}
       </main>

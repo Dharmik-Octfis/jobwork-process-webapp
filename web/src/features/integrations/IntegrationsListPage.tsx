@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react';
 import { useZohoStatus } from './zoho/zoho.api';
 
 export function IntegrationsListPage() {
@@ -64,7 +64,8 @@ export function IntegrationsListPage() {
           >
             <Sparkles size={18} color="var(--color-primary)" style={{ flexShrink: 0 }} />
             <span>
-              Manage OAuth connections and credentials for accounting systems. One Job Work organization can be mapped to one active accounting organization.
+              Manage OAuth connections and credentials for accounting systems. One Job Work
+              organization can be mapped to one active accounting organization.
             </span>
           </div>
 
@@ -91,7 +92,14 @@ export function IntegrationsListPage() {
               }}
             >
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '16px',
+                  }}
+                >
                   <div
                     style={{
                       width: '44px',
@@ -112,7 +120,15 @@ export function IntegrationsListPage() {
 
                   {/* Status Badge */}
                   {isZohoLoading ? (
-                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        color: 'var(--color-text-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
                       <RefreshCw size={12} className="animate-spin" /> Checking...
                     </span>
                   ) : isZohoConnected ? (
@@ -182,11 +198,26 @@ export function IntegrationsListPage() {
                   )}
                 </div>
 
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--navy-900)', margin: '0 0 6px 0' }}>
+                <h3
+                  style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: 'var(--navy-900)',
+                    margin: '0 0 6px 0',
+                  }}
+                >
                   Zoho Books
                 </h3>
-                <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', margin: '0 0 16px 0', lineHeight: '1.5' }}>
-                  Connect your Zoho Books organization using OAuth 2.0 to synchronize chart of accounts, vendors, and bills.
+                <p
+                  style={{
+                    fontSize: '13px',
+                    color: 'var(--color-text-muted)',
+                    margin: '0 0 16px 0',
+                    lineHeight: '1.5',
+                  }}
+                >
+                  Connect your Zoho Books organization using OAuth 2.0 to synchronize chart of
+                  accounts, vendors, and bills.
                 </p>
 
                 {isZohoConnected && zohoStatus?.selectedOrganizationName && (
@@ -205,7 +236,9 @@ export function IntegrationsListPage() {
                     }}
                   >
                     <CheckCircle2 size={14} color="#16a34a" />
-                    <span>Mapped to: <strong>{zohoStatus.selectedOrganizationName}</strong></span>
+                    <span>
+                      Mapped to: <strong>{zohoStatus.selectedOrganizationName}</strong>
+                    </span>
                   </div>
                 )}
               </div>
@@ -232,170 +265,6 @@ export function IntegrationsListPage() {
               >
                 {isZohoConnected ? 'Manage Integration' : 'Configure & Connect'}
                 <ArrowRight size={15} />
-              </button>
-            </div>
-
-            {/* 2. Tally Card (Coming Soon) */}
-            <div
-              style={{
-                backgroundColor: '#fff',
-                border: '1px solid var(--color-border)',
-                borderRadius: '10px',
-                padding: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-                opacity: 0.85,
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                  <div
-                    style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '8px',
-                      backgroundColor: '#0f766e',
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
-                      fontSize: '18px',
-                      letterSpacing: '-0.5px',
-                    }}
-                  >
-                    TP
-                  </div>
-
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 10px',
-                      borderRadius: '16px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      backgroundColor: '#f1f5f9',
-                      color: '#64748b',
-                    }}
-                  >
-                    <Clock size={12} /> Coming Soon
-                  </span>
-                </div>
-
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--navy-900)', margin: '0 0 6px 0' }}>
-                  TallyPrime
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', margin: '0 0 16px 0', lineHeight: '1.5' }}>
-                  Export jobwork challans, material transfers, and bills directly to your TallyPrime company.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                disabled
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '9px 16px',
-                  backgroundColor: '#f1f5f9',
-                  color: '#94a3b8',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'not-allowed',
-                  width: '100%',
-                }}
-              >
-                Coming Soon
-              </button>
-            </div>
-
-            {/* 3. QuickBooks Card (Coming Soon) */}
-            <div
-              style={{
-                backgroundColor: '#fff',
-                border: '1px solid var(--color-border)',
-                borderRadius: '10px',
-                padding: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-                opacity: 0.85,
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                  <div
-                    style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '8px',
-                      backgroundColor: '#2e7d32',
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
-                      fontSize: '18px',
-                      letterSpacing: '-0.5px',
-                    }}
-                  >
-                    QB
-                  </div>
-
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 10px',
-                      borderRadius: '16px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      backgroundColor: '#f1f5f9',
-                      color: '#64748b',
-                    }}
-                  >
-                    <Clock size={12} /> Coming Soon
-                  </span>
-                </div>
-
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--navy-900)', margin: '0 0 6px 0' }}>
-                  QuickBooks Online
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', margin: '0 0 16px 0', lineHeight: '1.5' }}>
-                  Synchronize vendors, purchase orders, invoices, and payments with QuickBooks Online.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                disabled
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '9px 16px',
-                  backgroundColor: '#f1f5f9',
-                  color: '#94a3b8',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'not-allowed',
-                  width: '100%',
-                }}
-              >
-                Coming Soon
               </button>
             </div>
           </div>

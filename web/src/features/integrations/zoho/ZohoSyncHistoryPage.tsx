@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, RefreshCw, Clock, AlertCircle } from 'lucide-react';
 import { useZohoSyncHistory } from './zoho.api';
 import type { ZohoSyncHistoryItem, ZohoSyncModuleSummary } from './zoho.schemas';
@@ -11,9 +11,10 @@ interface ZohoSyncHistoryPageProps {
 
 export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPageProps) {
   const { orgId } = useParams<{ orgId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [selectedModuleFilter, _setSelectedModuleFilter] = useState<string>(defaultModule || 'all');
+  const selectedModuleFilter = searchParams.get('module') || defaultModule || 'all';
   const [searchQuery, _setSearchQuery] = useState('');
   const [selectedLogForDetails, setSelectedLogForDetails] = useState<ZohoSyncHistoryItem | null>(
     null,
@@ -26,26 +27,61 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
 
   // Display Cards matching Screenshot
   const displaySummaries: ZohoSyncModuleSummary[] = useMemo(() => {
-    if (data?.summaries && data.summaries.length > 0) return data.summaries;
-    return [
-      {
-        moduleCode: 'CUSTOMERS',
-        moduleName: 'Customers',
-        title: 'Zoho CRM',
-        subtitle: 'Accounts as Customers',
-        pullErrorCount: 0,
-        pushErrorCount: 0,
-      },
-      {
-        moduleCode: 'CONTACT_PERSONS',
-        moduleName: 'Contact Persons',
-        title: 'Zoho CRM',
-        subtitle: 'Contacts as Contact Persons',
-        pullErrorCount: 0,
-        pushErrorCount: 3,
-      },
-    ];
-  }, [data]);
+    let summaries = data?.summaries || [];
+    if (summaries.length === 0) {
+      summaries = [
+        {
+          moduleCode: 'CUSTOMERS',
+          moduleName: 'Customers',
+          title: 'Zoho Books',
+          subtitle: 'Accounts as Customers',
+          pullErrorCount: 0,
+          pushErrorCount: 0,
+        },
+        {
+          moduleCode: 'CONTACT_PERSONS',
+          moduleName: 'Contact Persons',
+          title: 'Zoho Books',
+          subtitle: 'Contacts as Contact Persons',
+          pullErrorCount: 0,
+          pushErrorCount: 0,
+        },
+        {
+          moduleCode: 'ITEMS',
+          moduleName: 'Items',
+          title: 'Zoho Books',
+          subtitle: 'Items & Products',
+          pullErrorCount: 0,
+          pushErrorCount: 0,
+        },
+        {
+          moduleCode: 'VENDORS',
+          moduleName: 'Vendors',
+          title: 'Zoho Books',
+          subtitle: 'Vendors & Suppliers',
+          pullErrorCount: 0,
+          pushErrorCount: 0,
+        },
+      ];
+    }
+
+    if (selectedModuleFilter && selectedModuleFilter !== 'all') {
+      const filterKey = selectedModuleFilter.toLowerCase();
+      if (filterKey === 'customer' || filterKey === 'customers') {
+        return summaries.filter(
+          (s) => s.moduleCode === 'CUSTOMERS' || s.moduleCode === 'CONTACT_PERSONS',
+        );
+      }
+      if (filterKey === 'item' || filterKey === 'items') {
+        return summaries.filter((s) => s.moduleCode === 'ITEMS');
+      }
+      if (filterKey === 'vendor' || filterKey === 'vendors') {
+        return summaries.filter((s) => s.moduleCode === 'VENDORS');
+      }
+    }
+
+    return summaries;
+  }, [data, selectedModuleFilter]);
 
   // Client-side search filtering
   const filteredHistory = useMemo(() => {
@@ -57,8 +93,8 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               id: 'sample-1',
               organizationId: orgId || '',
               module: 'customer',
-              moduleName: 'Zoho CRM Contacts as Contact Persons',
-              syncType: 'Pushed to Zoho CRM.',
+              moduleName: 'Zoho Books Contacts as Contact Persons',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -72,8 +108,8 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               id: 'sample-2',
               organizationId: orgId || '',
               module: 'customer',
-              moduleName: 'Zoho CRM Accounts as Customers',
-              syncType: 'Pushed to Zoho CRM.',
+              moduleName: 'Zoho Books Accounts as Customers',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -87,8 +123,8 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               id: 'sample-3',
               organizationId: orgId || '',
               module: 'customer',
-              moduleName: 'Zoho CRM Contacts as Contact Persons',
-              syncType: 'Pushed to Zoho CRM.',
+              moduleName: 'Zoho Books Contacts as Contact Persons',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -102,8 +138,8 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               id: 'sample-4',
               organizationId: orgId || '',
               module: 'customer',
-              moduleName: 'Zoho CRM Accounts as Customers',
-              syncType: 'Pushed to Zoho CRM.',
+              moduleName: 'Zoho Books Accounts as Customers',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -117,8 +153,8 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               id: 'sample-5',
               organizationId: orgId || '',
               module: 'customer',
-              moduleName: 'Zoho CRM Contacts as Contact Persons',
-              syncType: 'Pushed to Zoho CRM.',
+              moduleName: 'Zoho Books Contacts as Contact Persons',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -132,8 +168,8 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               id: 'sample-6',
               organizationId: orgId || '',
               module: 'customer',
-              moduleName: 'Zoho CRM Accounts as Customers',
-              syncType: 'Pushed to Zoho CRM.',
+              moduleName: 'Zoho Books Accounts as Customers',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -146,9 +182,9 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
             {
               id: 'sample-7',
               organizationId: orgId || '',
-              module: 'customer',
-              moduleName: 'Zoho CRM Contacts as Contact Persons',
-              syncType: 'Pushed to Zoho CRM.',
+              module: 'item',
+              moduleName: 'Zoho Books Items',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -161,9 +197,9 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
             {
               id: 'sample-8',
               organizationId: orgId || '',
-              module: 'customer',
-              moduleName: 'Zoho CRM Accounts as Customers',
-              syncType: 'Pushed to Zoho CRM.',
+              module: 'vendor',
+              moduleName: 'Zoho Books Vendors',
+              syncType: 'Pushed to Zoho Books.',
               syncDirection: 'PUSH',
               status: 'Completed',
               addedCount: 0,
@@ -173,41 +209,35 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
               details: 'Sync completed successfully.',
               createdAt: '2026-10-07T16:45:00Z',
             },
-            {
-              id: 'sample-9',
-              organizationId: orgId || '',
-              module: 'customer',
-              moduleName: 'Zoho CRM Contacts as Contact Persons',
-              syncType: 'Pushed to Zoho CRM.',
-              syncDirection: 'PUSH',
-              status: 'Completed',
-              addedCount: 0,
-              updatedCount: 0,
-              deletedCount: 0,
-              failureCount: 0,
-              details: 'Sync completed successfully.',
-              createdAt: '2026-10-07T14:44:00Z',
-            },
-            {
-              id: 'sample-10',
-              organizationId: orgId || '',
-              module: 'customer',
-              moduleName: 'Zoho CRM Accounts as Customers',
-              syncType: 'Pushed to Zoho CRM.',
-              syncDirection: 'PUSH',
-              status: 'Completed',
-              addedCount: 0,
-              updatedCount: 0,
-              deletedCount: 0,
-              failureCount: 0,
-              details: 'Sync completed successfully.',
-              createdAt: '2026-10-07T14:44:00Z',
-            },
           ];
 
-    return list.filter((item) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
+    let filtered = list;
+    if (selectedModuleFilter && selectedModuleFilter !== 'all') {
+      const target = selectedModuleFilter.toLowerCase();
+      filtered = filtered.filter((item) => {
+        const mod = (item.module || '').toLowerCase();
+        const modName = (item.moduleName || '').toLowerCase();
+        if (target === 'vendor' || target === 'vendors') {
+          return mod === 'vendor' || modName.includes('vendor') || modName.includes('supplier');
+        }
+        if (target === 'item' || target === 'items') {
+          return mod === 'item' || modName.includes('item') || modName.includes('product');
+        }
+        if (target === 'customer' || target === 'customers') {
+          return (
+            mod === 'customer' ||
+            modName.includes('customer') ||
+            modName.includes('contact') ||
+            modName.includes('account')
+          );
+        }
+        return mod === target || modName.includes(target);
+      });
+    }
+
+    if (!searchQuery.trim()) return filtered;
+    const q = searchQuery.toLowerCase();
+    return filtered.filter((item) => {
       return (
         item.moduleName.toLowerCase().includes(q) ||
         item.syncType.toLowerCase().includes(q) ||
@@ -215,7 +245,7 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
         (item.details && item.details.toLowerCase().includes(q))
       );
     });
-  }, [data, searchQuery, orgId]);
+  }, [data, searchQuery, orgId, selectedModuleFilter]);
 
   // Format date same as Zoho: 08/10/2026 10:11 AM
   const formatZohoDateTime = (dateStr: string) => {
@@ -249,7 +279,7 @@ export function ZohoSyncHistoryPage({ onBack, defaultModule }: ZohoSyncHistoryPa
       style={{
         backgroundColor: '#ffffff',
         minHeight: '100%',
-        padding: '24px 32px',
+        padding: '20px 24px',
         fontFamily: "'Zoho Puvi', 'Segoe UI', system-ui, -apple-system, sans-serif",
       }}
     >
