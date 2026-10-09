@@ -24,6 +24,8 @@ import { RecordApprovalBanner } from '../approvals/components/RecordApprovalBann
 import { RecordApprovalHistoryTimeline } from '../approvals/components/RecordApprovalHistoryTimeline';
 import { useRecordApproval } from '../approvals/useRecordApproval';
 import { AdjustStockPanel } from '../inventory/adjustments/AdjustStockPanel';
+import { PrintBarcodeModal } from './components/PrintBarcodeModal';
+import { BarcodePreviewModal } from './components/BarcodePreviewModal';
 
 interface ItemDetailProps {
   itemId: string;
@@ -43,6 +45,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAdjustStock, setShowAdjustStock] = useState(false);
+  const [isPrintBarcodeModalOpen, setIsPrintBarcodeModalOpen] = useState(false);
+  const [isBarcodePreviewOpen, setIsBarcodePreviewOpen] = useState(false);
+  const [barcodePdfUrl, setBarcodePdfUrl] = useState<string | null>(null);
+
   // Closing the Adjust Stock panel puts focus back on the button that opened it.
   const adjustStockButtonRef = useRef<HTMLButtonElement>(null);
   const wasAdjustingStock = useRef(false);
@@ -71,6 +77,10 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
     queryFn: () => itemsApi.getItem(orgId!, itemId),
     enabled: Boolean(orgId && itemId),
   });
+
+  const handleOpenBarcodeFlow = () => {
+    setIsPrintBarcodeModalOpen(true);
+  };
 
   // Approval state rides on the item payload without being part of `Item`.
   const approval = item as
@@ -357,24 +367,6 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
               </button>
             )}
 
-          <button
-            type="button"
-            style={{
-              padding: '6px 12px',
-              border: '1px solid var(--color-border)',
-              background: '#f8fafc',
-              color: 'var(--color-text)',
-              borderRadius: '4px',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            Print Item Barcode <ChevronDown size={14} />
-          </button>
-
           <div style={{ position: 'relative' }} ref={moreMenuRef}>
             <button
               onClick={() => setIsMoreOpen(!isMoreOpen)}
@@ -533,6 +525,7 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
 
         <button
           type="button"
+          onClick={handleOpenBarcodeFlow}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1129,6 +1122,26 @@ export function ItemDetail({ itemId, onClose }: ItemDetailProps) {
         confirmText={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      <PrintBarcodeModal
+        isOpen={isPrintBarcodeModalOpen}
+        onClose={() => setIsPrintBarcodeModalOpen(false)}
+        orgId={orgId!}
+        itemId={itemId}
+        item={item}
+        onPrintSuccess={(pdfUrl) => {
+          setBarcodePdfUrl(pdfUrl);
+          setIsPrintBarcodeModalOpen(false);
+          setIsBarcodePreviewOpen(true);
+        }}
+      />
+
+      <BarcodePreviewModal
+        isOpen={isBarcodePreviewOpen}
+        onClose={() => setIsBarcodePreviewOpen(false)}
+        pdfUrl={barcodePdfUrl}
+        onPrint={() => {}}
       />
     </div>
   );
