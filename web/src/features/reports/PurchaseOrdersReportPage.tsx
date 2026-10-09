@@ -18,6 +18,7 @@ import { fetchPaymentTerms } from '../purchases/purchase-orders/payment-terms.ap
 import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const COLUMN_CATALOG = [
   { key: 'poNumber', label: 'PO NUMBER', locked: true, defaultVisible: true },
@@ -270,6 +271,103 @@ export function PurchaseOrdersReportPage() {
     return String(val);
   };
 
+  const exportColumns = useMemo(() => {
+    return visibleColumns.map((colKey) => {
+      const standardCol = COLUMN_CATALOG.find((c) => c.key === colKey);
+      if (standardCol) {
+        return {
+          key: standardCol.key,
+          label: standardCol.label,
+          align: (RIGHT_ALIGNED.has(standardCol.key) ? 'right' : 'left') as 'right' | 'left',
+        };
+      }
+      const customCol = customColumns.find((c) => c.key === colKey);
+      return {
+        key: colKey,
+        label: customCol ? customCol.label : colKey.toUpperCase(),
+        align: 'left' as const,
+      };
+    });
+  }, [visibleColumns, customColumns]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        if (col.key.startsWith('cf_')) {
+          const cfKey = col.key.replace('cf_', '');
+          const val = row.customFields?.[cfKey];
+          return val !== undefined && val !== null && val !== '' ? String(val) : '-';
+        }
+        if (col.key === 'paymentTerms') {
+          const termVal = row.paymentTerms;
+          if (!termVal || termVal === '-') return '-';
+          const term = paymentTermsData.find((t) => t.id === termVal || t.termName === termVal);
+          return term ? term.termName : termVal;
+        }
+        if (col.key === 'total') {
+          return Number(row.total || 0).toFixed(2);
+        }
+        if (col.key === 'date' || col.key === 'deliveryDate') {
+          const val = row[col.key as keyof PurchaseOrdersReportRow];
+          return val ? formatDate(val as string) : '-';
+        }
+        const val = row[col.key as keyof PurchaseOrdersReportRow];
+        return val !== null && val !== undefined && val !== '' ? String(val) : '-';
+      })
+    );
+  }, [sortedRows, exportColumns, paymentTermsData]);
+
+  const totalPOAmount = useMemo(() => rows.reduce((sum, r) => sum + (Number(r.total) || 0), 0), [rows]);
+
+  const exportTotalRow = useMemo(() => {
+    return exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      if (col.key === 'total') return Number(totalPOAmount || 0).toFixed(2);
+      return '';
+    });
+  }, [exportColumns, totalPOAmount]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getPurchaseOrdersReport(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const allRows = allRes?.items || [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        if (col.key.startsWith('cf_')) {
+          const cfKey = col.key.replace('cf_', '');
+          const val = row.customFields?.[cfKey];
+          return val !== undefined && val !== null && val !== '' ? String(val) : '-';
+        }
+        if (col.key === 'paymentTerms') {
+          const termVal = row.paymentTerms;
+          if (!termVal || termVal === '-') return '-';
+          const term = paymentTermsData.find((t) => t.id === termVal || t.termName === termVal);
+          return term ? term.termName : termVal;
+        }
+        if (col.key === 'total') {
+          return Number(row.total || 0).toFixed(2);
+        }
+        if (col.key === 'date' || col.key === 'deliveryDate') {
+          const val = row[col.key as keyof PurchaseOrdersReportRow];
+          return val ? formatDate(val as string) : '-';
+        }
+        const val = row[col.key as keyof PurchaseOrdersReportRow];
+        return val !== null && val !== undefined && val !== '' ? String(val) : '-';
+      })
+    );
+    const allTotalPOAmount = allRows.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+    const allTotalRow = exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      if (col.key === 'total') return Number(allTotalPOAmount || 0).toFixed(2);
+      return '';
+    });
+    return { data: allExportRows, totalRow: allTotalRow };
+  };
+
   return (
     <div
       style={{
@@ -302,25 +400,38 @@ export function PurchaseOrdersReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Purchase Order Report"
+            dateSubtitle={`From ${format(applied.fromDate, 'dd-MM-yyyy')} To ${format(applied.toDate, 'dd-MM-yyyy')}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '44px',
+              minHeight: '44px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

@@ -1,18 +1,18 @@
 /**
- * The permission catalog — the developer-owned vocabulary of things a user can
+ * The permission catalog â€” the developer-owned vocabulary of things a user can
  * be allowed to do. It is CODE, not tenant data: versioned with the app, the
  * single source of truth both the backend (authorization) and the admin UI (the
  * template editor's checkboxes) read from.
  *
  * Why not a `permissions` table? Because the set of permissions is defined by
- * what the app can do, and that changes only when a developer ships a feature —
+ * what the app can do, and that changes only when a developer ships a feature â€”
  * never by a customer. Keeping it in code means adding a permission is a one-line
- * edit here with no migration, and (crucially) the Owner template — which grants
- * *all* permissions, computed at runtime — automatically covers the new one with
+ * edit here with no migration, and (crucially) the Owner template â€” which grants
+ * *all* permissions, computed at runtime â€” automatically covers the new one with
  * zero backfill. See CLAUDE.md and docs.
  *
  * Naming is `resource:action`. `read` is "view", and it is implied by every other
- * action — see `withImpliedRead`.
+ * action â€” see `withImpliedRead`.
  */
 
 export interface PermissionAction {
@@ -20,7 +20,7 @@ export interface PermissionAction {
   label: string;
 }
 
-/** One leaf module — the thing a permission is actually granted on. */
+/** One leaf module â€” the thing a permission is actually granted on. */
 export interface PermissionModule {
   resource: string;
   label: string;
@@ -29,7 +29,7 @@ export interface PermissionModule {
 
 /**
  * A main module, as the sidebar shows it on the home screen (Purchases, Sales,
- * …). It owns no permissions of its own — its checkboxes in the editor are a
+ * â€¦). It owns no permissions of its own â€” its checkboxes in the editor are a
  * bulk toggle over the modules beneath it.
  */
 export interface PermissionGroup {
@@ -39,8 +39,8 @@ export interface PermissionGroup {
 }
 
 /**
- * Every resource exposes exactly the same four actions — Read, Create, Update,
- * Delete — and nothing else. Keeping the action set uniform means the UI renders
+ * Every resource exposes exactly the same four actions â€” Read, Create, Update,
+ * Delete â€” and nothing else. Keeping the action set uniform means the UI renders
  * one consistent 4-column grid and a new module just adds a row.
  */
 export const ACTIONS = [
@@ -56,11 +56,11 @@ export type ActionName = (typeof ACTIONS)[number]['action'];
  * Build a resource's permissions. Defaults to all four; a resource may narrow the
  * list when an action genuinely does not exist for it.
  *
- * Narrowing is rare and should stay rare — the uniform grid is what keeps the
+ * Narrowing is rare and should stay rare â€” the uniform grid is what keeps the
  * editor readable. But a key the catalog defines and no route checks is worse
  * than a missing column: it appears as a checkbox, an admin ticks it believing
  * they granted something, and nothing happens. `organization` is the one case
- * today — you cannot "create" an organization from inside one, and deleting it is
+ * today â€” you cannot "create" an organization from inside one, and deleting it is
  * owner-only via `requireOwner`, which no permission can satisfy.
  */
 function crud(resource: string, actions?: readonly ActionName[]): PermissionAction[] {
@@ -71,9 +71,9 @@ function crud(resource: string, actions?: readonly ActionName[]): PermissionActi
 
 /**
  * The resources that carry permissions, filed under the main module they live in.
- * The grouping deliberately mirrors the app's own navigation — the sidebar groups
+ * The grouping deliberately mirrors the app's own navigation â€” the sidebar groups
  * on the home screen (`app_modules`: Item, Purchases, Sales) plus the Settings
- * sidebar — so an admin ticking boxes sees the same tree they navigate. Adding a
+ * sidebar â€” so an admin ticking boxes sees the same tree they navigate. Adding a
  * module means one line in the right group; a new main module means one entry.
  */
 const MODULE_GROUPS: readonly {
@@ -96,7 +96,7 @@ const MODULE_GROUPS: readonly {
     resources: [
       { resource: 'assembly', label: 'Assembly' },
       // Its own resource: this is the one module that can create stock from
-      // nothing. `update` edits an adjustment that has not posted yet — a posted
+      // nothing. `update` edits an adjustment that has not posted yet â€” a posted
       // one is never edited, only cancelled (`delete`).
       { resource: 'stock_adjustment', label: 'Stock Adjustments' },
     ],
@@ -116,6 +116,7 @@ const MODULE_GROUPS: readonly {
     resources: [
       { resource: 'customer', label: 'Customers' },
       { resource: 'sales_order', label: 'Sales Orders' },
+      { resource: 'invoice', label: 'Invoices' },
     ],
   },
   {
@@ -125,8 +126,8 @@ const MODULE_GROUPS: readonly {
      * they granted something, and nothing happens. So each of these lands in the
      * same change as the routes that enforce it.
      *
-     * 🔴 `batch` is READ-ONLY, and deliberately. Batches are not created or edited by
-     * anyone — `stockLedger.service.ts` is the only thing that makes one, from a
+     * ðŸ”´ `batch` is READ-ONLY, and deliberately. Batches are not created or edited by
+     * anyone â€” `stockLedger.service.ts` is the only thing that makes one, from a
      * Material In or a receipt. A `batch:create` checkbox would describe a screen
      * that does not and must not exist.
      */
@@ -147,15 +148,15 @@ const MODULE_GROUPS: readonly {
     label: 'Settings',
     resources: [
       // No create (you cannot create an organization from inside one) and no
-      // delete (owner-only, gated by `requireOwner` — see authorize.ts).
+      // delete (owner-only, gated by `requireOwner` â€” see authorize.ts).
       { resource: 'organization', label: 'Organization Profile', actions: ['read', 'update'] },
       // Renamed to "Users" in the UI on 2026-07-30. The RESOURCE KEY stays
-      // `member` — it is stored inside every customer's permission templates, so
+      // `member` â€” it is stored inside every customer's permission templates, so
       // renaming it would silently strip the permission from every template that
       // holds it. Only the label an admin reads changes.
       { resource: 'member', label: 'Users' },
       // Two resources, not one, because they are not the same power. `role`
-      // grants managing job titles — a labelling exercise. `permission_template`
+      // grants managing job titles â€” a labelling exercise. `permission_template`
       // grants rewriting what people may DO, which is privilege escalation: hold
       // it and you can grant yourself anything. Splitting them lets an admin
       // delegate the first without the second.
@@ -172,6 +173,7 @@ const MODULE_GROUPS: readonly {
       { resource: 'payment_term', label: 'Payment Terms' },
       { resource: 'location', label: 'Locations' },
       { resource: 'custom_field', label: 'Custom Fields' },
+      { resource: 'integration', label: 'Integrations' },
     ],
   },
   {
@@ -213,7 +215,7 @@ export function isPermissionKey(key: string): boolean {
 
 /**
  * `read` is implied by every other action: you cannot create, edit or delete a
- * record you are not allowed to see — every one of those flows opens the list or
+ * record you are not allowed to see â€” every one of those flows opens the list or
  * the detail page first. So `vendor:create` without `vendor:read` is not a
  * stricter role, it's a broken one (the UI 403s on the page the button lives on).
  *
@@ -233,7 +235,7 @@ export function withImpliedRead(keys: readonly string[]): string[] {
   return [...out];
 }
 
-/** Every `<resource>:read` key — what "View only" grants. */
+/** Every `<resource>:read` key â€” what "View only" grants. */
 const ALL_READ_PERMISSIONS: readonly string[] = ALL_PERMISSIONS.filter((key) =>
   key.endsWith(':read'),
 );
@@ -244,7 +246,7 @@ const ALL_READ_PERMISSIONS: readonly string[] = ALL_PERMISSIONS.filter((key) =>
  * from the seeded "Full access" template, which is what keeps Owner and admin
  * genuinely different tiers rather than the same account with extra steps.
  *
- * `read` stays — seeing what access exists is not the same as changing it.
+ * `read` stays â€” seeing what access exists is not the same as changing it.
  */
 const SELF_ESCALATING_PERMISSIONS: readonly string[] = [
   'permission_template:create',
@@ -255,13 +257,13 @@ const SELF_ESCALATING_PERMISSIONS: readonly string[] = [
 /**
  * The templates seeded into a new organization.
  *
- * **Owner** is immutable (`isSystem`) and never assignable — ownership comes from
+ * **Owner** is immutable (`isSystem`) and never assignable â€” ownership comes from
  * creating the org, and `Membership.isOwner` is what actually grants it; this row
  * exists so ownership has a name on screen. It stores no keys:
  * `grantsAllPermissions` resolves it to the whole catalog at runtime, so a
  * permission shipped later needs no backfill.
  *
- * **Full access** and **View only** are ordinary editable rows — starting points
+ * **Full access** and **View only** are ordinary editable rows â€” starting points
  * so a new org can invite someone in the first minute instead of building a
  * template first. They are `isSystem: false` deliberately: a default nobody can
  * adjust becomes a default everybody works around. Both are computed from the
@@ -282,7 +284,7 @@ export const SYSTEM_TEMPLATES: readonly SystemTemplateSpec[] = [
     description: 'Full access to everything. Cannot be edited or deleted.',
     isSystem: true,
     grantsAllPermissions: true,
-    permissions: [], // computed — see grantsAllPermissions
+    permissions: [], // computed â€” see grantsAllPermissions
   },
   {
     name: 'Full access',
@@ -302,17 +304,17 @@ export const SYSTEM_TEMPLATES: readonly SystemTemplateSpec[] = [
 
 /**
  * The job titles seeded into a new organization. A role grants NOTHING, so these
- * are pure suggestions — named as titles rather than access levels on purpose.
+ * are pure suggestions â€” named as titles rather than access levels on purpose.
  * "Manager on View only" has to read as a deliberate choice; it would read as a
  * mistake if the role were called "Admin" beside a template of the same name,
  * and the two would drift back into lockstep.
  *
- * 🔴 **Array ORDER is the seeded org chart.** `seedSystemRoles` walks this list in
+ * ðŸ”´ **Array ORDER is the seeded org chart.** `seedSystemRoles` walks this list in
  * order and parents each entry to the one before it, so the list reads top-down:
- * CEO → Senior Manager → Manager → Staff. Reordering it reorders a new
+ * CEO â†’ Senior Manager â†’ Manager â†’ Staff. Reordering it reorders a new
  * organization's reporting lines; inserting in the middle inserts a layer.
  *
- * The first entry is `isSystem` — immutable, not assignable, and always the root
+ * The first entry is `isSystem` â€” immutable, not assignable, and always the root
  * of the chart. It is identified by that flag, never by its name, so an org that
  * renames it (or a future rename here) breaks nothing.
  */
@@ -336,3 +338,4 @@ export const SYSTEM_ROLES: readonly SystemRoleSpec[] = [
   { name: 'Manager', description: 'Runs a team or a function.', isSystem: false },
   { name: 'Staff', description: 'Works in the business day to day.', isSystem: false },
 ] as const;
+

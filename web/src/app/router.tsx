@@ -186,6 +186,14 @@ const PurchaseOrdersReportPage = lazyPage(
   () => import('../features/reports/PurchaseOrdersReportPage'),
   'PurchaseOrdersReportPage',
 );
+const SalesOrdersReportPage = lazyPage(
+  () => import('../features/reports/SalesOrdersReportPage'),
+  'SalesOrdersReportPage',
+);
+const InvoicesReportPage = lazyPage(
+  () => import('../features/reports/InvoicesReportPage'),
+  'InvoicesReportPage',
+);
 const BillsReportPage = lazyPage(
   () => import('../features/reports/BillsReportPage'),
   'BillsReportPage',
@@ -255,9 +263,14 @@ const SalesOrdersList = lazyPage(
   () => import('../features/sales/sales-orders/SalesOrdersList'),
   'SalesOrdersList',
 );
+const InvoicesList = lazyPage(() => import('../features/sales/invoices/InvoicesList'), 'default');
 const CreateSalesOrder = lazyPage(
   () => import('../features/sales/sales-orders/CreateSalesOrder'),
   'CreateSalesOrder',
+);
+const CreateInvoice = lazyPage(
+  () => import('../features/sales/invoices/CreateInvoice'),
+  'CreateInvoice',
 );
 const JobworkPage = lazyPage(() => import('../features/jobwork/JobworkPage'), 'JobworkPage');
 const ProcessesList = lazyPage(
@@ -396,6 +409,22 @@ const ApprovalDetailPage = lazyPage(
   () => import('../features/approvals/ApprovalDetailPage'),
   'ApprovalDetailPage',
 );
+const IntegrationsListPage = lazyPage(
+  () => import('../features/integrations/IntegrationsListPage'),
+  'IntegrationsListPage',
+);
+const ZohoBooksIntegrationPage = lazyPage(
+  () => import('../features/integrations/zoho/ZohoBooksIntegrationPage'),
+  'ZohoBooksIntegrationPage',
+);
+const ZohoOAuthCallbackPage = lazyPage(
+  () => import('../features/integrations/zoho/ZohoOAuthCallbackPage'),
+  'ZohoOAuthCallbackPage',
+);
+const ZohoSyncHistoryPage = lazyPage(
+  () => import('../features/integrations/zoho/ZohoSyncHistoryPage'),
+  'ZohoSyncHistoryPage',
+);
 
 /**
  * Every page whose data belongs to one organization lives under
@@ -441,6 +470,8 @@ export const router = createBrowserRouter([
       { path: '/invite/accept', element: <AcceptInvitePage /> },
       // Public — reached from a REFUSED sign-in, so there is no jobwork session to protect it with.
       { path: '/no-access', element: <NoAccessPage /> },
+      // Public OAuth callback popup route
+      { path: '/integrations/zoho/callback', element: <ZohoOAuthCallbackPage /> },
       {
         element: <ProtectedRoute />,
         children: [
@@ -520,6 +551,14 @@ export const router = createBrowserRouter([
                     element: <PurchaseOrdersReportPage />,
                   },
                   {
+                    path: '/organizations/:orgId/reports/sales-orders',
+                    element: <SalesOrdersReportPage />,
+                  },
+                  {
+                    path: '/organizations/:orgId/reports/invoices',
+                    element: <InvoicesReportPage />,
+                  },
+                  {
                     path: '/organizations/:orgId/reports/bills',
                     element: <BillsReportPage />,
                   },
@@ -557,6 +596,18 @@ export const router = createBrowserRouter([
                   {
                     path: '/organizations/:orgId/sales/sales-orders/:id/edit',
                     element: <CreateSalesOrder />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/invoices',
+                    element: <InvoicesList />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/invoices/new',
+                    element: <CreateInvoice />,
+                  },
+                  {
+                    path: '/organizations/:orgId/sales/invoices/:id/edit',
+                    element: <CreateInvoice />,
                   },
                   {
                     path: '/organizations/:orgId/sales/customers/new',
@@ -708,6 +759,9 @@ export const router = createBrowserRouter([
                 path: 'automation/approval-processes/:id/edit',
                 element: <ApprovalProcessConfigStudio />,
               },
+              { path: 'integrations', element: <IntegrationsListPage /> },
+              { path: 'integrations/zoho', element: <ZohoBooksIntegrationPage /> },
+              { path: 'integrations/zoho/history', element: <ZohoSyncHistoryPage /> },
             ],
           },
           { path: '/organizations/new', element: <CreateOrganizationForm /> },

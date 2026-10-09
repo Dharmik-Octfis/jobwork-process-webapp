@@ -10,8 +10,8 @@ export const inventoryValuationQuerySchema = z.object({
   sku: z.string().optional(),
   hsnCode: z.string().optional(),
   itemCustomFields: z.record(z.string(), z.unknown()).optional(),
-  page: z.coerce.number().optional().default(1),
-  perPage: z.coerce.number().optional().default(25),
+  page: z.coerce.number().optional(),
+  perPage: z.coerce.number().optional(),
 });
 
 export type InventoryValuationQuery = z.infer<typeof inventoryValuationQuerySchema>;

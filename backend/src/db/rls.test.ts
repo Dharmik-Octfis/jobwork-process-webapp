@@ -20,6 +20,10 @@ import { aVendorOf, censusByOrg, totalVendors } from './rls.fixtures.ts';
 const TENANT_TABLES = [
   'bills',
   'bill_items',
+  'invoices',
+  'invoice_items',
+  'invoice_activities',
+  'invoice_comments',
   // What a bill line says it received, broken down by batch and package. Added in
   // 20260908075034_add_bill_item_batches. It carries its own `organization_id`
   // — denormalised from the parent bill — so it takes the direct policy form,
@@ -144,6 +148,7 @@ const TENANT_TABLES = [
   'approval_request_approvers',
   'approval_history',
   'approval_action_executions',
+  'approval_notifications',
   // Stock adjustments, added in 20261002051832_add_stock_adjustments, and their
   // lines in 20261002063459_stock_adjustment_lines. All three carry their own
   // `organization_id` (direct form).
@@ -152,14 +157,23 @@ const TENANT_TABLES = [
   'stock_adjustment_batches',
   // 20261003050033_stock_adjustment_reasons — direct form.
   'stock_adjustment_reasons',
+  // Integrations (Zoho Books)
+  'zoho_integrations',
+  'zoho_sync_history',
 ] as const;
 
 /**
  * Deliberately NOT tenant-gated. Gating these deadlocks the app: `tenantContext`
  * reads `memberships` to discover the tenant, "list my organizations" runs
- * before one is chosen, and invite links are public by design.
+ * before one is chosen, invite links are public by design, and OAuth handshake
+ * states are resolved on public unauthenticated callbacks.
  */
-const CONTROL_PLANE_TABLES = ['organizations', 'memberships', 'invitations'] as const;
+const CONTROL_PLANE_TABLES = [
+  'organizations',
+  'memberships',
+  'invitations',
+  'oauth_states',
+] as const;
 
 let rlsLive = false;
 let skipReason = '';

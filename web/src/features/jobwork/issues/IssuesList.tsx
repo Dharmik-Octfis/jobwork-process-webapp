@@ -1,21 +1,24 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { Plus, Send, SlidersHorizontal } from 'lucide-react';
+import { Plus, Send, SlidersHorizontal, MoreVertical, Download } from 'lucide-react';
 import { CustomizeColumnsModal } from '../../../components/ui/CustomizeColumnsModal';
 import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { Pagination } from '../../../components/ui/Pagination';
+import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { useListColumns } from '../../../hooks/useListColumns';
 import { useListCount } from '../../../hooks/useListCount';
 import { useListRowRetention } from '../../../hooks/useListRowRetention';
 import { useListSearch } from '../../../hooks/useListSearch';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { formatCustomFieldValue } from '../../custom-fields/formatCustomFieldValue';
 import type { CustomFieldDefinition } from '../../custom-fields/customFields.schemas';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { ISSUE_STATUS_META, formatQty, statusMeta } from '../jobwork.schemas';
 import { fetchIssuesForStep, fetchJobIssueCount, fetchJobIssues } from './jobIssues.api';
+import { exportJobChallansToExcel, fetchAllJobChallansForExport } from './utils/exportJobIssues';
 import { IssueDetail } from './IssueDetail';
 import type { JobIssue } from './jobIssues.schemas';
 
@@ -142,6 +145,78 @@ export function IssuesList() {
   // `cf:` columns carry no type in the catalog; the definitions format them.
   const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'job_issue');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleExportAll = async () => {
+    if (!orgId) return;
+    try {
+      setIsExporting(true);
+      notify.info('Preparing challans for export...');
+      const allChallans = await fetchAllJobChallansForExport(orgId, {
+        jobOrderNumber: search || undefined,
+      });
+
+      if (allChallans.length === 0) {
+        notify.error('No challans found to export.');
+        return;
+      }
+
+      exportJobChallansToExcel({
+        rows: allChallans,
+        filename: `Jobwork_Challan_Register_${new Date().toISOString().split('T')[0]}`,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allChallans.length} challan records as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export challans:', err);
+      notify.error('Failed to export challans. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedIssues = issues.filter((i) => selectedIds.includes(i.id));
+    if (selectedIssues.length === 0) {
+      notify.error('No selected challans to export.');
+      return;
+    }
+    exportJobChallansToExcel({
+      issues: selectedIssues,
+      filename: `Jobwork_Challans_Selected_${new Date().toISOString().split('T')[0]}`,
+      format: 'xlsx',
+    });
+    notify.success(
+      `Successfully exported ${selectedIssues.length} selected challan(s) as XLSX file.`,
+    );
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === issues.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(issues.map((i) => i.id));
+    }
+  };
 
   const openDetail = (id: string) => {
     const next = new URLSearchParams(searchParams);
@@ -182,99 +257,176 @@ export function IssuesList() {
             background: '#fff',
           }}
         >
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px 24px',
-              borderBottom: '1px solid #eef0f3',
-            }}
-          >
-            {stepId ? (
-              <div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
-                  Challans for one step
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSearchParams((prev) => {
-                      prev.delete('id');
-                      return prev;
-                    })
-                  }
-                  style={{
-                    marginLeft: 12,
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    font: 'inherit',
-                    fontSize: 12,
-                    color: '#0062ff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Show all challans
-                </button>
-              </div>
-            ) : (
-              <ListFilterDropdown
-                filters={filters}
-                value={filter}
-                onChange={setFilter}
-                fallbackLabel="All Challans"
-              />
-            )}
+          {!selectedId && !stepId && selectedIds.length > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.length}
+              onClearSelection={() => setSelectedIds([])}
+              onExport={handleExportSelected}
+              isProcessing={isExporting}
+            />
+          ) : (
+            <header
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 24px',
+                borderBottom: '1px solid #eef0f3',
+              }}
+            >
+              {stepId ? (
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+                    Challans for one step
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSearchParams((prev) => {
+                        prev.delete('id');
+                        return prev;
+                      })
+                    }
+                    style={{
+                      marginLeft: 12,
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      font: 'inherit',
+                      fontSize: 12,
+                      color: '#0062ff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Show all challans
+                  </button>
+                </div>
+              ) : (
+                <ListFilterDropdown
+                  filters={filters}
+                  value={filter}
+                  onChange={setFilter}
+                  fallbackLabel="All Challans"
+                />
+              )}
 
-            {!selectedId && !stepId && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <button
-                  type="button"
-                  onClick={() => setIsColumnsOpen(true)}
-                  title="Customize Columns"
-                  aria-label="Customize Columns"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 30,
-                    height: 30,
-                    borderRadius: 4,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    color: '#64748b',
-                  }}
-                >
-                  <SlidersHorizontal size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(`/organizations/${orgId}/jobwork/issues/new`, {
-                      state: { returnUrl: location.pathname + location.search },
-                    })
-                  }
-                  style={{
-                    background: '#186337',
-                    color: 'white',
-                    border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: 4,
-                    fontWeight: 500,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Plus size={16} /> New
-                </button>
-              </div>
-            )}
-          </header>
+              {!selectedId && !stepId && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsColumnsOpen(true)}
+                    title="Customize Columns"
+                    aria-label="Customize Columns"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 30,
+                      height: 30,
+                      borderRadius: 4,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                    }}
+                  >
+                    <SlidersHorizontal size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/organizations/${orgId}/jobwork/issues/new`, {
+                        state: { returnUrl: location.pathname + location.search },
+                      })
+                    }
+                    style={{
+                      background: '#186337',
+                      color: 'white',
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: 4,
+                      fontWeight: 500,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Plus size={16} /> New
+                  </button>
+
+                  <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                      title="More Actions"
+                      aria-label="More Actions"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 30,
+                        height: 30,
+                        borderRadius: 4,
+                        border: '1px solid #e2e8f0',
+                        background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                        cursor: 'pointer',
+                        color: '#64748b',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isMoreMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 4,
+                          background: '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                          minWidth: 220,
+                          zIndex: 50,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleExportAll();
+                          }}
+                          disabled={isExporting}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 13,
+                            color: '#1e293b',
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            textAlign: 'left',
+                            opacity: isExporting ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          <Download size={15} color="#166534" />
+                          Export Challans (XLSX)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </header>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {isLoading ? (
@@ -368,6 +520,21 @@ export function IssuesList() {
                         borderBottom: '1px solid #eef0f3',
                       }}
                     >
+                      <th
+                        style={{
+                          width: 48,
+                          ...headerStyle,
+                          paddingRight: 0,
+                          textAlign: 'center',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={issues.length > 0 && selectedIds.length === issues.length}
+                          onChange={toggleAll}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </th>
                       {columns.map((col) => (
                         <th key={col.key} style={headerStyle} scope="col">
                           {col.label}
@@ -377,19 +544,37 @@ export function IssuesList() {
                   </thead>
                   <tbody>
                     {issues.map((issue) => (
-                      /**
-                       * The whole row opens it. The LOCKED column stays a real
-                       * `<button>` underneath: a row `onClick` is invisible to
-                       * Tab, so this is the mouse convenience and the button is
-                       * the control (CLAUDE.md).
-                       */
                       <tr
                         key={issue.id}
                         onClick={() => openDetail(issue.id)}
-                        style={{ borderBottom: '1px solid #eef0f3', cursor: 'pointer' }}
+                        style={{
+                          borderBottom: '1px solid #eef0f3',
+                          cursor: 'pointer',
+                          background: selectedIds.includes(issue.id) ? '#f8fafc' : 'transparent',
+                        }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        onMouseLeave={(e) => {
+                          if (!selectedIds.includes(issue.id)) {
+                            e.currentTarget.style.background = 'transparent';
+                          }
+                        }}
                       >
+                        <td
+                          style={{
+                            width: 48,
+                            padding: '12px 16px',
+                            paddingRight: 0,
+                            textAlign: 'center',
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(issue.id)}
+                            onChange={() => toggleSelection(issue.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
                         {columns.map((col) => (
                           <td
                             key={col.key}

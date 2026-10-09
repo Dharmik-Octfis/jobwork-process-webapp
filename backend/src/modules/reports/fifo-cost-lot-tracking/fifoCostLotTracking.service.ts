@@ -388,15 +388,15 @@ export async function getFifoCostLotTracking(
 
     const total = rows.length;
     const page = _query.page || 1;
-    const perPage = _query.perPage || 25;
-    const totalPages = Math.ceil(total / perPage);
-    const paginatedRows = rows.slice((page - 1) * perPage, page * perPage);
+    const perPage = _query.perPage;
+    const paginatedRows = perPage ? rows.slice((page - 1) * perPage, page * perPage) : rows;
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
 
     return {
       results: paginatedRows,
       total,
-      page,
-      perPage,
+      page: perPage ? page : 1,
+      perPage: perPage ?? total,
       totalPages,
     };
   });
@@ -491,6 +491,26 @@ async function describeParties(
         partyName: null,
         partyId: null,
         partyType: null,
+      }),
+    );
+  }
+  const invoiceIds = idsOf('invoice');
+  if (invoiceIds.length) {
+    const docs = await tx.invoice.findMany({
+      where: { id: { in: invoiceIds } },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        customerId: true,
+        customer: { select: { contactName: true } },
+      },
+    });
+    docs.forEach((d) =>
+      info.set(d.id, {
+        number: d.invoiceNumber,
+        partyName: d.customer?.contactName || null,
+        partyId: d.customerId,
+        partyType: 'customer',
       }),
     );
   }

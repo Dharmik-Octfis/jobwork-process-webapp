@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { listQuerySchema } from '../../../lib/pagination.ts';
+import { reportListQuerySchema } from '../../../lib/pagination.ts';
 
-export const billsReportQuerySchema = listQuerySchema.extend({
+export const billsReportQuerySchema = reportListQuerySchema.extend({
   vendorId: z.string().optional(),
   status: z.string().optional(),
   fromDate: z.string().optional(),

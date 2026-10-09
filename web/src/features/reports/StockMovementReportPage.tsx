@@ -11,6 +11,7 @@ import {
 } from './reports.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 export function StockMovementReportPage() {
   const navigate = useNavigate();
@@ -89,6 +90,8 @@ export function StockMovementReportPage() {
         return `/organizations/${orgId}/purchases/purchase-orders?id=${row.sourceDocId}`;
       case 'inventory_adjustment':
         return `/organizations/${orgId}/inventory/adjustments?id=${row.sourceDocId}`;
+      case 'invoice':
+        return `/organizations/${orgId}/sales/invoices?id=${row.sourceDocId}`;
       default:
         return null;
     }
@@ -109,6 +112,56 @@ export function StockMovementReportPage() {
     fontSize: '13px',
     color: '#374151',
     borderBottom: '1px solid #f3f4f6',
+  };
+
+  const exportColumns = [
+    { key: 'transactionDate', label: 'TRANSACTION DATE', align: 'left' as const },
+    { key: 'transactionNumber', label: 'TRANSACTION NUMBER', align: 'left' as const },
+    { key: 'itemName', label: 'ITEM NAME', align: 'left' as const },
+    { key: 'transactionType', label: 'TRANSACTION', align: 'left' as const },
+    { key: 'movementType', label: 'MOVEMENT TYPE', align: 'left' as const },
+    { key: 'source', label: 'SOURCE', align: 'left' as const },
+    { key: 'destination', label: 'DESTINATION', align: 'left' as const },
+    { key: 'quantity', label: 'QUANTITY', align: 'right' as const },
+  ];
+
+  const exportRows = sortedRows.map((row) => [
+    format(new Date(row.transactionDate), 'dd-MM-yyyy'),
+    row.transactionNumber || '-',
+    row.itemName || '-',
+    row.transactionType || '-',
+    row.movementType || '-',
+    row.source || '-',
+    row.destination || '-',
+    Number(row.quantity || 0).toFixed(2),
+  ]);
+
+  const totalQuantity = sortedRows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+  const exportTotalRow = ['TOTAL', '', '', '', '', '', '', totalQuantity.toFixed(2)];
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const response = await reportsApi.getStockMovement(orgId, {
+      itemId: appliedFilters.itemId || undefined,
+      locationId: appliedFilters.locationId || undefined,
+      fromDate: startOfDay(appliedFilters.fromDate).toISOString(),
+      toDate: endOfDay(appliedFilters.toDate).toISOString(),
+      movementType: appliedFilters.movementType as 'all' | 'inward' | 'outward',
+    });
+    const allRows = response?.results || [];
+    const allExportRows = allRows.map((row) => [
+      format(new Date(row.transactionDate), 'dd-MM-yyyy'),
+      row.transactionNumber || '-',
+      row.itemName || '-',
+      row.transactionType || '-',
+      row.movementType || '-',
+      row.source || '-',
+      row.destination || '-',
+      Number(row.quantity || 0).toFixed(2),
+    ]);
+    const totalQty = allRows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+    const allTotalRow = ['TOTAL', '', '', '', '', '', '', totalQty.toFixed(2)];
+    return { data: allExportRows, totalRow: allTotalRow };
   };
 
   return (
@@ -171,22 +224,34 @@ export function StockMovementReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Stock Movement Report"
+            dateSubtitle={`From ${format(appliedFilters.fromDate, 'dd-MM-yyyy')} To ${format(appliedFilters.toDate, 'dd-MM-yyyy')}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -296,14 +361,78 @@ export function StockMovementReportPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
                 <tr style={{ borderTop: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }}>
-                  <SortableHeader sortKey="transactionDate" label="TRANSACTION DATE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="transactionNumber" label="TRANSACTION NUMBER" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="itemName" label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="transactionType" label="TRANSACTION" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="movementType" label="MOVEMENT TYPE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="source" label="SOURCE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="destination" label="DESTINATION" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />
-                  <SortableHeader sortKey="quantity" label="QUANTITY" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />
+                  <SortableHeader
+                    sortKey="transactionDate"
+                    label="TRANSACTION DATE"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="transactionNumber"
+                    label="TRANSACTION NUMBER"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="itemName"
+                    label="ITEM NAME"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="transactionType"
+                    label="TRANSACTION"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="movementType"
+                    label="MOVEMENT TYPE"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="source"
+                    label="SOURCE"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="destination"
+                    label="DESTINATION"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="left"
+                  />
+                  <SortableHeader
+                    sortKey="quantity"
+                    label="QUANTITY"
+                    currentSortField={sortField as string}
+                    currentSortDirection={sortDirection}
+                    onSort={handleSort}
+                    style={thStyle}
+                    align="right"
+                  />
                 </tr>
               </thead>
               <tbody>

@@ -10,8 +10,8 @@ export const stockSummaryQuerySchema = z.object({
   sku: z.string().optional(),
   hsnCode: z.string().optional(),
   itemCustomFields: z.record(z.string(), z.unknown()).optional(),
-  page: z.coerce.number().int().min(1).optional().default(1),
-  perPage: z.coerce.number().int().min(1).max(100).optional().default(25),
+  page: z.coerce.number().int().min(1).optional(),
+  perPage: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export type StockSummaryQuery = z.infer<typeof stockSummaryQuerySchema>;

@@ -152,6 +152,15 @@ const envSchema = z.object({
    * with its "Access Jobwork" button, so nothing dead-ends.
    */
   SSO_WEBSITE_URL: z.string().url().optional(),
+
+  /**
+   * Zoho Books OAuth integration configuration.
+   */
+  ZOHO_CLIENT_ID: z.string().optional(),
+  ZOHO_CLIENT_SECRET: z.string().optional(),
+  ZOHO_REDIRECT_URI: z.string().url().optional(),
+  ZOHO_ACCOUNTS_URL: z.string().url().default('https://accounts.zoho.com'),
+  ZOHO_SCOPES: z.string().default('ZohoBooks.fullaccess.all'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -256,6 +265,18 @@ export const env = {
       raw.ZC_CLIENT_SECRET &&
       raw.ZC_REFRESH_TOKEN &&
       raw.ZC_CACHE_SEGMENT_ID,
+    ),
+  },
+  zoho: {
+    clientId: raw.ZOHO_CLIENT_ID || '1000.T3COISIJZJGZY7M1YQD8TLK2AMS5WR',
+    clientSecret: raw.ZOHO_CLIENT_SECRET || '97cfeb1b3d7adf46d25218116df4021ddc44f384eb',
+    redirectUri: raw.ZOHO_REDIRECT_URI || 'http://localhost:5173/api/integrations/zoho/callback',
+    accountsUrl: (raw.ZOHO_ACCOUNTS_URL || 'https://accounts.zoho.in').replace(/\/+$/, ''),
+    scopes: raw.ZOHO_SCOPES || 'ZohoBooks.fullaccess.all',
+    isConfigured: Boolean(
+      (raw.ZOHO_CLIENT_ID || '1000.T3COISIJZJGZY7M1YQD8TLK2AMS5WR') &&
+      (raw.ZOHO_CLIENT_SECRET || '97cfeb1b3d7adf46d25218116df4021ddc44f384eb') &&
+      (raw.ZOHO_REDIRECT_URI || 'http://localhost:5173/api/integrations/zoho/callback'),
     ),
   },
 } as const;

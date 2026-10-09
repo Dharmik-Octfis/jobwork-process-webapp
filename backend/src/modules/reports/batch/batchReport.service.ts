@@ -131,7 +131,7 @@ export async function getBatchReport(
         EXISTS(SELECT 1 FROM batch_units bu WHERE bu.batch_id = b.id AND bu.is_deleted = false) AS "hasUnits"
       ${from}
       ORDER BY b.created_at DESC, b.batch_number ASC
-      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
+      ${perPage ? Prisma.sql`LIMIT ${perPage} OFFSET ${((page || 1) - 1) * perPage}` : Prisma.empty}`;
 
     const results: BatchReportRow[] = rows.map((row) => {
       const qty = Number(row.qty);
@@ -163,12 +163,14 @@ export async function getBatchReport(
       };
     });
 
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
+
     return {
       results,
       total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
+      page: perPage ? (page || 1) : 1,
+      perPage: perPage ?? total,
+      totalPages,
       grandTotalValue: Number(totals[0]?.value ?? 0),
     };
   });

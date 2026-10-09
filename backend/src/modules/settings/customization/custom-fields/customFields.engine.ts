@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ApiError } from '../../../../lib/apiError.ts';
 import type { TenantClient } from '../../../../db/prisma.ts';
 import { createMemoryCache } from '../../../../lib/memoryCache.ts';
-import type { EntityType } from './customFields.constants.ts';
+import { TEXT_LENGTH_CAPS, type DataType, type EntityType } from './customFields.constants.ts';
 
 /**
  * The custom-field VALUE engine (the "meal"). Vendor & Item services call this
@@ -47,14 +47,6 @@ function optionIds(config: unknown): string[] {
   return [];
 }
 
-function configNumber(config: unknown, key: 'min' | 'max' | 'maxLength'): number | undefined {
-  if (config && typeof config === 'object') {
-    const v = (config as Record<string, unknown>)[key];
-    if (typeof v === 'number' && Number.isFinite(v)) return v;
-  }
-  return undefined;
-}
-
 /** A value counts as "empty" only if truly absent. 0 and false are real answers. */
 function valueIsEmpty(value: unknown): boolean {
   if (value === undefined || value === null) return true;
@@ -65,34 +57,25 @@ function valueIsEmpty(value: unknown): boolean {
 
 /** Build a Zod validator for one field's value, from its dataType + config. */
 function buildValueSchema(def: FieldDefinition): z.ZodTypeAny {
-  const maxLength = configNumber(def.config, 'maxLength');
-  const min = configNumber(def.config, 'min');
-  const max = configNumber(def.config, 'max');
-
-  const withText = (): z.ZodTypeAny => {
-    let s = z.string();
-    if (maxLength !== undefined) s = s.max(maxLength, `Must be ${maxLength} characters or fewer.`);
-    return s;
-  };
-
-  const withNumber = (): z.ZodTypeAny => {
-    let s = z.coerce.number().refine((n) => Number.isFinite(n), 'Enter a valid number.');
-    if (min !== undefined) s = s.refine((n) => n >= min, `Must be at least ${min}.`);
-    if (max !== undefined) s = s.refine((n) => n <= max, `Must be at most ${max}.`);
-    return s;
-  };
+  // A `maxLength` left in an old definition's config is ignored on purpose.
+  const limit = TEXT_LENGTH_CAPS[def.dataType as DataType];
+  const tooLong = `Must be ${limit} characters or fewer.`;
 
   switch (def.dataType) {
     case 'text':
     case 'textarea':
     case 'phone':
-      return withText();
+      return limit === undefined ? z.string() : z.string().max(limit, tooLong);
     case 'email':
-      return z.email('Enter a valid email address.');
+      return limit === undefined
+        ? z.email('Enter a valid email address.')
+        : z.email('Enter a valid email address.').max(limit, tooLong);
     case 'url':
-      return z.url('Enter a valid URL.');
+      return limit === undefined
+        ? z.url('Enter a valid URL.')
+        : z.url('Enter a valid URL.').max(limit, tooLong);
     case 'number':
-      return withNumber();
+      return z.coerce.number().refine((n) => Number.isFinite(n), 'Enter a valid number.');
     case 'decimal':
       // Accept a number or numeric string; ALWAYS persist as a string.
       return z
@@ -127,7 +110,7 @@ function buildValueSchema(def: FieldDefinition): z.ZodTypeAny {
       return z.array(item);
     }
     default:
-      // Unknown / disabled types (e.g. attachment) can't be validated — reject.
+      // An unknown type can't be validated — reject.
       return z.never();
   }
 }

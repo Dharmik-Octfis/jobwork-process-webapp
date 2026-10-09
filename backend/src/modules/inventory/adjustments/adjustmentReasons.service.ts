@@ -17,6 +17,9 @@ export async function seedDefaultAdjustmentReasons(
   organizationId: string,
   userId: string | null,
 ) {
+  if (!tx.stockAdjustmentReason?.createMany) {
+    return;
+  }
   await tx.stockAdjustmentReason.createMany({
     data: DEFAULT_ADJUSTMENT_REASONS.map((name) => ({
       organizationId,

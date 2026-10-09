@@ -26,7 +26,6 @@ export interface CreateFieldPayload {
   config?: CustomFieldConfig;
   isRequired?: boolean;
   showInPrint?: boolean;
-  showInList?: boolean;
 }
 
 export interface UpdateFieldPayload {
@@ -34,7 +33,6 @@ export interface UpdateFieldPayload {
   config?: CustomFieldConfig;
   isRequired?: boolean;
   showInPrint?: boolean;
-  showInList?: boolean;
   status?: 'active' | 'hidden';
 }
 

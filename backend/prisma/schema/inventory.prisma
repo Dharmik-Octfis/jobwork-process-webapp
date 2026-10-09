@@ -175,6 +175,9 @@ model Batch {
 
   adjustmentBatches StockAdjustmentBatch[] @relation("StockAdjustmentBatchBatch")
 
+  salesOrderItems SalesOrderItem[]
+  invoiceItems    InvoiceItem[]
+
   @@unique([organizationId, batchNumber])
   @@index([organizationId, itemId])
   /// The expiry report's index — the whole point of promoting the column out of

@@ -8,11 +8,12 @@ import { ReportDateFilter } from './components/ReportDateFilter';
 import { Pagination } from '../../components/ui/Pagination';
 import { useListSearch } from '../../hooks/useListSearch';
 import { useOrganizationName } from '../../hooks/useOrganizationName';
-import { reportsApi } from './reports.api';
+import { reportsApi, type FifoCostLotTrackingRow } from './reports.api';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLocations, isOwnLocation } from '../configuration/locations/locations.api';
 import type { Item } from '../items/items.schemas';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const iconButtonStyle = {
   background: '#fff',
@@ -349,6 +350,202 @@ export function FifoCostLotTrackingPage() {
     );
   };
 
+  const customHead = useMemo(() => {
+    if (appliedFilters.reportBasis === 'product_out') {
+      return [
+        [
+          {
+            content: 'PRODUCT OUT',
+            colSpan: 4,
+            styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+          },
+          {
+            content: 'PRODUCT IN',
+            colSpan: 7,
+            styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+          },
+        ],
+        [
+          { content: 'DATE', styles: { halign: 'left' } },
+          { content: 'TRANSACTIONS', styles: { halign: 'left' } },
+          { content: 'DISPERSED TO', styles: { halign: 'left' } },
+          { content: 'QTY DISPERSED', styles: { halign: 'right' } },
+          { content: 'DATE', styles: { halign: 'left' } },
+          { content: 'TRANSACTIONS', styles: { halign: 'left' } },
+          { content: 'RECEIVED FROM', styles: { halign: 'left' } },
+          { content: 'QUANTITY', styles: { halign: 'right' } },
+          { content: 'AGE', styles: { halign: 'right' } },
+          { content: 'COST PER UNIT', styles: { halign: 'right' } },
+          { content: 'TOTAL', styles: { halign: 'right' } },
+        ],
+      ];
+    }
+    return [
+      [
+        {
+          content: 'PRODUCT IN',
+          colSpan: 7,
+          styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+        },
+        {
+          content: 'PRODUCT OUT',
+          colSpan: 4,
+          styles: { halign: 'center', fontStyle: 'bold', fillColor: [243, 244, 246] },
+        },
+      ],
+      [
+        { content: 'DATE', styles: { halign: 'left' } },
+        { content: 'TRANSACTIONS', styles: { halign: 'left' } },
+        { content: 'RECEIVED FROM', styles: { halign: 'left' } },
+        { content: 'QUANTITY', styles: { halign: 'right' } },
+        { content: 'AGE', styles: { halign: 'right' } },
+        { content: 'COST PER UNIT', styles: { halign: 'right' } },
+        { content: 'TOTAL', styles: { halign: 'right' } },
+        { content: 'DATE', styles: { halign: 'left' } },
+        { content: 'TRANSACTIONS', styles: { halign: 'left' } },
+        { content: 'DISPERSED TO', styles: { halign: 'left' } },
+        { content: 'QTY DISPERSED', styles: { halign: 'right' } },
+      ],
+    ];
+  }, [appliedFilters.reportBasis]);
+
+  const exportColumns = useMemo(() => {
+    if (appliedFilters.reportBasis === 'product_out') {
+      return [
+        { key: 'outDate', label: 'DATE', align: 'left' as const },
+        { key: 'outTransaction', label: 'TRANSACTIONS', align: 'left' as const },
+        { key: 'outDispersedTo', label: 'DISPERSED TO', align: 'left' as const },
+        { key: 'outQty', label: 'QTY DISPERSED', align: 'right' as const },
+        { key: 'inDate', label: 'DATE', align: 'left' as const },
+        { key: 'inTransaction', label: 'TRANSACTIONS', align: 'left' as const },
+        { key: 'inReceivedFrom', label: 'RECEIVED FROM', align: 'left' as const },
+        { key: 'inQty', label: 'QUANTITY', align: 'right' as const },
+        { key: 'inAge', label: 'AGE', align: 'right' as const },
+        { key: 'inCost', label: 'COST PER UNIT', align: 'right' as const },
+        { key: 'inTotal', label: 'TOTAL', align: 'right' as const },
+      ];
+    }
+    return [
+      { key: 'inDate', label: 'DATE', align: 'left' as const },
+      { key: 'inTransaction', label: 'TRANSACTIONS', align: 'left' as const },
+      { key: 'inReceivedFrom', label: 'RECEIVED FROM', align: 'left' as const },
+      { key: 'inQty', label: 'QUANTITY', align: 'right' as const },
+      { key: 'inAge', label: 'AGE', align: 'right' as const },
+      { key: 'inCost', label: 'COST PER UNIT', align: 'right' as const },
+      { key: 'inTotal', label: 'TOTAL', align: 'right' as const },
+      { key: 'outDate', label: 'DATE', align: 'left' as const },
+      { key: 'outTransaction', label: 'TRANSACTIONS', align: 'left' as const },
+      { key: 'outDispersedTo', label: 'DISPERSED TO', align: 'left' as const },
+      { key: 'outQty', label: 'QTY DISPERSED', align: 'right' as const },
+    ];
+  }, [appliedFilters.reportBasis]);
+
+  const safeFormatDate = (val?: string | Date | null) => {
+    if (!val) return '-';
+    if (typeof val === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(val)) return val;
+    const d = typeof val === 'string' ? new Date(val) : val;
+    return isNaN(d.getTime()) ? String(val) : format(d, 'dd-MM-yyyy');
+  };
+
+  const formatHeaderDate = (d?: Date | string | null) => {
+    if (!d) return '';
+    const dateObj = typeof d === 'string' ? new Date(d) : d;
+    return isNaN(dateObj.getTime()) ? '' : format(dateObj, 'dd-MM-yyyy');
+  };
+
+  type ExportCell =
+    | string
+    | number
+    | {
+        content: string | number;
+        colSpan?: number;
+        rowSpan?: number;
+        styles?: Record<string, unknown>;
+      };
+
+  const buildFifoRows = (rows: FifoCostLotTrackingRow[]): ExportCell[][] => {
+    const out: ExportCell[][] = [];
+    for (const r of rows) {
+      if (r.itemName) {
+        out.push([
+          {
+            content: `Item Name: ${r.itemName}`,
+            colSpan: 11,
+            styles: {
+              fontStyle: 'bold',
+              fillColor: [241, 245, 249],
+              textColor: [17, 24, 39],
+              fontSize: 8.5,
+              cellPadding: { top: 6, bottom: 6, left: 6, right: 6 },
+            },
+          },
+        ]);
+      }
+
+      const inQtyStr =
+        r.inQty !== null && r.inQty !== undefined && Number(r.inQty) > 0
+          ? r.inQtyRemaining > 0
+            ? `${r.inQty} ${r.inQtyUnit || ''}\nQty remaining: ${r.inQtyRemaining}`
+            : `${r.inQty} ${r.inQtyUnit || ''}`.trim()
+          : '-';
+
+      const outQtyStr =
+        r.outQty !== null && r.outQty !== undefined && Number(r.outQty) > 0
+          ? `${r.outQty} ${r.outQtyUnit || ''}`.trim()
+          : '-';
+
+      if (appliedFilters.reportBasis === 'product_out') {
+        out.push([
+          safeFormatDate(r.outDate),
+          r.outTransaction || '-',
+          r.outDispersedTo || '-',
+          outQtyStr,
+          safeFormatDate(r.inDate),
+          r.inTransaction || '-',
+          r.inReceivedFrom || '-',
+          inQtyStr,
+          r.inAge || '-',
+          r.inCost ? Number(r.inCost).toFixed(2) : '-',
+          r.inTotal ? Number(r.inTotal).toFixed(2) : '-',
+        ]);
+      } else {
+        out.push([
+          safeFormatDate(r.inDate),
+          r.inTransaction || '-',
+          r.inReceivedFrom || '-',
+          inQtyStr,
+          r.inAge || '-',
+          r.inCost ? Number(r.inCost).toFixed(2) : '-',
+          r.inTotal ? Number(r.inTotal).toFixed(2) : '-',
+          safeFormatDate(r.outDate),
+          r.outTransaction || '-',
+          r.outDispersedTo || '-',
+          outQtyStr,
+        ]);
+      }
+    }
+    return out;
+  };
+
+  const exportRows = useMemo(() => {
+    return buildFifoRows(dataRows || []);
+  }, [dataRows, appliedFilters.reportBasis]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getFifoCostLotTracking(orgId, {
+      reportBasis: appliedFilters.reportBasis,
+      fromDate: appliedFilters.fromDate
+        ? startOfDay(appliedFilters.fromDate).toISOString()
+        : undefined,
+      toDate: appliedFilters.toDate ? endOfDay(appliedFilters.toDate).toISOString() : undefined,
+      itemName: appliedFilters.itemName,
+      locationName: appliedFilters.locationName,
+    });
+    const allRows = allRes?.results || [];
+    return { data: buildFifoRows(allRows) };
+  };
+
   return (
     <div
       style={{
@@ -356,7 +553,8 @@ export function FifoCostLotTrackingPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -403,10 +601,12 @@ export function FifoCostLotTrackingPage() {
               FIFO Cost Lot Tracking
               <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
                 •{' '}
-                {appliedFilters.fromDate
-                  ? `From ${format(appliedFilters.fromDate, 'dd-MM-yyyy')}`
+                {formatHeaderDate(appliedFilters.fromDate)
+                  ? `From ${formatHeaderDate(appliedFilters.fromDate)}`
                   : ''}{' '}
-                {appliedFilters.toDate ? `To ${format(appliedFilters.toDate, 'dd-MM-yyyy')}` : ''}
+                {formatHeaderDate(appliedFilters.toDate)
+                  ? `To ${formatHeaderDate(appliedFilters.toDate)}`
+                  : ''}
                 {!appliedFilters.fromDate && !appliedFilters.toDate && 'All Time'}
               </span>
             </div>
@@ -414,6 +614,17 @@ export function FifoCostLotTrackingPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="FIFO Cost Lot Tracking"
+            dateSubtitle={`${formatHeaderDate(appliedFilters.fromDate) ? `From ${formatHeaderDate(appliedFilters.fromDate)}` : ''} ${formatHeaderDate(appliedFilters.toDate) ? `To ${formatHeaderDate(appliedFilters.toDate)}` : ''}`.trim()}
+            columns={exportColumns}
+            customHead={customHead}
+            data={exportRows}
+            fetchExportData={fetchExportData}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -590,10 +801,12 @@ export function FifoCostLotTrackingPage() {
               FIFO Cost Lot Tracking
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '4px' }}>
-              {appliedFilters.fromDate
-                ? `From ${format(appliedFilters.fromDate, 'dd-MM-yyyy')}`
+              {formatHeaderDate(appliedFilters.fromDate)
+                ? `From ${formatHeaderDate(appliedFilters.fromDate)}`
                 : ''}{' '}
-              {appliedFilters.toDate ? `To ${format(appliedFilters.toDate, 'dd-MM-yyyy')}` : ''}
+              {formatHeaderDate(appliedFilters.toDate)
+                ? `To ${formatHeaderDate(appliedFilters.toDate)}`
+                : ''}
               {!appliedFilters.fromDate && !appliedFilters.toDate && 'All Time'}
             </div>
             <div

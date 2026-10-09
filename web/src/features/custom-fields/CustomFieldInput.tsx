@@ -1,4 +1,4 @@
-import type { CustomFieldDefinition } from './customFields.schemas';
+import { TEXT_LENGTH_CAPS, type CustomFieldDefinition } from './customFields.schemas';
 import { DateInput } from '../../components/ui/DateInput';
 import { DateTimeInput } from '../../components/ui/DateTimeInput';
 import { Select } from '../../components/ui/Select';
@@ -58,6 +58,8 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
   // travel in it — `hasError` alone would lose to inputStyle's grey one.
   const fieldStyle = hasError ? { ...inputStyle, border: ERROR_BORDER } : inputStyle;
   const ariaInvalid = hasError || undefined;
+  // Stops typing at the limit the server enforces, instead of failing on Save.
+  const maxLength = TEXT_LENGTH_CAPS[def.dataType];
 
   let control: React.ReactNode;
 
@@ -67,6 +69,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
         <textarea
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
+          maxLength={maxLength}
           rows={3}
           style={{ ...fieldStyle, resize: 'vertical', height: 'auto' }}
           aria-invalid={ariaInvalid}
@@ -150,6 +153,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="email"
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
+          maxLength={maxLength}
           style={fieldStyle}
           aria-invalid={ariaInvalid}
         />
@@ -162,6 +166,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="url"
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
+          maxLength={maxLength}
           placeholder="https://…"
           style={fieldStyle}
           aria-invalid={ariaInvalid}
@@ -224,10 +229,6 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
       break;
     }
 
-    case 'attachment':
-      control = <span style={{ color: '#888', fontSize: 12 }}>Attachments are coming soon.</span>;
-      break;
-
     case 'text':
     case 'phone':
     default:
@@ -236,6 +237,7 @@ export function CustomFieldInput({ def, value, onChange, error, portal = false }
           type="text"
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
+          maxLength={maxLength}
           style={fieldStyle}
           aria-invalid={ariaInvalid}
         />

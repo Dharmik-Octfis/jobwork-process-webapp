@@ -74,6 +74,7 @@ const ROUTE_MAP: Record<string, string> = {
   SALES: '/sales',
   CUSTOMERS: '/sales/customers',
   SALES_ORDERS: '/sales/sales-orders',
+  INVOICES: '/sales/invoices',
   ITEMS: '/items',
   COMPOSITE_ITEMS: '/composite-items',
   INVENTORY_MANAGEMENT: '/inventory',

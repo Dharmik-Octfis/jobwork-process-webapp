@@ -1,15 +1,15 @@
 {
   "web/**/*.{ts,tsx,js,jsx}": [
     "prettier --write",
-    "node web/node_modules/eslint/bin/eslint.js --fix"
+    "node --max-old-space-size=4096 web/node_modules/eslint/bin/eslint.js --fix"
   ],
   "backend/**/*.{ts,js}": [
     "prettier --write",
-    "node backend/node_modules/eslint/bin/eslint.js --fix"
+    "node --max-old-space-size=4096 backend/node_modules/eslint/bin/eslint.js --fix"
   ],
   "accounts/**/*.{ts,js}": [
     "prettier --write",
-    "node accounts/node_modules/eslint/bin/eslint.js --fix"
+    "node --max-old-space-size=4096 accounts/node_modules/eslint/bin/eslint.js --fix"
   ],
   "*.{json,css,md,html}": ["prettier --write"]
 }

@@ -25,6 +25,7 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 // Filter fields are now dynamically generated in the component to access orgId
 
 export function StockSummaryReportPage() {
@@ -127,7 +128,10 @@ export function StockSummaryReportPage() {
   const { data: customFields = [] } = useActiveCustomFields(orgId, 'item');
 
   const locationOptions = useMemo(
-    () => locations.filter(loc => isOwnLocation(loc)).map((loc) => ({ label: loc.name, value: loc.id })),
+    () =>
+      locations
+        .filter((loc) => isOwnLocation(loc))
+        .map((loc) => ({ label: loc.name, value: loc.id })),
     [locations],
   );
 
@@ -304,6 +308,159 @@ export function StockSummaryReportPage() {
   const grandTotalClosing = data?.grandTotalClosing || 0;
   const total = data?.total || 0;
 
+  const exportColumns = useMemo(() => {
+    return visibleColumns.map((colKey) => {
+      switch (colKey) {
+        case 'itemName':
+          return { key: colKey, label: 'ITEM NAME', align: 'left' as const };
+        case 'categoryName':
+          return { key: colKey, label: 'CATEGORY NAME', align: 'left' as const };
+        case 'sku':
+          return { key: colKey, label: 'SKU', align: 'left' as const };
+        case 'hsnCode':
+          return { key: colKey, label: 'HSN CODE', align: 'left' as const };
+        case 'uomName':
+          return { key: colKey, label: 'UNIT', align: 'left' as const };
+        case 'openingStock':
+          return { key: colKey, label: 'OPENING STOCK', align: 'right' as const };
+        case 'quantityIn':
+          return { key: colKey, label: 'QUANTITY IN', align: 'right' as const };
+        case 'quantityOut':
+          return { key: colKey, label: 'QUANTITY OUT', align: 'right' as const };
+        case 'closingStock':
+          return { key: colKey, label: 'CLOSING STOCK', align: 'right' as const };
+        default: {
+          if (colKey.startsWith('cf_')) {
+            const cfKey = colKey.replace('cf_', '');
+            const cfLabel = customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
+            return { key: colKey, label: cfLabel.toUpperCase(), align: 'left' as const };
+          }
+          return { key: colKey, label: colKey.toUpperCase(), align: 'left' as const };
+        }
+      }
+    });
+  }, [visibleColumns, customFields]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'itemName':
+            return row.itemName || '-';
+          case 'categoryName':
+            return row.categoryName || '-';
+          case 'sku':
+            return row.sku || '-';
+          case 'hsnCode':
+            return row.hsnCode || '-';
+          case 'uomName':
+            return row.uomName || '-';
+          case 'openingStock':
+            return Number(row.openingStock || 0).toFixed(2);
+          case 'quantityIn':
+            return Number(row.quantityIn || 0).toFixed(2);
+          case 'quantityOut':
+            return Number(row.quantityOut || 0).toFixed(2);
+          case 'closingStock':
+            return Number(row.closingStock || 0).toFixed(2);
+          default: {
+            if (col.key.startsWith('cf_')) {
+              const cfKey = col.key.replace('cf_', '');
+              const val = row.customFields?.[cfKey];
+              return val !== undefined && val !== null ? String(val) : '-';
+            }
+            return '-';
+          }
+        }
+      }),
+    );
+  }, [sortedRows, exportColumns]);
+
+  const exportTotalRow = useMemo(() => {
+    return exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'openingStock':
+          return Number(grandTotalOpening || 0).toFixed(2);
+        case 'quantityIn':
+          return Number(grandTotalIn || 0).toFixed(2);
+        case 'quantityOut':
+          return Number(grandTotalOut || 0).toFixed(2);
+        case 'closingStock':
+          return Number(grandTotalClosing || 0).toFixed(2);
+        default:
+          return '';
+      }
+    });
+  }, [exportColumns, grandTotalOpening, grandTotalIn, grandTotalOut, grandTotalClosing]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const query: StockSummaryQuery = {
+      fromDate: appliedFilters.fromDate.toISOString(),
+      toDate: endOfDay(appliedFilters.toDate).toISOString(),
+    };
+    const itemNameCond = appliedFilters.conditions.find((c) => c.field === 'itemName');
+    if (itemNameCond && itemNameCond.value) query.itemName = itemNameCond.value as string;
+    const catNameCond = appliedFilters.conditions.find((c) => c.field === 'categoryName');
+    if (catNameCond && catNameCond.value) query.categoryName = catNameCond.value as string;
+    const locationCond = appliedFilters.conditions.find((c) => c.field === 'locationId');
+    if (locationCond && locationCond.value) query.locationId = locationCond.value as string;
+    const skuCond = appliedFilters.conditions.find((c) => c.field === 'sku');
+    if (skuCond && skuCond.value) query.sku = skuCond.value as string;
+
+    const res = await reportsApi.getStockSummary(orgId, query);
+    const allRows = res?.results ?? [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'itemName':
+            return row.itemName || '-';
+          case 'categoryName':
+            return row.categoryName || '-';
+          case 'sku':
+            return row.sku || '-';
+          case 'hsnCode':
+            return row.hsnCode || '-';
+          case 'uomName':
+            return row.uomName || '-';
+          case 'openingStock':
+            return Number(row.openingStock || 0).toFixed(2);
+          case 'quantityIn':
+            return Number(row.quantityIn || 0).toFixed(2);
+          case 'quantityOut':
+            return Number(row.quantityOut || 0).toFixed(2);
+          case 'closingStock':
+            return Number(row.closingStock || 0).toFixed(2);
+          default: {
+            if (col.key.startsWith('cf_')) {
+              const cfKey = col.key.replace('cf_', '');
+              const val = row.customFields?.[cfKey];
+              return val !== undefined && val !== null ? String(val) : '-';
+            }
+            return '-';
+          }
+        }
+      }),
+    );
+    const allTotalRow = exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'openingStock':
+          return Number(res?.grandTotalOpening ?? grandTotalOpening ?? 0).toFixed(2);
+        case 'quantityIn':
+          return Number(res?.grandTotalIn ?? grandTotalIn ?? 0).toFixed(2);
+        case 'quantityOut':
+          return Number(res?.grandTotalOut ?? grandTotalOut ?? 0).toFixed(2);
+        case 'closingStock':
+          return Number(res?.grandTotalClosing ?? grandTotalClosing ?? 0).toFixed(2);
+        default:
+          return '';
+      }
+    });
+    return { data: allExportRows, totalRow: allTotalRow };
+  };
+
   return (
     <div
       style={{
@@ -311,7 +468,8 @@ export function StockSummaryReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -363,22 +521,34 @@ export function StockSummaryReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Stock Summary Report"
+            dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -540,29 +710,139 @@ export function StockSummaryReportPage() {
                   {visibleColumns.map((colKey) => {
                     switch (colKey) {
                       case 'itemName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="ITEM NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="ITEM NAME"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'categoryName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="CATEGORY NAME" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="CATEGORY NAME"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'sku':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="SKU" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="SKU"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'hsnCode':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="HSN CODE" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="HSN CODE"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'uomName':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="UNIT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="UNIT"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="left"
+                          />
+                        );
                       case 'openingStock':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="OPENING STOCK" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="OPENING STOCK"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'quantityIn':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="QUANTITY IN" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="QUANTITY IN"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'quantityOut':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="QUANTITY OUT" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="QUANTITY OUT"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       case 'closingStock':
-                        return <SortableHeader key={colKey} sortKey={colKey} label="CLOSING STOCK" currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="right" />;
+                        return (
+                          <SortableHeader
+                            key={colKey}
+                            sortKey={colKey}
+                            label="CLOSING STOCK"
+                            currentSortField={sortField as string}
+                            currentSortDirection={sortDirection}
+                            onSort={handleSort}
+                            style={thStyle}
+                            align="right"
+                          />
+                        );
                       default:
                         if (colKey.startsWith('cf_')) {
                           const cfKey = colKey.replace('cf_', '');
                           const cfLabel =
                             customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
-                          return <SortableHeader key={colKey} sortKey={colKey} label={cfLabel.toUpperCase()} currentSortField={sortField as string} currentSortDirection={sortDirection} onSort={handleSort} style={thStyle} align="left" />;
+                          return (
+                            <SortableHeader
+                              key={colKey}
+                              sortKey={colKey}
+                              label={cfLabel.toUpperCase()}
+                              currentSortField={sortField as string}
+                              currentSortDirection={sortDirection}
+                              onSort={handleSort}
+                              style={thStyle}
+                              align="left"
+                            />
+                          );
                         }
                         return null;
                     }

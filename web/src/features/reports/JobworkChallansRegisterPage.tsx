@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { X, Filter, Columns } from 'lucide-react';
 import { format, endOfDay, startOfMonth } from 'date-fns';
+import { notify } from '../../lib/notify';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
@@ -14,9 +15,11 @@ import type { Item } from '../items/items.schemas';
 import { ReportDateFilter } from './components/ReportDateFilter';
 import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type JobworkChallansQuery, type JobworkChallanRow } from './reports.api';
+import { exportJobChallansToExcel } from '../jobwork/issues/utils/exportJobIssues';
 import { ISSUE_STATUS_META } from '../jobwork/jobwork.schemas';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const COLUMN_CATALOG = [
   { key: 'issueDate', label: 'DATE', locked: true, defaultVisible: true },
@@ -139,7 +142,8 @@ export function JobworkChallansRegisterPage() {
       processorName: valueOf('processorName'),
       processName: valueOf('processName'),
       jobOrderNumber: valueOf('jobOrderNumber'),
-      minAgeDays: applied.conditions.find((c) => c.field === 'minAgeDays')?.value as number | undefined,
+      minAgeDays: applied.conditions.find((c) => c.field === 'minAgeDays')?.value as
+        number | undefined,
       page,
       perPage,
     };
@@ -211,6 +215,98 @@ export function JobworkChallansRegisterPage() {
     }
   };
 
+  const exportColumns = useMemo(() => {
+    return COLUMN_CATALOG.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
+      key: c.key,
+      label: c.label,
+      align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
+    }));
+  }, [visibleColumns]);
+
+  const exportRows = useMemo(() => {
+    return rows.map((row) => {
+      const lines = row.lines || [];
+      return exportColumns.map((col) => {
+        switch (col.key) {
+          case 'issueDate':
+            return format(new Date(row.issueDate), 'dd-MM-yyyy');
+          case 'challanNumber':
+            return row.challanNumber || '-';
+          case 'processorName':
+            return row.processorName || '-';
+          case 'process':
+            return row.process || '-';
+          case 'jobOrderNumber':
+            return row.jobOrderNumber || '-';
+          case 'items':
+            return lines.map((l) => l.items || '-').join('\n') || '-';
+          case 'plannedQty':
+            return lines.map((l) => Number(l.plannedQty || 0).toFixed(2)).join('\n') || '0.00';
+          case 'issuedQty':
+            return lines.map((l) => Number(l.issuedQty || 0).toFixed(2)).join('\n') || '0.00';
+          case 'toBeIssuedQty':
+            return lines.map((l) => Number(l.toBeIssuedQty || 0).toFixed(2)).join('\n') || '0.00';
+          case 'daysOutstanding':
+            return row.daysOutstanding !== undefined && row.daysOutstanding !== null
+              ? String(row.daysOutstanding)
+              : '-';
+          case 'status':
+            return (
+              ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status
+            );
+          default:
+            return '-';
+        }
+      });
+    });
+  }, [rows, exportColumns]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getJobworkChallans(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const allRows = allRes?.results ?? [];
+    const out = allRows.map((row) => {
+      const lines = row.lines || [];
+      return exportColumns.map((col) => {
+        switch (col.key) {
+          case 'issueDate':
+            return format(new Date(row.issueDate), 'dd-MM-yyyy');
+          case 'challanNumber':
+            return row.challanNumber || '-';
+          case 'processorName':
+            return row.processorName || '-';
+          case 'process':
+            return row.process || '-';
+          case 'jobOrderNumber':
+            return row.jobOrderNumber || '-';
+          case 'items':
+            return lines.map((l) => l.items || '-').join('\n') || '-';
+          case 'plannedQty':
+            return lines.map((l) => Number(l.plannedQty || 0).toFixed(2)).join('\n') || '0.00';
+          case 'issuedQty':
+            return lines.map((l) => Number(l.issuedQty || 0).toFixed(2)).join('\n') || '0.00';
+          case 'toBeIssuedQty':
+            return lines.map((l) => Number(l.toBeIssuedQty || 0).toFixed(2)).join('\n') || '0.00';
+          case 'daysOutstanding':
+            return row.daysOutstanding !== undefined && row.daysOutstanding !== null
+              ? String(row.daysOutstanding)
+              : '-';
+          case 'status':
+            return (
+              ISSUE_STATUS_META[row.status as keyof typeof ISSUE_STATUS_META]?.label || row.status
+            );
+          default:
+            return '-';
+        }
+      });
+    });
+    return { data: out };
+  };
+
   return (
     <div
       style={{
@@ -218,7 +314,8 @@ export function JobworkChallansRegisterPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -243,25 +340,56 @@ export function JobworkChallansRegisterPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Jobwork Challan Register"
+            dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
+            columns={exportColumns}
+            data={exportRows}
+            fetchExportData={fetchExportData}
+            onExportExcel={async () => {
+              if (!orgId) return;
+              notify.info('Fetching all challans for Excel export...');
+              const allRes = await reportsApi.getJobworkChallans(orgId, {
+                ...query,
+                page: undefined,
+                perPage: undefined,
+              });
+              const allRows = allRes?.results ?? [];
+              if (allRows.length === 0) {
+                notify.error('No challan records to export.');
+                return;
+              }
+              exportJobChallansToExcel({
+                rows: allRows,
+                filename: `Jobwork_Challan_Register_${formattedFromDate}_to_${formattedToDate}`,
+                format: 'xlsx',
+              });
+              notify.success(`Exported all ${allRows.length} challan record(s) as XLSX file.`);
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '36px',
+              minHeight: '36px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -452,13 +580,18 @@ export function JobworkChallansRegisterPage() {
                   sortedRows.map((row) => (
                     <React.Fragment key={row.id}>
                       {row.lines.map((line, lineIndex) => (
-                        <tr
-                          key={line.id}
-                        >
+                        <tr key={line.id}>
                           {visibleColumns.map((key) => {
-                            const isLineCol = ['items', 'plannedQty', 'issuedQty', 'toBeIssuedQty', 'daysOutstanding', 'status'].includes(key);
+                            const isLineCol = [
+                              'items',
+                              'plannedQty',
+                              'issuedQty',
+                              'toBeIssuedQty',
+                              'daysOutstanding',
+                              'status',
+                            ].includes(key);
                             if (!isLineCol && lineIndex > 0) return null;
-                            
+
                             return (
                               <td
                                 key={key}

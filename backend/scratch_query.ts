@@ -1,0 +1,1 @@
+import pkg from '@prisma/client'; const { PrismaClient } = pkg; const prisma = new PrismaClient(); async function main() { console.log(await prisma.approvalProcess.findMany({ where: { moduleId: { contains: 'invoice' } }, select: { id: true, name: true, moduleId: true, status: true, isDeleted: true } })); } main().catch(console.error).finally(() => prisma.$disconnect());

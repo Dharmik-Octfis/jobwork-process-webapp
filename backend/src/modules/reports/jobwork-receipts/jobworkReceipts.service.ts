@@ -118,8 +118,7 @@ export async function getJobworkReceipts(
         },
       },
       orderBy: { receiptDate: 'desc' },
-      skip: (page - 1) * perPage,
-      take: perPage,
+      ...(perPage ? { skip: ((page || 1) - 1) * perPage, take: perPage } : {}),
     });
 
     const stepIds = Array.from(new Set(receipts.map((r) => r.jobOrderStepId)));
@@ -189,9 +188,9 @@ export async function getJobworkReceipts(
     return {
       results,
       total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
+      page: perPage ? (page || 1) : 1,
+      perPage: perPage ?? total,
+      totalPages: perPage ? Math.ceil(total / perPage) : 1,
     };
   });
 }

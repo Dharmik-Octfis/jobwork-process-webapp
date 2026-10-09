@@ -656,10 +656,10 @@ export function ReceiveForm({
   const returnedRows: ReturnedRow[] = useMemo(() => {
     if (returnedEdits) return returnedEdits;
     if (!prefill || isLoadingTopUps) return [];
-    // 🔴 The step's own main output leads the list, because the FIRST row is what
-    // carries the cost (see the note on the Value column). Left in seq order, a
-    // step whose main output happened to be typed second would put the cost on a
-    // by-product.
+    // 🔴 The step's own main output leads the list, because the FIRST row is sent
+    // as the receipt's primary — the one its header totals describe. Left in seq
+    // order, a step whose main output happened to be typed second would headline
+    // a by-product.
     const planned = [...prefill.outputs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     const saved = new Map(draft?.outputs?.map((output) => [output.itemId, output]) ?? []);
 
@@ -1160,9 +1160,15 @@ export function ReceiveForm({
               }}
             >
               <label
-                style={{ ...labelStyle, whiteSpace: 'nowrap', marginBottom: 0, marginTop: 10 }}
+                style={{
+                  ...labelStyle,
+                  color: '#ef4444',
+                  whiteSpace: 'nowrap',
+                  marginBottom: 0,
+                  marginTop: 10,
+                }}
               >
-                Received into
+                Received into*
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <RadioGroup
@@ -1289,7 +1295,7 @@ export function ReceiveForm({
                 marginBottom: 10,
               }}
             >
-              <h3 style={{ ...sectionHeading, margin: 0 }}>Received against</h3>
+              <h3 style={{ ...sectionHeading, margin: 0, color: '#ef4444' }}>Received against*</h3>
               {/* A job finishing normally closes every challan — eight hand-ticks is
                   how one gets missed. */}
               {selectedIssueIds.length > 0 && (
@@ -1478,8 +1484,8 @@ export function ReceiveForm({
                       <th style={th} scope="col">
                         Item
                       </th>
-                      <th style={th} scope="col">
-                        Received
+                      <th style={{ ...th, color: '#ef4444' }} scope="col">
+                        Received*
                       </th>
                       <th style={th} scope="col">
                         Rework

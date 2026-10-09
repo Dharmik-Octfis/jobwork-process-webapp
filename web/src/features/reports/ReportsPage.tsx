@@ -62,7 +62,6 @@ function SidebarItem({
   );
 }
 
-
 export function ReportsPage() {
   const navigate = useNavigate();
   const { orgId } = useParams<{ orgId: string }>();
@@ -115,9 +114,7 @@ export function ReportsPage() {
   });
 
   const sortedReports = [...filteredReports].sort((a, b) => {
-    if (a.isFavorite && !b.isFavorite) return -1;
-    if (!a.isFavorite && b.isFavorite) return 1;
-    return 0;
+    return a.name.localeCompare(b.name);
   });
 
   return (

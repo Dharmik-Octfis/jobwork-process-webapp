@@ -56,17 +56,18 @@ export function useAuthConfig() {
  * anything that is not a same-app path, because an absolute one would make this an
  * open redirect.
  *
- * `email` becomes the provider's `login_hint`, and is only ever set when we already
- * know who is arriving — today, an invitee following their link. It prefills the
- * provider's sign-in and signup fields so someone with no account yet registers the
- * address they were actually invited at; registering a different one gets them
- * signed in as an account the invitation cannot be accepted by. It is a default in
- * an editable field, nothing more.
+ * `invite` is an invitation's raw token. The server resolves it to the invited
+ * address and hands that to the provider, which then opens Create Account or Sign
+ * In with the address locked — docs/SSO_INVITE_SIGNUP_PLAN.md.
+ *
+ * 🔴 The token, never the address. The provider acts on that address (it tells a
+ * new person from an existing one), so the server only accepts it from an
+ * invitation it looked up itself; an `email=` here would be ignored.
  */
-export function startSsoLogin(returnTo?: string, email?: string): void {
+export function startSsoLogin(returnTo?: string, invite?: string): void {
   const url = new URL(`${window.location.origin}/api/auth/sso/login`);
   if (returnTo) url.searchParams.set('returnTo', returnTo);
-  if (email) url.searchParams.set('email', email);
+  if (invite) url.searchParams.set('invite', invite);
   window.location.assign(url.href);
 }
 

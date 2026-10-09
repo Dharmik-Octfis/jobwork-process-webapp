@@ -18,6 +18,7 @@ import { reportsApi, type TakaReportQuery, type TakaReportRow } from './reports.
 import { fetchLocations } from '../configuration/locations/locations.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const COLUMN_CATALOG = [
   { key: 'label', label: 'TAKA NO', locked: true, defaultVisible: true },
@@ -222,6 +223,115 @@ export function TakaReportPage() {
     }
   };
 
+  const exportColumns = useMemo(() => {
+    return catalog.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
+      key: c.key,
+      label: c.label,
+      align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
+    }));
+  }, [catalog, visibleColumns]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'label':
+            return row.label || '-';
+          case 'itemName':
+            return row.itemName || '-';
+          case 'batch':
+            return row.batch || '-';
+          case 'locationName':
+            return row.locationName || '-';
+          case 'qty':
+            return Number(row.qty || 0).toFixed(2);
+          case 'receivedOn':
+            return row.receivedOn ? format(new Date(row.receivedOn), 'dd-MM-yyyy') : '-';
+          case 'daysAtLocation':
+            return String(row.daysAtLocation ?? '-');
+          case 'receivedQty':
+            return Number(row.receivedQty || 0).toFixed(2);
+          case 'challanNumber':
+            return row.challanNumber || '-';
+          case 'value':
+            return Number(row.value || 0).toFixed(2);
+          default:
+            return '-';
+        }
+      })
+    );
+  }, [sortedRows, exportColumns]);
+
+  const totalTakaQty = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0), [rows]);
+  const calculatedTakaValue = useMemo(() => rows.reduce((acc, r) => acc + (Number(r.value) || 0), 0), [rows]);
+  const grandTotalTakaValue = data?.grandTotalValue ?? calculatedTakaValue;
+
+  const exportTotalRow = useMemo(() => {
+    return exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'qty':
+          return Number(totalTakaQty).toFixed(2);
+        case 'value':
+          return Number(grandTotalTakaValue).toFixed(2);
+        default:
+          return '';
+      }
+    });
+  }, [exportColumns, totalTakaQty, grandTotalTakaValue]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getTakaReport(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const allRows = allRes?.results ?? [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'label':
+            return row.label || '-';
+          case 'itemName':
+            return row.itemName || '-';
+          case 'batch':
+            return row.batch || '-';
+          case 'locationName':
+            return row.locationName || '-';
+          case 'qty':
+            return Number(row.qty || 0).toFixed(2);
+          case 'receivedOn':
+            return row.receivedOn ? format(new Date(row.receivedOn), 'dd-MM-yyyy') : '-';
+          case 'daysAtLocation':
+            return String(row.daysAtLocation ?? '-');
+          case 'receivedQty':
+            return Number(row.receivedQty || 0).toFixed(2);
+          case 'challanNumber':
+            return row.challanNumber || '-';
+          case 'value':
+            return Number(row.value || 0).toFixed(2);
+          default:
+            return '-';
+        }
+      })
+    );
+    const allTotalTakaQty = allRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
+    const allGrandTotalTakaValue = allRes?.grandTotalValue ?? allRows.reduce((acc, r) => acc + (Number(r.value) || 0), 0);
+    const allTotalRow = exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'qty':
+          return Number(allTotalTakaQty).toFixed(2);
+        case 'value':
+          return Number(allGrandTotalTakaValue).toFixed(2);
+        default:
+          return '';
+      }
+    });
+    return { data: allExportRows, totalRow: allTotalRow };
+  };
+
   return (
     <div
       style={{
@@ -254,25 +364,38 @@ export function TakaReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle={`${batchUnitLabel.singular} Report`}
+            dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '44px',
+              minHeight: '44px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

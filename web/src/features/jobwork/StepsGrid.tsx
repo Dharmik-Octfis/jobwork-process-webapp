@@ -437,8 +437,8 @@ function ItemList({
               color: '#64748b',
             }}
           >
-            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0 }}>
-              Item
+            <span aria-hidden="true" style={{ flex: '2 1 150px', minWidth: 0, color: '#ef4444' }}>
+              Item*
             </span>
             <span aria-hidden="true" style={{ flex: '0 0 62px' }}>
               Unit
@@ -711,8 +711,7 @@ function ItemList({
                     </div>
                   ))}
 
-                {/* 🔴 No "Main" radio. One output absorbs the step's cost
-                    (§9.2.1) and it is the FIRST row — the server's own fallback
+                {/* 🔴 No "Main" radio. The main output is the FIRST row — the server's own fallback
                     (`flagPrimaryOutput`), mirrored client-side by
                     `primaryOutputIndex` so the chain badge says the same thing.
                     Asking decided nothing in the common case, one item back, and

@@ -44,6 +44,7 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import { formatDate } from '../../lib/formatDate';
 import type { CustomFieldDefinition } from '../custom-fields/customFields.schemas';
 import { BulkActionBar } from '../../components/ui/BulkActionBar';
+import { exportItemsToExcel, fetchAllItemsForExport } from './utils/exportItems';
 
 /** Default columns matching Zoho Books Item List */
 const DEFAULT_ZOHO_ITEM_COLUMNS: ColumnDef[] = [
@@ -334,6 +335,24 @@ export function ItemsList() {
     save: saveColumns,
   } = useListColumns(orgId, 'item');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  // const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  // const moreMenuRef = useRef<HTMLDivElement>(null);
+   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    if (isMoreMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
 
   // Resolve active columns: use user's saved/selected columns, or fall back to defaults if not yet loaded
   const activeColumns = useMemo(() => {
@@ -346,7 +365,7 @@ export function ItemsList() {
   // View state & menus (matching Zoho Books items list)
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
   const [isViewModeMenuOpen, setIsViewModeMenuOpen] = useState(false);
-  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+ 
   const [activeSubmenu, setActiveSubmenu] = useState<'sort' | 'import' | 'export' | null>(null);
 
   const [viewDensity, setViewDensity] = useState<'expanded' | 'collapsed'>('expanded');
@@ -439,6 +458,49 @@ export function ItemsList() {
     color: '#475569',
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
+  };
+
+  const handleExportAllItems = async () => {
+    setIsExporting(true);
+    try {
+      notify.success('Exporting items to XLSX...');
+      const allItems = await fetchAllItemsForExport(orgId!, {});
+      if (allItems.length === 0) {
+        notify.error('No items found to export.');
+        return;
+      }
+      exportItemsToExcel({
+        items: allItems,
+        filename: `Items_${new Date().toISOString().split('T')[0]}`,
+        customFieldsDef,
+        visibleColumnKeys: visible,
+        exportAllFields: true,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allItems.length} items as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export items:', err);
+      notify.error('Failed to export items. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedItems = items.filter((i) => selectedIds.includes(i.id));
+    if (selectedItems.length === 0) {
+      notify.error('No selected items to export.');
+      return;
+    }
+    exportItemsToExcel({
+      items: selectedItems,
+      filename: `Items_Selected_${new Date().toISOString().split('T')[0]}`,
+      customFieldsDef,
+      visibleColumnKeys: visible,
+      exportAllFields: true,
+      format: 'xlsx',
+    });
+    notify.success(`Successfully exported ${selectedItems.length} selected items as XLSX file.`);
   };
 
   const setActiveForSelected = async (isActive: boolean) => {
@@ -585,8 +647,9 @@ export function ItemsList() {
               onClearSelection={() => setSelectedIds([])}
               onMarkActive={handleMarkActive}
               onMarkInactive={handleMarkInactive}
+              onExport={handleExportSelected}
               onDelete={handleDeleteSelected}
-              isProcessing={isProcessing}
+              isProcessing={isProcessing || isExporting}
             />
           ) : (
             <header

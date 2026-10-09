@@ -5,23 +5,25 @@ export async function getVendorsReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     contactNumber?: string;
     companyName?: string;
     status?: string;
     vendorType?: string;
-  }
+  },
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     contactNumber,
     companyName,
     status,
     vendorType,
   } = params;
-  
-  const skip = (page - 1) * pageSize;
+
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.VendorWhereInput = {
@@ -42,22 +44,28 @@ export async function getVendorsReport(
       where.vendorTypes = { has: vendorType };
     }
 
-    const [items, totalCount] = await Promise.all([
+    const [items, totalCount, paymentTermsList] = await Promise.all([
       tx.vendor.findMany({
         where,
-        skip,
-        take: pageSize,
+        ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { createdAt: 'desc' },
       }),
       tx.vendor.count({ where }),
+      tx.paymentTerm.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, termName: true },
+      }),
     ]);
 
     if (items.length === 0) {
       return {
         items: [],
-        pagination: { page, pageSize, totalCount, totalPages: 0 },
+        pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
+
+    const ptMap = new Map(paymentTermsList.map((pt) => [pt.id, pt.termName]));
+    const resolvePt = (pt: string | null | undefined) => (pt ? ptMap.get(pt) || pt : '-');
 
     const formattedItems = items.map((vendor) => {
       return {
@@ -65,11 +73,14 @@ export async function getVendorsReport(
         contactNumber: vendor.contactNumber,
         companyName: vendor.companyName,
         contactName: vendor.contactName,
-        primaryContact: [vendor.primaryContactFirstName, vendor.primaryContactLastName].filter(Boolean).join(' ') || null,
+        primaryContact:
+          [vendor.primaryContactFirstName, vendor.primaryContactLastName]
+            .filter(Boolean)
+            .join(' ') || null,
         email: vendor.email,
         phone: vendor.phone,
         currency: vendor.currency,
-        paymentTerms: vendor.paymentTerms,
+        paymentTerms: resolvePt(vendor.paymentTerms),
         notes: vendor.notes,
         customFields: vendor.customFields,
         createdAt: vendor.createdAt,
@@ -82,7 +93,7 @@ export async function getVendorsReport(
         page,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages: pageSize ? Math.ceil(totalCount / pageSize) : 1,
       },
     };
   });

@@ -39,7 +39,7 @@ export async function getStockMovementReport(
       toDate,
       movementType = 'all',
       page = 1,
-      perPage = 25,
+      perPage,
     } = query;
 
     const fromDateFilter = fromDate
@@ -114,6 +114,7 @@ export async function getStockMovementReport(
             WHEN n.source_doc_type = 'job_issue' THEN (SELECT challan_number FROM job_issues WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'purchase_order' THEN (SELECT po_number FROM purchase_orders WHERE id = n.source_doc_id)
             WHEN n.source_doc_type = 'inventory_adjustment' THEN (SELECT adjustment_number FROM stock_adjustments WHERE id = n.source_doc_id)
+            WHEN n.source_doc_type = 'invoice' THEN (SELECT invoice_number FROM invoices WHERE id = n.source_doc_id)
             -- its source_doc_id is the item's own id, never a number to show
             WHEN n.source_doc_type = 'item_opening_stock' THEN 'Opening Stock'
             ELSE n.source_doc_id::text
@@ -132,7 +133,7 @@ export async function getStockMovementReport(
       FROM (${netted}) n
       JOIN items i ON n.item_id = i.id
       ORDER BY n.posted_at DESC, n.created_at DESC
-      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
+      ${perPage ? Prisma.sql`LIMIT ${perPage} OFFSET ${(page - 1) * perPage}` : Prisma.empty}
     `;
 
     const mappedRows = rawRows.map((row) => ({
@@ -150,13 +151,13 @@ export async function getStockMovementReport(
       quantity: Number(row.quantity),
     }));
 
-    const totalPages = Math.ceil(total / perPage);
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
 
     return {
       results: mappedRows,
       total,
-      page,
-      perPage,
+      page: perPage ? page : 1,
+      perPage: perPage ?? total,
       totalPages,
       grandTotalQuantity,
     };

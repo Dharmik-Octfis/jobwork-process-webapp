@@ -274,11 +274,12 @@ custom_field_definitions
   key               → "truck_no"  — IMMUTABLE, never changes, never reused
   label             → "Truck Number" — freely renameable
   data_type         → TEXT | NUMBER | DECIMAL | CHECKBOX | DATE | ...
-  config            → JSON: options list, min/max, precision, regex...
+  config            → JSON: options list, helpText, defaultValue
 
   is_required       → mandatory?
-  show_in_print     → appears on the printed PO?
-  show_in_list      → appears as a list column?
+  show_in_print     → appears on the printed SO / PO / Bill? (only those three print custom fields)
+  show_in_list      → UNUSED since 2026-10-07 — list columns come from Customize Columns;
+                      the column remains but nothing reads or writes it
   is_filterable     → allowed in filters? (§8.2 — this is a cost control)
   display_order     → position on the form
 
@@ -290,21 +291,21 @@ The `config` column is deliberately loose JSON, because each data type needs dif
 we don't want 20 nullable columns:
 
 ```json
-// DECIMAL
-{ "precision": 2, "min": 0, "max": 999999 }
-
-// TEXT
-{ "maxLength": 100, "regex": "^GJ-\\d{2}-\\d{4}$" }
+// TEXT (any type) — help text and default value
+{ "helpText": "As printed on the RC", "defaultValue": "GJ-" }
 
 // SELECT / MULTI_SELECT
 { "options": [
     { "id": "opt_a1", "label": "Urgent",   "order": 1 },
     { "id": "opt_b2", "label": "Standard", "order": 2 }
 ] }
-
-// ATTACHMENT
-{ "maxSizeMb": 10, "allowedTypes": ["pdf", "jpg", "png"], "maxCount": 3 }
 ```
+
+Every string type has a hard length cap (`TEXT_LENGTH_CAPS`, `customFields.constants.ts`): text,
+phone and email 255, multi-line text 2000, URL 2048. JSONB bounds nothing, so without it a value had
+no limit at all. There is no per-field Max Length (removed 2026-10-08); a `maxLength` left in an old
+definition's config is ignored. Number/decimal range, decimal places and regex were removed on
+2026-10-07 — they were stored but never fully enforced. There is no attachment type.
 
 Note the dropdown options have **`id`s, not just labels**. §7.3 explains why this matters enormously.
 
@@ -644,8 +645,6 @@ Returns `active` definitions ordered by `display_order`. The frontend renders:
         return <Checkbox key={def.id} def={def} />;
       case 'MULTI_SELECT':
         return <MultiSelect key={def.id} def={def} options={def.config.options} />;
-      case 'ATTACHMENT':
-        return <FileUpload key={def.id} def={def} />;
       // ...
     }
   });
@@ -693,7 +692,7 @@ function buildCustomFieldsSchema(defs: CustomFieldDefinition[]) {
 
     switch (def.dataType) {
       case 'TEXT':
-        s = z.string().max(def.config.maxLength ?? 255);
+        s = z.string().max(255); // fixed cap per type — no per-field override
         break;
       case 'EMAIL':
         s = z.email();

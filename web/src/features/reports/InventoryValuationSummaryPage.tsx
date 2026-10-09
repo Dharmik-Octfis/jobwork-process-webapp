@@ -26,6 +26,7 @@ import { useActiveCustomFields } from '../custom-fields/customFields.api';
 import type { FilterDataType } from '../../components/ui/AdvancedFilter/filterUtils';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 const STOCK_OPTIONS = [
   { label: 'No criteria', value: 'none' },
   { label: 'Greater than zero', value: 'gt' },
@@ -308,6 +309,153 @@ export function InventoryValuationSummaryPage() {
   const totalValue = data?.grandTotalValue || 0;
   const total = data?.total || 0;
 
+  const exportColumns = useMemo(() => {
+    return visibleColumns.map((colKey) => {
+      switch (colKey) {
+        case 'itemName':
+          return { key: colKey, label: 'ITEM NAME', align: 'left' as const };
+        case 'categoryName':
+          return { key: colKey, label: 'CATEGORY NAME', align: 'left' as const };
+        case 'sku':
+          return { key: colKey, label: 'SKU', align: 'left' as const };
+        case 'hsnCode':
+          return { key: colKey, label: 'HSN CODE', align: 'left' as const };
+        case 'uomName':
+          return { key: colKey, label: 'UNIT', align: 'left' as const };
+        case 'stockOnHand':
+          return { key: colKey, label: 'STOCK ON HAND', align: 'right' as const };
+        case 'inventoryAssetValue':
+          return { key: colKey, label: 'INVENTORY ASSET VALUE', align: 'right' as const };
+        default: {
+          if (colKey.startsWith('cf_')) {
+            const cfKey = colKey.replace('cf_', '');
+            const cfLabel = customFields.find((cf) => cf.key === cfKey)?.label || cfKey;
+            return { key: colKey, label: cfLabel.toUpperCase(), align: 'left' as const };
+          }
+          return { key: colKey, label: colKey.toUpperCase(), align: 'left' as const };
+        }
+      }
+    });
+  }, [visibleColumns, customFields]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'itemName':
+            return row.itemName || '-';
+          case 'categoryName':
+            return row.categoryName || '-';
+          case 'sku':
+            return row.sku || '-';
+          case 'hsnCode':
+            return row.hsnCode || '-';
+          case 'uomName':
+            return row.uomName || '-';
+          case 'stockOnHand':
+            return Number(row.stockOnHand || 0).toFixed(2);
+          case 'inventoryAssetValue':
+            return Number(row.inventoryAssetValue || 0).toFixed(2);
+          default: {
+            if (col.key.startsWith('cf_')) {
+              const cfKey = col.key.replace('cf_', '');
+              const val = row.customFields?.[cfKey];
+              return val !== undefined && val !== null ? String(val) : '-';
+            }
+            return '-';
+          }
+        }
+      })
+    );
+  }, [sortedRows, exportColumns]);
+
+  const exportTotalRow = useMemo(() => {
+    return exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'stockOnHand':
+          return Number(totalQty || 0).toFixed(2);
+        case 'inventoryAssetValue':
+          return Number(totalValue || 0).toFixed(2);
+        default:
+          return '';
+      }
+    });
+  }, [exportColumns, totalQty, totalValue]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const query: InventoryValuationQuery = {
+      asOfDate: endOfDay(appliedFilters.asOfDate).toISOString(),
+    };
+    const itemNameCond = appliedFilters.conditions.find((c) => c.field === 'itemName');
+    if (itemNameCond && itemNameCond.value) query.itemName = itemNameCond.value as string;
+    const catNameCond = appliedFilters.conditions.find((c) => c.field === 'categoryName');
+    if (catNameCond && catNameCond.value) query.categoryName = catNameCond.value as string;
+    const skuCond = appliedFilters.conditions.find((c) => c.field === 'sku');
+    if (skuCond && skuCond.value) query.sku = skuCond.value as string;
+    const hsnCond = appliedFilters.conditions.find((c) => c.field === 'hsnCode');
+    if (hsnCond && hsnCond.value) query.hsnCode = hsnCond.value as string;
+
+    const itemCustomFields: Record<string, any> = {};
+    appliedFilters.conditions.forEach((c) => {
+      if (
+        c.field.startsWith('cf_') &&
+        c.value !== undefined &&
+        c.value !== null &&
+        c.value !== ''
+      ) {
+        itemCustomFields[c.field] = c.value;
+      }
+    });
+    if (Object.keys(itemCustomFields).length > 0) {
+      query.itemCustomFields = itemCustomFields;
+    }
+
+    const response = await reportsApi.getInventoryValuation(orgId, query);
+    const allRows = response?.results || [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'itemName':
+            return row.itemName || '-';
+          case 'categoryName':
+            return row.categoryName || '-';
+          case 'sku':
+            return row.sku || '-';
+          case 'hsnCode':
+            return row.hsnCode || '-';
+          case 'uomName':
+            return row.uomName || '-';
+          case 'stockOnHand':
+            return Number(row.stockOnHand || 0).toFixed(2);
+          case 'inventoryAssetValue':
+            return Number(row.inventoryAssetValue || 0).toFixed(2);
+          default: {
+            if (col.key.startsWith('cf_')) {
+              const cfKey = col.key.replace('cf_', '');
+              const val = row.customFields?.[cfKey];
+              return val !== undefined && val !== null ? String(val) : '-';
+            }
+            return '-';
+          }
+        }
+      })
+    );
+    const allTotalRow = exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'stockOnHand':
+          return Number(response?.grandTotalQty ?? totalQty ?? 0).toFixed(2);
+        case 'inventoryAssetValue':
+          return Number(response?.grandTotalValue ?? totalValue ?? 0).toFixed(2);
+        default:
+          return '';
+      }
+    });
+    return { data: allExportRows, totalRow: allTotalRow };
+  };
+
   return (
     <div
       style={{
@@ -367,22 +515,35 @@ export function InventoryValuationSummaryPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Inventory Valuation Summary"
+            dateSubtitle={`As of ${formattedAsOfDate}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

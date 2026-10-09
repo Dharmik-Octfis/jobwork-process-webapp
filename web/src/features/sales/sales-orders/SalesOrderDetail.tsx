@@ -21,17 +21,23 @@ import {
   fetchSalesOrderById,
   getSOSignedUrl,
   deleteSalesOrder,
+  updateSalesOrder,
   type SOAttachment,
 } from './sales-orders.api';
+import { useApprovalProcesses } from '../../automation/approval-processes/api/approvalProcess.api';
+import { RecordApprovalBanner } from '../../approvals/components/RecordApprovalBanner';
+import { RecordApprovalHistoryTimeline } from '../../approvals/components/RecordApprovalHistoryTimeline';
+import { useRecordApproval } from '../../approvals/useRecordApproval';
 import { fetchPaymentTerms } from '../customers/payment-terms.api';
 
 import { organizationsApi } from '../../organizations/organizations.api';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { X, Edit, ChevronDown, FileText, Paperclip, Copy, Trash2, Printer } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { SalesOrderComments } from './SalesOrderComments';
 import { SalesOrderActivityTimeline } from './SalesOrderActivityTimeline';
+import { type Invoice } from '../invoices/invoices.schemas';
 
 function SOAttachmentLink({ orgId, attachment }: { orgId: string; attachment: SOAttachment }) {
   const isDirectUrl = Boolean(attachment.data || attachment.url);
@@ -67,6 +73,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   const location = useLocation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('Overview');
+  const [activeSubTab, setActiveSubTab] = useState('Invoices');
   const [isPdfView, setIsPdfView] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
@@ -134,6 +141,38 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
     },
   });
 
+  const { data: approvalProcesses } = useApprovalProcesses(orgId, { moduleId: 'sales_orders', status: 'ACTIVE' });
+  const isApprovalEnabled = Boolean(approvalProcesses && approvalProcesses.length > 0);
+
+  useRecordApproval(
+    orgId,
+    'sales_orders',
+    poId,
+  );
+
+  const submitForApprovalMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Pending Approval' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+    },
+  });
+
+  const markAsApprovedMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Approved' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+    },
+  });
+
+  const markAsConfirmedMutation = useMutation({
+    mutationFn: () => updateSalesOrder({ orgId: orgId!, id: poId, data: { status: 'Confirmed' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] });
+      queryClient.invalidateQueries({ queryKey: ['salesOrders', orgId] });
+    },
+  });
 
 
 
@@ -158,6 +197,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
   const currentOrg = orgs?.find((o) => o.organizationId === orgId);
 
   const { data: customFieldDefs = [] } = useActiveCustomFields(orgId!, 'sales_order');
+  const printFieldDefs = customFieldDefs.filter((d) => d.showInPrint);
 
   const getPaymentTermLabel = (termVal?: string | null) => {
     if (!termVal) return '-';
@@ -183,7 +223,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
     );
   }
 
-  const tabs = ['Overview', 'Comments', 'Activity'];
+  const tabs = ['Overview', 'Comments', 'Activity', 'Approvals'];
 
   const labelStyle = {
     fontSize: '11px',
@@ -299,9 +339,7 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                 <div
                   onClick={() => {
                     setIsMoreOpen(false);
-                    navigate(
-                      `/organizations/${orgId}/sales/sales-orders/new?cloneFrom=${poId}`,
-                    );
+                    navigate(`/organizations/${orgId}/sales/sales-orders/new?cloneFrom=${poId}`);
                   }}
                   style={{
                     padding: '8px 12px',
@@ -369,9 +407,10 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         {/* Vertical Divider */}
         <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
 
-        {/* PDF / Print Dropdown next to Activity tab */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div ref={pdfMenuRef}>
+        {/* Convert to Invoice / PDF Print Dropdown next to Activity tab */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+
+          <div ref={pdfMenuRef} style={{ position: 'relative' }}>
             <button
               className="action-btn"
               onClick={() => setIsPdfMenuOpen(!isPdfMenuOpen)}
@@ -403,7 +442,8 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                   background: 'white',
                   border: '1px solid #eef0f3',
                   borderRadius: '4px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  boxShadow:
+                    '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
                   width: '130px',
                   zIndex: 20,
                   display: 'flex',
@@ -446,11 +486,113 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
               </div>
             )}
           </div>
+
+          {po?.status?.toLowerCase() === 'draft' && (
+            isApprovalEnabled ? (
+              <button
+                className="action-btn"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d97706',
+                  background: '#d97706',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: submitForApprovalMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: submitForApprovalMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {submitForApprovalMutation.isPending ? 'Saving...' : 'Submit for Approval'}
+              </button>
+            ) : (
+              <button
+                className="action-btn"
+                onClick={() => markAsConfirmedMutation.mutate()}
+                disabled={markAsConfirmedMutation.isPending}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #16a34a',
+                  background: '#16a34a',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  cursor: markAsConfirmedMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 500,
+                  opacity: markAsConfirmedMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {markAsConfirmedMutation.isPending ? 'Saving...' : 'Mark as Confirmed'}
+              </button>
+            )
+          )}
+
+          {isApprovalEnabled && po?.status?.toLowerCase() === 'pending approval' && (
+            <button
+              className="action-btn"
+              onClick={() => markAsApprovedMutation.mutate()}
+              disabled={markAsApprovedMutation.isPending}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #0062ff',
+                background: '#0062ff',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: markAsApprovedMutation.isPending ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: markAsApprovedMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {markAsApprovedMutation.isPending ? 'Saving...' : 'Approve'}
+            </button>
+          )}
+
+          {(!po.invoices || po.invoices.length === 0) && (po?.status?.toLowerCase() === 'approved' || po?.status?.toLowerCase() === 'confirmed') && (
+            <>
+              <div style={{ height: '16px', width: '1px', background: '#cbd5e1' }} />
+              <button
+                className="action-btn"
+                onClick={() => navigate(`/organizations/${orgId}/sales/invoices/new?convertFromSo=${poId}`)}
+                style={{
+                  padding: '6px 16px',
+                  background: '#0062ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <FileText size={16} /> Convert to Invoice
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0, background: '#f8fafc' }}>
+        {/* Zoho-style Top Record Approval Banner */}
+        {orgId && poId && activeTab !== 'Approvals' && (
+          <div style={{ padding: '24px 24px 0 24px' }}>
+            <RecordApprovalBanner
+              organizationId={orgId}
+              moduleId="sales_orders"
+              recordId={poId}
+              onActionComplete={() =>
+                queryClient.invalidateQueries({ queryKey: ['salesOrder', orgId, poId] })
+              }
+            />
+          </div>
+        )}
+
         <div
           style={{
             display: activeTab === 'Overview' ? 'flex' : 'none',
@@ -458,6 +600,169 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
             padding: '16px 24px',
           }}
         >
+          {/* Invoices Top Bar */}
+          <div
+            style={{
+              padding: '0 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid #eef0f3',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '20px' }}>
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('Invoices')}
+                style={{
+                  padding: '12px 0',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom:
+                    activeSubTab === 'Invoices' ? '2px solid #0062ff' : '2px solid transparent',
+                  color: activeSubTab === 'Invoices' ? '#0062ff' : '#475569',
+                  fontWeight: activeSubTab === 'Invoices' ? 600 : 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                Invoices{' '}
+                <span
+                  style={{
+                    background: '#eff6ff',
+                    color: '#0062ff',
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                  }}
+                >
+                  {po.invoices?.length || 0}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Invoices List View */}
+          {!isPdfView && activeSubTab === 'Invoices' && po.invoices && po.invoices.length > 0 && (
+            <div
+              style={{
+                marginBottom: '24px',
+                overflow: 'hidden',
+              }}
+            >
+              <div className="responsive-table-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'left',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        Invoice#
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'left',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        Date
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'left',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        Status
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'left',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        Due Date
+                      </th>
+                      <th
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'right',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#64748b',
+                        }}
+                      >
+                        Amount
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {po.invoices.map((inv: Invoice) => (
+                      <tr
+                        key={inv.id}
+                        style={{ borderBottom: '1px solid #f1f5f9' }}
+                      >
+                        <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                          <Link
+                            to={`/organizations/${orgId}/sales/invoices?id=${inv.id}`}
+                            style={{ color: '#0062ff', fontWeight: 500, textDecoration: 'none' }}
+                          >
+                            {inv.invoiceNumber}
+                          </Link>
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
+                          {inv.date ? format(new Date(inv.date), 'dd-MM-yyyy') : '-'}
+                        </td>
+                        <td
+                          style={{
+                            padding: '14px 16px',
+                            fontSize: '13px',
+                            color: '#64748b',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {inv.status}
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: '13px', color: '#1e293b' }}>
+                          {inv.dueDate ? format(new Date(inv.dueDate), 'dd-MM-yyyy') : '-'}
+                        </td>
+                        <td
+                          style={{
+                            padding: '14px 16px',
+                            fontSize: '13px',
+                            color: '#0f172a',
+                            fontWeight: 500,
+                            textAlign: 'right',
+                          }}
+                        >
+                          ₹{Number(inv.totalAmount || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Status Bar & PDF View Toggle */}
           <div
             style={{
@@ -623,7 +928,9 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                       Receive: <span style={{ color: '#64748b' }}>Yet To Be Received</span>
                     </div>
                     <div style={{ fontSize: '12px', color: '#475569' }}>
-                      Bill: <span style={{ color: '#16a34a' }}>Unbilled</span>
+                      Invoice: <span style={{ color: po.invoices?.length > 0 ? '#16a34a' : '#64748b' }}>
+                        {po.invoices?.length > 0 ? 'Invoiced' : 'Not Invoiced'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1117,10 +1424,10 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                         <strong>Terms</strong> : {getPaymentTermLabel(po.paymentTerms)}
                       </td>
                     </tr>
-                    {customFieldDefs.length > 0 &&
-                      Array.from({ length: Math.ceil(customFieldDefs.length / 2) }).map((_, i) => {
-                        const def1 = customFieldDefs[i * 2];
-                        const def2 = customFieldDefs[i * 2 + 1];
+                    {printFieldDefs.length > 0 &&
+                      Array.from({ length: Math.ceil(printFieldDefs.length / 2) }).map((_, i) => {
+                        const def1 = printFieldDefs[i * 2];
+                        const def2 = printFieldDefs[i * 2 + 1];
                         return (
                           <tr key={i} style={{ borderTop: '1px solid #000' }}>
                             <td
@@ -1180,7 +1487,9 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
                           lineHeight: 1.5,
                         }}
                       >
-                        <strong>{po.customer?.contactName || po.customer?.companyName || '-'}</strong>
+                        <strong>
+                          {po.customer?.contactName || po.customer?.companyName || '-'}
+                        </strong>
                         {po.customer?.email && <div>{po.customer.email}</div>}
                         {po.customer?.phone && <div>{po.customer.phone}</div>}
                       </td>
@@ -1408,6 +1717,11 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         <div style={{ display: activeTab === 'Activity' ? 'block' : 'none', padding: '16px' }}>
           <SalesOrderActivityTimeline orgId={orgId!} poId={poId} />
         </div>
+        <div style={{ display: activeTab === 'Approvals' ? 'block' : 'none', padding: '16px' }}>
+          {orgId && poId && (
+            <RecordApprovalHistoryTimeline organizationId={orgId} moduleId="sales_orders" recordId={poId} />
+          )}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -1418,8 +1732,6 @@ export function SalesOrderDetail({ poId, onClose }: { poId: string; onClose: () 
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setIsConfirmDeleteOpen(false)}
       />
-
-
     </div>
   );
 }

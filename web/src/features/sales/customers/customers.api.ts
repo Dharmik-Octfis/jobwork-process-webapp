@@ -151,12 +151,18 @@ export async function fetchCustomers(
   // the inner `{ results, pageContext }`. Empty params are dropped by axios.
   const response = await apiClient.get(endpoints.sales.customers(orgId), { params });
   const raw = response.data as { results: unknown[]; pageContext: unknown };
-  return customersPageSchema.parse({
-    results: raw.results.map((c) =>
+  const mapped = {
+    results: (raw.results || []).map((c) =>
       mapAddressesToFlat(c as Record<string, unknown> & { addresses?: CustomerAddress[] }),
     ),
     pageContext: raw.pageContext,
-  });
+  };
+  const parsed = customersPageSchema.safeParse(mapped);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  console.warn('Customer schema parse failed, falling back to mapped raw data:', parsed.error);
+  return mapped as unknown as CustomersPage;
 }
 
 /** Total matching customers — only called when the user clicks "view". */

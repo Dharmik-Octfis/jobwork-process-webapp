@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { X, Filter, Columns } from 'lucide-react';
+import { X, Filter, Columns, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { format, startOfMonth } from 'date-fns';
+import { notify } from '../../lib/notify';
 import { AdvancedFilter } from '../../components/ui/AdvancedFilter/AdvancedFilter';
 import type { FilterField, FilterCondition } from '../../components/ui/AdvancedFilter/filterUtils';
 import { CustomizeColumnsModal } from '../../components/ui/CustomizeColumnsModal';
@@ -19,6 +21,7 @@ import { fetchVendors } from '../purchases/vendors/vendors.api';
 import { fetchRoutes } from '../jobwork/process-routes/processRoutes.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 const COLUMN_CATALOG = [
   { key: 'jobOrderNumber', label: 'JOB ORDER#', locked: true, defaultVisible: true },
@@ -78,6 +81,7 @@ export function JobOrdersReportPage() {
   const [toDate, setToDate] = useState<Date>(initialState?.toDate || new Date());
   const [conditions, setConditions] = useState<FilterCondition[]>(initialState?.conditions ?? []);
   const [applied, setApplied] = useState<Applied>(initialState?.applied ?? { conditions: [], fromDate: startOfMonth(new Date()), toDate: new Date() });
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -225,6 +229,89 @@ export function JobOrdersReportPage() {
   const { sortedRows, sortField, sortDirection, handleSort } = useTableSort(rows);
   const total = data?.totalCount ?? 0;
 
+  const handleExportReport = async () => {
+    if (!orgId) return;
+    try {
+      setIsExporting(true);
+      notify.info('Preparing report for export...');
+      const allData = await reportsApi.getJobOrdersReport(orgId, {
+        ...query,
+        page: undefined,
+        perPage: undefined,
+      });
+
+      const reportResults = allData?.results || [];
+      if (reportResults.length === 0) {
+        notify.error('No report data found to export.');
+        return;
+      }
+
+      const activeColumns = COLUMN_CATALOG.filter((col) => visibleColumns.includes(col.key));
+      const headers = activeColumns.map((col) => col.label);
+      const exportRows: (string | number | null | undefined)[][] = [];
+
+      for (const r of reportResults) {
+        const rowSpanCount = Math.max(1, r.process.length);
+        for (let rowIndex = 0; rowIndex < rowSpanCount; rowIndex++) {
+          const rowData = activeColumns.map((col) => {
+            switch (col.key) {
+              case 'jobOrderNumber':
+                return r.jobOrderNumber;
+              case 'orderDate':
+                return r.orderDate ? format(new Date(r.orderDate), 'dd-MM-yyyy') : '';
+              case 'targetDate':
+                return r.targetDate ? format(new Date(r.targetDate), 'dd-MM-yyyy') : '';
+              case 'route':
+                return r.route || '-';
+              case 'materialBelongsTo':
+                return r.materialBelongsTo || '-';
+              case 'status':
+                return JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label || r.status;
+              case 'process':
+                return r.process[rowIndex] || '-';
+              case 'doneBy':
+                return r.doneBy[rowIndex] || '-';
+              case 'processorName':
+                return r.processorName[rowIndex] || '-';
+              default:
+                return '';
+            }
+          });
+          exportRows.push(rowData);
+        }
+      }
+
+      const worksheetData = [headers, ...exportRows];
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+
+      const colWidths = activeColumns.map((col, idx) => {
+        let maxLen = col.label.length;
+        for (const r of exportRows) {
+          const cellVal = r[idx];
+          if (cellVal !== undefined && cellVal !== null) {
+            const strLen = String(cellVal).length;
+            if (strLen > maxLen) maxLen = strLen;
+          }
+        }
+        return { wch: Math.min(Math.max(maxLen + 3, 12), 60) };
+      });
+      worksheet['!cols'] = colWidths;
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Job Order Report');
+
+      const fromStr = format(applied.fromDate, 'yyyy-MM-dd');
+      const toStr = format(applied.toDate, 'yyyy-MM-dd');
+      XLSX.writeFile(workbook, `Job_Order_Report_${fromStr}_to_${toStr}.xlsx`, { bookType: 'xlsx' });
+      notify.success(`Successfully exported ${exportRows.length} report rows as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export report:', err);
+      notify.error('Failed to export report. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const cell = (row: JobOrdersReportRow, key: string, rowIndex: number = 0) => {
     switch (key) {
       case 'jobOrderNumber':
@@ -256,6 +343,80 @@ export function JobOrdersReportPage() {
       default:
         return null;
     }
+  };
+
+  const exportColumns = useMemo(() => {
+    return COLUMN_CATALOG.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
+      key: c.key,
+      label: c.label,
+      align: 'left' as const,
+    }));
+  }, [visibleColumns]);
+
+  const exportRows = useMemo(() => {
+    return rows.map((r) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'jobOrderNumber':
+            return r.jobOrderNumber || '-';
+          case 'orderDate':
+            return r.orderDate ? format(new Date(r.orderDate), 'dd-MM-yyyy') : '-';
+          case 'targetDate':
+            return r.targetDate ? format(new Date(r.targetDate), 'dd-MM-yyyy') : '-';
+          case 'route':
+            return r.route || '-';
+          case 'materialBelongsTo':
+            return r.materialBelongsTo || '-';
+          case 'status':
+            return JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label || r.status;
+          case 'process':
+            return (r.process || []).join('\n') || '-';
+          case 'doneBy':
+            return (r.doneBy || []).join('\n') || '-';
+          case 'processorName':
+            return (r.processorName || []).join('\n') || '-';
+          default:
+            return '-';
+        }
+      })
+    );
+  }, [rows, exportColumns]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allData = await reportsApi.getJobOrdersReport(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const reportResults = allData?.results || [];
+    const out = reportResults.map((r) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'jobOrderNumber':
+            return r.jobOrderNumber || '-';
+          case 'orderDate':
+            return r.orderDate ? format(new Date(r.orderDate), 'dd-MM-yyyy') : '-';
+          case 'targetDate':
+            return r.targetDate ? format(new Date(r.targetDate), 'dd-MM-yyyy') : '-';
+          case 'route':
+            return r.route || '-';
+          case 'materialBelongsTo':
+            return r.materialBelongsTo || '-';
+          case 'status':
+            return JOB_ORDER_STATUS_META[r.status as keyof typeof JOB_ORDER_STATUS_META]?.label || r.status;
+          case 'process':
+            return (r.process || []).join('\n') || '-';
+          case 'doneBy':
+            return (r.doneBy || []).join('\n') || '-';
+          case 'processorName':
+            return (r.processorName || []).join('\n') || '-';
+          default:
+            return '-';
+        }
+      })
+    );
+    return { data: out };
   };
 
   return (
@@ -290,25 +451,37 @@ export function JobOrdersReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Job Order Report"
+            dateSubtitle={`From ${format(applied.fromDate, 'dd-MM-yyyy')} To ${format(applied.toDate, 'dd-MM-yyyy')}`}
+            columns={exportColumns}
+            data={exportRows}
+            fetchExportData={fetchExportData}
+            onExportExcel={handleExportReport}
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '44px',
+              minHeight: '44px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -401,10 +574,33 @@ export function JobOrdersReportPage() {
               top: '16px',
               right: '16px',
               display: 'flex',
-              gap: '16px',
+              gap: '12px',
               alignItems: 'center',
             }}
           >
+            <button
+              type="button"
+              onClick={handleExportReport}
+              disabled={isExporting}
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                color: '#166534',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: isExporting ? 'not-allowed' : 'pointer',
+                fontWeight: 500,
+                opacity: isExporting ? 0.6 : 1,
+              }}
+            >
+              <Download size={14} color="#166534" />
+              <span>Export (XLSX)</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowColumnsModal(true)}

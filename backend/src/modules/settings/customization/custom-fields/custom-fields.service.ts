@@ -65,7 +65,6 @@ export function listActiveDefinitions(organizationId: string, entityType: Entity
         config: true,
         isRequired: true,
         showInPrint: true,
-        showInList: true,
         displayOrder: true,
       },
     }),
@@ -121,7 +120,6 @@ export async function createDefinition(
         config: normalizeConfig(input.dataType, input.config) as Prisma.InputJsonValue,
         isRequired: input.isRequired,
         showInPrint: input.showInPrint,
-        showInList: input.showInList,
         displayOrder: (maxOrder._max.displayOrder ?? -1) + 1,
         status: 'active',
         createdBy: userId,
@@ -156,7 +154,6 @@ export async function updateDefinition(
     if (input.label !== undefined) data.label = input.label;
     if (input.isRequired !== undefined) data.isRequired = input.isRequired;
     if (input.showInPrint !== undefined) data.showInPrint = input.showInPrint;
-    if (input.showInList !== undefined) data.showInList = input.showInList;
     if (input.status !== undefined) data.status = input.status;
     if (input.config !== undefined) {
       data.config = normalizeConfig(existing.dataType, input.config) as Prisma.InputJsonValue;

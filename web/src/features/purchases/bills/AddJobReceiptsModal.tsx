@@ -4,7 +4,14 @@ import { format } from 'date-fns';
 
 interface JobReceiptOutput {
   id: string;
-  item: { id: string; name: string; sku: string | null; trackInventory?: boolean; inventoryTracking?: string | null };
+  item: {
+    id: string;
+    name: string;
+    sku: string | null;
+    trackInventory?: boolean;
+    inventoryTracking?: string | null;
+  };
+  uom?: { unitName: string; symbol?: string | null } | null;
   acceptedQty: number;
   rate: number;
   processCharge: number;
@@ -12,7 +19,11 @@ interface JobReceiptOutput {
   itemId: string;
   outputBatchId?: string | null;
   outputBatch?: { id?: string; batchNumber: string };
-  batches?: { kind: string; qty: string | number; batch: { id: string; supplierBatchRef?: string | null } }[];
+  batches?: {
+    kind: string;
+    qty: string | number;
+    batch: { id: string; supplierBatchRef?: string | null };
+  }[];
 }
 
 export interface OpenJobReceipt {
@@ -75,8 +86,7 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const allSelected =
-    filteredReceipts.length > 0 && selectedIds.size === filteredReceipts.length;
+  const allSelected = filteredReceipts.length > 0 && selectedIds.size === filteredReceipts.length;
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredReceipts.length;
 
   const handleSelectAll = () => {
@@ -298,7 +308,12 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
                     {index === 0 && (
                       <td
                         rowSpan={receipts.length}
-                        style={{ padding: '6px 12px', verticalAlign: 'top', background: 'white', borderRight: '1px solid #e2e8f0' }}
+                        style={{
+                          padding: '6px 12px',
+                          verticalAlign: 'top',
+                          background: 'white',
+                          borderRight: '1px solid #e2e8f0',
+                        }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -306,7 +321,8 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
                             type="checkbox"
                             checked={groupAllSelected}
                             ref={(input) => {
-                              if (input) input.indeterminate = groupSomeSelected && !groupAllSelected;
+                              if (input)
+                                input.indeterminate = groupSomeSelected && !groupAllSelected;
                             }}
                             onChange={() => {
                               const newSelection = new Set(selectedIds);
@@ -319,7 +335,9 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
                             }}
                             style={{ cursor: 'pointer' }}
                           />
-                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{jobOrderNumber}</span>
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                            {jobOrderNumber}
+                          </span>
                         </div>
                       </td>
                     )}
@@ -340,14 +358,20 @@ export const AddJobReceiptsModal: React.FC<AddJobReceiptsModalProps> = ({
                       {format(new Date(jr.receiptDate), 'dd MMM yyyy')}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', color: '#0f172a' }}>
-                      ₹{((Number(jr.consumedValue || 0)) + (Number(jr.processChargeTotal || 0))).toFixed(2)}
+                      ₹
+                      {(Number(jr.consumedValue || 0) + Number(jr.processChargeTotal || 0)).toFixed(
+                        2,
+                      )}
                     </td>
                   </tr>
                 ));
               })}
               {filteredReceipts.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                  <td
+                    colSpan={5}
+                    style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}
+                  >
                     No job receives found
                   </td>
                 </tr>

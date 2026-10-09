@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { listQuerySchema } from '../../../lib/pagination.ts';
+import { reportListQuerySchema } from '../../../lib/pagination.ts';
 
-export const jobOrdersReportQuerySchema = listQuerySchema.extend({
+export const jobOrdersReportQuerySchema = reportListQuerySchema.extend({
   jobOrderNumber: z.string().optional(),
   processorName: z.string().optional(),
   processName: z.string().optional(),

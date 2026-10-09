@@ -16,6 +16,7 @@ import { useRecordReportVisit } from './useRecordReportVisit';
 import { reportsApi, type JobOrderLossQuery, type JobOrderLossRow } from './reports.api';
 import { useTableSort } from '../../hooks/useTableSort';
 import { SortableHeader } from '../../components/ui/SortableHeader';
+import { ReportExportMenu } from './components/ReportExportMenu';
 
 /**
  * Every write-off a completed or short-closed job order step made — what the
@@ -222,6 +223,121 @@ export function JobOrderLossReportPage() {
     }
   };
 
+  const exportColumns = useMemo(() => {
+    return COLUMN_CATALOG.filter((c) => visibleColumns.includes(c.key)).map((c) => ({
+      key: c.key,
+      label: c.label,
+      align: (RIGHT_ALIGNED.has(c.key) ? 'right' : 'left') as 'right' | 'left',
+    }));
+  }, [visibleColumns]);
+
+  const exportRows = useMemo(() => {
+    return sortedRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'writtenOffAt':
+            return format(new Date(row.writtenOffAt), 'dd-MM-yyyy');
+          case 'jobOrderNumber':
+            return row.jobOrderNumber || '-';
+          case 'step':
+            return `${row.stepSeq}. ${row.processName}`;
+          case 'challanNumber':
+            return row.challanNumber || '-';
+          case 'processorName':
+            return row.processorName || '-';
+          case 'itemName':
+            return row.itemName || '-';
+          case 'batchNumber':
+            return row.batchNumber || '-';
+          case 'closedAs':
+            return row.closedAs === 'short_closed' ? 'Closed short' : 'Step completed';
+          case 'qty':
+            return Number(row.qty || 0).toFixed(2);
+          case 'value':
+            return Number(row.value || 0).toFixed(2);
+          case 'reason':
+            return row.reason || '-';
+          default:
+            return '-';
+        }
+      }),
+    );
+  }, [sortedRows, exportColumns]);
+
+  const grandTotalLossValue = data?.grandTotalValue ?? 0;
+  const totalLossQty = useMemo(
+    () => rows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0),
+    [rows],
+  );
+
+  const exportTotalRow = useMemo(() => {
+    return exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'qty':
+          return Number(totalLossQty).toFixed(2);
+        case 'value':
+          return Number(grandTotalLossValue).toFixed(2);
+        default:
+          return '';
+      }
+    });
+  }, [exportColumns, totalLossQty, grandTotalLossValue]);
+
+  const fetchExportData = async () => {
+    if (!orgId) return { data: [] };
+    const allRes = await reportsApi.getJobOrderLoss(orgId, {
+      ...query,
+      page: undefined,
+      perPage: undefined,
+    });
+    const allRows = allRes?.results ?? [];
+    const allExportRows = allRows.map((row) =>
+      exportColumns.map((col) => {
+        switch (col.key) {
+          case 'writtenOffAt':
+            return format(new Date(row.writtenOffAt), 'dd-MM-yyyy');
+          case 'jobOrderNumber':
+            return row.jobOrderNumber || '-';
+          case 'step':
+            return `${row.stepSeq}. ${row.processName}`;
+          case 'challanNumber':
+            return row.challanNumber || '-';
+          case 'processorName':
+            return row.processorName || '-';
+          case 'itemName':
+            return row.itemName || '-';
+          case 'batchNumber':
+            return row.batchNumber || '-';
+          case 'closedAs':
+            return row.closedAs === 'short_closed' ? 'Closed short' : 'Step completed';
+          case 'qty':
+            return Number(row.qty || 0).toFixed(2);
+          case 'value':
+            return Number(row.value || 0).toFixed(2);
+          case 'reason':
+            return row.reason || '-';
+          default:
+            return '-';
+        }
+      }),
+    );
+    const allTotalLossQty = allRows.reduce((acc, r) => acc + (Number(r.qty) || 0), 0);
+    const allGrandTotalLossValue = allRes?.grandTotalValue ?? grandTotalLossValue;
+    const allTotalRow = exportColumns.map((col, idx) => {
+      if (idx === 0) return 'TOTAL';
+      switch (col.key) {
+        case 'qty':
+          return Number(allTotalLossQty).toFixed(2);
+        case 'value':
+          return Number(allGrandTotalLossValue).toFixed(2);
+        default:
+          return '';
+      }
+    });
+    return { data: allExportRows, totalRow: allTotalRow };
+  };
+
   return (
     <div
       style={{
@@ -229,7 +345,8 @@ export function JobOrderLossReportPage() {
         flexDirection: 'column',
         height: '100%',
         background: '#f4f5f7',
-        fontFamily: '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Zoho Puvi", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Top Header */}
@@ -254,25 +371,38 @@ export function JobOrderLossReportPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Close report"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px',
-            minWidth: '44px',
-            minHeight: '44px',
-          }}
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ReportExportMenu
+            orgName={organizationName || 'OCTFIS TECHNO LLP'}
+            reportTitle="Job Order Loss Report"
+            dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
+            columns={exportColumns}
+            data={exportRows}
+            totalRow={exportTotalRow}
+            fetchExportData={fetchExportData}
+            footnote="**Amount is displayed in your base currency INR"
+          />
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Close report"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+              minWidth: '44px',
+              minHeight: '44px',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

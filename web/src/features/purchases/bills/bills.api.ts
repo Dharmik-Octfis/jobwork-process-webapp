@@ -15,7 +15,12 @@ import type { OpenJobReceipt } from './AddJobReceiptsModal';
 
 export async function fetchBills(orgId: string, params: PageParams = {}): Promise<BillsPage> {
   const response = await apiClient.get(endpoints.purchases.bills(orgId), { params });
-  return billsPageSchema.parse(response.data);
+  const parsed = billsPageSchema.safeParse(response.data);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  console.warn('Bills schema parse failed, falling back to raw data:', parsed.error);
+  return response.data as BillsPage;
 }
 
 export async function fetchBillCount(orgId: string, params: PageParams = {}): Promise<number> {

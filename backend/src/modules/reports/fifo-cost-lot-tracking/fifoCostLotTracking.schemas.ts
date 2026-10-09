@@ -6,8 +6,8 @@ export const fifoCostLotTrackingQuerySchema = z.object({
   itemName: z.string().optional(),
   locationName: z.string().optional(),
   reportBasis: z.enum(['product_in', 'product_out']).optional().default('product_in'),
-  page: z.coerce.number().optional().default(1),
-  perPage: z.coerce.number().optional().default(25),
+  page: z.coerce.number().optional(),
+  perPage: z.coerce.number().optional(),
 });
 
 export type FifoCostLotTrackingQuery = z.infer<typeof fifoCostLotTrackingQuerySchema>;

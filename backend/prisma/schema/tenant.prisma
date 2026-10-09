@@ -112,6 +112,9 @@ model User {
   updatedBillActivities         BillActivity[]          @relation("BillActivityUpdatedBy")
   createdBillComments           BillComment[]           @relation("BillCommentCreatedBy")
   updatedBillComments           BillComment[]           @relation("BillCommentUpdatedBy")
+  createdZohoIntegrations       ZohoIntegration[]       @relation("ZohoIntegrationCreatedBy")
+  updatedZohoIntegrations       ZohoIntegration[]       @relation("ZohoIntegrationUpdatedBy")
+  oauthStates                   OAuthState[]
   refreshTokens                 RefreshToken[]
   createdRoles                  Role[]                  @relation("RoleCreatedBy")
   updatedRoles                  Role[]                  @relation("RoleUpdatedBy")
@@ -221,8 +224,19 @@ model User {
   updatedApprovalActions         ApprovalAction[]          @relation("ApprovalActionUpdatedBy")
   approvalProcessAdmins          ApprovalProcessAdmin[]
   requestedApprovals             ApprovalRequest[]         @relation("ApprovalRequestRequester")
+  createdApprovalRequests        ApprovalRequest[]         @relation("ApprovalRequestCreatedBy")
+  updatedApprovalRequests        ApprovalRequest[]         @relation("ApprovalRequestUpdatedBy")
   assignedApprovals              ApprovalRequestApprover[]
   approvalHistories              ApprovalHistory[]
+  approvalNotifications          ApprovalNotification[]    @relation("ApprovalNotificationRecipient")
+  createdInvoices                Invoice[]                 @relation("InvoiceCreatedBy")
+  updatedInvoices                Invoice[]                 @relation("InvoiceUpdatedBy")
+  createdInvoiceItems            InvoiceItem[]             @relation("InvoiceItemCreatedBy")
+  updatedInvoiceItems            InvoiceItem[]             @relation("InvoiceItemUpdatedBy")
+  createdInvoiceActivities       InvoiceActivity[]         @relation("InvoiceActivityCreatedBy")
+  updatedInvoiceActivities       InvoiceActivity[]         @relation("InvoiceActivityUpdatedBy")
+  createdInvoiceComments         InvoiceComment[]          @relation("InvoiceCommentCreatedBy")
+  updatedInvoiceComments         InvoiceComment[]          @relation("InvoiceCommentUpdatedBy")
 
   @@map("users")
 }
@@ -386,6 +400,9 @@ model Organization {
   vendors                Vendor[]
   itemCategories         ItemCategory[]
   processes              Process[]
+  zohoIntegration        ZohoIntegration?
+  oauthStates            OAuthState[]
+  zohoSyncHistories      ZohoSyncHistory[]
   batches                Batch[]
   batchUnits             BatchUnit[]
   stockLedgerEntries     StockLedgerEntry[]
@@ -438,7 +455,9 @@ model Organization {
   approvalRequestStages    ApprovalRequestStage[]
   approvalRequestApprovers ApprovalRequestApprover[]
   approvalHistories        ApprovalHistory[]
-  approvalExecutedActions  ApprovalExecutedAction[]
+  approvalActionExecutions ApprovalActionExecution[]
+  approvalNotifications    ApprovalNotification[]
+  invoices                 Invoice[]
 
   @@map("organizations")
 }
@@ -606,17 +625,18 @@ model City {
 }
 
 model AppModule {
-  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code      String      @unique @db.VarChar(50)
-  name      String      @db.VarChar(100)
-  parentId  String?     @map("parent_id") @db.Uuid
-  sortIndex Int         @default(0) @map("sort_index")
-  icon      String?     @db.VarChar(50)
-  isActive  Boolean     @default(true) @map("is_active")
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  parent    AppModule?  @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
-  children  AppModule[] @relation("ModuleToSubModules")
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code              String            @unique @db.VarChar(50)
+  name              String            @db.VarChar(100)
+  parentId          String?           @map("parent_id") @db.Uuid
+  sortIndex         Int               @default(0) @map("sort_index")
+  icon              String?           @db.VarChar(50)
+  isActive          Boolean           @default(true) @map("is_active")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parent            AppModule?        @relation("ModuleToSubModules", fields: [parentId], references: [id], onDelete: Cascade)
+  children          AppModule[]       @relation("ModuleToSubModules")
+  zohoSyncHistories ZohoSyncHistory[]
 
   @@map("app_modules")
 }
@@ -806,6 +826,7 @@ model Location {
   stockAdjustments         StockAdjustment[]        @relation("StockAdjustmentLocation")
   itemOpeningStockRows     ItemOpeningStockRow[]
   jobOrderStepInputBatches JobOrderStepInputBatch[] @relation("JobOrderStepInputBatchLocation")
+  invoices                 Invoice[]                @relation("InvoiceSourceLocation")
 
   @@unique([organizationId, name])
   @@map("locations")

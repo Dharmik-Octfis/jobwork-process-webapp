@@ -111,6 +111,7 @@ model Item {
   jobOrderStepOutputRows JobOrderStepOutput[] @relation("JobOrderStepOutputItem")
   jobIssueLineItems      JobIssueLine[]       @relation("JobIssueLineItem")
   jobReceiptOutputRows   JobReceiptOutput[]   @relation("JobReceiptOutputRowItem")
+  invoiceItems           InvoiceItem[]
 
   @@map("items")
 }

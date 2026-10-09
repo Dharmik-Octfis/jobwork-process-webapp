@@ -32,7 +32,7 @@ vi.mock('../../../../config/env.ts', async (importOriginal) => {
   return { env: { ...actual.env, sso: { ...actual.env.sso, enabled: true } } };
 });
 
-const { acceptInvitation } = await import('./invitations.service.ts');
+const { acceptInvitation, pendingInvitationEmail } = await import('./invitations.service.ts');
 
 const users: string[] = [];
 const invitationIds: string[] = [];
@@ -158,5 +158,39 @@ describe('invitation accept — no local password once SSO is on', () => {
     });
 
     expect(await prisma.user.count({ where: { email: invite.email } })).toBe(0);
+  });
+});
+
+/**
+ * The SSO `login_hint` — docs/SSO_INVITE_SIGNUP_PLAN.md §3. Accounts picks Sign In or
+ * Create Account from it, so it must resolve ONLY for an invitation that is still
+ * live; anything else would let a spent link keep asking accounts about an address.
+ */
+describe('pendingInvitationEmail — the address behind a LIVE invitation only', () => {
+  it('returns the invited address for a pending, unexpired invitation', async () => {
+    const invite = await makeInvitation();
+
+    expect(await pendingInvitationEmail(invite.rawToken)).toBe(invite.email);
+  });
+
+  it.each(['accepted', 'revoked', 'declined'])('returns null once it is %s', async (status) => {
+    const invite = await makeInvitation();
+    await prisma.invitation.update({ where: { id: invite.id }, data: { status } });
+
+    expect(await pendingInvitationEmail(invite.rawToken)).toBeNull();
+  });
+
+  it('returns null once it has expired', async () => {
+    const invite = await makeInvitation();
+    await prisma.invitation.update({
+      where: { id: invite.id },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    expect(await pendingInvitationEmail(invite.rawToken)).toBeNull();
+  });
+
+  it('returns null for a token that was never issued', async () => {
+    expect(await pendingInvitationEmail(randomUUID())).toBeNull();
   });
 });

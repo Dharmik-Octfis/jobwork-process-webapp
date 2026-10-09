@@ -1042,7 +1042,7 @@ interface ResolvedOutput {
  * rollout bridge, and it is why the old Receive dialog keeps working unchanged.
  *
  * When rows ARE sent and none is flagged primary, the first is — the same rule
- * the job order step uses, because exactly one output must absorb the cost.
+ * the job order step uses, because the header's totals describe exactly one output.
  */
 function resolveOutputs(
   sent: readonly JobReceiptOutputInput[] | undefined,
@@ -1089,8 +1089,7 @@ function resolveOutputs(
   if (flagged.length > 1) {
     throw new ApiError(
       400,
-      `${flagged.length} returned items are marked as the main one. Only one can carry the cost ` +
-        'of the operation; the others take an explicit value.',
+      `${flagged.length} returned items are marked as the main one. Only one can be.`,
       { outputs: 'Mark exactly one returned item as the main one.' },
     );
   }

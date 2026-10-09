@@ -261,10 +261,10 @@ model RouteStepOutput {
   itemId String  @map("item_id") @db.Uuid
   uomId  String? @map("uom_id") @db.Uuid
 
-  /// 🔴 Exactly one output per step carries this. It absorbs the step's whole
-  /// cost; every other output is a by-product carrying an explicit value that is
-  /// deducted from this one's share (§9.2.1). Apportioning by quantity is not
-  /// available — 2,910 PCS and 80 KG have no ratio between them.
+  /// Exactly one output per step carries this: the main output, which the next
+  /// step is offered to carry on and which a receipt's header totals describe.
+  /// It no longer decides cost — every output is costed by recipe or share
+  /// (landed-cost R1–R7, 2026-09-18).
   isPrimary Boolean @default(false) @map("is_primary")
 
   /// Charge per ACCEPTED unit of this output — the template's suggestion, copied
@@ -1028,14 +1028,14 @@ model JobReceiptOutput {
   /// row is written for it — a row here would create quantity that was never ours.
   returnedQty Decimal @default(0) @map("returned_qty") @db.Decimal(18, 4)
 
-  /// 🔴 Exactly one output per receipt. It absorbs the pot — consumed value plus
-  /// the process charge — less whatever the by-products were given (§9.2.1).
+  /// Exactly one output per receipt: the one the header's six totals and its
+  /// `outputBatchId` / `reworkBatchId` describe. It no longer decides cost —
+  /// every output carries its own (landed-cost R5–R7).
   isPrimary Boolean @default(false) @map("is_primary")
 
-  /// By-products only: what this output is worth. NULL on the primary, which
-  /// takes the remainder. Default zero is the honest answer rather than a
-  /// placeholder — offcuts carry no cost until somebody sells them, and the
-  /// surviving primary should carry the cost of the whole operation.
+  /// ⚠️ Unused. Was a by-product's typed value, deducted from the primary's cost;
+  /// since landed-cost R5 every output is valued by what it consumed, and the
+  /// service writes NULL here.
   valueShare Decimal? @map("value_share") @db.Decimal(18, 4)
 
   /// What this row was billed at (defaults from the step output's rate), and the

@@ -5,9 +5,9 @@ import {
   deletePurchaseOrder,
 } from './purchase-orders.api';
 import { fetchPaymentTerms, type PaymentTerm } from './payment-terms.api';
-import { Plus, SlidersHorizontal, FileText } from 'lucide-react';
+import { Plus, SlidersHorizontal, FileText, MoreVertical, Download } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { PurchaseOrderDetail } from './PurchaseOrderDetail';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -19,6 +19,9 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { exportPurchaseOrdersToExcel, fetchAllPurchaseOrdersForExport } from './utils/exportPurchaseOrders';
 import type { PurchaseOrder } from './purchase-orders.schemas';
 
 function renderPoCell(po: PurchaseOrder, key: string, paymentTerms: PaymentTerm[] = []): string {
@@ -71,6 +74,8 @@ export function PurchaseOrdersList() {
   const purchaseOrders = data?.results ?? [];
   const pageContext = data?.pageContext;
 
+  const { data: customFieldsDef } = useActiveCustomFields(orgId, 'purchase_order');
+
   const {
     total,
     isCounting,
@@ -81,6 +86,72 @@ export function PurchaseOrdersList() {
 
   const { catalog, visible, filters, columns, save } = useListColumns(orgId, 'purchase_order');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleExportAll = async () => {
+    if (!orgId) return;
+    try {
+      setIsExporting(true);
+      notify.info('Preparing purchase orders for export...');
+      const allPurchaseOrders = await fetchAllPurchaseOrdersForExport(orgId, {
+        search: search || undefined,
+        filter,
+      });
+
+      if (allPurchaseOrders.length === 0) {
+        notify.error('No purchase orders found to export.');
+        return;
+      }
+
+      exportPurchaseOrdersToExcel({
+        purchaseOrders: allPurchaseOrders,
+        filename: `Purchase_Orders_${new Date().toISOString().split('T')[0]}`,
+        customFieldsDef,
+        visibleColumnKeys: visible,
+        exportAllFields: true,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allPurchaseOrders.length} purchase orders as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export purchase orders:', err);
+      notify.error('Failed to export purchase orders. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedPurchaseOrders = purchaseOrders.filter((po) => selectedIds.includes(po.id));
+    if (selectedPurchaseOrders.length === 0) {
+      notify.error('No selected purchase orders to export.');
+      return;
+    }
+    exportPurchaseOrdersToExcel({
+      purchaseOrders: selectedPurchaseOrders,
+      filename: `Purchase_Orders_Selected_${new Date().toISOString().split('T')[0]}`,
+      customFieldsDef,
+      visibleColumnKeys: visible,
+      exportAllFields: true,
+      format: 'xlsx',
+    });
+    notify.success(
+      `Successfully exported ${selectedPurchaseOrders.length} selected purchase orders as XLSX file.`,
+    );
+  };
 
   const queryClient = useQueryClient();
   const [poToDelete, setPoToDelete] = useState<string | null>(null);
@@ -148,8 +219,9 @@ export function PurchaseOrdersList() {
             <BulkActionBar
               selectedCount={selectedIds.length}
               onClearSelection={() => setSelectedIds([])}
+              onExport={handleExportSelected}
               onDelete={handleDeleteSelected}
-              isProcessing={isProcessing}
+              isProcessing={isProcessing || isExporting}
             />
           ) : (
             <header
@@ -157,7 +229,7 @@ export function PurchaseOrdersList() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: selectedPoId ? '12px 16px' : '16px 24px',
+                padding: selectedPoId ? '20px 16px' : '20px 24px',
                 background: '#fff',
                 borderBottom: '1px solid #eef0f3',
                 gap: 8,
@@ -172,23 +244,23 @@ export function PurchaseOrdersList() {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 {!selectedPoId && (
                   <button
                     onClick={() => setIsColumnsOpen(true)}
                     title="Customize Columns"
+                    aria-label="Customize Columns"
                     style={{
-                      background: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '4px',
-                      padding: '6px 10px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 6,
+                      justifyContent: 'center',
+                      width: 30,
+                      height: 30,
+                      borderRadius: 4,
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
                       cursor: 'pointer',
-                      color: '#475569',
-                      fontSize: '13px',
-                      whiteSpace: 'nowrap',
+                      color: '#64748b',
                     }}
                   >
                     <SlidersHorizontal size={15} />
@@ -218,6 +290,76 @@ export function PurchaseOrdersList() {
                 >
                   <Plus size={16} /> New
                 </button>
+
+                {!selectedPoId && (
+                  <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                      title="More Actions"
+                      aria-label="More Actions"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 30,
+                        height: 30,
+                        borderRadius: 4,
+                        border: '1px solid #e2e8f0',
+                        background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                        cursor: 'pointer',
+                        color: '#64748b',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isMoreMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 4,
+                          background: '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                          minWidth: 220,
+                          zIndex: 50,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleExportAll();
+                          }}
+                          disabled={isExporting}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 13,
+                            color: '#1e293b',
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            textAlign: 'left',
+                            opacity: isExporting ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          <Download size={15} color="#166534" />
+                          Export Purchase Orders (XLSX)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </header>
           )}

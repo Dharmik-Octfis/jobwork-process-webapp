@@ -164,7 +164,7 @@ export async function getTakaReport(
       ${from}
       GROUP BY bal.batch_unit_id, bal.batch_id, bal.location_id, bal.qty, bal.value, bal.last_in_here, bal.first_in_anywhere, bal.received_qty, bu.label, bu.source_doc_type, bu.source_doc_id, b.supplier_batch_ref, b.batch_number, i.id, i.name, loc.name, loc.type, bu.created_at, b.created_at
       ORDER BY COALESCE(bu.created_at, b.created_at) DESC, b.batch_number ASC
-      LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
+      ${perPage ? Prisma.sql`LIMIT ${perPage} OFFSET ${((page || 1) - 1) * perPage}` : Prisma.empty}
     `;
 
     const results: TakaReportRow[] = rows.map((row) => {
@@ -191,12 +191,14 @@ export async function getTakaReport(
       };
     });
 
+    const totalPages = perPage ? Math.ceil(total / perPage) : 1;
+
     return {
       results,
       total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
+      page: perPage ? (page || 1) : 1,
+      perPage: perPage ?? total,
+      totalPages,
       grandTotalValue: Number(totals[0]?.value ?? 0),
     };
   });

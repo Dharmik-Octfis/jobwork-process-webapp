@@ -277,22 +277,14 @@ export const jobReceiptOutputSchema = z
     returnedQty: z.coerce.number().min(0).optional(),
 
     /**
-     * 🔴 Exactly one output per receipt carries this. It absorbs the pot —
-     * consumed value plus the process charge — less whatever the by-products
-     * were given (§9.2.1). Omitted on every row, the primary is derived from the
-     * consumption lines, which is what a pre-Sprint-5 client sends.
+     * Exactly one output per receipt carries this — the one the header's totals
+     * describe. It no longer decides cost (landed-cost R5–R7). Omitted on every
+     * row, the first row is the primary.
      */
     isPrimary: z.boolean().optional(),
 
-    /**
-     * By-products only: what this row is worth, deducted from the primary's
-     * share. Default 0 is the honest answer rather than a placeholder — offcuts
-     * carry no cost until somebody sells them, and the surviving primary should
-     * carry the cost of the whole operation (§9.2.1).
-     *
-     * 🔴 Apportioning by quantity is NOT offered: 2,910 PCS and 80 KG have no
-     * ratio between them, and inventing one is the conversion §5.1 forbids.
-     */
+    /** ⚠️ Ignored. Was a by-product's typed value; since landed-cost R5 every
+     * output is valued by what it consumed, and the service stores NULL. */
     valueShare: z.coerce.number().min(0).nullable().optional(),
 
     /** What this row is billed at, per ACCEPTED unit (landed-cost plan D1–D2).

@@ -1,11 +1,15 @@
-import { prisma, runAsTenant } from '../../../db/prisma.ts';
+/* eslint-disable @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any -- raw SQL mappings and JSON config */
+import { runAsTenant } from '../../../db/prisma.ts';
 import { ApiError } from '../../../lib/apiError.ts';
 import { criteriaEvaluatorService } from './criteriaEvaluator.service.ts';
+import { moduleMetadataService } from './moduleMetadata.service.ts';
 import type {
   ApprovalProcessDetails,
   ApprovalProcessListItem,
   CreateApprovalProcessInput,
   UpdateApprovalProcessInput,
+  TriggerType,
+  ProcessStatus,
 } from './approvalProcess.types.ts';
 
 export class ApprovalProcessService {
@@ -35,26 +39,26 @@ export class ApprovalProcessService {
           id: string;
           name: string;
           description: string | null;
-          module_id: string;
-          trigger_type: string;
+          moduleId: string;
+          triggerType: string;
           status: string;
           priority: number;
-          current_version: number;
-          rules_count: number;
-          stages_count: number;
-          created_by_name: string | null;
-          updated_by_name: string | null;
-          created_at: Date;
-          updated_at: Date;
+          currentVersion: number;
+          rulesCount: number;
+          stagesCount: number;
+          createdByName: string | null;
+          updatedByName: string | null;
+          createdAt: Date;
+          updatedAt: Date;
         }>
       >`
-        SELECT p."id", p."name", p."description", p."module_id", p."trigger_type",
-               p."status", p."priority", p."current_version",
-               COUNT(DISTINCT r."id")::int as "rules_count",
-               COUNT(DISTINCT s."id")::int as "stages_count",
-               uc."full_name" as "created_by_name",
-               uu."full_name" as "updated_by_name",
-               p."created_at", p."updated_at"
+        SELECT p."id", p."name", p."description", p."module_id" as "moduleId", p."trigger_type" as "triggerType",
+               p."status", p."priority", p."current_version" as "currentVersion",
+               COUNT(DISTINCT r."id")::int as "rulesCount",
+               COUNT(DISTINCT s."id")::int as "stagesCount",
+               uc."full_name" as "createdByName",
+               uu."full_name" as "updatedByName",
+               p."created_at" as "createdAt", p."updated_at" as "updatedAt"
         FROM "approval_processes" p
         LEFT JOIN "approval_process_rules" r ON r."process_id" = p."id" AND r."is_deleted" = false
         LEFT JOIN "approval_stages" s ON s."rule_id" = r."id" AND s."is_deleted" = false
@@ -63,7 +67,7 @@ export class ApprovalProcessService {
         WHERE p."organization_id" = ${organizationId}::uuid
           AND p."is_deleted" = false
           AND (${searchPattern}::text IS NULL OR p."name" ILIKE ${searchPattern})
-          AND (${options.moduleId || null}::text IS NULL OR p."module_id" = ${options.moduleId})
+          AND (${options.moduleId || null}::text IS NULL OR p."module_id" = ${options.moduleId} OR p."module_id" || 's' = ${options.moduleId} OR p."module_id" = ${options.moduleId} || 's')
           AND (${options.status || null}::text IS NULL OR p."status" = ${options.status})
           AND (${options.trigger || null}::text IS NULL OR p."trigger_type" = ${options.trigger})
         GROUP BY p."id", uc."full_name", uu."full_name"
@@ -77,19 +81,17 @@ export class ApprovalProcessService {
         WHERE p."organization_id" = ${organizationId}::uuid
           AND p."is_deleted" = false
           AND (${searchPattern}::text IS NULL OR p."name" ILIKE ${searchPattern})
-          AND (${options.moduleId || null}::text IS NULL OR p."module_id" = ${options.moduleId})
+          AND (${options.moduleId || null}::text IS NULL OR p."module_id" = ${options.moduleId} OR p."module_id" || 's' = ${options.moduleId} OR p."module_id" = ${options.moduleId} || 's')
           AND (${options.status || null}::text IS NULL OR p."status" = ${options.status})
           AND (${options.trigger || null}::text IS NULL OR p."trigger_type" = ${options.trigger})
       `;
 
       const total = countRows[0]?.total ?? 0;
 
-      let moduleNameMap = new Map<string, string>();
+      const moduleNameMap = new Map<string, string>();
       try {
-        const appModules = await prisma.appModule.findMany({
-          select: { id: true, code: true, name: true },
-        });
-        for (const m of appModules) {
+        const modules = await moduleMetadataService.getModules(organizationId);
+        for (const m of modules) {
           moduleNameMap.set(m.id.toLowerCase(), m.name);
           moduleNameMap.set(m.code.toLowerCase(), m.name);
         }
@@ -99,24 +101,24 @@ export class ApprovalProcessService {
 
       return {
         items: rows.map((r) => {
-          const modKey = (r.module_id || '').toLowerCase();
-          const cleanName = moduleNameMap.get(modKey) || r.module_id.replace(/_/g, ' ').toUpperCase();
+          const modKey = (r.moduleId || '').toLowerCase();
+          const cleanName = moduleNameMap.get(modKey) || r.moduleId.replace(/_/g, ' ').toUpperCase();
           return {
             id: r.id,
             name: r.name,
             description: r.description,
-            moduleId: r.module_id,
+            moduleId: r.moduleId,
             moduleName: cleanName,
-            triggerType: r.trigger_type as any,
-            status: r.status as any,
+            triggerType: r.triggerType as TriggerType,
+            status: r.status as ProcessStatus,
             priority: r.priority,
-            currentVersion: r.current_version,
-            rulesCount: r.rules_count,
-            stagesCount: r.stages_count,
-            createdByName: r.created_by_name || undefined,
-            updatedByName: r.updated_by_name || undefined,
-            createdAt: r.created_at.toISOString(),
-            updatedAt: r.updated_at.toISOString(),
+            currentVersion: r.currentVersion,
+            rulesCount: r.rulesCount,
+            stagesCount: r.stagesCount,
+            createdByName: r.createdByName || undefined,
+            updatedByName: r.updatedByName || undefined,
+            createdAt: r.createdAt.toISOString(),
+            updatedAt: r.updatedAt.toISOString(),
           };
         }),
         total,
@@ -135,13 +137,12 @@ export class ApprovalProcessService {
     userId?: string,
   ): Promise<{ id: string }> {
     const result = await runAsTenant(organizationId, async (tx) => {
-      // Find max priority to append at end
-      const maxPriRows = await tx.$queryRaw<Array<{ max_pri: number | null }>>`
-        SELECT MAX("priority") as "max_pri"
+      const maxPriRows = await tx.$queryRaw<Array<{ maxPri: number | null }>>`
+        SELECT MAX("priority") as "maxPri"
         FROM "approval_processes"
         WHERE "organization_id" = ${organizationId}::uuid AND "is_deleted" = false
       `;
-      const nextPriority = (maxPriRows[0]?.max_pri ?? -1) + 1;
+      const nextPriority = (maxPriRows[0]?.maxPri ?? -1) + 1;
 
       // Insert process
       const procRows = await tx.$queryRaw<Array<{ id: string }>>`

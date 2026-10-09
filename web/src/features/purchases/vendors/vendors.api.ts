@@ -147,12 +147,18 @@ export async function fetchVendors(orgId: string, params: PageParams = {}): Prom
   // the inner `{ results, pageContext }`. Empty params are dropped by axios.
   const response = await apiClient.get(endpoints.purchases.vendors(orgId), { params });
   const raw = response.data as { results: unknown[]; pageContext: unknown };
-  return vendorsPageSchema.parse({
-    results: raw.results.map((v) =>
+  const mapped = {
+    results: (raw.results || []).map((v) =>
       mapAddressesToFlat(v as Record<string, unknown> & { addresses?: VendorAddress[] }),
     ),
     pageContext: raw.pageContext,
-  });
+  };
+  const parsed = vendorsPageSchema.safeParse(mapped);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  console.warn('Vendors schema parse failed, falling back to mapped raw data:', parsed.error);
+  return mapped as unknown as VendorsPage;
 }
 
 /** Total matching vendors — only called when the user clicks "view". */

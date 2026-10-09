@@ -5,23 +5,25 @@ export async function getCustomersReport(
   organizationId: string,
   params: {
     page?: number;
+    perPage?: number;
     pageSize?: number;
     contactNumber?: string;
     companyName?: string;
     status?: string;
     customerType?: string;
-  }
+  },
 ) {
   const {
-    page = 1,
-    pageSize = 20,
+    page,
+    perPage,
+    pageSize = perPage,
     contactNumber,
     companyName,
     status,
     customerType,
   } = params;
-  
-  const skip = (page - 1) * pageSize;
+
+  const skip = pageSize && page ? (page - 1) * pageSize : undefined;
 
   return runAsTenant(organizationId, async (tx) => {
     const where: Prisma.CustomerWhereInput = {
@@ -42,11 +44,10 @@ export async function getCustomersReport(
       where.customerType = customerType;
     }
 
-    const [items, totalCount] = await Promise.all([
+    const [items, totalCount, paymentTermsList] = await Promise.all([
       tx.customer.findMany({
         where,
-        skip,
-        take: pageSize,
+        ...(pageSize ? { skip: skip ?? 0, take: pageSize } : {}),
         orderBy: { createdAt: 'desc' },
         include: {
           _count: {
@@ -57,14 +58,21 @@ export async function getCustomersReport(
         },
       }),
       tx.customer.count({ where }),
+      tx.paymentTerm.findMany({
+        where: { organizationId, isDeleted: false },
+        select: { id: true, termName: true },
+      }),
     ]);
 
     if (items.length === 0) {
       return {
         items: [],
-        pagination: { page, pageSize, totalCount, totalPages: 0 },
+        pagination: { page: page || 1, pageSize: pageSize || totalCount, totalCount, totalPages: 0 },
       };
     }
+
+    const ptMap = new Map(paymentTermsList.map((pt) => [pt.id, pt.termName]));
+    const resolvePt = (pt: string | null | undefined) => (pt ? ptMap.get(pt) || pt : '-');
 
     const formattedItems = items.map((customer) => {
       return {
@@ -73,11 +81,14 @@ export async function getCustomersReport(
         customerType: customer.customerType,
         companyName: customer.companyName,
         contactName: customer.contactName,
-        primaryContact: [customer.primaryContactFirstName, customer.primaryContactLastName].filter(Boolean).join(' ') || null,
+        primaryContact:
+          [customer.primaryContactFirstName, customer.primaryContactLastName]
+            .filter(Boolean)
+            .join(' ') || null,
         email: customer.email,
         phone: customer.phone,
         currency: customer.currency,
-        paymentTerms: customer.paymentTerms,
+        paymentTerms: resolvePt(customer.paymentTerms),
         notes: customer.notes,
         customFields: customer.customFields,
         createdAt: customer.createdAt,
@@ -90,7 +101,7 @@ export async function getCustomersReport(
         page,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages: pageSize ? Math.ceil(totalCount / pageSize) : 1,
       },
     };
   });

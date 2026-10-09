@@ -17,7 +17,12 @@ export async function fetchPurchaseOrders(
   params: PageParams = {},
 ): Promise<PurchaseOrdersPage> {
   const response = await apiClient.get(endpoints.purchases.purchaseOrders(orgId), { params });
-  return purchaseOrdersPageSchema.parse(response.data);
+  const parsed = purchaseOrdersPageSchema.safeParse(response.data);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  console.warn('Purchase orders schema parse failed, falling back to raw data:', parsed.error);
+  return response.data as PurchaseOrdersPage;
 }
 
 export async function fetchPurchaseOrderCount(

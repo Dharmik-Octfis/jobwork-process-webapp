@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchVendors, fetchVendorCount, deleteVendor, updateVendor } from './vendors.api';
-import { Plus, Building2, SlidersHorizontal } from 'lucide-react';
+import { Plus, Building2, SlidersHorizontal, MoreVertical, Download } from 'lucide-react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { VendorDetail } from './VendorDetail';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -19,6 +19,9 @@ import { ListFilterDropdown } from '../../../components/ui/ListFilterDropdown';
 import { BulkActionBar } from '../../../components/ui/BulkActionBar';
 import { CUSTOM_FIELD_PREFIX } from '../../list-views/listViews.api';
 import { formatDate } from '../../../lib/formatDate';
+import { notify } from '../../../lib/notify';
+import { useActiveCustomFields } from '../../custom-fields/customFields.api';
+import { exportVendorsToExcel, fetchAllVendorsForExport } from './utils/exportVendors';
 import type { Vendor } from './vendors.schemas';
 
 /**
@@ -80,6 +83,8 @@ export function VendorsList() {
   const vendors = data?.results ?? [];
   const pageContext = data?.pageContext;
 
+  const { data: customFieldsDef } = useActiveCustomFields(orgId, 'vendor');
+
   // Total row count — fetched only when the user clicks "view".
   const {
     total,
@@ -92,6 +97,72 @@ export function VendorsList() {
   // Column layout ("Customize Columns") — per user, per org, per module.
   const { catalog, visible, filters, columns, save: saveColumns } = useListColumns(orgId, 'vendor');
   const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleExportAll = async () => {
+    if (!orgId) return;
+    try {
+      setIsExporting(true);
+      notify.info('Preparing vendors for export...');
+      const allVendors = await fetchAllVendorsForExport(orgId, {
+        search: search || undefined,
+        filter,
+      });
+
+      if (allVendors.length === 0) {
+        notify.error('No vendors found to export.');
+        return;
+      }
+
+      exportVendorsToExcel({
+        vendors: allVendors,
+        filename: `Vendors_${new Date().toISOString().split('T')[0]}`,
+        customFieldsDef,
+        visibleColumnKeys: visible,
+        exportAllFields: true,
+        format: 'xlsx',
+      });
+      notify.success(`Successfully exported ${allVendors.length} vendors as XLSX file.`);
+    } catch (err) {
+      console.error('Failed to export vendors:', err);
+      notify.error('Failed to export vendors. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedVendors = vendors.filter((v) => selectedIds.includes(v.id));
+    if (selectedVendors.length === 0) {
+      notify.error('No selected vendors to export.');
+      return;
+    }
+    exportVendorsToExcel({
+      vendors: selectedVendors,
+      filename: `Vendors_Selected_${new Date().toISOString().split('T')[0]}`,
+      customFieldsDef,
+      visibleColumnKeys: visible,
+      exportAllFields: true,
+      format: 'xlsx',
+    });
+    notify.success(
+      `Successfully exported ${selectedVendors.length} selected vendors as XLSX file.`,
+    );
+  };
 
   const queryClient = useQueryClient();
   const [vendorToDelete, setVendorToDelete] = useState<string | null>(null);
@@ -191,8 +262,9 @@ export function VendorsList() {
               onClearSelection={() => setSelectedIds([])}
               onMarkActive={handleMarkActive}
               onMarkInactive={handleMarkInactive}
+              onExport={handleExportSelected}
               onDelete={handleDeleteSelected}
-              isProcessing={isProcessing}
+              isProcessing={isProcessing || isExporting}
             />
           ) : (
             <header
@@ -212,7 +284,7 @@ export function VendorsList() {
                 fallbackLabel="All Vendors"
               />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {!selectedVendorId && (
                   <button
                     onClick={() => setIsColumnsOpen(true)}
@@ -257,6 +329,76 @@ export function VendorsList() {
                 >
                   <Plus size={16} /> New
                 </button>
+
+                {!selectedVendorId && (
+                  <div style={{ position: 'relative' }} ref={moreMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                      title="More Actions"
+                      aria-label="More Actions"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 30,
+                        height: 30,
+                        borderRadius: 4,
+                        border: '1px solid #e2e8f0',
+                        background: isMoreMenuOpen ? '#f1f5f9' : '#fff',
+                        cursor: 'pointer',
+                        color: '#64748b',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isMoreMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 4,
+                          background: '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                          minWidth: 200,
+                          zIndex: 50,
+                          padding: '4px 0',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleExportAll();
+                          }}
+                          disabled={isExporting}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            background: 'none',
+                            border: 'none',
+                            fontSize: 13,
+                            color: '#1e293b',
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            textAlign: 'left',
+                            opacity: isExporting ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          <Download size={15} color="#166534" />
+                          Export Vendors (XLSX)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </header>
           )}

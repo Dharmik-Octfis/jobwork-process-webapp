@@ -6,8 +6,8 @@ export const stockMovementQuerySchema = z.object({
   fromDate: z.string().datetime().optional(),
   toDate: z.string().datetime().optional(),
   movementType: z.enum(['all', 'inward', 'outward']).optional().default('all'),
-  page: z.coerce.number().int().min(1).optional().default(1),
-  perPage: z.coerce.number().int().min(1).max(100).optional().default(25),
+  page: z.coerce.number().int().min(1).optional(),
+  perPage: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export type StockMovementQuery = z.infer<typeof stockMovementQuerySchema>;
