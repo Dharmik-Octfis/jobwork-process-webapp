@@ -29,7 +29,7 @@ change it.
 | --------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /.well-known/openid-configuration` | app server               | Lists every endpoint below.                                                                                                                                                                                                                                                                                                                                       |
 | `GET /auth`                             | browser (sent by an app) | Start sign-in. Params: `client_id, redirect_uri, response_type=code, scope=openid email profile, state, nonce, code_challenge, code_challenge_method=S256`, optional `login_hint, prompt=none`. Answers with a 303 to the login form, or straight back to the app with `?code=` (already signed in) or `?error=login_required` (`prompt=none`, nobody signed in). |
-| `POST /request`                         | app server               | **PAR** (RFC 9126): the `/auth` params pushed server-to-server, Basic auth `client_id:client_secret`. Returns `{ request_uri, expires_in }`; the browser then opens `/auth?client_id=…&request_uri=…`. **Required** for a client with `require_par` (§4), which refuses a plain `/auth` from it.                                                                  |
+| `POST /request`                         | app server               | **PAR** (RFC 9126): the `/auth` params pushed server-to-server, Basic auth `client_id:client_secret`. Returns `{ request_uri, expires_in }`; the browser then opens `/auth?client_id=…&request_uri=…`. **Required** for every registered app (§4): a plain `/auth` from one is refused.                                                                           |
 | `GET /auth/:uid`                        | browser                  | Resumes a sign-in after the form. Internal hop.                                                                                                                                                                                                                                                                                                                   |
 | `POST /token`                           | app server               | Code → tokens. Basic auth `client_id:client_secret`; body `grant_type=authorization_code, code, redirect_uri, code_verifier`. Returns `{ access_token, id_token, token_type, expires_in }`.                                                                                                                                                                       |
 | `GET /jwks`                             | app server               | Public signing keys (RS256) to verify ID tokens.                                                                                                                                                                                                                                                                                                                  |
@@ -73,9 +73,10 @@ began at accounts.octfis.com itself.
 
 #### Invitations: a vouched `login_hint` (since 2026-10-09)
 
-A hint is **vouched** only when the client has `require_par` (§4): every request from that client
-arrived by PAR under its secret, so the app put the hint there itself. Jobwork does so only from a
-live invitation. For a vouched hint, `GET /interaction/:uid` chooses the screen:
+A hint is **vouched** when it comes from a registered app, every one of which must use PAR (§4):
+the request arrived server-to-server under the app's secret, so the app put the hint there itself.
+Jobwork does so only from a live invitation. For a vouched hint, `GET /interaction/:uid` chooses the
+screen:
 
 | The address in `users`                                  | Screen                                                                                    |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -151,7 +152,7 @@ No tenants, no RLS, no `custom_fields` — every row is global.
 | --------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `users`               | One person                                      | `id` (uuid = the `sub`), `email` (citext, unique), `email_verified`, `password_hash` (argon2, null until first verification), `first_name`, `last_name`, `is_active`, `is_deleted` |
 | `verification_tokens` | One live email code                             | `email`, `otp`, `purpose` (`email_verify`/`password_reset`), `expires_at`, `attempts`, `binding_hash`, `pending_password_hash`, `pending_first_name`, `pending_last_name`          |
-| `oidc_clients`        | One registered app **per environment**          | `id` (client id), `name`, `secret_hash` (argon2), `redirect_uris[]`, `post_logout_redirect_uris[]`, `backchannel_logout_uri`, `require_par`, `is_active`                           |
+| `oidc_clients`        | One registered app **per environment**          | `id` (client id), `name`, `secret_hash` (argon2), `redirect_uris[]`, `post_logout_redirect_uris[]`, `backchannel_logout_uri`, `is_active`                                          |
 | `oidc_payloads`       | The library's live protocol state               | `(type, id)` key; `type` = `Session`, `Grant`, `AuthorizationCode`, `Interaction`, …; `payload` JSON, `expires_at`. Deleted at logout.                                             |
 | `sso_sessions`        | Durable login history (one per browser session) | `id` (session uid, 43-char string — not uuid), `user_id`, `created_at`, `last_used_at`, `expires_at`, `revoked_at`, `revoked_reason`                                               |
 | `session_grants`      | Which apps a browser session signed in to       | `session_id`, `client_id`, `sid` (per app)                                                                                                                                         |
@@ -159,11 +160,11 @@ No tenants, no RLS, no `custom_fields` — every row is global.
 
 🔴 A live-session read must filter `revoked_at IS NULL` **and** `expires_at > now()`.
 
-🔴 **`require_par`** (default false): every `/auth` from this client must arrive by PAR, and only
-then is its `login_hint` trusted to choose the screen (§2.2). Set it with
-`npm run client:require-par -- --id <client> [--off] --apply`, which changes that column and nothing
-else, then restart accounts. Turn it on **only after that environment's app sends PAR**: from then
-on a plain `/auth` from the client is refused, so turning it on early locks everyone out.
+🔴 **Every registered app must use PAR.** `oidc/clients.ts` requires it of every `oidc_clients` row
+in code; there is no per-app switch (a `require_par` column existed briefly on 2026-10-09 and was
+dropped). A plain `/auth` from a registered app is refused, and that is what lets its `login_hint`
+choose the screen (§2.2).
+
 🔴 Schema changes only via `npm run db:draft` → edit → `db:promote` → `db:apply` (never `db push`).
 
 ---
@@ -207,19 +208,14 @@ on a plain `/auth` from the client is refused, so turning it on early locks ever
    CSP error, or sign-out says the return URL is not allowed.
 4. **Website:** if the product page is on `www.octfis.com`, `SESSION_STATUS_ORIGINS` already covers
    it. A different origin must be added there (and accounts redeployed).
-5. The app team deploys with `SSO_ENABLED=true`.
-6. **Only if the app sends invitations and has built the invitation sign-in**
-   (`SSO_GUIDE_NEW_APP.md`, invitations): once its deploy sends PAR, run
-   `npm run client:require-par -- --id myapp-production --apply`, then restart accounts. Never
-   before: a flagged client that doesn't send PAR can't sign anyone in.
+5. The app team deploys with `SSO_ENABLED=true`. 🔴 Its sign-in must use **PAR**
+   (`SSO_GUIDE_NEW_APP.md` §5.2): accounts refuses a plain `/auth` from any registered app.
 
 ---
 
 ## 7. Operating notes
 
-- **Deploy order:** accounts first, then the app, whenever both change. **One exception:** turning
-  on `require_par` goes app deploy → `client:require-par … --apply` → accounts deploy (its restart
-  picks up the flag).
+- **Deploy order:** accounts first, then the app, whenever both change.
 - **Deploys** go through `node scripts/deploy.mjs <target> <service>` only
   (`npm run deploy:production:accounts`; there is no bare `deploy:production`); it checks the Zoho
   login, keeps `.env` and `backups/` (database dumps) out of the upload.

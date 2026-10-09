@@ -103,12 +103,14 @@ export async function loadClients(): Promise<ClientMetadata[]> {
     token_endpoint_auth_method: 'client_secret_basic',
 
     /**
-     * 🔴 PAR only: every authorization request must be pushed server-to-server under
-     * the client secret, so none of its parameters can come from a typed URL. That
-     * is what makes this client's `login_hint` trustworthy enough to choose between
-     * Sign In and Create Account (interaction/invitee.ts). Turn it on only AFTER the
-     * app sends PAR — before that, every sign-in to the app is refused.
+     * 🔴 PAR only, for every registered app: each authorization request must be pushed
+     * server-to-server under the client secret, so none of its parameters can come
+     * from a typed URL. That is what makes an app's `login_hint` trustworthy enough to
+     * choose between Sign In and Create Account (interaction/invitee.ts). An app that
+     * sends a plain `/auth` is refused, so a new app must use PAR from its first
+     * sign-in (SSO_GUIDE_NEW_APP.md §5.2). The portal (`oidc/portal.ts`) is not in this
+     * registry and is unaffected.
      */
-    require_pushed_authorization_requests: row.requirePar,
+    require_pushed_authorization_requests: true,
   }));
 }

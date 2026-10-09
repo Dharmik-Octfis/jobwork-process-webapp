@@ -9,22 +9,35 @@
 > superseded.** This changes which screen accounts shows at one step of one flow, and how jobwork
 > vouches for the address it hands over.
 
-_Status: **built 2026-10-09 on `feat/singleSignOn`, uncommitted; not deployed.** §8 steps 1–2 are
-code-complete and tested (accounts `invitee.flow.test.ts` drives a real `oidc-provider` with PAR;
-jobwork `sso.silent.test.ts`, `invitations.sso.test.ts`). Not yet done: the accounts migration
-`20261009064336_add_oidc_client_require_par` was **applied to `accounts_dev` on 2026-10-09**. That
-database holds all three registrations (`jobwork`, `jobwork-staging`, `jobwork-production`), all
-still `require_par = false` (§8 step 3), and nothing is browser-walked. The §10 docs were updated
-2026-10-09 to describe the built behaviour, each noting it is live only once deployed._
+_Status: **built and tested on production 2026-10-09** (`8ab912e7`, `feat/singleSignOn`). It went
+live with `jobwork-production` switched on through a temporary per-app flag. Tested by the user on
+production._
+
+🔴 **The per-app switch is gone (2026-10-09, after the production test).** PAR is now required of
+**every** registered app in code (`accounts/src/oidc/clients.ts`). The `require_par` column, the
+`client:require-par` script and the `register:client --require-par` options were removed, and
+migration `20261009084000_drop_oidc_client_require_par` drops the column. Everything below that
+talks about turning the flag on per app is superseded: §4.1, §7's deploy-order trap, §8 steps 0–3,
+and decision §9.4 (which kept it off for other apps). The vouch rule itself is unchanged: a hint
+chooses the screen only when it arrived by PAR (the portal, which is not in the registry, never
+does).
+
+**Production done 2026-10-09:** accounts was deployed first, then the drop migration was applied to
+`accounts_dev`. Checked afterwards: a plain `/auth` is refused with "Pushed Authorization Request must
+be used", and a jobwork sign-in reaches the "Sign in to continue to Jobwork" page.
+
+**Rollout of the removal, per environment:**
+
+1. Deploy accounts. Its sign-in now requires PAR of every registered app. Jobwork on that environment
+   must already be on `8ab912e7` or later.
+2. Then apply the drop migration (`npm run db:apply` in `accounts/`). 🔴 Not before step 1: accounts
+   code from `8ab912e7` reads `require_par` on every `oidc_clients` query, the sign-in page's app
+   name included.
 
 _Implementation notes that differ from the text below:_
 
-- _The flag is set with `npm run client:require-par -- --id <client> [--off] --apply`, which changes
-  that one column and nothing else, not a migration. Registry rows are data written by scripts,
-  never by migrations. `register:client` also accepts `--require-par` / `--no-require-par`, but it
-  rewrites the whole row._
-- _Deploy order changed: jobwork goes FIRST (§8). Production accounts already advertises
-  `pushed_authorization_request_endpoint` (checked 2026-10-09), so PAR works against it today._
+- _Deploy order: jobwork goes before accounts. Production accounts already advertised
+  `pushed_authorization_request_endpoint` (checked 2026-10-09)._
 - _"Stay signed in as X" finishes the interaction with a marker (`inviteeMismatchStay`), not a login
   result, so it does not restamp X's authentication time._
 - _A locked Sign In has no "Create Account" link, and `GET /interaction/:uid/signup` for an address

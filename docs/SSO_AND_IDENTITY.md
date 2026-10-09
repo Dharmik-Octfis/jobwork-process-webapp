@@ -240,7 +240,7 @@ Step 5 is a back-channel call. **The client secret never reaches the browser.**
 **Step 2 goes by PAR since 2026-10-09** (`8ab912e7`). jobwork POSTs the step-2 parameters to accounts'
 `/request` under its client secret and redirects the browser with only `client_id` and a one-time
 `request_uri`. Accounts can then trust that every parameter came from jobwork. This matters for
-`login_hint`, which accounts now acts on for invitations (§8, `require_par`): it chooses Create
+`login_hint`, which accounts now acts on for invitations (§8, PAR for every app): it chooses Create
 Account or Sign In with the invited address locked, and asks "This invitation is for Y — switch?"
 when the browser is signed in as someone else. jobwork sets the hint **only** from a live invitation
 it looked up (`?invite=<token>`), never from an address the browser sent; otherwise the screen choice
@@ -507,22 +507,20 @@ They are ephemeral token storage and, like `refresh_tokens` in the app, carry no
 
 Each app is registered once:
 
-| Field                  | jobwork                                                                    |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `id`                   | `jobwork-production`                                                       |
-| `secretHash`           | argon2 of a 32-byte random secret, given to the app as `SSO_CLIENT_SECRET` |
-| `redirectUris`         | `https://jobwork.octfis.com/api/auth/sso/callback`                         |
-| `postLogoutUris`       | `https://jobwork.octfis.com/`                                              |
-| `backchannelLogoutUri` | `https://jobwork.octfis.com/api/auth/sso/backchannel-logout`               |
-| `requirePar`           | `true` once jobwork's PAR deploy is live (below)                           |
-
-🔴 **`requirePar`** (`require_par`, added 2026-10-09). Every `/auth` from the client must arrive by
-PAR. That is the condition under which accounts lets the client's `login_hint` choose the screen
-(`accounts/src/interaction/invitee.ts`); a client without it keeps today's editable Sign In whatever
-hint it sends. It is turned on with `npm run client:require-par -- --id <client> --apply`, which
-changes only this column. Like the rest of the registry it is read at boot, so it takes effect at
-the next accounts restart. Order per environment: deploy the app that sends PAR, set the flag, then
-deploy accounts. A flagged client that does not send PAR has every sign-in refused.
+| Field                                                                                               | jobwork                                                                    |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `id`                                                                                                | `jobwork-production`                                                       |
+| `secretHash`                                                                                        | argon2 of a 32-byte random secret, given to the app as `SSO_CLIENT_SECRET` |
+| `redirectUris`                                                                                      | `https://jobwork.octfis.com/api/auth/sso/callback`                         |
+| `postLogoutUris`                                                                                    | `https://jobwork.octfis.com/`                                              |
+| `backchannelLogoutUri`                                                                              | `https://jobwork.octfis.com/api/auth/sso/backchannel-logout`               |
+| 🔴 **Every registered app must use PAR** (since 2026-10-09). `loadClients` sets                     |
+| `require_pushed_authorization_requests: true` on every registry row, in code. There is no per-app   |
+| switch: a `require_par` column existed briefly and was dropped. Every `/auth` from a registered app |
+| must arrive by PAR, and a plain one is refused. That is what lets accounts trust an app's           |
+| `login_hint` to choose the screen (`accounts/src/interaction/invitee.ts`). A new app therefore uses |
+| PAR from its first sign-in (`SSO_GUIDE_NEW_APP.md` §5.2). The My Account portal is not in this      |
+| registry, sends no hint, and is unaffected.                                                         |
 
 _(These are the paths as built — the routes live under `/api/auth/sso/`, and the app env var is
 `SSO_CLIENT_SECRET`. An earlier draft of this table guessed all three and was wrong; they are matched
@@ -898,20 +896,20 @@ _sign-in_ direction instant.
 > `backend/.../sso.test.ts` and `accounts/src/oidc/crypto.test.ts`. The two invitation rows:
 > `accounts/src/interaction/invitee.flow.test.ts`, `backend/.../sso.silent.test.ts`.
 
-| Rule                                                                                                                 | What breaks without it                                                                                       |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Exact `redirect_uri` allowlist.** No wildcards, no prefixes, no "same origin"                                      | Open redirect → the attacker receives the code → full account takeover. **The #1 hole in hand-rolled IdPs.** |
-| **PKCE (S256) on every client**, confidential ones included                                                          | A stolen authorization code is replayable                                                                    |
-| **`state` and `nonce`** — random, single-use, held in a short-lived httpOnly cookie, compared on callback            | Login CSRF; ID-token replay                                                                                  |
-| **Authorization codes single-use, ≤ 60 s TTL**, bound to `client_id` + PKCE. Second use → revoke the whole grant     | Replay                                                                                                       |
-| **Sign with EdDSA or RS256, publish JWKS, rotate with `kid`.** Apps only ever verify                                 | A shared symmetric secret lets any app mint tokens for any other app                                         |
-| **Audience-scope every token (`aud`)**                                                                               | App B replays App A's token                                                                                  |
-| **`__Host-` prefix on the SSO cookie; tokens in httpOnly cookies, never localStorage**                               | Cookie tossing; any XSS in any app steals the session                                                        |
-| **`email_verified` checked before linking an existing account by email**                                             | Anyone registering with someone else's address inherits their account                                        |
-| **argon2id, rate limiting, lockout, MFA — at accounts only**                                                         | Implemented four times, wrong three times                                                                    |
-| **Read the user _before_ checking the password** (`isUsableAccount`)                                                 | A disabled account is distinguishable from a wrong password                                                  |
-| **A `login_hint` chooses a screen only for a `require_par` client, and the app sets it only from a live invitation** | The Sign In / Create Account choice becomes a public "does X have an account?" oracle                        |
-| **The invited address is locked on the server**, not just shown read-only                                            | A tampered form registers a different address than the one invited                                           |
+| Rule                                                                                                             | What breaks without it                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Exact `redirect_uri` allowlist.** No wildcards, no prefixes, no "same origin"                                  | Open redirect → the attacker receives the code → full account takeover. **The #1 hole in hand-rolled IdPs.** |
+| **PKCE (S256) on every client**, confidential ones included                                                      | A stolen authorization code is replayable                                                                    |
+| **`state` and `nonce`** — random, single-use, held in a short-lived httpOnly cookie, compared on callback        | Login CSRF; ID-token replay                                                                                  |
+| **Authorization codes single-use, ≤ 60 s TTL**, bound to `client_id` + PKCE. Second use → revoke the whole grant | Replay                                                                                                       |
+| **Sign with EdDSA or RS256, publish JWKS, rotate with `kid`.** Apps only ever verify                             | A shared symmetric secret lets any app mint tokens for any other app                                         |
+| **Audience-scope every token (`aud`)**                                                                           | App B replays App A's token                                                                                  |
+| **`__Host-` prefix on the SSO cookie; tokens in httpOnly cookies, never localStorage**                           | Cookie tossing; any XSS in any app steals the session                                                        |
+| **`email_verified` checked before linking an existing account by email**                                         | Anyone registering with someone else's address inherits their account                                        |
+| **argon2id, rate limiting, lockout, MFA — at accounts only**                                                     | Implemented four times, wrong three times                                                                    |
+| **Read the user _before_ checking the password** (`isUsableAccount`)                                             | A disabled account is distinguishable from a wrong password                                                  |
+| **A `login_hint` chooses a screen only when it arrived by PAR, and the app sets it only from a live invitation** | The Sign In / Create Account choice becomes a public "does X have an account?" oracle                        |
+| **The invited address is locked on the server**, not just shown read-only                                        | A tampered form registers a different address than the one invited                                           |
 
 ---
 

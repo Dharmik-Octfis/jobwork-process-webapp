@@ -122,7 +122,7 @@ it goes in step 1a, not through the browser.
 GET https://accounts.octfis.com/auth?client_id=jobwork&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3AQx7…
 ```
 
-accounts loads the pushed parameters by that reference. With `require_par` on for the client, a
+accounts loads the pushed parameters by that reference. Every registered app must use PAR, so a
 plain `/auth?client_id=jobwork&redirect_uri=…` is refused.
 
 No `_session` cookie, so accounts parks the request as an `Interaction` row and asks for a login.
@@ -406,8 +406,8 @@ GET https://jobwork.octfis.com/api/auth/sso/login?returnTo=%2Finvite%2Faccept%3F
 ```
 
 jobwork looks the token up. A pending, unexpired invitation puts its email in step 1a as
-`login_hint`; anything else sends no hint, and sign-in carries on as usual. Because jobwork's client
-has `require_par`, accounts trusts that hint and step 3 becomes one of:
+`login_hint`; anything else sends no hint, and sign-in carries on as usual. Because the hint arrived
+by PAR, accounts trusts it and step 3 becomes one of:
 
 | The invited address at accounts                          | Step 3 shows                                                                                                                                      |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |

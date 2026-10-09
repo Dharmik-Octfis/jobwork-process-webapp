@@ -169,10 +169,6 @@ model OidcClient {
   postLogoutUris       String[] @map("post_logout_redirect_uris")
   backchannelLogoutUri String?  @map("backchannel_logout_uri")
 
-  /// Every authorization request must arrive by PAR. Only then is the client's
-  /// `login_hint` trusted to pick Sign In vs Create Account (interaction/invitee.ts).
-  requirePar Boolean @default(false) @map("require_par")
-
   isActive  Boolean  @default(true) @map("is_active")
   isDeleted Boolean  @default(false) @map("is_deleted")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

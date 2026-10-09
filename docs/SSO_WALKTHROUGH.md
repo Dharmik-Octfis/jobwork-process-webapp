@@ -293,8 +293,8 @@ Location: http://localhost:3100/auth
 ```
 
 Why: accounts can then be sure every parameter came from jobwork, which matters for the one
-parameter below. With `require_par` on jobwork's registration, accounts refuses a plain `/auth`
-from it. If this call fails (accounts unreachable), step 2 redirects to
+parameter below. Accounts requires PAR of every registered app and refuses a plain `/auth` from
+one. If this call fails (accounts unreachable), step 2 redirects to
 `/login?sso=manual&error=signin_failed` instead of showing JSON.
 
 #### One optional extra: `login_hint`
@@ -344,16 +344,16 @@ browser is the one that started _this_ login.
 **Library:** `oidc-provider`, mounted at `accounts/src/app.ts`.
 
 accounts validates the request — is `jobwork` a registered client, is that `redirect_uri` an
-**exact** match? It reads the parameters jobwork pushed in step 2, by their `request_uri`. With
-`require_par` on, a plain `/auth?client_id=jobwork&redirect_uri=…` is refused here.
+**exact** match? It reads the parameters jobwork pushed in step 2, by their `request_uri`. Every
+registered app must use PAR, so a plain `/auth?client_id=jobwork&redirect_uri=…` is refused here.
 
 **Reads:** `oidc_clients` (loaded once at boot).
 
 ```sql
 -- accounts DB, oidc_clients
-id       | name    | redirect_uris                                        | post_logout_redirect_uris | require_par
----------+---------+------------------------------------------------------+---------------------------+------------
-jobwork  | Jobwork | {http://localhost:3000/api/auth/sso/callback}         | {http://localhost:5173/}  | true
+id       | name    | redirect_uris                                        | post_logout_redirect_uris
+---------+---------+------------------------------------------------------+---------------------------
+jobwork  | Jobwork | {http://localhost:3000/api/auth/sso/callback}         | {http://localhost:5173/}
 ```
 
 > 🔴 `redirect_uris` is matched as an **exact string**. No wildcards, no prefixes. A loose

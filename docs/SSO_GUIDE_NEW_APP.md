@@ -129,9 +129,9 @@ Unauthenticated. Return **only** this flag — never the issuer URL or client id
 **Two URLs appear in this section — you build only the first.** `/api/auth/sso/login` is your
 route; the browser reaches it by full page navigation (never `fetch`). It returns **no JSON** —
 only a `302` whose `Location` header is the `accounts.octfis.com/auth?...` URL in step 3, which
-already exists on accounts. Your library builds that URL (`openid-client`'s
-`buildAuthorizationUrl`, or `buildAuthorizationUrlWithPAR` — see the PAR note below); accounts later
-sends the browser back to your §5.3 callback.
+already exists on accounts. Your library builds that URL with PAR (`openid-client`'s
+`buildAuthorizationUrlWithPAR` — see the PAR note below); accounts later sends the browser back to
+your §5.3 callback.
 
 | Query                    | Meaning                                                                                                                                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -139,16 +139,15 @@ sends the browser back to your §5.3 callback.
 | `invite` (optional)      | An invitation's **raw token**. Look it up server-side; only a pending, unexpired one becomes `login_hint` (its stored email). Anything else → no hint, sign-in carries on. Ignored for `prompt=none`. See §9. |
 | `prompt=none` (optional) | **Silent** sign-in: no screen at all. See §7.                                                                                                                                                                 |
 
-🔴 **Never accept an email from the query string as `login_hint`.** For a client with
-`require_par`, accounts uses the hint to choose Create Account vs Sign In (§9), so an address the
-browser chose would let anyone ask "does X have an account?" through your endpoint. Jobwork used to
-take `?email=`; since 2026-10-09 it ignores it.
+🔴 **Never accept an email from the query string as `login_hint`.** Accounts uses the hint to choose
+Create Account vs Sign In (§9), so an address the browser chose would let anyone ask "does X have an
+account?" through your endpoint. Jobwork used to take `?email=`; since 2026-10-09 it ignores it.
 
-**PAR (needed for the §9 invitation screens).** With `buildAuthorizationUrlWithPAR`, your server
-POSTs the step-3 parameters to accounts' `/request` (authenticated with your client secret) and
-redirects the browser to `/auth?client_id=…&request_uri=…`. Use it for **every** sign-in, silent
-ones too, once your client has `require_par`: accounts then refuses any plain `/auth` from it. It
-adds one server-to-server call per sign-in. Give this route the same failure handler as the callback
+🔴 **PAR is mandatory.** Accounts refuses a plain `/auth` from every registered app. With
+`buildAuthorizationUrlWithPAR`, your server POSTs the step-3 parameters to accounts' `/request`
+(authenticated with your client secret) and redirects the browser to
+`/auth?client_id=…&request_uri=…`. Use it for **every** sign-in, silent ones too. It adds one
+server-to-server call per sign-in. Give this route the same failure handler as the callback
 (→ `/login?sso=manual&error=signin_failed`), because accounts being unreachable now fails here.
 
 What it does:
@@ -407,7 +406,7 @@ Reference: `web/src/features/auth/LoginPage.tsx`, `useAuthConfig.ts`, `useLogout
 3. Invite page, not signed in → `/login?invite=<raw token>&next=/invite/accept?token=…` → normal
    sign-in. Your `/sso/login` resolves the token to the invited email and sends it as `login_hint`
    by PAR (§5.2).
-4. At accounts (with `require_par` on for your client; without it, today's editable Sign In):
+4. At accounts:
    - **No account** → **Create Account** with the email **locked** → name + password → 6-digit
      code by email → code accepted = **signed in**, straight back to your app. No second password.
    - **Has an account** → **Sign In** with the email **locked** (or no screen if already signed in
@@ -429,11 +428,6 @@ Edge cases your invite page must handle:
   session from this button: the first loops forever, the second loses the invitation link.
 - Accept endpoint called without a session while SSO is on → `401 SIGN_IN_REQUIRED`. Never create
   a password-holding user there.
-
-**Turning the locked screens on:** after your deploy sends PAR, the accounts operator runs
-`npm run client:require-par -- --id myapp-production --apply` and restarts accounts
-(`SSO_GUIDE_ACCOUNTS.md` §4). Never before your PAR deploy is live: a flagged client that does not
-send PAR cannot sign anyone in.
 
 Reference: `web/src/features/invitations/AcceptInvitePage.tsx`,
 `backend/src/modules/settings/organization/invitations/`, `backend/src/modules/auth/sso/`

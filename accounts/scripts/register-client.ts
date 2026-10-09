@@ -42,8 +42,6 @@ interface Args {
   postLogout: string[];
   backchannel?: string;
   rotateSecret: boolean;
-  /** undefined = leave the row's value alone; a re-registration must not silently undo it. */
-  requirePar?: boolean;
   apply: boolean;
 }
 
@@ -78,14 +76,6 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--rotate-secret':
         args.rotateSecret = true;
-        break;
-      // 🔴 Only after the app sends PAR — docs/SSO_INVITE_SIGNUP_PLAN.md §8. Before
-      // that, every sign-in to it is refused.
-      case '--require-par':
-        args.requirePar = true;
-        break;
-      case '--no-require-par':
-        args.requirePar = false;
         break;
       case '--apply':
         args.apply = true;
@@ -158,9 +148,6 @@ async function main(): Promise<void> {
     `  post-logout      : ${args.postLogout.join('\n                     ') || '(none)'}`,
   );
   console.log(`  backchannel      : ${args.backchannel ?? '(none)'}`);
-  const parNow = existing?.requirePar ? 'on' : 'off';
-  const parNext = args.requirePar === undefined ? null : args.requirePar ? 'on' : 'off';
-  console.log(`  require PAR      : ${parNext ?? `left unchanged (${parNow})`}`);
   console.log(`  action           : ${existing ? 'update existing row' : 'create new row'}`);
   console.log(`  secret           : ${needsSecret ? 'generate a new one' : 'left unchanged'}`);
 
@@ -180,7 +167,6 @@ async function main(): Promise<void> {
     redirectUris: args.redirect,
     postLogoutUris: args.postLogout,
     backchannelLogoutUri: args.backchannel ?? null,
-    ...(args.requirePar === undefined ? {} : { requirePar: args.requirePar }),
   };
 
   if (existing) {

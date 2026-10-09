@@ -140,7 +140,7 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
   /**
    * 🔴 PAR — every sign-in, silent ones included: the parameters go to accounts
    * server-to-server under our client secret, and the browser carries only a one-time
-   * `request_uri`. Accounts requires it of this client (`oidc_clients.require_par`), so
+   * `request_uri`. Accounts requires it of every registered app (accounts `oidc/clients.ts`), so
    * a plain `buildAuthorizationUrl` here would be refused there. One extra
    * server-to-server call per SIGN-IN, never per request.
    */
