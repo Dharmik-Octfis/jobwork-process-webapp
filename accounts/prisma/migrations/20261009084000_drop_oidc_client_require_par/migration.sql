@@ -1,0 +1,12 @@
+-- drop_oidc_client_require_par
+--
+-- PAR is now required of every registered app in code (src/oidc/clients.ts), so the
+-- per-client switch added in 20261009064336 is gone. Its only true value was
+-- jobwork-production, which the code now enforces for every row anyway.
+--
+-- 🔴 Apply AFTER the accounts deploy that stops reading this column. Accounts code from
+-- 8ab912e7 selects `require_par` on every oidc_clients read (the sign-in page's app
+-- name included), so dropping it under that code breaks sign-in until it is replaced.
+--
+-- @destructive-ok: per-client PAR switch replaced by PAR for every registered app in code; no other data
+ALTER TABLE "oidc_clients" DROP COLUMN IF EXISTS "require_par";

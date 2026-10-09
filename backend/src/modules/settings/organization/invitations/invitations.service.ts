@@ -256,7 +256,7 @@ export async function createInvitation(
     const maxLimit = org[0]?.maxUsersLimit ?? ORGANIZATION_MAX_USERS_LIMIT;
 
     const activeMembersCount = await tx.membership.count({
-      where: { organizationId, isDeleted: false }
+      where: { organizationId, isDeleted: false },
     });
 
     const pendingInvitesCount = await tx.invitation.count({
@@ -264,8 +264,8 @@ export async function createInvitation(
         organizationId,
         status: 'pending',
         expiresAt: { gt: new Date() },
-        email: { not: input.email }
-      }
+        email: { not: input.email },
+      },
     });
 
     console.log('[INVITATION LIMIT CHECK]', {
@@ -275,7 +275,7 @@ export async function createInvitation(
       pendingInvitesCount,
       total: activeMembersCount + pendingInvitesCount,
       shouldThrow: activeMembersCount + pendingInvitesCount >= maxLimit,
-      inputEmail: input.email
+      inputEmail: input.email,
     });
 
     if (activeMembersCount + pendingInvitesCount >= maxLimit) {
@@ -283,60 +283,60 @@ export async function createInvitation(
     }
 
     return tx.invitation.upsert({
-    where: {
-      // eslint-disable-next-line @typescript-eslint/naming-convention -- Prisma compound-unique key
-      organizationId_email: { organizationId, email: input.email },
-    },
-    create: {
-      organizationId,
-      email: input.email,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      roleId: input.roleId ?? null,
-      permissionTemplateId: input.permissionTemplateId,
-      tokenHash,
-      invitedById: inviterId,
-      expiresAt,
-      sendCount: 1,
-      lastSentAt: now,
-      createdBy: inviterId,
-      updatedBy: inviterId,
-    },
-    // Re-invite: reset everything a stale/revoked/declined/accepted row carries.
-    // The name is overwritten too — latest invite wins. Re-inviting is how an
-    // admin corrects a misspelling before the person has accepted, so keeping the
-    // original would make the typo unfixable.
-    update: {
-      firstName: input.firstName,
-      lastName: input.lastName,
-      roleId: input.roleId ?? null,
-      permissionTemplateId: input.permissionTemplateId,
-      tokenHash,
-      status: 'pending',
-      invitedById: inviterId,
-      expiresAt,
-      acceptedAt: null,
-      declinedAt: null,
-      sendCount: { increment: 1 },
-      lastSentAt: now,
-      updatedBy: inviterId,
-    },
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      roleId: true,
-      permissionTemplateId: true,
-      status: true,
-      expiresAt: true,
-      createdAt: true,
-      organization: { select: { name: true } },
-      invitedBy: { select: { fullName: true } },
-      role: { select: { name: true } },
-      permissionTemplate: { select: { name: true } },
-    },
-  });
+      where: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention -- Prisma compound-unique key
+        organizationId_email: { organizationId, email: input.email },
+      },
+      create: {
+        organizationId,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        roleId: input.roleId ?? null,
+        permissionTemplateId: input.permissionTemplateId,
+        tokenHash,
+        invitedById: inviterId,
+        expiresAt,
+        sendCount: 1,
+        lastSentAt: now,
+        createdBy: inviterId,
+        updatedBy: inviterId,
+      },
+      // Re-invite: reset everything a stale/revoked/declined/accepted row carries.
+      // The name is overwritten too — latest invite wins. Re-inviting is how an
+      // admin corrects a misspelling before the person has accepted, so keeping the
+      // original would make the typo unfixable.
+      update: {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        roleId: input.roleId ?? null,
+        permissionTemplateId: input.permissionTemplateId,
+        tokenHash,
+        status: 'pending',
+        invitedById: inviterId,
+        expiresAt,
+        acceptedAt: null,
+        declinedAt: null,
+        sendCount: { increment: 1 },
+        lastSentAt: now,
+        updatedBy: inviterId,
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        roleId: true,
+        permissionTemplateId: true,
+        status: true,
+        expiresAt: true,
+        createdAt: true,
+        organization: { select: { name: true } },
+        invitedBy: { select: { fullName: true } },
+        role: { select: { name: true } },
+        permissionTemplate: { select: { name: true } },
+      },
+    });
   });
 
   const inviteLink = `${env.appUrl}/invite/accept?token=${rawToken}`;
@@ -447,6 +447,23 @@ export async function declineInvitation(rawToken: string): Promise<void> {
     where: { id: invite.id, status: 'pending' },
     data: { status: 'declined', declinedAt: new Date() },
   });
+}
+
+/**
+ * The address a LIVE invitation was sent to, or null — the SSO `login_hint`
+ * (sso.controller.ts `startLogin`).
+ *
+ * 🔴 This is what makes the hint safe to act on: accounts chooses Sign In or Create
+ * Account from it (docs/SSO_INVITE_SIGNUP_PLAN.md §3), so it may only ever come from
+ * a token that reached the invitee's inbox — never from an address the browser sent.
+ */
+export async function pendingInvitationEmail(rawToken: string): Promise<string | null> {
+  const invite = await prisma.invitation.findUnique({
+    where: { tokenHash: hashToken(rawToken) },
+    select: { email: true, status: true, expiresAt: true },
+  });
+  if (!invite || invite.status !== 'pending' || invite.expiresAt < new Date()) return null;
+  return invite.email;
 }
 
 /**

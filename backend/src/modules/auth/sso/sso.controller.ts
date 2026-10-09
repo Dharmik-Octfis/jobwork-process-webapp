@@ -11,6 +11,7 @@ import {
   logout as logoutLocalSession,
   logoutByToken as logoutLocalSessionByToken,
 } from '../auth.service.ts';
+import { pendingInvitationEmail } from '../../settings/organization/invitations/invitations.service.ts';
 import { verifyLogoutToken } from './logoutToken.ts';
 import {
   landingPathFor,
@@ -117,27 +118,33 @@ export async function startLogin(req: Request, res: Response): Promise<void> {
   }
 
   /**
-   * `login_hint` — the address we believe is arriving, passed to the provider so it
-   * can prefill its sign-in field and carry it into signup.
+   * `login_hint` — the address an invitation was sent to. Accounts uses it to open
+   * Create Account (no account yet) or Sign In (has one), with the address locked —
+   * docs/SSO_INVITE_SIGNUP_PLAN.md.
    *
-   * This exists for the invitation path. An invitee has no account at the provider
-   * yet, and an invitation grants access to ONE address; if they register a
-   * different one, they get in as a stranger to that organization and the
-   * invitation page can only say "signed in with a different email". Handing the
-   * address forward removes the chance to get it wrong.
+   * 🔴 Taken ONLY from a live invitation looked up here, never from an address in the
+   * query string. Accounts trusts this client's hint because it arrives by PAR, so a
+   * hint we forwarded from the browser would let anyone ask "does X have an account?"
+   * through this endpoint. The token reaches only the invitee's inbox. A bad, expired
+   * or spent token just means no hint: sign-in carries on, and the accept page shows
+   * that invitation's real state.
    *
-   * 🔴 A hint, not an assertion. It comes from the query string, so it is whatever
-   * the browser sent; it prefills a field the user can edit and authorises nothing.
-   * Entitlement is decided later against the email the provider says it VERIFIED.
-   * It is length-capped and shape-checked only to keep junk out of a URL.
+   * Entitlement is still decided later, against the email accounts says it VERIFIED.
    */
-  const hint = req.query['email'];
+  const invite = req.query['invite'];
   const loginHint =
-    typeof hint === 'string' && hint.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(hint)
-      ? hint
-      : undefined;
+    !silent && typeof invite === 'string' && invite.length > 0 && invite.length <= 256
+      ? await pendingInvitationEmail(invite)
+      : null;
 
-  const authorizationUrl = client.buildAuthorizationUrl(config, {
+  /**
+   * 🔴 PAR — every sign-in, silent ones included: the parameters go to accounts
+   * server-to-server under our client secret, and the browser carries only a one-time
+   * `request_uri`. Accounts requires it of every registered app (accounts `oidc/clients.ts`), so
+   * a plain `buildAuthorizationUrl` here would be refused there. One extra
+   * server-to-server call per SIGN-IN, never per request.
+   */
+  const authorizationUrl = await client.buildAuthorizationUrlWithPAR(config, {
     redirect_uri: env.sso.redirectUri!,
     ...(loginHint ? { login_hint: loginHint } : {}),
     ...(silent ? { prompt: 'none' } : {}),
@@ -264,12 +271,13 @@ export async function callback(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Error handler for `/callback` ONLY: a failed sign-in lands on an app page, never
- * on the envelope. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.4.
+ * Error handler for `/login` and `/callback` ONLY: a failed sign-in lands on an app
+ * page, never on the envelope. docs/SSO_WEBSITE_ENTRY_PLAN.md §5.4.
  *
- * The callback is a top-level navigation, not an XHR, so the normal `errorHandler`
- * shows the browser raw JSON with the address bar stuck on the callback URL — which
- * reads as sign-in being broken.
+ * Both are top-level navigations, not XHRs, so the normal `errorHandler` shows the
+ * browser raw JSON with the address bar stuck on an API URL — which reads as sign-in
+ * being broken. `/login` joined when it started calling accounts (PAR): accounts
+ * being unreachable is now a failure there, before any redirect.
  *
  * - 403 → `/no-access`. Every 403 here is a refusal from `linkOrCreateLocalUser`
  *   (unverified email, or disabled in jobwork); both get the same page and words.

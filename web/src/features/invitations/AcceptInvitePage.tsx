@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,8 +10,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { AuthShell } from '../auth/AuthShell';
 import { FormErrorBanner } from '../auth/FormErrorBanner';
-import { useAuthConfig } from '../auth/useAuthConfig';
-import { useLogout } from '../auth/useLogout';
+import { logout } from '../auth/auth.api';
+import { startSsoLogin, useAuthConfig } from '../auth/useAuthConfig';
 import { invitationsApi, type AcceptInvitationBody } from './invitations.api';
 import styles from '../auth/Auth.module.css';
 
@@ -42,7 +42,7 @@ export function AcceptInvitePage() {
   const { user, isAuthenticated, isLoading: authLoading, setSession } = useAuth();
   const authConfig = useAuthConfig();
   const ssoEnabled = authConfig.data?.ssoEnabled === true;
-  const logoutMutation = useLogout();
+  const [switching, setSwitching] = useState(false);
   const autoAcceptStarted = useRef(false);
 
   const lookup = useQuery({
@@ -139,11 +139,16 @@ export function AcceptInvitePage() {
 
   const orgName = invite.organizationName ?? 'the organization';
   const inviteEmail = invite.email ?? '';
-  const loginPath =
-    '/login?email=' +
-    encodeURIComponent(inviteEmail) +
-    '&next=' +
-    encodeURIComponent('/invite/accept?token=' + token);
+  const acceptPath = '/invite/accept?token=' + token;
+  /**
+   * 🔴 Under SSO the login carries the TOKEN, not the address: the server resolves it
+   * and the provider opens Create Account or Sign In for that address, locked. An
+   * address sent from here would be ignored — the provider acts on it, so it may only
+   * come from an invitation the server looked up (docs/SSO_INVITE_SIGNUP_PLAN.md §3).
+   */
+  const loginPath = ssoEnabled
+    ? '/login?invite=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(acceptPath)
+    : '/login?email=' + encodeURIComponent(inviteEmail) + '&next=' + encodeURIComponent(acceptPath);
   // With SSO on there is no local signup to send anyone to; `/signup` only bounces
   // back to `/login`, so skip the hop.
   const signupPath = ssoEnabled
@@ -151,11 +156,20 @@ export function AcceptInvitePage() {
     : '/signup?email=' +
       encodeURIComponent(inviteEmail) +
       '&next=' +
-      encodeURIComponent('/invite/accept?token=' + token);
+      encodeURIComponent(acceptPath);
   // The job title if the inviter set one, otherwise the access they're getting —
   // a title is optional, and "invited as undefined" helps nobody.
   const invitedAs = invite.roleName ?? invite.permissionTemplateName ?? 'a member';
   const serverError = acceptMutation.isError ? toApiErrorMessage(acceptMutation.error) : null;
+
+  const switchAccount = async () => {
+    setSwitching(true);
+    // Only this app's session: accounts' must survive, so it can offer the switch.
+    await logout().catch(() => {});
+    // A full navigation and no clearSession() first — clearing re-renders this page as
+    // signed out → /login, whose own sign-in would cancel this one (see useLogout).
+    startSsoLogin(acceptPath, token);
+  };
 
   // ── Case A: signed in ────────────────────────────────────────────────────────
   if (isAuthenticated && user) {
@@ -163,27 +177,26 @@ export function AcceptInvitePage() {
 
     if (!emailMatches) {
       /**
-       * 🔴 Under SSO, never bounce to `/login` here. Sign-in goes to accounts, which
-       * already has a session for THIS other identity and returns it at once — back to
-       * this page, still mismatched, back to `/login`: an endless redirect loop. The
-       * way out is to sign out of the identity provider, which is a person's decision,
-       * so it is a button. The link has to be reopened afterwards: signing out leaves
-       * this app, and the token does not survive the round trip.
+       * 🔴 Under SSO, never bounce to `/login` here: it is a person's decision, so it
+       * is a button. "Switch account" ends only THIS app's session and signs in again
+       * carrying the invitation. Accounts, still signed in as the other address, then
+       * asks "This invitation is for Y — switch?" itself (accounts invitee.ts), and the
+       * token survives the round trip in `returnTo`. The old "Sign out" left the app
+       * entirely, so the link had to be found in the email and reopened.
        */
       if (ssoEnabled) {
         return (
           <Shell title="Different account" subtitle={`This invitation is for ${inviteEmail}.`}>
             <p className={styles.notice}>
-              You're signed in as {user.email}. Sign out, then open the invitation link from your
-              email again and sign in as {inviteEmail}.
+              You're signed in as {user.email}. Switch to {inviteEmail} to accept it.
             </p>
             <Button
               fullWidth
               className={styles.submit}
-              isLoading={logoutMutation.isPending}
-              onClick={() => logoutMutation.mutate()}
+              isLoading={switching}
+              onClick={switchAccount}
             >
-              Sign out
+              Switch account
             </Button>
           </Shell>
         );

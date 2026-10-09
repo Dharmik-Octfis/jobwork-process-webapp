@@ -237,6 +237,15 @@ different things after it. Mixed tenancy across the estate costs nothing.
 
 Step 5 is a back-channel call. **The client secret never reaches the browser.**
 
+**Step 2 goes by PAR since 2026-10-09** (`8ab912e7`). jobwork POSTs the step-2 parameters to accounts'
+`/request` under its client secret and redirects the browser with only `client_id` and a one-time
+`request_uri`. Accounts can then trust that every parameter came from jobwork. This matters for
+`login_hint`, which accounts now acts on for invitations (§8, PAR for every app): it chooses Create
+Account or Sign In with the invited address locked, and asks "This invitation is for Y — switch?"
+when the browser is signed in as someone else. jobwork sets the hint **only** from a live invitation
+it looked up (`?invite=<token>`), never from an address the browser sent; otherwise the screen choice
+would tell anyone whether an address has an account. Design: `docs/SSO_INVITE_SIGNUP_PLAN.md`.
+
 ### 6.2 The second app
 
 Identical, except step 3 finds the SSO cookie and returns instantly. No password, no form, no
@@ -498,13 +507,20 @@ They are ephemeral token storage and, like `refresh_tokens` in the app, carry no
 
 Each app is registered once:
 
-| Field                  | jobwork                                                                    |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `id`                   | `jobwork-production`                                                       |
-| `secretHash`           | argon2 of a 32-byte random secret, given to the app as `SSO_CLIENT_SECRET` |
-| `redirectUris`         | `https://jobwork.octfis.com/api/auth/sso/callback`                         |
-| `postLogoutUris`       | `https://jobwork.octfis.com/`                                              |
-| `backchannelLogoutUri` | `https://jobwork.octfis.com/api/auth/sso/backchannel-logout`               |
+| Field                                                                                               | jobwork                                                                    |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `id`                                                                                                | `jobwork-production`                                                       |
+| `secretHash`                                                                                        | argon2 of a 32-byte random secret, given to the app as `SSO_CLIENT_SECRET` |
+| `redirectUris`                                                                                      | `https://jobwork.octfis.com/api/auth/sso/callback`                         |
+| `postLogoutUris`                                                                                    | `https://jobwork.octfis.com/`                                              |
+| `backchannelLogoutUri`                                                                              | `https://jobwork.octfis.com/api/auth/sso/backchannel-logout`               |
+| 🔴 **Every registered app must use PAR** (since 2026-10-09). `loadClients` sets                     |
+| `require_pushed_authorization_requests: true` on every registry row, in code. There is no per-app   |
+| switch: a `require_par` column existed briefly and was dropped. Every `/auth` from a registered app |
+| must arrive by PAR, and a plain one is refused. That is what lets accounts trust an app's           |
+| `login_hint` to choose the screen (`accounts/src/interaction/invitee.ts`). A new app therefore uses |
+| PAR from its first sign-in (`SSO_GUIDE_NEW_APP.md` §5.2). The My Account portal is not in this      |
+| registry, sends no hint, and is unaffected.                                                         |
 
 _(These are the paths as built — the routes live under `/api/auth/sso/`, and the app env var is
 `SSO_CLIENT_SECRET`. An earlier draft of this table guessed all three and was wrong; they are matched
@@ -877,7 +893,8 @@ _sign-in_ direction instant.
 ## 12. Security checklist — non-negotiables
 
 > ✅ **Every line enforced**, and the ones that fail silently are pinned by tests:
-> `backend/.../sso.test.ts` and `accounts/src/oidc/crypto.test.ts`.
+> `backend/.../sso.test.ts` and `accounts/src/oidc/crypto.test.ts`. The two invitation rows:
+> `accounts/src/interaction/invitee.flow.test.ts`, `backend/.../sso.silent.test.ts`.
 
 | Rule                                                                                                             | What breaks without it                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -891,6 +908,8 @@ _sign-in_ direction instant.
 | **`email_verified` checked before linking an existing account by email**                                         | Anyone registering with someone else's address inherits their account                                        |
 | **argon2id, rate limiting, lockout, MFA — at accounts only**                                                     | Implemented four times, wrong three times                                                                    |
 | **Read the user _before_ checking the password** (`isUsableAccount`)                                             | A disabled account is distinguishable from a wrong password                                                  |
+| **A `login_hint` chooses a screen only when it arrived by PAR, and the app sets it only from a live invitation** | The Sign In / Create Account choice becomes a public "does X have an account?" oracle                        |
+| **The invited address is locked on the server**, not just shown read-only                                        | A tampered form registers a different address than the one invited                                           |
 
 ---
 
