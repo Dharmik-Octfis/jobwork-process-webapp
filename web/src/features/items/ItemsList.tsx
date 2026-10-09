@@ -338,7 +338,7 @@ export function ItemsList() {
   const [isExporting, setIsExporting] = useState(false);
   // const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   // const moreMenuRef = useRef<HTMLDivElement>(null);
-   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -365,7 +365,7 @@ export function ItemsList() {
   // View state & menus (matching Zoho Books items list)
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
   const [isViewModeMenuOpen, setIsViewModeMenuOpen] = useState(false);
- 
+
   const [activeSubmenu, setActiveSubmenu] = useState<'sort' | 'import' | 'export' | null>(null);
 
   const [viewDensity, setViewDensity] = useState<'expanded' | 'collapsed'>('expanded');
@@ -1185,7 +1185,12 @@ export function ItemsList() {
                             >
                               <button
                                 type="button"
-                                onClick={() => handleExportCsv('items')}
+                                onClick={() => {
+                                  setIsMoreMenuOpen(false);
+                                  setActiveSubmenu(null);
+                                  handleExportAllItems();
+                                }}
+                                disabled={isExporting}
                                 style={{
                                   display: 'block',
                                   width: '100%',
@@ -1194,8 +1199,9 @@ export function ItemsList() {
                                   background: 'none',
                                   fontSize: 13,
                                   color: '#334155',
-                                  cursor: 'pointer',
+                                  cursor: isExporting ? 'not-allowed' : 'pointer',
                                   textAlign: 'left',
+                                  opacity: isExporting ? 0.6 : 1,
                                 }}
                                 onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
                                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
