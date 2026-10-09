@@ -1,4 +1,10 @@
-import { escapeHtml, passwordField, shell, PASSWORD_TOGGLE_SCRIPT } from '../interaction/views.ts';
+import {
+  emailInput,
+  escapeHtml,
+  passwordField,
+  shell,
+  PASSWORD_TOGGLE_SCRIPT,
+} from '../interaction/views.ts';
 
 /**
  * The account-management pages. Same rules as the sign-in screen: server-rendered,
@@ -27,15 +33,38 @@ interface FlowOptions extends FormOptions {
   action?: string | undefined;
   signInHref?: string | undefined;
   restartHref?: string | undefined;
+  /**
+   * The invited address, read-only — interaction/invitee.ts. Display only: the
+   * interaction routes overwrite whatever email is posted with the vouched one.
+   */
+  emailLocked?: boolean | undefined;
+  /** "Not you? Use a different account", shown with a locked address. */
+  notYouHref?: string | undefined;
+}
+
+function notYou(href: string | undefined): string {
+  return href
+    ? `<p class="switch">Not you? <a href="${escapeHtml(href)}">Use a different account</a></p>`
+    : '';
 }
 
 export function signupPage(options: FlowOptions = {}): string {
-  const { action = '/signup', signInHref = '/' } = options;
+  const { action = '/signup', signInHref = '/', emailLocked = false } = options;
+
+  /**
+   * No "Already have an account? Sign in" when locked: the page is shown locked only
+   * because the address has NO account yet, and signing in as anyone else ends on the
+   * app's "Different account" page. "Not you?" is the honest version of that link.
+   */
+  const footer = emailLocked
+    ? notYou(options.notYouHref)
+    : `<p class="switch">Already have an account? <a href="${escapeHtml(signInHref)}">Sign in</a></p>`;
+
   return shell(
     'Create an account',
     `
     <h1>Create an account</h1>
-    <p class="sub">One account for every Octfis app</p>
+    <p class="sub">${emailLocked ? 'Create your Octfis account to accept the invitation' : 'One account for every Octfis app'}</p>
     ${messages(options)}
     <form method="post" action="${escapeHtml(action)}" autocomplete="on">
       <label for="firstName">First name</label>
@@ -45,12 +74,11 @@ export function signupPage(options: FlowOptions = {}): string {
       <input id="lastName" name="lastName" placeholder="Last name"
              autocomplete="family-name" required>
       <label for="email">Email address</label>
-      <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
-             placeholder="Email address" autocomplete="username" required>
+      ${emailInput(options.email ?? '', emailLocked, 'username', false)}
       ${passwordField({ id: 'password', name: 'password', label: 'Password', autocomplete: 'new-password', minlength: 8 })}
       <button type="submit">Create Account</button>
     </form>
-    <p class="switch">Already have an account? <a href="${escapeHtml(signInHref)}">Sign in</a></p>
+    ${footer}
   `,
     { script: PASSWORD_TOGGLE_SCRIPT },
   );
@@ -78,8 +106,7 @@ export function verifyEmailPage(options: FlowOptions = {}): string {
     ${messages(options)}
     <form method="post" action="${escapeHtml(action)}" autocomplete="off">
       <label for="email">Email address</label>
-      <input id="email" name="email" type="email" value="${escapeHtml(options.email ?? '')}"
-             placeholder="Email address" required>
+      ${emailInput(options.email ?? '', options.emailLocked ?? false, 'off', false)}
       <label for="otp">6-digit code</label>
       <input id="otp" name="otp" placeholder="6-digit code" inputmode="numeric"
              pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>

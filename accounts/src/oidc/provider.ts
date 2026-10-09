@@ -10,6 +10,7 @@ import { ensureSigningKey, loadSigningJwks } from './keys.ts';
 import { installSessionMirror } from './sessionMirror.ts';
 import { installBackchannelRetry } from './backchannelRetry.ts';
 import { problemPage, signedOutPage, signingOutPage } from '../interaction/systemViews.ts';
+import { interactionPolicyWithInvitee } from '../interaction/invitee.ts';
 
 /**
  * The OIDC provider. docs/SSO_AND_IDENTITY.md §7.1, §12.
@@ -182,6 +183,8 @@ function baseConfiguration(): Omit<Configuration, 'clients' | 'jwks'> {
     /** Where an unauthenticated /authorize sends the browser — interaction/routes.ts. */
     interactions: {
       url: (_ctx, interaction) => `/interaction/${interaction.uid}`,
+      // Adds one check: signed in as X while the app vouched it is sending Y.
+      policy: interactionPolicyWithInvitee(),
     },
   };
 }

@@ -29,9 +29,18 @@ vi.mock('openid-client', () => ({
   randomState: () => 'state-1',
   randomNonce: () => 'nonce-1',
   calculatePKCECodeChallenge: async () => 'challenge',
-  buildAuthorizationUrl: (_config: unknown, params: Record<string, string>) =>
+  // Records what jobwork PUSHED; the URL echoes it so assertions can read it back.
+  buildAuthorizationUrlWithPAR: async (_config: unknown, params: Record<string, string>) =>
     new URL(`https://accounts.example/auth?${new URLSearchParams(params)}`),
   authorizationCodeGrant: (...args: unknown[]) => authorizationCodeGrant(...args),
+}));
+
+// The only live invitation: its token resolves to the address it was sent to.
+const pendingInvitationEmail = vi.fn(async (token: string) =>
+  token === 'live-token' ? 'invitee@example.com' : null,
+);
+vi.mock('../../settings/organization/invitations/invitations.service.ts', () => ({
+  pendingInvitationEmail: (token: string) => pendingInvitationEmail(token),
 }));
 
 vi.mock('./sso.service.ts', async (importOriginal) => ({
@@ -96,10 +105,10 @@ describe('startLogin', () => {
   it('leaves an interactive sign-in exactly as it was — no prompt, no guard', async () => {
     const { res, cookies, redirect } = fakeRes();
 
-    // The invitation path: a deep link and a login hint, even with a guard present.
+    // The invitation path: a deep link and an invitation, even with a guard present.
     await startLogin(
       fakeReq(
-        { returnTo: '/invite/accept?token=abc', email: 'new@example.com' },
+        { returnTo: '/invite/accept?token=live-token', invite: 'live-token' },
         { sso_silent: '1' },
       ),
       res,
@@ -107,9 +116,43 @@ describe('startLogin', () => {
 
     const url = new URL(redirect.mock.calls[0]![0] as string);
     expect(url.searchParams.get('prompt')).toBeNull();
-    expect(url.searchParams.get('login_hint')).toBe('new@example.com');
+    expect(url.searchParams.get('login_hint')).toBe('invitee@example.com');
     expect(JSON.parse(cookies['sso_flow']!.value)).not.toHaveProperty('silent');
     expect(cookies['sso_silent']).toBeUndefined();
+  });
+});
+
+describe('startLogin — the login hint comes only from a live invitation', () => {
+  beforeEach(() => pendingInvitationEmail.mockClear());
+
+  it('🔴 ignores an address sent by the browser — it would make this an account-existence probe', async () => {
+    const { res, redirect } = fakeRes();
+
+    await startLogin(fakeReq({ email: 'ceo@acme.example' }), res);
+
+    const url = new URL(redirect.mock.calls[0]![0] as string);
+    expect(url.searchParams.get('login_hint')).toBeNull();
+  });
+
+  it('sends no hint for a token that is not a live invitation, and still signs in', async () => {
+    const { res, redirect } = fakeRes();
+
+    await startLogin(fakeReq({ invite: 'expired-or-forged' }), res);
+
+    expect(pendingInvitationEmail).toHaveBeenCalledWith('expired-or-forged');
+    const url = new URL(redirect.mock.calls[0]![0] as string);
+    expect(url.searchParams.get('login_hint')).toBeNull();
+    expect(url.searchParams.get('scope')).toBe('openid email profile');
+  });
+
+  it('never looks an invitation up for a silent attempt', async () => {
+    const { res, redirect } = fakeRes();
+
+    await startLogin(fakeReq({ prompt: 'none', invite: 'live-token' }), res);
+
+    expect(pendingInvitationEmail).not.toHaveBeenCalled();
+    const url = new URL(redirect.mock.calls[0]![0] as string);
+    expect(url.searchParams.get('login_hint')).toBeNull();
   });
 });
 

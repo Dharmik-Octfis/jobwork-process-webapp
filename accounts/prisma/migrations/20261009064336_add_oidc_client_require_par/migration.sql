@@ -1,0 +1,11 @@
+-- add_oidc_client_require_par
+--
+-- Invitation sign-in (docs/SSO_INVITE_SIGNUP_PLAN.md §4.1): a client flagged here must
+-- send every authorization request by PAR, which is what lets accounts trust its
+-- login_hint to choose between Sign In and Create Account.
+--
+-- Additive, default false: no client changes behaviour on deploy. The flag is set per
+-- client with `npm run register:client -- ... --require-par`, and only AFTER that app
+-- sends PAR — before that, every sign-in to it is refused.
+-- IF NOT EXISTS because migrations here are not transactional.
+ALTER TABLE "oidc_clients" ADD COLUMN IF NOT EXISTS "require_par" BOOLEAN NOT NULL DEFAULT false;

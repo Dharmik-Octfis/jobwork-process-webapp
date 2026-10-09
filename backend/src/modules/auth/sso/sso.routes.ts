@@ -16,8 +16,9 @@ import * as ssoController from './sso.controller.ts';
 export const ssoRouter = Router();
 
 if (env.sso.enabled) {
-  ssoRouter.get('/login', ssoController.startLogin);
-  // Route-level error handler: a failure redirects to an app page, never raw JSON.
+  // Route-level error handler on both: a failure redirects to an app page, never raw
+  // JSON. `/login` needs it since PAR — accounts is now called before the redirect.
+  ssoRouter.get('/login', ssoController.startLogin, ssoController.redirectFailedSignIn);
   ssoRouter.get('/callback', ssoController.callback, ssoController.redirectFailedSignIn);
   ssoRouter.get('/logout', ssoController.startLogout);
 

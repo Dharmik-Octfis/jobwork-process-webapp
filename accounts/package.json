@@ -25,7 +25,8 @@
     "db:migrate": "tsx scripts/db-sync.ts blocked \"migrate dev\"",
     "test": "vitest run",
     "seed:identities": "tsx scripts/seed-identities.ts",
-    "register:client": "tsx scripts/register-client.ts"
+    "register:client": "tsx scripts/register-client.ts",
+    "client:require-par": "tsx scripts/client-require-par.ts"
   },
   "license": "ISC",
   "dependencies": {

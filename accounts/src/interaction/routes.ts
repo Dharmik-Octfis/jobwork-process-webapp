@@ -9,7 +9,8 @@ import { firstError, signupSchema, verifySchema } from '../login/account.routes.
 import { signupPage, verifyEmailPage } from '../login/account.views.ts';
 import { bindingOf, bindThisBrowser, clearBinding } from '../login/binding.ts';
 import { PORTAL_CLIENT_ID, PORTAL_NAME } from '../oidc/portal.ts';
-import { loginPage, errorPage } from './views.ts';
+import { canSignIn, INVITEE_MISMATCH, STAY_RESULT, vouchedHint } from './invitee.ts';
+import { loginPage, errorPage, mismatchPage, modeQuery, type HintMode } from './views.ts';
 
 /**
  * The interaction endpoints — where `/authorize` sends a browser that is not yet
@@ -55,19 +56,42 @@ export function interactionRouter(provider: Provider): Router {
     const clientId = String(params['client_id'] ?? '');
 
     if (prompt.name === 'login') {
-      /**
-       * `login_hint` is the standard OIDC way for an app to say "we believe this is
-       * who is arriving" — here it is the address an invitation was sent to, passed
-       * through from jobwork. It prefills the field and follows the user to signup.
-       *
-       * A hint, never a credential: the user can change it, and it decides nothing.
-       * It is escaped where it is rendered, like everything else on this page.
-       */
-      const loginHint = typeof params['login_hint'] === 'string' ? params['login_hint'] : undefined;
+      const hint = await hintOf(provider, details);
+      const mode = modeOf(req, hint);
+      const name = await clientName(clientId);
 
-      res
-        .type('html')
-        .send(loginPage({ uid, clientName: await clientName(clientId), email: loginHint }));
+      if (hint && mode === 'locked') {
+        // Signed in as someone else: ask before anything, unless they already chose Switch.
+        if (prompt.reasons.includes(INVITEE_MISMATCH) && req.query['invitee'] !== '1') {
+          const signedInAs = await emailOf(details.session?.accountId);
+          if (signedInAs) {
+            res.type('html').send(mismatchPage({ uid, signedInAs, invitedEmail: hint }));
+            return;
+          }
+        }
+
+        if (!(await canSignIn(hint))) {
+          res
+            .type('html')
+            .send(signupPage({ email: hint, ...interactionLinks(uid, 'signup', mode) }));
+          return;
+        }
+
+        res.type('html').send(loginPage({ uid, clientName: name, email: hint, mode }));
+        return;
+      }
+
+      /**
+       * Not vouched: `login_hint` only prefills an editable field, as it always has —
+       * it decides nothing, because anyone can put one in a URL. After "Not you?" the
+       * field starts empty: the invited address is the one they just said is not theirs.
+       */
+      const loginHint =
+        mode === 'open' && typeof params['login_hint'] === 'string'
+          ? params['login_hint']
+          : undefined;
+
+      res.type('html').send(loginPage({ uid, clientName: name, email: loginHint, mode }));
       return;
     }
 
@@ -102,8 +126,11 @@ export function interactionRouter(provider: Provider): Router {
     const details = await detailsOrNull(provider, req, res);
     if (!details) return expired(res);
     const appName = await clientName(String(details.params['client_id'] ?? ''));
+    const hint = await hintOf(provider, details);
+    const mode = modeOf(req, hint);
 
-    const email = String(req.body?.['email'] ?? '').trim();
+    // Locked: the vouched address, whatever the form says — the read-only field is display.
+    const email = mode === 'locked' ? hint! : String(req.body?.['email'] ?? '').trim();
     const password = String(req.body?.['password'] ?? '');
 
     const user = await verifyCredentials(email, password);
@@ -119,6 +146,7 @@ export function interactionRouter(provider: Provider): Router {
             uid: details.uid,
             clientName: appName,
             email,
+            mode,
             error: 'That email and password do not match.',
           }),
         );
@@ -136,9 +164,10 @@ export function interactionRouter(provider: Provider): Router {
       res.type('html').send(
         verifyEmailPage({
           email: user.email,
-          action: `/interaction/${encodeURIComponent(details.uid)}/verify`,
+          action: `/interaction/${encodeURIComponent(details.uid)}/verify${modeQuery(mode)}`,
           notice: `Confirm your email to continue. We sent a 6-digit code to ${user.email}.`,
-          restartHref: `/interaction/${encodeURIComponent(details.uid)}`,
+          restartHref: `/interaction/${encodeURIComponent(details.uid)}${modeQuery(mode)}`,
+          emailLocked: mode === 'locked',
         }),
       );
       return;
@@ -164,35 +193,49 @@ export function interactionRouter(provider: Provider): Router {
    * without typing the password a second time.
    *
    * The address comes from the interaction's `login_hint` — an invitation's address —
-   * never from the URL.
+   * never from the URL. When the app vouched for it, it is also the only address this
+   * signup can register (invitee.ts).
    */
   router.get('/interaction/:uid/signup', async (req: Request, res: Response) => {
     const details = await detailsOrNull(provider, req, res);
     if (!details) return expired(res);
 
-    const hint = details.params['login_hint'];
-    res.type('html').send(
-      signupPage({
-        email: typeof hint === 'string' ? hint : undefined,
-        ...interactionLinks(details.uid, 'signup'),
-      }),
-    );
+    const hint = await hintOf(provider, details);
+    const mode = modeOf(req, hint);
+
+    if (hint && mode === 'locked' && (await canSignIn(hint))) {
+      // The address already has an account: signing up again would replace its
+      // password. Send them to the locked Sign In instead.
+      res.redirect(`/interaction/${encodeURIComponent(details.uid)}?invitee=1`);
+      return;
+    }
+
+    const raw = details.params['login_hint'];
+    const email = mode === 'switched' ? undefined : typeof raw === 'string' ? raw : undefined;
+    res.type('html').send(signupPage({ email, ...interactionLinks(details.uid, 'signup', mode) }));
   });
 
   router.post('/interaction/:uid/signup', form, async (req: Request, res: Response) => {
     const details = await detailsOrNull(provider, req, res);
     if (!details) return expired(res);
 
-    const parsed = signupSchema.safeParse(req.body);
+    const hint = await hintOf(provider, details);
+    const mode = modeOf(req, hint);
+
+    // 🔴 Locked: register the vouched address, whatever was posted. `readonly` is only
+    // what the form shows; this is the lock.
+    const body = mode === 'locked' ? { ...req.body, email: hint } : req.body;
+
+    const parsed = signupSchema.safeParse(body);
     if (!parsed.success) {
       res
         .status(400)
         .type('html')
         .send(
           signupPage({
-            email: typeof req.body?.['email'] === 'string' ? req.body['email'] : undefined,
+            email: typeof body?.['email'] === 'string' ? body['email'] : undefined,
             error: firstError(parsed.error),
-            ...interactionLinks(details.uid, 'signup'),
+            ...interactionLinks(details.uid, 'signup', mode),
           }),
         );
       return;
@@ -205,7 +248,7 @@ export function interactionRouter(provider: Provider): Router {
       verifyEmailPage({
         email: parsed.data.email,
         notice: `If ${parsed.data.email} can receive mail, a 6-digit code is on its way.`,
-        ...interactionLinks(details.uid, 'verify'),
+        ...interactionLinks(details.uid, 'verify', mode),
       }),
     );
   });
@@ -215,7 +258,11 @@ export function interactionRouter(provider: Provider): Router {
     const details = await detailsOrNull(provider, req, res);
     if (!details) return expired(res);
 
-    const parsed = verifySchema.safeParse(req.body);
+    const hint = await hintOf(provider, details);
+    const mode = modeOf(req, hint);
+    const body = mode === 'locked' ? { ...req.body, email: hint } : req.body;
+
+    const parsed = verifySchema.safeParse(body);
     const accountId = parsed.success
       ? await service.verifyEmail(parsed.data.email, parsed.data.otp, bindingOf(req))
       : null;
@@ -226,9 +273,9 @@ export function interactionRouter(provider: Provider): Router {
         .type('html')
         .send(
           verifyEmailPage({
-            email: typeof req.body?.['email'] === 'string' ? req.body['email'] : undefined,
+            email: typeof body?.['email'] === 'string' ? body['email'] : undefined,
             error: parsed.success ? 'That code is invalid or expired.' : firstError(parsed.error),
-            ...interactionLinks(details.uid, 'verify'),
+            ...interactionLinks(details.uid, 'verify', mode),
           }),
         );
       return;
@@ -245,7 +292,46 @@ export function interactionRouter(provider: Provider): Router {
     );
   });
 
+  /**
+   * "Stay signed in as X" on the mismatch screen. Finishes WITHOUT a login result —
+   * X is already signed in, and a login result would restamp their authentication
+   * time as if they had just typed a password. The marker tells the mismatch check
+   * the question was answered, so the resumed request does not ask it again.
+   */
+  router.post('/interaction/:uid/continue', async (req: Request, res: Response) => {
+    const details = await detailsOrNull(provider, req, res);
+    if (!details?.session?.accountId) return expired(res);
+
+    await provider.interactionFinished(
+      req,
+      res,
+      { [STAY_RESULT]: true },
+      { mergeWithLastSubmission: false },
+    );
+  });
+
   return router;
+}
+
+/** The vouched address for this interaction's client, or undefined — invitee.ts. */
+async function hintOf(
+  provider: Provider,
+  details: Awaited<ReturnType<Provider['interactionDetails']>>,
+): Promise<string | undefined> {
+  const client = await provider.Client.find(String(details.params['client_id'] ?? ''));
+  return vouchedHint(client, details.params['login_hint']);
+}
+
+/** `?switch=1` means "Not you?" was chosen; it means nothing without a vouched address. */
+function modeOf(req: Request, hint: string | undefined): HintMode {
+  if (!hint) return 'open';
+  return req.query['switch'] === '1' ? 'switched' : 'locked';
+}
+
+async function emailOf(accountId: string | undefined): Promise<string | undefined> {
+  if (!accountId) return undefined;
+  const user = await prisma.user.findUnique({ where: { id: accountId }, select: { email: true } });
+  return user?.email;
 }
 
 /**
@@ -289,13 +375,20 @@ function expired(res: Response): void {
     );
 }
 
-/** Form target and links that keep a signup inside interaction `uid`. */
-function interactionLinks(uid: string, form: 'signup' | 'verify') {
+/**
+ * Form target and links that keep a signup inside interaction `uid`, carrying the
+ * mode along: `?switch=1` while switched, the read-only address while locked.
+ */
+function interactionLinks(uid: string, form: 'signup' | 'verify', mode: HintMode = 'open') {
   const base = `/interaction/${encodeURIComponent(uid)}`;
+  const query = modeQuery(mode);
+  const locked = mode === 'locked';
   return {
-    action: `${base}/${form}`,
-    signInHref: base,
-    restartHref: `${base}/signup`,
+    action: `${base}/${form}${query}`,
+    signInHref: `${base}${query}`,
+    restartHref: `${base}${locked ? '' : '/signup'}${query}`,
+    emailLocked: locked,
+    ...(locked ? { notYouHref: `${base}?switch=1` } : {}),
   };
 }
 

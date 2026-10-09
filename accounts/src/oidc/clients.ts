@@ -101,5 +101,14 @@ export async function loadClients(): Promise<ClientMetadata[]> {
     grant_types: ['authorization_code'],
     response_types: ['code'],
     token_endpoint_auth_method: 'client_secret_basic',
+
+    /**
+     * 🔴 PAR only: every authorization request must be pushed server-to-server under
+     * the client secret, so none of its parameters can come from a typed URL. That
+     * is what makes this client's `login_hint` trustworthy enough to choose between
+     * Sign In and Create Account (interaction/invitee.ts). Turn it on only AFTER the
+     * app sends PAR — before that, every sign-in to the app is refused.
+     */
+    require_pushed_authorization_requests: row.requirePar,
   }));
 }

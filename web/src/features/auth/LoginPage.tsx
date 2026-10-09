@@ -35,7 +35,10 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const locationState = location.state as LocationState | null;
 
+  // `email` with SSO off (password form), `invite` — the token — with SSO on.
   const invitedEmail = params.get('email') ?? '';
+  const invite = params.get('invite') ?? '';
+  const invited = Boolean(invitedEmail || invite);
   const redirectTo = params.get('next') ?? locationState?.from?.pathname ?? '/';
 
   /**
@@ -75,7 +78,7 @@ export function LoginPage() {
    *
    * - No destination (`/`, `/home`): SILENT sign-in. Signed in at accounts → straight
    *   to `/home`; not signed in → the website.
-   * - A deep link, or an invitation's `?email=`: INTERACTIVE sign-in carrying both, so
+   * - A deep link, or an invitation's `?invite=`: INTERACTIVE sign-in carrying both, so
    *   accounts shows its form if needed and the link survives (§5.3). Bouncing an
    *   invitee to the website would throw their invitation token away.
    *
@@ -86,9 +89,9 @@ export function LoginPage() {
   useEffect(() => {
     if (!autoStart || started.current) return;
     started.current = true;
-    if (HOME_PATHS.has(redirectTo) && !invitedEmail) startSilentSsoLogin();
-    else startSsoLogin(redirectTo, invitedEmail || undefined);
-  }, [autoStart, redirectTo, invitedEmail]);
+    if (HOME_PATHS.has(redirectTo) && !invited) startSilentSsoLogin();
+    else startSsoLogin(redirectTo, invite || undefined);
+  }, [autoStart, redirectTo, invited, invite]);
 
   const onSubmit = handleSubmit((values) => {
     loginMutation.mutate(values, {
@@ -163,9 +166,7 @@ export function LoginPage() {
   return (
     <AuthShell
       title="Sign in"
-      subtitle={
-        invitedEmail ? 'Sign in with the invited email to continue' : 'to access your workspace'
-      }
+      subtitle={invited ? 'Sign in with the invited email to continue' : 'to access your workspace'}
     >
       {/*
         🔴 With SSO on this button is the ONLY way in: the password form below is not
@@ -189,15 +190,15 @@ export function LoginPage() {
             <FormErrorBanner message="That sign-in didn't complete. Please try again." />
           )}
           {/*
-            `invitedEmail` is the `?email=` an invitation link carries. Passing it
-            on prefills the provider's sign-in — and its signup, which is the case
-            that matters: an invitee with no account must register the address they
-            were invited at, or they get in and are then refused.
+            `invite` is the token an invitation link carries. The server turns it into
+            the invited address, and the provider opens Create Account or Sign In for
+            that address, locked — so an invitee cannot register a different one and
+            then be refused.
           */}
           <Button
             type="button"
             fullWidth
-            onClick={() => startSsoLogin(redirectTo, invitedEmail || undefined)}
+            onClick={() => startSsoLogin(redirectTo, invite || undefined)}
           >
             Access Jobwork
           </Button>

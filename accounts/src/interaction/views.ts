@@ -136,6 +136,8 @@ const STYLE = `
     outline:none; transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
   }
   input::placeholder { color:#94a3b8; }
+  /* The invited address: still focusable and announced, visibly not editable. */
+  input[readonly] { background:#eef2f6; color:var(--muted); cursor:default; }
   input:focus {
     border-color:var(--primary); background:#fff;
     box-shadow:0 0 0 2.5px rgba(0,136,255,.12);
@@ -169,9 +171,17 @@ const STYLE = `
   .error  { background:#fdecec; color:#a01d1d; }
   .notice { background:#eaf3ff; color:#14457f; }
 
+  button[type="submit"].secondary,
+  button[type="submit"].secondary:hover {
+    background:#fff; color:var(--text); border:1px solid var(--border);
+    box-shadow:none; transform:none;
+  }
+  button[type="submit"].secondary:hover { border-color:var(--primary); }
+
   /* A vertical run of buttons, as on the sign-out hand-off. */
   .stack button { margin-bottom:10px; }
   .stack button:last-child { margin-bottom:0; }
+  .stack form + form { margin-top:10px; }
 
   /* Protocol detail on the error page — present for whoever is debugging, and
      visually subordinate so it never reads as the message to the user. */
@@ -291,15 +301,16 @@ export function passwordField(options: {
   label: string;
   autocomplete: string;
   minlength?: number;
+  autofocus?: boolean;
 }): string {
-  const { id, name, label, autocomplete, minlength } = options;
+  const { id, name, label, autocomplete, minlength, autofocus } = options;
 
   return `
       <label for="${escapeHtml(id)}">${escapeHtml(label)}</label>
       <div class="pw">
         <input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="password"
                placeholder="${escapeHtml(label)}"
-               autocomplete="${escapeHtml(autocomplete)}"${minlength ? ` minlength="${minlength}"` : ''} required>
+               autocomplete="${escapeHtml(autocomplete)}"${minlength ? ` minlength="${minlength}"` : ''} required${autofocus ? ' autofocus' : ''}>
         <button type="button" data-toggle-for="${escapeHtml(id)}" aria-label="Show password"
                 aria-pressed="false"></button>
       </div>`;
@@ -308,13 +319,50 @@ export function passwordField(options: {
 /** Every page with a password field loads this, and nothing else does. */
 export const PASSWORD_TOGGLE_SCRIPT = '/js/password-toggle.js';
 
+/**
+ * How the invited address is treated on this page — interaction/invitee.ts.
+ *
+ * - `open`     no vouched address: today's page, editable field (the default).
+ * - `locked`   the app vouched for the address: read-only field, plus "Not you?".
+ * - `switched` the person chose "Not you?": editable, and every link keeps
+ *              `?switch=1` so the next page does not lock it again.
+ */
+export type HintMode = 'open' | 'locked' | 'switched';
+
+/** `?switch=1` while switched, so a reload or the next form keeps the choice. */
+export function modeQuery(mode: HintMode): string {
+  return mode === 'switched' ? '?switch=1' : '';
+}
+
+/** The read-only field's attributes, or the editable ones. */
+export function emailInput(
+  email: string,
+  locked: boolean,
+  autocomplete: string,
+  autofocus: boolean,
+): string {
+  return `<input id="email" name="email" type="email" value="${escapeHtml(email)}"
+               placeholder="Email address" autocomplete="${autocomplete}" required${
+                 locked ? ' readonly aria-readonly="true"' : autofocus ? ' autofocus' : ''
+               }>`;
+}
+
+export function notYouLink(uid: string): string {
+  const href = `/interaction/${encodeURIComponent(uid)}?switch=1`;
+  return `<p class="switch">Not you? <a href="${escapeHtml(href)}">Use a different account</a></p>`;
+}
+
 export function loginPage(options: {
   uid: string;
   clientName: string;
   email?: string;
   error?: string;
+  mode?: HintMode;
 }): string {
-  const { uid, clientName, email = '', error } = options;
+  const { uid, clientName, email = '', error, mode = 'open' } = options;
+  const locked = mode === 'locked';
+  const base = `/interaction/${encodeURIComponent(uid)}`;
+  const query = modeQuery(mode);
 
   /**
    * 🔴 Signup stays INSIDE this interaction (`/interaction/:uid/signup`). The old link
@@ -326,7 +374,17 @@ export function loginPage(options: {
    * The address is not in the URL: the signup route reads it from this interaction's
    * `login_hint`, so an invitee still registers the address they were invited AT.
    */
-  const signupHref = `/interaction/${encodeURIComponent(uid)}/signup`;
+  const signupHref = `${base}/signup${query}`;
+
+  /**
+   * 🔴 No "Create Account" when locked. This page is shown locked only BECAUSE the
+   * address already has an account, and signing up again on it would replace that
+   * account's password with whatever is typed here (account.service.ts `signup`).
+   * "Forgot password?" is the way in for someone who cannot remember it.
+   */
+  const footer = locked
+    ? notYouLink(uid)
+    : `<p class="switch">Don't have an account? <a href="${escapeHtml(signupHref)}">Create Account</a></p>`;
 
   return shell(
     'Sign in',
@@ -334,16 +392,52 @@ export function loginPage(options: {
       <h1>Sign in</h1>
       <p class="sub">to continue to ${escapeHtml(clientName)}</p>
       ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
-      <form method="post" action="/interaction/${encodeURIComponent(uid)}/login" autocomplete="on">
+      <form method="post" action="${escapeHtml(`${base}/login${query}`)}" autocomplete="on">
         <label for="email">Email address</label>
-        <input id="email" name="email" type="email" value="${escapeHtml(email)}"
-               placeholder="Email address" autocomplete="username" required autofocus>
-        ${passwordField({ id: 'password', name: 'password', label: 'Password', autocomplete: 'current-password' })}
+        ${emailInput(email, locked, 'username', true)}
+        ${passwordField({ id: 'password', name: 'password', label: 'Password', autocomplete: 'current-password', autofocus: locked })}
         <p class="forgot"><a href="/forgot-password">Forgot password?</a></p>
         <button type="submit">Sign In</button>
       </form>
-      <p class="switch">Don't have an account? <a href="${escapeHtml(signupHref)}">Create Account</a></p>`,
+      ${footer}`,
     { script: PASSWORD_TOGGLE_SCRIPT },
+  );
+}
+
+/**
+ * Signed in here as X, while the app vouched it is sending Y — §4.5 of the plan.
+ *
+ * 🔴 Switching signs X out of every Octfis app in this browser. That is the library,
+ * not a choice: a login result for a different account than the session holds runs
+ * the end-session flow first, back-channel logout included. So the button says so.
+ *
+ * "Switch" is a plain GET to the locked screen for Y; "Stay" finishes as X, and the
+ * app then shows its own "Different account" page — an invitation for Y cannot be
+ * accepted by X, and pretending otherwise would only move the dead end.
+ */
+export function mismatchPage(options: {
+  uid: string;
+  signedInAs: string;
+  invitedEmail: string;
+}): string {
+  const { uid, signedInAs, invitedEmail } = options;
+  const base = `/interaction/${encodeURIComponent(uid)}`;
+
+  return shell(
+    'Different account',
+    `
+      <h1>This invitation is for ${escapeHtml(invitedEmail)}</h1>
+      <p class="sub">You're signed in as ${escapeHtml(signedInAs)}.</p>
+      <p class="notice">Switching signs you out as ${escapeHtml(signedInAs)} on every Octfis app in this browser.</p>
+      <div class="stack">
+        <form method="get" action="${escapeHtml(base)}">
+          <input type="hidden" name="invitee" value="1">
+          <button type="submit" autofocus>Switch to ${escapeHtml(invitedEmail)}</button>
+        </form>
+        <form method="post" action="${escapeHtml(`${base}/continue`)}">
+          <button type="submit" class="secondary">Stay signed in as ${escapeHtml(signedInAs)}</button>
+        </form>
+      </div>`,
   );
 }
 
