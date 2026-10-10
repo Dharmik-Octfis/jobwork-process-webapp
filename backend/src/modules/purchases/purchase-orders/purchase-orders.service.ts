@@ -18,12 +18,13 @@ function poListWhere(organizationId: string, opts: ListQuery): Prisma.PurchaseOr
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.PurchaseOrderWhereInput>('purchase_order', opts.filter),
-    ...searchWhere<Prisma.PurchaseOrderWhereInput>(opts.search, [
-      'poNumber',
-      'notes',
-      'paymentTerms',
-      'status',
-    ]),
+    ...searchWhere<Prisma.PurchaseOrderWhereInput>(
+      opts.search,
+      ['poNumber', 'notes', 'paymentTerms', 'status'],
+      (term) => [
+        { vendor: searchWhere<Prisma.VendorWhereInput>(term, ['contactName', 'companyName']) },
+      ],
+    ),
   };
 
   if (opts.fieldFilters) {

@@ -61,14 +61,22 @@ export interface PageContext {
  *
  * `columns` is typed `keyof TWhere`, so a removed or misspelt column is a compile
  * error at the call site — that's the whole point of centralising this.
+ *
+ * `related` adds more OR branches for the same term, for a match that lives on
+ * another table (a document's customer/vendor name). Build them with a nested
+ * `searchWhere` on that model so its columns are type-checked too.
  */
 export function searchWhere<TWhere>(
   search: string | undefined,
   columns: readonly (keyof TWhere & string)[],
+  related: (term: string) => TWhere[] = () => [],
 ): TWhere {
   if (!search) return {} as TWhere;
   return {
-    OR: columns.map((c) => ({ [c]: { contains: search, mode: 'insensitive' } })),
+    OR: [
+      ...columns.map((c) => ({ [c]: { contains: search, mode: 'insensitive' } })),
+      ...related(search),
+    ],
   } as TWhere;
 }
 
