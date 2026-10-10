@@ -14,12 +14,15 @@ function soListWhere(organizationId: string, opts: ListQuery): Prisma.SalesOrder
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.SalesOrderWhereInput>('sales_order', opts.filter),
-    ...searchWhere<Prisma.SalesOrderWhereInput>(opts.search, [
-      'soNumber',
-      'notes',
-      'paymentTerms',
-      'status',
-    ]),
+    ...searchWhere<Prisma.SalesOrderWhereInput>(
+      opts.search,
+      ['soNumber', 'notes', 'paymentTerms', 'status'],
+      (term) => [
+        {
+          customer: searchWhere<Prisma.CustomerWhereInput>(term, ['contactName', 'companyName']),
+        },
+      ],
+    ),
   };
 
   if (opts.fieldFilters) {

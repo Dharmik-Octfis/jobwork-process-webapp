@@ -1357,7 +1357,13 @@ function billListWhere(organizationId: string, opts: ListQuery): Prisma.BillWher
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.BillWhereInput>('bill', opts.filter),
-    ...searchWhere<Prisma.BillWhereInput>(opts.search, ['billNumber', 'notes', 'status']),
+    ...searchWhere<Prisma.BillWhereInput>(
+      opts.search,
+      ['billNumber', 'notes', 'status'],
+      (term) => [
+        { vendor: searchWhere<Prisma.VendorWhereInput>(term, ['contactName', 'companyName']) },
+      ],
+    ),
   };
 
   if (opts.fieldFilters) {

@@ -100,12 +100,15 @@ function invoiceListWhere(organizationId: string, opts: ListQuery): Prisma.Invoi
     organizationId: organizationId,
     isDeleted: false,
     ...filterWhere<Prisma.InvoiceWhereInput>('invoice', opts.filter),
-    ...searchWhere<Prisma.InvoiceWhereInput>(opts.search, [
-      'invoiceNumber',
-      'notes',
-      'paymentTerms',
-      'status',
-    ]),
+    ...searchWhere<Prisma.InvoiceWhereInput>(
+      opts.search,
+      ['invoiceNumber', 'notes', 'paymentTerms', 'status'],
+      (term) => [
+        {
+          customer: searchWhere<Prisma.CustomerWhereInput>(term, ['contactName', 'companyName']),
+        },
+      ],
+    ),
   };
 
   if (opts.fieldFilters) {
