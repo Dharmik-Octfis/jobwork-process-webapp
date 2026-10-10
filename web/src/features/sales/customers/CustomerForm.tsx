@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -42,6 +42,7 @@ interface CustomerFormProps {
   customFieldErrors?: Record<string, string>;
   isModal?: boolean;
   onCancel?: () => void;
+  onNestedDialogChange?: (open: boolean) => void;
 }
 
 export function CustomerForm({
@@ -52,10 +53,13 @@ export function CustomerForm({
   customFieldErrors,
   isModal = false,
   onCancel,
+  onNestedDialogChange,
 }: CustomerFormProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
+  // per-instance: the Save button sits outside the form and `form=` binds to the FIRST matching id
+  const formId = useId();
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'customer');
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
@@ -70,12 +74,20 @@ export function CustomerForm({
     organizationsApi.getSeedData().then(setMasterData);
   }, []);
 
+  const nestedDialogOpen = isNumberConfigOpen || isPaymentTermModalOpen || isCurrencyModalOpen;
+  useEffect(() => {
+    onNestedDialogChange?.(nestedDialogOpen);
+    return () => onNestedDialogChange?.(false);
+  }, [nestedDialogOpen, onNestedDialogChange]);
+
   const {
     register,
     control,
     handleSubmit,
     watch,
     setValue,
+    setError,
+    getValues,
     formState: { errors },
   } = useForm<CreateCustomerData>({
     resolver: zodResolver(createCustomerSchema),
@@ -93,6 +105,34 @@ export function CustomerForm({
       ],
     },
   });
+
+  // Server `details` cover both built-in fields and `customFields.<key>`; route each to its field.
+  useEffect(() => {
+    if (!customFieldErrors) return;
+    let hasCustomFieldError = false;
+    for (const [key, message] of Object.entries(customFieldErrors)) {
+      if (key.startsWith('customFields.')) hasCustomFieldError = true;
+      else setError(key as keyof CreateCustomerData, { type: 'server', message });
+    }
+    if (hasCustomFieldError) setActiveTab('custom');
+  }, [customFieldErrors, setError]);
+
+  const findMissingCustomFields = (values: Partial<CreateCustomerData>) => {
+    const missing: Record<string, string> = {};
+    customFields.forEach((field) => {
+      if (!field.isRequired) return;
+      const value = values.customFields?.[field.key];
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      ) {
+        missing[`customFields.${field.key}`] = `${field.label} is required`;
+      }
+    });
+    return missing;
+  };
 
   const { data: preference } = useQuery({
     queryKey: ['customer-number-preference', orgId],
@@ -224,6 +264,7 @@ export function CustomerForm({
     borderRadius: '4px',
     boxSizing: 'border-box' as const,
   };
+  const errorBorder = { borderColor: '#ef4444' };
   const tabBtnStyle = (isActive: boolean) => ({
     padding: '12px 0',
     border: 'none',
@@ -273,50 +314,49 @@ export function CustomerForm({
 
       <div className={isModal ? '' : 'page-body'}>
         <form
-          id="customer-form"
+          id={formId}
           style={{ maxWidth: '900px' }}
-          onSubmit={handleSubmit((data) => {
-            let hasErrors = false;
-            const newLocalCustomFieldErrors: Record<string, string> = {};
-
-            customFields.forEach((field) => {
-              if (field.isRequired) {
-                const value = data.customFields?.[field.key];
-                if (
-                  value === undefined ||
-                  value === null ||
-                  value === '' ||
-                  (Array.isArray(value) && value.length === 0)
-                ) {
-                  newLocalCustomFieldErrors[`customFields.${field.key}`] =
-                    `${field.label} is required`;
-                  hasErrors = true;
-                }
+          onSubmit={handleSubmit(
+            (data) => {
+              const missing = findMissingCustomFields(data);
+              setLocalCustomFieldErrors(missing);
+              const firstMissing = Object.values(missing)[0];
+              if (firstMissing) {
+                setActiveTab('custom');
+                notify.error(firstMissing);
+                return;
               }
-            });
 
-            setLocalCustomFieldErrors(newLocalCustomFieldErrors);
-
-            if (hasErrors) {
-              setActiveTab('custom');
-              const firstCustomFieldError = Object.values(newLocalCustomFieldErrors)[0];
-              if (firstCustomFieldError) notify.error(firstCustomFieldError);
-              return;
-            }
-
-            const cleanedData = {
-              ...data,
-              contactPersons: data.contactPersons?.filter(
-                (cp) =>
-                  cp.firstName?.trim() ||
-                  cp.lastName?.trim() ||
-                  cp.email?.trim() ||
-                  cp.phone?.trim() ||
-                  cp.mobile?.trim(),
-              ),
-            };
-            onSubmit(cleanedData);
-          })}
+              const cleanedData = {
+                ...data,
+                contactPersons: data.contactPersons?.filter(
+                  (cp) =>
+                    cp.firstName?.trim() ||
+                    cp.lastName?.trim() ||
+                    cp.email?.trim() ||
+                    cp.phone?.trim() ||
+                    cp.mobile?.trim(),
+                ),
+              };
+              onSubmit(cleanedData);
+            },
+            // Report the custom fields in the same pass, or they only surface on the second Save.
+            (formErrors) => {
+              const missing = findMissingCustomFields(getValues());
+              setLocalCustomFieldErrors(missing);
+              const contactPersonError = formErrors.contactPersons?.find?.((cp) => cp?.email)?.email
+                ?.message;
+              const firstMessage =
+                formErrors.contactName?.message ??
+                formErrors.contactNumber?.message ??
+                formErrors.email?.message ??
+                contactPersonError ??
+                Object.values(missing)[0];
+              if (Object.keys(missing).length > 0) setActiveTab('custom');
+              else if (contactPersonError) setActiveTab('contact');
+              notify.error(firstMessage ?? 'Please check the highlighted fields');
+            },
+          )}
         >
           {/* Main Details Section */}
           <div
@@ -413,11 +453,6 @@ export function CustomerForm({
                   />
                 )}
               />
-              {errors.contactName && (
-                <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                  {errors.contactName.message}
-                </div>
-              )}
             </div>
 
             <label style={labelStyle}>Email Address</label>
@@ -436,14 +471,23 @@ export function CustomerForm({
               <input
                 {...register('email')}
                 type="email"
-                style={{ ...inputStyle, paddingLeft: '28px' }}
+                aria-invalid={!!errors.email}
+                style={{
+                  ...inputStyle,
+                  paddingLeft: '28px',
+                  ...(errors.email && errorBorder),
+                }}
               />
             </div>
 
             <label style={{ ...labelStyle, color: '#ef4444' }}>Customer Number*</label>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />
+                <input
+                  {...register('contactNumber')}
+                  aria-invalid={!!errors.contactNumber}
+                  style={{ ...inputStyle, flex: 1, ...(errors.contactNumber && errorBorder) }}
+                />
                 <button
                   type="button"
                   onClick={() => setIsNumberConfigOpen(true)}
@@ -459,11 +503,6 @@ export function CustomerForm({
                   <Settings size={18} />
                 </button>
               </div>
-              {errors.contactNumber && (
-                <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                  {errors.contactNumber.message}
-                </div>
-              )}
             </div>
 
             <label style={labelStyle}>Phone</label>
@@ -911,7 +950,11 @@ export function CustomerForm({
                             <input
                               {...register(`contactPersons.${index}.email`)}
                               type="email"
-                              style={inputStyle}
+                              aria-invalid={!!errors.contactPersons?.[index]?.email}
+                              style={{
+                                ...inputStyle,
+                                ...(errors.contactPersons?.[index]?.email && errorBorder),
+                              }}
                             />
                           </td>
                           <td style={{ padding: '6px 8px', fontSize: '13px' }}>
@@ -1039,13 +1082,14 @@ export function CustomerForm({
                 padding: '16px 20px',
                 borderTop: '1px solid #e2e8f0',
                 zIndex: 10,
-                margin: '0 -20px -20px -20px',
+                // cancels Modal's body padding (16px 20px) so the bar spans the dialog edge to edge
+                margin: '0 -20px -16px -20px',
               }
             : undefined
         }
       >
         <button
-          form="customer-form"
+          form={formId}
           type="submit"
           disabled={isSubmitting}
           style={{

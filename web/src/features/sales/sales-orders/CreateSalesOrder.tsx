@@ -2033,11 +2033,6 @@ export function CreateSalesOrder() {
         }}
       />
 
-      <CreateCustomerModal
-        isOpen={isCustomerModalOpen}
-        onClose={() => setIsCustomerModalOpen(false)}
-      />
-
       {selectedCustomer && (
         <AdditionalAddressModal
           isOpen={addressModalType !== null}
