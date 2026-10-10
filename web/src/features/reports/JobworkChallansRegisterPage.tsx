@@ -387,7 +387,7 @@ export function JobworkChallansRegisterPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Job Work</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
-            Jobwork Challan Register
+            Jobwork Challan Report
             <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
               • From {formattedFromDate} To {formattedToDate}
             </span>
@@ -397,7 +397,7 @@ export function JobworkChallansRegisterPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ReportExportMenu
             orgName={organizationName || 'OCTFIS TECHNO LLP'}
-            reportTitle="Jobwork Challan Register"
+            reportTitle="Jobwork Challan Report"
             dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
             columns={exportColumns}
             data={exportRows}
@@ -417,7 +417,7 @@ export function JobworkChallansRegisterPage() {
               }
               exportJobChallansToExcel({
                 rows: allRows,
-                filename: `Jobwork_Challan_Register_${formattedFromDate}_to_${formattedToDate}`,
+                filename: `Jobwork_Challan_Report_${formattedFromDate}_to_${formattedToDate}`,
                 format: 'xlsx',
               });
               notify.success(`Exported all ${allRows.length} challan record(s) as XLSX file.`);
@@ -590,7 +590,7 @@ export function JobworkChallansRegisterPage() {
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
-              Jobwork Challan Register
+              Jobwork Challan Report
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
               From {formattedFromDate} To {formattedToDate}

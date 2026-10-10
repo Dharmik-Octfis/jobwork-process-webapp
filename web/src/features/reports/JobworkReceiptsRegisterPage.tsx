@@ -403,7 +403,7 @@ export function JobworkReceiptsRegisterPage() {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '2px' }}>Job Work</div>
           <div style={{ fontSize: '16px', fontWeight: 500, color: '#111827' }}>
-            Jobwork Receipt Register
+            Jobwork Receipt Report
             <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: '6px' }}>
               • From {formattedFromDate} To {formattedToDate}
             </span>
@@ -413,7 +413,7 @@ export function JobworkReceiptsRegisterPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ReportExportMenu
             orgName={organizationName || 'OCTFIS TECHNO LLP'}
-            reportTitle="Jobwork Receipt Register"
+            reportTitle="Jobwork Receipt Report"
             dateSubtitle={`From ${formattedFromDate} To ${formattedToDate}`}
             columns={exportColumns}
             data={exportRows}
@@ -433,7 +433,7 @@ export function JobworkReceiptsRegisterPage() {
               }
               exportJobReceiptsToExcel({
                 rows: allRows,
-                filename: `Jobwork_Receipt_Register_${formattedFromDate}_to_${formattedToDate}`,
+                filename: `Jobwork_Receipt_Report_${formattedFromDate}_to_${formattedToDate}`,
                 format: 'xlsx',
               });
               notify.success(`Exported all ${allRows.length} receipt record(s) as XLSX file.`);
@@ -606,7 +606,7 @@ export function JobworkReceiptsRegisterPage() {
             <h2
               style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0' }}
             >
-              Jobwork Receipt Register
+              Jobwork Receipt Report
             </h2>
             <div style={{ fontSize: '13px', color: '#4b5563' }}>
               From {formattedFromDate} To {formattedToDate}
