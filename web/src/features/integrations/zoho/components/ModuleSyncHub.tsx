@@ -12,6 +12,7 @@ import {
   XCircle,
   RefreshCw,
   Clock,
+  Lock,
 } from 'lucide-react';
 import {
   useZohoSyncSettings,
@@ -20,20 +21,20 @@ import {
   useSyncAllZohoModules,
 } from '../zoho.api';
 import type { ZohoSyncModuleKey, ZohoModuleSyncConfig } from '../zoho.schemas';
-import { SyncHistoryModal } from './SyncHistoryModal';
 import { toApiErrorMessage } from '../../../../api/client';
 
 interface ModuleSyncHubProps {
   orgId: string;
   onConfigureModule: (module: ZohoSyncModuleKey) => void;
+  disabled?: boolean;
 }
 
-export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigureModule }) => {
+export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({
+  orgId,
+  onConfigureModule,
+  disabled = false,
+}) => {
   const navigate = useNavigate();
-  const [historyModalModule, setHistoryModalModule] = useState<{
-    key: ZohoSyncModuleKey;
-    label: string;
-  } | null>(null);
 
   const { data: syncSettings, isLoading, refetch } = useZohoSyncSettings(orgId);
   const toggleSyncMutation = useToggleZohoSync(orgId);
@@ -44,6 +45,9 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
     null,
   );
   const [syncingAllType, setSyncingAllType] = useState<'incremental' | 'full' | null>(null);
+
+  const isAnySyncRunning = Boolean(activeSyncing) || Boolean(syncingAllType);
+  const isGloballyDisabled = disabled || isAnySyncRunning;
 
   const modules: ZohoSyncModuleKey[] = ['customer', 'vendor', 'item'];
 
@@ -136,13 +140,17 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
   const formatDateTime = (isoString?: string | null) => {
     if (!isoString) return '—';
     try {
-      const date = new Date(isoString);
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${day}-${month}-${year} ${hours}:${minutes}`;
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return isoString;
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      const hoursFormatted = String(hours).padStart(2, '0');
+      return `${day}/${month}/${year} ${hoursFormatted}:${minutes} ${ampm}`;
     } catch {
       return isoString;
     }
@@ -180,7 +188,7 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
               width: '24px',
               height: '24px',
               borderRadius: '50%',
-              backgroundColor: 'var(--navy-900)',
+              backgroundColor: disabled ? '#94a3b8' : 'var(--navy-900)',
               color: '#fff',
               fontSize: '12px',
               fontWeight: 700,
@@ -188,11 +196,39 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
           >
             4
           </span>
-          <ArrowRightLeft size={18} color="var(--navy-900)" />
+          <ArrowRightLeft size={18} color={disabled ? '#94a3b8' : 'var(--navy-900)'} />
           <div>
-            <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--navy-900)', margin: 0 }}>
-              Configure Module to be Synced
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h2
+                style={{
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: disabled ? '#64748b' : 'var(--navy-900)',
+                  margin: 0,
+                }}
+              >
+                Configure Module to be Synced
+              </h2>
+              {disabled && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    backgroundColor: '#f1f5f9',
+                    color: '#64748b',
+                    border: '1px solid #cbd5e1',
+                  }}
+                >
+                  <Lock size={11} />
+                  Disabled (Complete Step 3 Organization Mapping to Enable)
+                </span>
+              )}
+            </div>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
               *Auto-update occurs every 2 hours.
             </span>
@@ -204,51 +240,69 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
           <button
             type="button"
             onClick={() => handleSyncAll(false)}
-            disabled={Boolean(syncingAllType)}
-            title="Sync new/modified records since last sync time"
+            disabled={isGloballyDisabled}
+            title={
+              disabled
+                ? 'Complete Organization Mapping in Step 3 to enable'
+                : 'Sync new/modified records since last sync time'
+            }
             style={{
-              backgroundColor: '#15803d',
-              color: '#fff',
-              border: 'none',
+              backgroundColor: '#f8fafc',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
               borderRadius: '6px',
               padding: '6px 14px',
               fontSize: '13px',
               fontWeight: 600,
-              cursor: syncingAllType ? 'not-allowed' : 'pointer',
+              cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              opacity: syncingAllType === 'incremental' ? 0.7 : 1,
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+              opacity: isGloballyDisabled ? (syncingAllType === 'incremental' ? 0.85 : 0.45) : 1,
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+              transition: 'background-color 0.15s, opacity 0.15s',
             }}
           >
-            <Zap size={13} className={syncingAllType === 'incremental' ? 'animate-spin' : ''} />
+            <Zap
+              size={13}
+              color="#475569"
+              className={syncingAllType === 'incremental' ? 'animate-spin' : ''}
+            />
             {syncingAllType === 'incremental' ? 'Syncing...' : 'Sync All (Incremental)'}
           </button>
 
-          {/* Full Sync All Records Button (Not based on time) */}
+          {/* Full Sync All Records Button */}
           <button
             type="button"
             onClick={() => handleSyncAll(true)}
-            disabled={Boolean(syncingAllType)}
-            title="Sync all records from Zoho Books from scratch without time filtering"
+            disabled={isGloballyDisabled}
+            title={
+              disabled
+                ? 'Complete Organization Mapping in Step 3 to enable'
+                : 'Sync all records from Zoho Books from scratch without time filtering'
+            }
             style={{
-              backgroundColor: '#4338ca',
-              color: '#fff',
-              border: 'none',
+              backgroundColor: '#f8fafc',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
               borderRadius: '6px',
               padding: '6px 14px',
               fontSize: '13px',
               fontWeight: 600,
-              cursor: syncingAllType ? 'not-allowed' : 'pointer',
+              cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              opacity: syncingAllType === 'full' ? 0.7 : 1,
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+              opacity: isGloballyDisabled ? (syncingAllType === 'full' ? 0.85 : 0.45) : 1,
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+              transition: 'background-color 0.15s, opacity 0.15s',
             }}
           >
-            <RefreshCw size={13} className={syncingAllType === 'full' ? 'animate-spin' : ''} />
+            <RefreshCw
+              size={13}
+              color="#475569"
+              className={syncingAllType === 'full' ? 'animate-spin' : ''}
+            />
             {syncingAllType === 'full' ? 'Full Syncing All...' : 'Full Sync All (All Records)'}
           </button>
 
@@ -256,43 +310,61 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
           <button
             type="button"
             onClick={() => navigate(`/organizations/${orgId}/settings/integrations/zoho/history`)}
-            title="View complete Sync History matching Zoho Books layout"
+            disabled={isGloballyDisabled}
+            title={
+              disabled
+                ? 'Complete Organization Mapping in Step 3 to enable'
+                : 'View complete Sync History matching Zoho Books layout'
+            }
             style={{
-              backgroundColor: '#0284c7',
-              color: '#fff',
-              border: 'none',
+              backgroundColor: '#f8fafc',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
               borderRadius: '6px',
               padding: '6px 14px',
               fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
+              fontWeight: 500,
+              cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+              opacity: isGloballyDisabled ? 0.45 : 1,
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+              transition: 'background-color 0.15s, opacity 0.15s',
             }}
           >
-            <Clock size={13} />
+            <Clock size={13} color="#475569" />
             Sync History
           </button>
 
+          {/* Refresh Status Button */}
           <button
             type="button"
             onClick={() => refetch()}
+            disabled={isGloballyDisabled}
+            title={
+              disabled
+                ? 'Complete Organization Mapping in Step 3 to enable'
+                : 'Refresh sync status and timestamps from server'
+            }
             style={{
-              background: 'none',
+              backgroundColor: '#f8fafc',
               border: '1px solid #cbd5e1',
               borderRadius: '6px',
-              padding: '5px 12px',
+              padding: '6px 12px',
               fontSize: '12px',
+              fontWeight: 500,
               color: '#475569',
-              cursor: 'pointer',
+              cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
+              opacity: isGloballyDisabled ? 0.45 : 1,
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+              transition: 'background-color 0.15s, opacity 0.15s',
             }}
           >
-            <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={12} color="#475569" className={isLoading ? 'animate-spin' : ''} />
             Refresh Status
           </button>
         </div>
@@ -328,7 +400,6 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
               activeSyncing?.module === modKey && !activeSyncing?.fullSync;
             const isSyncingFull =
               activeSyncing?.module === modKey && Boolean(activeSyncing?.fullSync);
-            const isModuleSyncing = isSyncingIncremental || isSyncingFull;
 
             return (
               <div
@@ -431,6 +502,7 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                         <button
                           type="button"
                           onClick={() => onConfigureModule(modKey)}
+                          disabled={isGloballyDisabled}
                           style={{
                             padding: '6px 16px',
                             backgroundColor: '#15803d',
@@ -439,10 +511,11 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                             borderRadius: '6px',
                             fontSize: '13px',
                             fontWeight: 600,
-                            cursor: 'pointer',
+                            cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '6px',
+                            opacity: isGloballyDisabled ? 0.45 : 1,
                             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
                           }}
                         >
@@ -511,16 +584,18 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                         <button
                           type="button"
                           onClick={() => onConfigureModule(modKey)}
+                          disabled={isGloballyDisabled}
                           style={{
                             background: 'none',
                             border: 'none',
                             color: '#2563eb',
                             fontWeight: 500,
-                            cursor: 'pointer',
+                            cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
                             padding: 0,
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
+                            opacity: isGloballyDisabled ? 0.45 : 1,
                           }}
                         >
                           Edit
@@ -533,17 +608,22 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                             <button
                               type="button"
                               onClick={() => handleSetSyncStatus(modKey, 'PAUSED')}
-                              disabled={toggleSyncMutation.isPending}
+                              disabled={isGloballyDisabled || toggleSyncMutation.isPending}
                               style={{
                                 background: 'none',
                                 border: 'none',
-                                color: '#b45309',
+                                color: '#2563eb',
                                 fontWeight: 500,
-                                cursor: 'pointer',
+                                cursor:
+                                  isGloballyDisabled || toggleSyncMutation.isPending
+                                    ? 'not-allowed'
+                                    : 'pointer',
                                 padding: 0,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
+                                opacity:
+                                  isGloballyDisabled || toggleSyncMutation.isPending ? 0.45 : 1,
                               }}
                             >
                               Pause Sync
@@ -552,17 +632,22 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                             <button
                               type="button"
                               onClick={() => handleSetSyncStatus(modKey, 'INACTIVE')}
-                              disabled={toggleSyncMutation.isPending}
+                              disabled={isGloballyDisabled || toggleSyncMutation.isPending}
                               style={{
                                 background: 'none',
                                 border: 'none',
-                                color: '#dc2626',
+                                color: '#2563eb',
                                 fontWeight: 500,
-                                cursor: 'pointer',
+                                cursor:
+                                  isGloballyDisabled || toggleSyncMutation.isPending
+                                    ? 'not-allowed'
+                                    : 'pointer',
                                 padding: 0,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
+                                opacity:
+                                  isGloballyDisabled || toggleSyncMutation.isPending ? 0.45 : 1,
                               }}
                             >
                               Set Inactive
@@ -575,17 +660,22 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                             <button
                               type="button"
                               onClick={() => handleSetSyncStatus(modKey, 'ACTIVE')}
-                              disabled={toggleSyncMutation.isPending}
+                              disabled={isGloballyDisabled || toggleSyncMutation.isPending}
                               style={{
                                 background: 'none',
                                 border: 'none',
-                                color: '#15803d',
+                                color: '#2563eb',
                                 fontWeight: 500,
-                                cursor: 'pointer',
+                                cursor:
+                                  isGloballyDisabled || toggleSyncMutation.isPending
+                                    ? 'not-allowed'
+                                    : 'pointer',
                                 padding: 0,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
+                                opacity:
+                                  isGloballyDisabled || toggleSyncMutation.isPending ? 0.45 : 1,
                               }}
                             >
                               Resume Sync
@@ -594,17 +684,22 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                             <button
                               type="button"
                               onClick={() => handleSetSyncStatus(modKey, 'INACTIVE')}
-                              disabled={toggleSyncMutation.isPending}
+                              disabled={isGloballyDisabled || toggleSyncMutation.isPending}
                               style={{
                                 background: 'none',
                                 border: 'none',
-                                color: '#dc2626',
+                                color: '#2563eb',
                                 fontWeight: 500,
-                                cursor: 'pointer',
+                                cursor:
+                                  isGloballyDisabled || toggleSyncMutation.isPending
+                                    ? 'not-allowed'
+                                    : 'pointer',
                                 padding: 0,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
+                                opacity:
+                                  isGloballyDisabled || toggleSyncMutation.isPending ? 0.45 : 1,
                               }}
                             >
                               Set Inactive
@@ -616,17 +711,22 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                           <button
                             type="button"
                             onClick={() => handleSetSyncStatus(modKey, 'ACTIVE')}
-                            disabled={toggleSyncMutation.isPending}
+                            disabled={isGloballyDisabled || toggleSyncMutation.isPending}
                             style={{
                               background: 'none',
                               border: 'none',
-                              color: '#15803d',
+                              color: '#2563eb',
                               fontWeight: 500,
-                              cursor: 'pointer',
+                              cursor:
+                                isGloballyDisabled || toggleSyncMutation.isPending
+                                  ? 'not-allowed'
+                                  : 'pointer',
                               padding: 0,
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
+                              opacity:
+                                isGloballyDisabled || toggleSyncMutation.isPending ? 0.45 : 1,
                             }}
                           >
                             Activate Sync
@@ -637,17 +737,23 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
 
                         <button
                           type="button"
-                          onClick={() => setHistoryModalModule({ key: modKey, label: meta.title })}
+                          onClick={() =>
+                            navigate(
+                              `/organizations/${orgId}/settings/integrations/zoho/history?module=${modKey}`,
+                            )
+                          }
+                          disabled={isGloballyDisabled}
                           style={{
                             background: 'none',
                             border: 'none',
-                            color: '#475569',
+                            color: '#2563eb',
                             fontWeight: 500,
-                            cursor: 'pointer',
+                            cursor: isGloballyDisabled ? 'not-allowed' : 'pointer',
                             padding: 0,
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
+                            opacity: isGloballyDisabled ? 0.45 : 1,
                           }}
                         >
                           Show Sync History
@@ -659,18 +765,19 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                         <button
                           type="button"
                           onClick={() => handleSyncModule(modKey, false)}
-                          disabled={isModuleSyncing || !isActive}
+                          disabled={isGloballyDisabled || !isActive}
                           title="Sync records modified or created since last sync time"
                           style={{
                             background: 'none',
                             border: 'none',
-                            color: isActive ? '#059669' : '#94a3b8',
+                            color: isActive ? '#2563eb' : '#94a3b8',
                             fontWeight: 600,
-                            cursor: isActive && !isModuleSyncing ? 'pointer' : 'not-allowed',
+                            cursor: isActive && !isGloballyDisabled ? 'pointer' : 'not-allowed',
                             padding: 0,
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
+                            opacity: isGloballyDisabled && !isSyncingIncremental ? 0.45 : 1,
                           }}
                         >
                           {isSyncingIncremental ? (
@@ -692,18 +799,19 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
                         <button
                           type="button"
                           onClick={() => handleSyncModule(modKey, true)}
-                          disabled={isModuleSyncing || !isActive}
+                          disabled={isGloballyDisabled || !isActive}
                           title="Sync all records from Zoho Books without time filter"
                           style={{
                             background: 'none',
                             border: 'none',
-                            color: isActive ? '#4f46e5' : '#94a3b8',
+                            color: isActive ? '#2563eb' : '#94a3b8',
                             fontWeight: 600,
-                            cursor: isActive && !isModuleSyncing ? 'pointer' : 'not-allowed',
+                            cursor: isActive && !isGloballyDisabled ? 'pointer' : 'not-allowed',
                             padding: 0,
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
+                            opacity: isGloballyDisabled && !isSyncingFull ? 0.45 : 1,
                           }}
                         >
                           {isSyncingFull ? (
@@ -727,17 +835,6 @@ export const ModuleSyncHub: React.FC<ModuleSyncHubProps> = ({ orgId, onConfigure
           })
         )}
       </div>
-
-      {/* Sync History Modal */}
-      {historyModalModule && (
-        <SyncHistoryModal
-          isOpen={Boolean(historyModalModule)}
-          onClose={() => setHistoryModalModule(null)}
-          orgId={orgId}
-          module={historyModalModule.key}
-          moduleLabel={historyModalModule.label}
-        />
-      )}
     </div>
   );
 };

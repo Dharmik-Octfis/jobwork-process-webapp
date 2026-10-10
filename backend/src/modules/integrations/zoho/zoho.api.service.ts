@@ -961,6 +961,103 @@ export async function getZohoSyncSettings(organizationId: string): Promise<ZohoS
     settings = getInitialSyncSettings();
     tenantSyncSettingsStore.set(organizationId, settings);
   }
+
+  // Hydrate lastSyncAt, lastPushAt, and stats from persisted zoho_sync_history records in DB
+  try {
+    await runAsTenant(organizationId, async (tx) => {
+      const historyRows = await tx.zohoSyncHistory.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          appModule: {
+            select: { code: true, name: true },
+          },
+        },
+      });
+
+      if (historyRows && historyRows.length > 0) {
+        const moduleKeys: ZohoSyncModuleKey[] = ['customer', 'vendor', 'item'];
+
+        for (const modKey of moduleKeys) {
+          const modConfig = settings.modules[modKey];
+          if (!modConfig) continue;
+
+          const isMatchingRow = (r: (typeof historyRows)[number]) => {
+            const modName = (r.moduleName || '').toLowerCase();
+            const modCode = (r.appModule?.code || '').toUpperCase();
+            if (modKey === 'customer') {
+              return (
+                modName.includes('customer') ||
+                modName.includes('account') ||
+                modCode === 'CUSTOMERS'
+              );
+            }
+            if (modKey === 'vendor') {
+              return modName.includes('vendor') || modCode === 'VENDORS';
+            }
+            if (modKey === 'item') {
+              return modName.includes('item') || modName.includes('product') || modCode === 'ITEMS';
+            }
+            return false;
+          };
+
+          const modRows = historyRows.filter(isMatchingRow);
+          const latestSync = modRows[0];
+          if (latestSync) {
+            // Latest overall sync (any direction: PULL or PUSH)
+            const syncDate = latestSync.completedAt || latestSync.createdAt;
+            if (syncDate) {
+              modConfig.lastSyncAt =
+                syncDate instanceof Date
+                  ? syncDate.toISOString()
+                  : new Date(syncDate).toISOString();
+            }
+
+            // Latest PUSH sync (direction PUSH, APP_TO_ZOHO, TWO_WAY or syncType containing push)
+            const latestPush = modRows.find(
+              (r) =>
+                r.syncDirection === 'PUSH' ||
+                r.syncDirection === 'APP_TO_ZOHO' ||
+                r.syncDirection === 'TWO_WAY' ||
+                (r.syncType && r.syncType.toLowerCase().includes('push')),
+            );
+
+            if (latestPush) {
+              const pushDate = latestPush.completedAt || latestPush.createdAt;
+              if (pushDate) {
+                modConfig.lastPushAt =
+                  pushDate instanceof Date
+                    ? pushDate.toISOString()
+                    : new Date(pushDate).toISOString();
+              }
+            } else if (!modConfig.lastPushAt && modConfig.lastSyncAt) {
+              // Fallback to lastSyncAt if no separate push record exists
+              modConfig.lastPushAt = modConfig.lastSyncAt;
+            }
+
+            // Stats calculation from history rows
+            const totalAdded = modRows.reduce(
+              (sum, r) => sum + (r.addedCount || 0) + (r.updatedCount || 0),
+              0,
+            );
+            const totalFailures = modRows.reduce((sum, r) => sum + (r.failureCount || 0), 0);
+            modConfig.stats = {
+              totalSynced: totalAdded,
+              lastSyncedCount: (latestSync.addedCount || 0) + (latestSync.updatedCount || 0),
+              failedCount: totalFailures,
+              lastError:
+                latestSync.status === 'Failed' || latestSync.status === 'Partial'
+                  ? latestSync.details || 'Sync issues recorded'
+                  : null,
+            };
+          }
+        }
+      }
+    });
+  } catch {
+    // If DB query fails or table is empty, return current in-memory settings
+  }
+
   return settings;
 }
 
@@ -1170,7 +1267,7 @@ export async function pullZohoBooksRecords(
     let page = 1;
     const perPage = 200;
     let hasMorePages = true;
-    const maxPages = 50; // Safety limit up to 10,000 records
+    const maxPages = 200; // Safety limit supporting up to 40,000 records (200 records per page)
 
     // Prepare last_modified_time filter parameter for incremental sync with a 10-minute safety buffer
     let lastModifiedParam = '';
@@ -2779,21 +2876,40 @@ export async function getZohoSyncHistory(
 
     const whereClause: any = { organizationId };
     if (module && module !== 'all') {
+      const modLower = String(module).toLowerCase();
+      const orConditions: any[] = [{ moduleName: { contains: module, mode: 'insensitive' } }];
+      if (modLower === 'item' || modLower === 'items') {
+        orConditions.push(
+          { moduleName: { contains: 'item', mode: 'insensitive' } },
+          { moduleName: { contains: 'product', mode: 'insensitive' } },
+        );
+      } else if (modLower === 'customer' || modLower === 'customers') {
+        orConditions.push(
+          { moduleName: { contains: 'customer', mode: 'insensitive' } },
+          { moduleName: { contains: 'contact', mode: 'insensitive' } },
+          { moduleName: { contains: 'account', mode: 'insensitive' } },
+        );
+      } else if (modLower === 'vendor' || modLower === 'vendors') {
+        orConditions.push(
+          { moduleName: { contains: 'vendor', mode: 'insensitive' } },
+          { moduleName: { contains: 'supplier', mode: 'insensitive' } },
+        );
+      }
+
       const targetCode =
-        module === 'item'
+        modLower === 'item' || modLower === 'items'
           ? 'ITEMS'
-          : module === 'customer'
+          : modLower === 'customer' || modLower === 'customers'
             ? 'CUSTOMERS'
-            : module === 'vendor'
+            : modLower === 'vendor' || modLower === 'vendors'
               ? 'VENDORS'
               : String(module).toUpperCase();
       const matchedAppModule = moduleMap.get(targetCode);
       if (matchedAppModule) {
-        whereClause.OR = [
-          { appModuleId: matchedAppModule.id },
-          { moduleName: { contains: module, mode: 'insensitive' } },
-        ];
+        orConditions.push({ appModuleId: matchedAppModule.id });
       }
+
+      whereClause.OR = orConditions;
     }
 
     let total: number;

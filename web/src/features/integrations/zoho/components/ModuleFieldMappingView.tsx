@@ -484,7 +484,11 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button
             type="button"
-            onClick={() => navigate(`/organizations/${orgId}/settings/integrations/zoho/history`)}
+            onClick={() =>
+              navigate(
+                `/organizations/${orgId}/settings/integrations/zoho/history?module=${module}`,
+              )
+            }
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -612,7 +616,7 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
             </select>
           </div>
 
-          {/* Preference 3: Sync Direction */}
+          {/* Preference 3: Sync Direction (Fixed) */}
           <div
             style={{
               display: 'grid',
@@ -621,67 +625,12 @@ export const ModuleFieldMappingView: React.FC<ModuleFieldMappingViewProps> = ({
               gap: '24px',
             }}
           >
-            <label
-              htmlFor="sync-direction-select"
-              style={{ fontSize: '14px', color: '#334155', fontWeight: 500 }}
-            >
+            <span style={{ fontSize: '14px', color: '#334155', fontWeight: 500 }}>
               Data Sync Direction
-            </label>
-            <select
-              id="sync-direction-select"
-              value={syncDirection}
-              onChange={(e) => setSyncDirection(e.target.value as ZohoSyncDirection)}
-              style={{
-                width: '100%',
-                maxWidth: '280px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                color: '#111827',
-                outline: 'none',
-              }}
-            >
-              <option value="ZOHO_TO_APP">Pull Only (Zoho Books → App)</option>
-            </select>
-          </div>
-
-          {/* Preference 4: Sync Status */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(280px, 360px) 1fr',
-              alignItems: 'center',
-              gap: '24px',
-            }}
-          >
-            <label
-              htmlFor="sync-status-select"
-              style={{ fontSize: '14px', color: '#334155', fontWeight: 500 }}
-            >
-              Sync Status
-            </label>
-            <select
-              id="sync-status-select"
-              value={syncStatus}
-              onChange={(e) => setSyncStatus(e.target.value as ZohoSyncStatus)}
-              style={{
-                width: '100%',
-                maxWidth: '280px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                color: '#111827',
-                outline: 'none',
-              }}
-            >
-              <option value="ACTIVE">Active (Sync Enabled)</option>
-              <option value="INACTIVE">Inactive (Sync Disabled)</option>
-              <option value="PAUSED">Paused (Sync On Hold)</option>
-            </select>
+            </span>
+            <div style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>
+              Pull Only (Zoho Books → App)
+            </div>
           </div>
 
           {(module === 'customer' || module === 'vendor') && (

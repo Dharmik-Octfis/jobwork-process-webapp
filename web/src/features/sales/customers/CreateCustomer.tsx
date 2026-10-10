@@ -21,17 +21,12 @@ export function CreateCustomer() {
       queryClient.invalidateQueries({ queryKey: ['customer-number-preference', orgId] });
       navigate(`/organizations/${orgId}/sales/customers?id=${data.id}`);
     },
-    onError: (
-      error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,
-    ) => {
+    // The toast comes from queryClient's global onError; here we only highlight fields.
+    onError: (error: AxiosError<{ details?: Record<string, string> }>) => {
       const details = error.response?.data?.details;
-      // Field-level custom-field errors are keyed `customFields.<key>`.
       if (details && typeof details === 'object' && !Array.isArray(details)) {
         setFieldErrors(details);
-        return;
       }
-      const errorMsg = error.response?.data?.error || error.response?.data?.message;
-      alert(errorMsg || 'Failed to create customer');
     },
   });
 

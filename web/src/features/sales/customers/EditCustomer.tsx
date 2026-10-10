@@ -8,7 +8,8 @@ import { CustomerForm } from './CustomerForm';
 
 export function EditCustomer() {
   const { id, orgId } = useParams<{ id: string; orgId: string }>();
-  const navigate = useNavigate();  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { data: customer, isLoading: isFetching } = useQuery({
@@ -24,16 +25,12 @@ export function EditCustomer() {
       await queryClient.invalidateQueries({ queryKey: ['customer'] });
       navigate(`/organizations/${orgId}/sales/customers?id=${id}`);
     },
-    onError: (
-      error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,
-    ) => {
+    // The toast comes from queryClient's global onError; here we only highlight fields.
+    onError: (error: AxiosError<{ details?: Record<string, string> }>) => {
       const details = error.response?.data?.details;
       if (details && typeof details === 'object' && !Array.isArray(details)) {
         setFieldErrors(details);
-        return;
       }
-      const errorMsg = error.response?.data?.error || error.response?.data?.message;
-      alert(errorMsg || 'Failed to update customer');
     },
   });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useActiveCustomFields } from '../../custom-fields/customFields.api';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -42,6 +42,7 @@ interface CustomerFormProps {
   customFieldErrors?: Record<string, string>;
   isModal?: boolean;
   onCancel?: () => void;
+  onNestedDialogChange?: (open: boolean) => void;
 }
 
 export function CustomerForm({
@@ -52,10 +53,13 @@ export function CustomerForm({
   customFieldErrors,
   isModal = false,
   onCancel,
+  onNestedDialogChange,
 }: CustomerFormProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { orgId } = useParams<{ orgId: string }>();
+  // per-instance: the Save button sits outside the form and `form=` binds to the FIRST matching id
+  const formId = useId();
   const { data: customFields = [] } = useActiveCustomFields(orgId!, 'customer');
   const [activeTab, setActiveTab] = useState('other');
   const [isNumberConfigOpen, setIsNumberConfigOpen] = useState(false);
@@ -70,12 +74,20 @@ export function CustomerForm({
     organizationsApi.getSeedData().then(setMasterData);
   }, []);
 
+  const nestedDialogOpen = isNumberConfigOpen || isPaymentTermModalOpen || isCurrencyModalOpen;
+  useEffect(() => {
+    onNestedDialogChange?.(nestedDialogOpen);
+    return () => onNestedDialogChange?.(false);
+  }, [nestedDialogOpen, onNestedDialogChange]);
+
   const {
     register,
     control,
     handleSubmit,
     watch,
     setValue,
+    setError,
+    getValues,
     formState: { errors },
   } = useForm<CreateCustomerData>({
     resolver: zodResolver(createCustomerSchema),
@@ -93,6 +105,34 @@ export function CustomerForm({
       ],
     },
   });
+
+  // Server `details` cover both built-in fields and `customFields.<key>`; route each to its field.
+  useEffect(() => {
+    if (!customFieldErrors) return;
+    let hasCustomFieldError = false;
+    for (const [key, message] of Object.entries(customFieldErrors)) {
+      if (key.startsWith('customFields.')) hasCustomFieldError = true;
+      else setError(key as keyof CreateCustomerData, { type: 'server', message });
+    }
+    if (hasCustomFieldError) setActiveTab('custom');
+  }, [customFieldErrors, setError]);
+
+  const findMissingCustomFields = (values: Partial<CreateCustomerData>) => {
+    const missing: Record<string, string> = {};
+    customFields.forEach((field) => {
+      if (!field.isRequired) return;
+      const value = values.customFields?.[field.key];
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      ) {
+        missing[`customFields.${field.key}`] = `${field.label} is required`;
+      }
+    });
+    return missing;
+  };
 
   const { data: preference } = useQuery({
     queryKey: ['customer-number-preference', orgId],
@@ -244,6 +284,7 @@ export function CustomerForm({
     borderRadius: '4px',
     boxSizing: 'border-box' as const,
   };
+  const errorBorder = { borderColor: '#ef4444' };
   const tabBtnStyle = (isActive: boolean) => ({
     padding: '12px 0',
     border: 'none',
@@ -302,124 +343,91 @@ export function CustomerForm({
         </div>
       )}
 
-      <form
-        id="customer-form"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden',
-        }}
-        onSubmit={handleSubmit(
-          (data) => {
-            let hasErrors = false;
-            const newLocalCustomFieldErrors: Record<string, string> = {};
-
-            customFields.forEach((field) => {
-              if (field.isRequired) {
-                const value = data.customFields?.[field.key];
-                if (
-                  value === undefined ||
-                  value === null ||
-                  value === '' ||
-                  (Array.isArray(value) && value.length === 0)
-                ) {
-                  newLocalCustomFieldErrors[`customFields.${field.key}`] =
-                    `${field.label} is required`;
-                  hasErrors = true;
-                }
+      <div className={isModal ? '' : 'page-body'}>
+        <form
+          id={formId}
+          style={{ maxWidth: '900px' }}
+          onSubmit={handleSubmit(
+            (data) => {
+              const missing = findMissingCustomFields(data);
+              setLocalCustomFieldErrors(missing);
+              const firstMissing = Object.values(missing)[0];
+              if (firstMissing) {
+                setActiveTab('custom');
+                notify.error(firstMissing);
+                return;
               }
-            });
 
-            setLocalCustomFieldErrors(newLocalCustomFieldErrors);
-
-            if (hasErrors) {
-              setActiveTab('custom');
-              const firstCustomFieldError = Object.values(newLocalCustomFieldErrors)[0];
-              if (firstCustomFieldError) notify.error(firstCustomFieldError);
-              return;
-            }
-
-            const cleanedData = {
-              ...data,
-              contactPersons: data.contactPersons?.filter(
-                (cp) =>
-                  cp.firstName?.trim() ||
-                  cp.lastName?.trim() ||
-                  cp.email?.trim() ||
-                  cp.phone?.trim() ||
-                  cp.mobile?.trim(),
-              ),
-            };
-            onSubmit(cleanedData);
-          },
-          (formErrors) => {
-            const errKeys = Object.keys(formErrors);
-            if (errKeys.length > 0) {
-              const firstKey = errKeys[0];
-              const err = formErrors[firstKey as keyof typeof formErrors];
-              const msg =
-                err && 'message' in err && typeof err.message === 'string'
-                  ? err.message
-                  : `Please check the ${firstKey} field`;
-              notify.error(msg);
-            }
-          },
-        )}
-      >
-        <div
-          className={isModal ? '' : 'page-body'}
-          style={
-            isModal
-              ? {
-                  flex: 1,
-                  overflowY: 'auto',
-                  padding: '24px',
-                }
-              : undefined
-          }
+              const cleanedData = {
+                ...data,
+                contactPersons: data.contactPersons?.filter(
+                  (cp) =>
+                    cp.firstName?.trim() ||
+                    cp.lastName?.trim() ||
+                    cp.email?.trim() ||
+                    cp.phone?.trim() ||
+                    cp.mobile?.trim(),
+                ),
+              };
+              onSubmit(cleanedData);
+            },
+            // Report the custom fields in the same pass, or they only surface on the second Save.
+            (formErrors) => {
+              const missing = findMissingCustomFields(getValues());
+              setLocalCustomFieldErrors(missing);
+              const contactPersonError = formErrors.contactPersons?.find?.((cp) => cp?.email)?.email
+                ?.message;
+              const firstMessage =
+                formErrors.contactName?.message ??
+                formErrors.contactNumber?.message ??
+                formErrors.email?.message ??
+                contactPersonError ??
+                Object.values(missing)[0];
+              if (Object.keys(missing).length > 0) setActiveTab('custom');
+              else if (contactPersonError) setActiveTab('contact');
+              notify.error(firstMessage ?? 'Please check the highlighted fields');
+            },
+          )}
         >
-          <div style={{ maxWidth: '900px' }}>
-            {/* Main Details Section */}
-            <div
-              className="form-field-grid"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '200px 1fr',
-                rowGap: '20px',
-                columnGap: '16px',
-                marginBottom: '40px',
-                alignItems: 'center',
-                fontSize: '13px',
-              }}
-            >
-              <label style={labelStyle}>Customer Type</label>
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                <label
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-                >
-                  <input
-                    type="radio"
-                    value="business"
-                    defaultChecked
-                    {...register('customerType')}
-                    style={{ accentColor: '#0062ff' }}
-                  />
-                  Business
-                </label>
-                <label
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-                >
-                  <input
-                    type="radio"
-                    value="individual"
-                    {...register('customerType')}
-                    style={{ accentColor: '#0062ff' }}
-                  />
-                  Individual
-                </label>
-              </div>
+          {/* Main Details Section */}
+          <div
+            className="form-field-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '200px 1fr',
+              rowGap: '20px',
+              columnGap: '16px',
+              marginBottom: '40px',
+              alignItems: 'center',
+              fontSize: '13px',
+            }}
+          >
+            <label style={labelStyle}>Customer Type</label>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+              >
+                <input
+                  type="radio"
+                  value="business"
+                  defaultChecked
+                  {...register('customerType')}
+                  style={{ accentColor: '#0062ff' }}
+                />
+                Business
+              </label>
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+              >
+                <input
+                  type="radio"
+                  value="individual"
+                  {...register('customerType')}
+                  style={{ accentColor: '#0062ff' }}
+                />
+                Individual
+              </label>
+            </div>
 
               <label style={labelStyle}>Primary Contact</label>
               <div style={{ display: 'flex', gap: '12px', maxWidth: '440px' }}>
@@ -458,76 +466,75 @@ export function CustomerForm({
               <label style={labelStyle}>Company Name</label>
               <input {...register('companyName')} style={inputStyle} />
 
-              <label style={{ ...labelStyle, color: '#ef4444' }}>Display Name*</label>
-              <div>
-                <Controller
-                  control={control}
-                  name="contactName"
-                  render={({ field }) => (
-                    <ComboBox
-                      value={field.value || ''}
-                      onChange={(val) => {
-                        field.onChange(val);
-                      }}
-                      options={displayNameOptions}
-                      placeholder=" Select or Type to add"
-                      hasError={!!errors.contactName}
-                      style={{ maxWidth: '440px' }}
-                    />
-                  )}
-                />
-                {errors.contactName && (
-                  <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                    {errors.contactName.message}
-                  </div>
+            <label style={{ ...labelStyle, color: '#ef4444' }}>Display Name*</label>
+            <div>
+              <Controller
+                control={control}
+                name="contactName"
+                render={({ field }) => (
+                  <ComboBox
+                    value={field.value || ''}
+                    onChange={(val) => {
+                      field.onChange(val);
+                    }}
+                    options={displayNameOptions}
+                    placeholder=" Select or Type to add"
+                    hasError={!!errors.contactName}
+                    style={{ maxWidth: '440px' }}
+                  />
                 )}
-              </div>
+              />
+            </div>
 
-              <label style={labelStyle}>Email Address</label>
-              <div style={{ position: 'relative', maxWidth: '440px' }}>
-                <span
+            <label style={labelStyle}>Email Address</label>
+            <div style={{ position: 'relative', maxWidth: '440px' }}>
+              <span
+                style={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#888',
+                }}
+              >
+                ✉
+              </span>
+              <input
+                {...register('email')}
+                type="email"
+                aria-invalid={!!errors.email}
+                style={{
+                  ...inputStyle,
+                  paddingLeft: '28px',
+                  ...(errors.email && errorBorder),
+                }}
+              />
+            </div>
+
+            <label style={{ ...labelStyle, color: '#ef4444' }}>Customer Number*</label>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  {...register('contactNumber')}
+                  aria-invalid={!!errors.contactNumber}
+                  style={{ ...inputStyle, flex: 1, ...(errors.contactNumber && errorBorder) }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsNumberConfigOpen(true)}
                   style={{
-                    position: 'absolute',
-                    left: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
                     color: '#888',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
                   }}
                 >
-                  ✉
-                </span>
-                <input
-                  {...register('email')}
-                  type="email"
-                  style={{ ...inputStyle, paddingLeft: '28px' }}
-                />
+                  <Settings size={18} />
+                </button>
               </div>
-
-              <label style={{ ...labelStyle, color: '#ef4444' }}>Customer Number*</label>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input {...register('contactNumber')} style={{ ...inputStyle, flex: 1 }} />
-                  <button
-                    type="button"
-                    onClick={() => setIsNumberConfigOpen(true)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#888',
-                      cursor: 'pointer',
-                      padding: '4px',
-                      display: 'flex',
-                    }}
-                  >
-                    <Settings size={18} />
-                  </button>
-                </div>
-                {errors.contactNumber && (
-                  <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                    {errors.contactNumber.message}
-                  </div>
-                )}
-              </div>
+            </div>
 
               <label style={labelStyle}>Phone</label>
               <div style={{ display: 'flex', gap: '16px', maxWidth: '440px' }}>
@@ -922,135 +929,133 @@ export function CustomerForm({
                 </div>
               )}
 
-              {/* Contact Persons Tab */}
-              {activeTab === 'contact' && (
-                <div>
-                  <div className="responsive-table-wrapper">
-                    <table
-                      style={{
-                        width: '100%',
-                        borderCollapse: 'collapse',
-                        marginBottom: '16px',
-                        fontSize: '13px',
-                      }}
-                    >
-                      <thead>
-                        <tr
-                          style={{
-                            borderBottom: '1px solid #ddd',
-                            color: '#555',
-                            textAlign: 'left',
-                          }}
-                        >
-                          <th style={{ padding: '12px 8px' }}>SALUTATION</th>
-                          <th style={{ padding: '12px 8px' }}>FIRST NAME</th>
-                          <th style={{ padding: '12px 8px' }}>LAST NAME</th>
-                          <th style={{ padding: '12px 8px' }}>EMAIL ADDRESS</th>
-                          <th style={{ padding: '12px 8px' }}>WORK PHONE</th>
-                          <th style={{ padding: '12px 8px' }}>MOBILE</th>
-                          <th style={{ padding: '12px 8px', width: '40px' }}></th>
+            {/* Contact Persons Tab */}
+            {activeTab === 'contact' && (
+              <div>
+                <div className="responsive-table-wrapper">
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      marginBottom: '16px',
+                      fontSize: '13px',
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{ borderBottom: '1px solid #ddd', color: '#555', textAlign: 'left' }}
+                      >
+                        <th style={{ padding: '12px 8px' }}>SALUTATION</th>
+                        <th style={{ padding: '12px 8px' }}>FIRST NAME</th>
+                        <th style={{ padding: '12px 8px' }}>LAST NAME</th>
+                        <th style={{ padding: '12px 8px' }}>EMAIL ADDRESS</th>
+                        <th style={{ padding: '12px 8px' }}>WORK PHONE</th>
+                        <th style={{ padding: '12px 8px' }}>MOBILE</th>
+                        <th style={{ padding: '12px 8px', width: '40px' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contactPersons.map((field, index) => (
+                        <tr key={field.id} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                            <Controller
+                              control={control}
+                              name={`contactPersons.${index}.salutation`}
+                              render={({ field }) => (
+                                <Select
+                                  value={field.value || ''}
+                                  onChange={field.onChange}
+                                  options={[
+                                    { value: '', label: '' },
+                                    { value: 'Mr.', label: 'Mr.' },
+                                    { value: 'Mrs.', label: 'Mrs.' },
+                                    { value: 'Ms.', label: 'Ms.' },
+                                  ]}
+                                  minWidth={80}
+                                  fullWidth={false}
+                                />
+                              )}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                            <input
+                              {...register(`contactPersons.${index}.firstName`)}
+                              style={inputStyle}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                            <input
+                              {...register(`contactPersons.${index}.lastName`)}
+                              style={inputStyle}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                            <input
+                              {...register(`contactPersons.${index}.email`)}
+                              type="email"
+                              aria-invalid={!!errors.contactPersons?.[index]?.email}
+                              style={{
+                                ...inputStyle,
+                                ...(errors.contactPersons?.[index]?.email && errorBorder),
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                            <Controller
+                              control={control}
+                              name={`contactPersons.${index}.phone`}
+                              render={({ field }) => (
+                                <PhoneInput
+                                  value={field.value || ''}
+                                  onChange={field.onChange}
+                                  countries={masterData?.countries || []}
+                                />
+                              )}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>
+                            <Controller
+                              control={control}
+                              name={`contactPersons.${index}.mobile`}
+                              render={({ field }) => (
+                                <PhoneInput
+                                  value={field.value || ''}
+                                  onChange={field.onChange}
+                                  countries={masterData?.countries || []}
+                                />
+                              )}
+                            />
+                          </td>
+                          <td style={{ padding: '6px 8px', fontSize: '13px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => removeContactPerson(index)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#e54d4d',
+                                cursor: 'pointer',
+                                padding: '4px',
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {contactPersons.map((field, index) => (
-                          <tr key={field.id} style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                              <Controller
-                                control={control}
-                                name={`contactPersons.${index}.salutation`}
-                                render={({ field }) => (
-                                  <Select
-                                    value={field.value || ''}
-                                    onChange={field.onChange}
-                                    options={[
-                                      { value: '', label: '' },
-                                      { value: 'Mr.', label: 'Mr.' },
-                                      { value: 'Mrs.', label: 'Mrs.' },
-                                      { value: 'Ms.', label: 'Ms.' },
-                                    ]}
-                                    minWidth={80}
-                                    fullWidth={false}
-                                  />
-                                )}
-                              />
-                            </td>
-                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                              <input
-                                {...register(`contactPersons.${index}.firstName`)}
-                                style={inputStyle}
-                              />
-                            </td>
-                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                              <input
-                                {...register(`contactPersons.${index}.lastName`)}
-                                style={inputStyle}
-                              />
-                            </td>
-                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                              <input
-                                {...register(`contactPersons.${index}.email`)}
-                                type="email"
-                                style={inputStyle}
-                              />
-                            </td>
-                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                              <Controller
-                                control={control}
-                                name={`contactPersons.${index}.phone`}
-                                render={({ field }) => (
-                                  <PhoneInput
-                                    value={field.value || ''}
-                                    onChange={field.onChange}
-                                    countries={masterData?.countries || []}
-                                  />
-                                )}
-                              />
-                            </td>
-                            <td style={{ padding: '6px 8px', fontSize: '13px' }}>
-                              <Controller
-                                control={control}
-                                name={`contactPersons.${index}.mobile`}
-                                render={({ field }) => (
-                                  <PhoneInput
-                                    value={field.value || ''}
-                                    onChange={field.onChange}
-                                    countries={masterData?.countries || []}
-                                  />
-                                )}
-                              />
-                            </td>
-                            <td
-                              style={{ padding: '6px 8px', fontSize: '13px', textAlign: 'center' }}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => removeContactPerson(index)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#e54d4d',
-                                  cursor: 'pointer',
-                                  padding: '4px',
-                                }}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {contactPersons.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={7}
-                              style={{ padding: '24px', textAlign: 'center', color: '#999' }}
-                            >
-                              No contact persons added.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                      {contactPersons.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={7}
+                            style={{ padding: '24px', textAlign: 'center', color: '#999' }}
+                          >
+                            No contact persons added.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
 
                   <button
                     type="button"
@@ -1106,105 +1111,71 @@ export function CustomerForm({
                 </div>
               )}
             </div>
-          </div>
+          </form>
         </div>
 
-        <div
-          className={`form-actions-footer ${isModal ? '' : 'page-footer'}`}
-          style={
-            isModal
-              ? {
-                  backgroundColor: '#f8fafc',
-                  padding: '14px 24px',
-                  borderTop: '1px solid #e2e8f0',
-                  zIndex: 10,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  flexShrink: 0,
-                }
-              : {
-                  minHeight: '52px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '0 24px',
-                  backgroundColor: '#fff',
-                  borderTop: '1px solid #eef0f3',
-                }
-          }
+      <div
+        className={`form-actions-footer ${isModal ? '' : 'page-footer'}`}
+        style={
+          isModal
+            ? {
+                position: 'sticky',
+                bottom: 0,
+                backgroundColor: '#fff',
+                padding: '16px 20px',
+                borderTop: '1px solid #e2e8f0',
+                zIndex: 10,
+                // cancels Modal's body padding (16px 20px) so the bar spans the dialog edge to edge
+                margin: '0 -20px -16px -20px',
+              }
+            : undefined
+        }
+      >
+        <button
+          form={formId}
+          type="submit"
+          disabled={isSubmitting}
+          style={{
+            padding: '6px 20px',
+            background: '#0062ff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
         >
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              padding: '8px 24px',
-              backgroundColor: '#0062ff',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              fontWeight: 600,
-              fontSize: '13px',
-              lineHeight: '20px',
-              transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-              opacity: isSubmitting ? 0.7 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0052d9';
-            }}
-            onMouseLeave={(e) => {
-              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#0062ff';
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            disabled={isSubmitting}
-            onClick={() => {
-              if (onCancel) {
-                onCancel();
-                return;
-              }
-              const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
-              if (returnUrl) {
-                navigate(returnUrl);
-              } else {
-                navigate(-1);
-              }
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '8px 20px',
-              backgroundColor: '#ffffff',
-              color: '#334155',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: '13px',
-              lineHeight: '20px',
-              transition: 'background-color 0.15s ease, border-color 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#f1f5f9';
-            }}
-            onMouseLeave={(e) => {
-              if (!isSubmitting) e.currentTarget.style.backgroundColor = '#ffffff';
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+          {isSubmitting ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (onCancel) {
+              onCancel();
+              return;
+            }
+            const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
+            if (returnUrl) {
+              navigate(returnUrl);
+            } else {
+              navigate(-1);
+            }
+          }}
+          style={{
+            padding: '6px 20px',
+            background: 'white',
+            color: '#333',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            fontSize: '13px',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
 
       <CustomerNumberConfigModal
         isOpen={isNumberConfigOpen}

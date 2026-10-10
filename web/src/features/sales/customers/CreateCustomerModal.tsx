@@ -1,12 +1,11 @@
-import { useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { X } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { type CreateCustomerData } from './customers.schemas';
 import { createCustomer } from './customers.api';
 import { CustomerForm } from './CustomerForm';
+import { Modal } from '../../../components/ui/Modal';
 import { notify } from '../../../lib/notify';
 
 interface CreateCustomerModalProps {
@@ -19,6 +18,15 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
   const queryClient = useQueryClient();
   const { orgId } = useParams<{ orgId: string }>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // The form's own sub-dialogs are hand-rolled and outside Modal's stack, so Escape
+  // pressed in one of them would otherwise close this dialog and drop the form.
+  const nestedDialogOpenRef = useRef(false);
+
+  // This component stays mounted while closed, so stale server errors would greet the next open.
+  const handleClose = () => {
+    setFieldErrors({});
+    onClose();
+  };
 
   const mutation = useMutation({
     mutationFn: (data: CreateCustomerData) => createCustomer(orgId!, data),
@@ -27,18 +35,14 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
       queryClient.invalidateQueries({ queryKey: ['customer-number-preference', orgId] });
       notify.success('Customer created successfully');
       onSuccess?.(data.id);
-      onClose();
+      handleClose();
     },
-    onError: (
-      error: AxiosError<{ error?: string; message?: string; details?: Record<string, string> }>,
-    ) => {
+    // The toast comes from queryClient's global onError; here we only highlight fields.
+    onError: (error: AxiosError<{ details?: Record<string, string> }>) => {
       const details = error.response?.data?.details;
       if (details && typeof details === 'object' && !Array.isArray(details)) {
         setFieldErrors(details);
-        return;
       }
-      const errorMsg = error.response?.data?.error || error.response?.data?.message;
-      notify.error(errorMsg || 'Failed to create customer');
     },
   });
 
@@ -47,95 +51,27 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
     mutation.mutate(data);
   };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        zIndex: 1100,
-        padding: '0 20px 20px 20px',
+  return (
+    <Modal
+      isOpen={isOpen}
+      title="New Customer"
+      position="top"
+      width={1000}
+      onClose={() => {
+        if (!nestedDialogOpenRef.current) handleClose();
       }}
     >
-      <div
-        style={{
-          width: '1000px',
-          maxWidth: '100%',
-          maxHeight: '95vh',
-          backgroundColor: '#ffffff',
-          borderRadius: '0 0 8px 8px',
-          overflow: 'hidden',
-          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
-          animation: 'slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-          display: 'flex',
-          flexDirection: 'column',
+      <CustomerForm
+        onSubmit={onSubmit}
+        isSubmitting={mutation.isPending}
+        isEdit={false}
+        customFieldErrors={fieldErrors}
+        isModal={true}
+        onCancel={handleClose}
+        onNestedDialogChange={(open) => {
+          nestedDialogOpenRef.current = open;
         }}
-      >
-        <style>
-          {`
-            @keyframes slideDown {
-              from { opacity: 0; transform: translateY(-20px); }
-              to { opacity: 1; transform: translateY(0); }
-            }
-          `}
-        </style>
-        <div
-          style={{
-            padding: '16px 24px',
-            borderBottom: '1px solid #e2e8f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            backgroundColor: '#ffffff',
-            flexShrink: 0,
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
-            New Customer
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: '#64748b',
-              padding: '4px',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <CustomerForm
-            onSubmit={onSubmit}
-            isSubmitting={mutation.isPending}
-            isEdit={false}
-            customFieldErrors={fieldErrors}
-            isModal={true}
-            onCancel={onClose}
-          />
-        </div>
-      </div>
-    </div>,
-    document.body,
+      />
+    </Modal>
   );
 }
