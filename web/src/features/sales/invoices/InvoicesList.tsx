@@ -412,7 +412,10 @@ export default function InvoicesList() {
                               const target = e.target as HTMLElement;
                               if (target.closest('input[type="checkbox"]')) return;
                               if (target.closest('button')) return;
-                              setSearchParams(new URLSearchParams({ id: inv.id }));
+                              setSearchParams((prev) => {
+                                prev.set('id', inv.id);
+                                return prev;
+                              });
                             }}
                             style={{
                               borderBottom: '1px solid #eef0f3',
@@ -515,7 +518,15 @@ export default function InvoicesList() {
               overflow: 'hidden',
             }}
           >
-            <InvoiceDetail invoiceId={selectedInvoiceId} onClose={() => setSearchParams({})} />
+            <InvoiceDetail
+              invoiceId={selectedInvoiceId}
+              onClose={() =>
+                setSearchParams((prev) => {
+                  prev.delete('id');
+                  return prev;
+                })
+              }
+            />
           </div>
         )}
       </div>
