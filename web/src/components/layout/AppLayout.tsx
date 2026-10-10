@@ -54,6 +54,13 @@ import { approvalsApi } from '../../features/approvals/approvals.api';
 import { fetchJobOrders } from '../../features/jobwork/job-orders/jobOrders.api';
 import { fetchJobIssues } from '../../features/jobwork/issues/jobIssues.api';
 import { fetchAdjustments } from '../../features/inventory/adjustments/adjustments.api';
+import { assembliesApi } from '../../features/inventory/assembly/assemblies.api';
+import { compositeItemsApi } from '../../features/inventory/composite-items/compositeItems.api';
+import { fetchSalesOrders } from '../../features/sales/sales-orders/sales-orders.api';
+import { fetchInvoices } from '../../features/sales/invoices/invoices.api';
+import { fetchPurchaseOrders } from '../../features/purchases/purchase-orders/purchase-orders.api';
+import { fetchBills } from '../../features/purchases/bills/bills.api';
+import { fetchJobReceipts } from '../../features/jobwork/receipts/jobReceipts.api';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 /**
@@ -203,6 +210,61 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
     to: (orgId, id) => `/organizations/${orgId}/sales/customers?id=${id}`,
   },
   {
+    match: '/sales/sales-orders',
+    label: 'Sales Orders',
+    fetch: async (orgId, term) =>
+      (await fetchSalesOrders(orgId, { search: term, perPage: 6 })).results.map((o) => ({
+        id: o.id,
+        title: o.soNumber ?? 'Sales Order',
+        subtitle: (o.customer?.contactName as string | undefined) || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/sales/sales-orders?id=${id}`,
+  },
+  {
+    match: '/sales/invoices',
+    label: 'Invoices',
+    fetch: async (orgId, term) =>
+      (await fetchInvoices(orgId, { search: term, perPage: 6 })).results.map((i) => ({
+        id: i.id,
+        title: i.invoiceNumber,
+        subtitle: (i.customer?.contactName as string | undefined) || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/sales/invoices?id=${id}`,
+  },
+  {
+    match: '/purchases/purchase-orders',
+    label: 'Purchase Orders',
+    fetch: async (orgId, term) =>
+      (await fetchPurchaseOrders(orgId, { search: term, perPage: 6 })).results.map((o) => ({
+        id: o.id,
+        title: o.poNumber,
+        subtitle: (o.vendor?.contactName as string | undefined) || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/purchases/purchase-orders?id=${id}`,
+  },
+  {
+    match: '/purchases/bills',
+    label: 'Bills',
+    fetch: async (orgId, term) =>
+      (await fetchBills(orgId, { search: term, perPage: 6 })).results.map((b) => ({
+        id: b.id,
+        title: b.billNumber,
+        subtitle: (b.vendor?.contactName as string | undefined) || undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/purchases/bills?id=${id}`,
+  },
+  {
+    match: '/composite-items',
+    label: 'Composite Items',
+    fetch: async (orgId, term) =>
+      (await compositeItemsApi.getItems(orgId, { search: term, perPage: 6 })).results.map((i) => ({
+        id: i.id,
+        title: i.name,
+        subtitle: i.sku ? `SKU: ${i.sku}` : undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/composite-items?id=${id}`,
+  },
+  {
     match: '/items',
     label: 'Items',
     fetch: async (orgId, term) =>
@@ -223,6 +285,17 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
         subtitle: a.lines[0]?.item.name,
       })),
     to: (orgId, id) => `/organizations/${orgId}/inventory/adjustments?id=${id}`,
+  },
+  {
+    match: '/inventory/assembly',
+    label: 'Assembly',
+    fetch: async (orgId, term) =>
+      (await assembliesApi.getAssemblies(orgId, { search: term, perPage: 6 })).results.map((a) => ({
+        id: a.id,
+        title: a.assemblyNumber,
+        subtitle: a.compositeItem?.name,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/inventory/assembly?id=${id}`,
   },
   {
     // No Processes entry: that list moved under Settings, which renders outside
@@ -256,6 +329,17 @@ const SEARCHABLE_ROUTES: SearchModule[] = [
         }),
       ),
     to: (orgId, id) => `/organizations/${orgId}/jobwork/issues?id=${id}`,
+  },
+  {
+    match: '/jobwork/receipts',
+    label: 'Receipts',
+    fetch: async (orgId, term) =>
+      (await fetchJobReceipts(orgId, { search: term, perPage: 6 })).results.map((r) => ({
+        id: r.id,
+        title: r.receiptNumber,
+        subtitle: r.processorNameSnapshot ?? undefined,
+      })),
+    to: (orgId, id) => `/organizations/${orgId}/jobwork/receipts?id=${id}`,
   },
 ];
 
@@ -480,12 +564,13 @@ export function AppLayout() {
   const [prevLogoUrl, setPrevLogoUrl] = useState(activeOrg?.logo_url);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const isRouteCollapsed = location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
+  const isRouteCollapsed =
+    location.pathname.endsWith('/opening-stock') || location.pathname.includes('/reports');
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
     const stored = localStorage.getItem('sidebar-collapsed');
     return stored !== null ? stored === 'true' : null;
   });
-  
+
   const isSidebarCollapsed = userCollapsed !== null ? userCollapsed : isRouteCollapsed;
 
   const toggleSidebar = () => {
@@ -508,7 +593,7 @@ export function AppLayout() {
     setPrevPathname(location.pathname);
     setPrevModulesLength(modules.length);
     if (isMobileMenuOpen) setIsMobileMenuOpen(false);
-    
+
     // Auto-collapse if navigating to reports or opening stock
     if (location.pathname.includes('/reports') || location.pathname.endsWith('/opening-stock')) {
       setUserCollapsed(true);
@@ -749,7 +834,7 @@ export function AppLayout() {
             </NavLink>
           </div>
         )}
-        
+
         {/* Toggle Sidebar Button */}
         <div
           style={{
@@ -782,13 +867,9 @@ export function AppLayout() {
             }}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'white')}
             onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
-            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
-            {isSidebarCollapsed ? (
-              <PanelLeftOpen size={22} />
-            ) : (
-              <PanelLeftClose size={22} />
-            )}
+            {isSidebarCollapsed ? <PanelLeftOpen size={22} /> : <PanelLeftClose size={22} />}
           </button>
         </div>
       </aside>
